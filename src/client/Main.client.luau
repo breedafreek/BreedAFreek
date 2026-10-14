@@ -350,7 +350,7 @@ function renderers.Shop()
 		local owned = weaponId == Weapons.STARTER or (state.weapons and state.weapons[weaponId])
 		local card = UI.card({
 			lines = {
-				{ weapon.name, weapon.handle.color:Lerp(Color3.new(1, 1, 1), 0.3), 24 },
+				{ weapon.name, weapon.color:Lerp(Color3.new(1, 1, 1), 0.3), 24 },
 				{ weapon.description, colors.muted, 44 },
 			},
 			buttons = {

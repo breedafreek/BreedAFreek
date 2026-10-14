@@ -216,7 +216,7 @@ for (const freek of freeks) {
 
     document.getElementById("title").textContent = freek.name + (freek.mutation ? ` (${freek.mutation})` : "");
     const sub = document.getElementById("sub");
-    sub.textContent = freek.rarity + (freek.season ? ` · ${freek.season}` : "");
+    sub.textContent = freek.subtitle || freek.rarity + (freek.season ? ` · ${freek.season}` : "");
     sub.style.color = rarityColor;
     document.getElementById("fx").textContent = effectNames.size ? "Effects: " + [...effectNames].join(", ") : "";
   }, { freek, rarityColor: RARITY_COLORS[freek.rarity] || "#ffffff" });

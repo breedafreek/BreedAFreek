@@ -12,6 +12,7 @@ local Workspace = game:GetService("Workspace")
 
 local Format = require(ReplicatedStorage.Shared.Format)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local WeaponModel = require(ReplicatedStorage.Shared.WeaponModel)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 
 local ActionService = require(script.Parent.ActionService)
@@ -41,33 +42,6 @@ local function owns(player: Player, weaponId: string): boolean
 	return data ~= nil and data.weapons[weaponId] == true
 end
 
-local function buildTool(weaponId: string): Tool
-	local weapon = Weapons.list[weaponId]
-	local tool = Instance.new("Tool")
-	tool.Name = weapon.name
-	tool.CanBeDropped = false
-	tool.RequiresHandle = true
-	tool.ToolTip = weapon.description
-	if weapon.kind == "melee" then
-		-- Same grip as Roblox's classic sword: held at one end, pointing up and forward.
-		tool.GripForward = Vector3.new(-1, 0, 0)
-		tool.GripRight = Vector3.new(0, 1, 0)
-		tool.GripUp = Vector3.new(0, 0, 1)
-		tool.GripPos = Vector3.new(0, 0, -1.5)
-	end
-	tool:SetAttribute("WeaponId", weaponId)
-
-	local handle = Instance.new("Part")
-	handle.Name = "Handle"
-	handle.Size = weapon.handle.size
-	handle.Color = weapon.handle.color
-	handle.Material = Enum.Material[weapon.handle.material]
-	handle.CanCollide = false
-	handle.Massless = true
-	handle.Parent = tool
-	return tool
-end
-
 -- Makes sure the player's backpack has every weapon they own.
 local function giveWeapons(player: Player)
 	local backpack = player:FindFirstChildOfClass("Backpack")
@@ -87,7 +61,7 @@ local function giveWeapons(player: Player)
 	end
 	for _, weaponId in Weapons.order do
 		if owns(player, weaponId) and not have[weaponId] then
-			buildTool(weaponId).Parent = backpack
+			WeaponModel.build(weaponId).Parent = backpack
 		end
 	end
 end

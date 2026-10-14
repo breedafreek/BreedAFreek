@@ -999,6 +999,92 @@ return Seasons
       </Item>
       <Item class="ModuleScript" referent="12">
         <Properties>
+          <string name="Name">WeaponModel</string>
+          <string name="Source"><![CDATA[-- Builds the Tool for a weapon from its part list in Weapons.luau.
+--
+-- Part list format (same as Freeks), in studs, relative to the grip:
+--   { shape = "Ball" | "Block" | "Cylinder" | "Wedge", size = { x, y, z } (or one number),
+--     pos = { x, y, z }, rot = { x, y, z } (degrees), color = Color3,
+--     material = "Neon" etc. (optional), transparency = 0-1 (optional) }
+-- The first part becomes the Handle (where the hand holds it). It must not be rotated, since
+-- its orientation decides how the weapon sits in the hand; hide a plain block inside the
+-- visible grip if needed. Guns point toward -Z; melee weapons extend toward +Z.
+
+local Weapons = require(script.Parent.Weapons)
+
+local WeaponModel = {}
+
+local SHAPES = {
+	Ball = Enum.PartType.Ball,
+	Block = Enum.PartType.Block,
+	Cylinder = Enum.PartType.Cylinder,
+}
+
+local function vector(value): Vector3
+	if type(value) == "number" then
+		return Vector3.one * value
+	end
+	return Vector3.new(value[1], value[2], value[3])
+end
+
+function WeaponModel.build(weaponId: string): Tool
+	local weapon = Weapons.list[weaponId]
+	local tool = Instance.new("Tool")
+	tool.Name = weapon.name
+	tool.CanBeDropped = false
+	tool.RequiresHandle = true
+	tool.ToolTip = weapon.description
+	if weapon.kind == "melee" then
+		-- Held like Roblox's classic sword: pointing up and forward from the hand.
+		tool.GripForward = Vector3.new(-1, 0, 0)
+		tool.GripRight = Vector3.new(0, 1, 0)
+		tool.GripUp = Vector3.new(0, 0, 1)
+		tool.GripPos = Vector3.zero
+	end
+	tool:SetAttribute("WeaponId", weaponId)
+
+	local handle
+	for i, spec in weapon.model do
+		local part
+		if spec.shape == "Wedge" then
+			part = Instance.new("WedgePart")
+		else
+			part = Instance.new("Part")
+			part.Shape = SHAPES[spec.shape or "Block"] or Enum.PartType.Block
+		end
+		part.Name = if i == 1 then "Handle" else "Part" .. i
+		part.Size = vector(spec.size)
+		local rot = spec.rot or { 0, 0, 0 }
+		-- Every part is placed in the tool's own space (not relative to the handle's rotation).
+		part.CFrame = CFrame.new(vector(spec.pos)) * CFrame.Angles(math.rad(rot[1]), math.rad(rot[2]), math.rad(rot[3]))
+		part.Color = spec.color or Color3.new(1, 1, 1)
+		part.Material = Enum.Material[spec.material or "SmoothPlastic"]
+		part.Transparency = spec.transparency or 0
+		part.TopSurface = Enum.SurfaceType.Smooth
+		part.BottomSurface = Enum.SurfaceType.Smooth
+		part.CanCollide = false
+		part.CanTouch = false
+		part.Massless = true
+		part.Anchored = false
+		if handle then
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = handle
+			weld.Part1 = part
+			weld.Parent = part
+		else
+			handle = part
+		end
+		part.Parent = tool
+	end
+	return tool
+end
+
+return WeaponModel
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="13">
+        <Properties>
           <string name="Name">Weapons</string>
           <string name="Source"><![CDATA[-- Weapons. Everyone has the STARTER weapon; the rest are bought in the shop (price).
 -- Weapons hit anyone EXCEPT a player standing inside their own yard (their safe zone).
@@ -1010,6 +1096,8 @@ return Seasons
 -- effect "glue": the target is stuck to the nearest wall for glueSeconds.
 --
 -- After a stun or glue wears off, the target is immune for IMMUNE_SECONDS.
+--
+-- model is the weapon's look; the format is described in WeaponModel.luau.
 
 local Weapons = {}
 
@@ -1028,7 +1116,92 @@ Weapons.list = {
 		stunSeconds = 1,
 		range = 8,
 		cooldown = 0.6,
-		handle = { size = Vector3.new(0.7, 0.7, 4.2), color = Color3.fromRGB(150, 100, 60), material = "Wood" },
+		color = Color3.fromRGB(205, 150, 90),
+		-- A chunky wooden club with a taped grip. The grip runs along Z; the fat end is +Z.
+		model = {
+			{
+				shape = "Block",
+				size = { 0.3, 0.3, 1.8 },
+				pos = { 0, 0, 0 },
+				color = Color3.fromRGB(190, 135, 80),
+				material = "Wood",
+			},
+			{
+				shape = "Cylinder",
+				size = { 1.8, 0.45, 0.45 },
+				pos = { 0, 0, 0 },
+				rot = { 0, 90, 0 },
+				color = Color3.fromRGB(190, 135, 80),
+				material = "Wood",
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.22, 0.75, 0.75 },
+				pos = { 0, 0, -1 },
+				rot = { 0, 90, 0 },
+				color = Color3.fromRGB(120, 80, 45),
+				material = "Wood",
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.14, 0.52, 0.52 },
+				pos = { 0, 0, -0.55 },
+				rot = { 0, 90, 0 },
+				color = Color3.fromRGB(210, 50, 50),
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.14, 0.52, 0.52 },
+				pos = { 0, 0, -0.1 },
+				rot = { 0, 90, 0 },
+				color = Color3.fromRGB(210, 50, 50),
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.14, 0.52, 0.52 },
+				pos = { 0, 0, 0.35 },
+				rot = { 0, 90, 0 },
+				color = Color3.fromRGB(210, 50, 50),
+			},
+			{
+				shape = "Cylinder",
+				size = { 1.1, 0.6, 0.6 },
+				pos = { 0, 0, 1.4 },
+				rot = { 0, 90, 0 },
+				color = Color3.fromRGB(205, 150, 90),
+				material = "Wood",
+			},
+			{
+				shape = "Cylinder",
+				size = { 1.1, 0.8, 0.8 },
+				pos = { 0, 0, 2.4 },
+				rot = { 0, 90, 0 },
+				color = Color3.fromRGB(210, 155, 95),
+				material = "Wood",
+			},
+			{
+				shape = "Cylinder",
+				size = { 1.3, 1.05, 1.05 },
+				pos = { 0, 0, 3.55 },
+				rot = { 0, 90, 0 },
+				color = Color3.fromRGB(215, 160, 100),
+				material = "Wood",
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.18, 1.09, 1.09 },
+				pos = { 0, 0, 3.2 },
+				rot = { 0, 90, 0 },
+				color = Color3.fromRGB(60, 40, 25),
+			},
+			{
+				shape = "Ball",
+				size = 1.05,
+				pos = { 0, 0, 4.2 },
+				color = Color3.fromRGB(215, 160, 100),
+				material = "Wood",
+			},
+		},
 	},
 	CandyCannon = {
 		name = "Candy Cannon",
@@ -1042,7 +1215,75 @@ Weapons.list = {
 		speed = 90,
 		range = 120,
 		ball = { size = 1.4, color = Color3.fromRGB(255, 110, 190) },
-		handle = { size = Vector3.new(1, 1, 3), color = Color3.fromRGB(255, 150, 210), material = "SmoothPlastic" },
+		color = Color3.fromRGB(255, 130, 200),
+		-- A candy-striped barrel with a lollipop sight. Points toward -Z.
+		model = {
+			{ shape = "Block", size = { 0.4, 0.8, 0.4 }, pos = { 0, 0, 0 }, transparency = 1 },
+			{
+				shape = "Block",
+				size = { 0.5, 1.1, 0.65 },
+				pos = { 0, 0, 0 },
+				rot = { -15, 0, 0 },
+				color = Color3.fromRGB(200, 60, 140),
+			},
+			{
+				shape = "Cylinder",
+				size = { 3.2, 1.4, 1.4 },
+				pos = { 0, 0.85, -0.9 },
+				rot = { 0, 90, 0 },
+				color = Color3.fromRGB(255, 130, 200),
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.28, 1.46, 1.46 },
+				pos = { 0, 0.85, 0.2 },
+				rot = { 0, 90, 0 },
+				color = Color3.new(1, 1, 1),
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.28, 1.46, 1.46 },
+				pos = { 0, 0.85, -0.6 },
+				rot = { 0, 90, 0 },
+				color = Color3.new(1, 1, 1),
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.28, 1.46, 1.46 },
+				pos = { 0, 0.85, -1.4 },
+				rot = { 0, 90, 0 },
+				color = Color3.new(1, 1, 1),
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.5, 1.8, 1.8 },
+				pos = { 0, 0.85, -2.6 },
+				rot = { 0, 90, 0 },
+				color = Color3.fromRGB(230, 40, 120),
+			},
+			{
+				shape = "Ball",
+				size = 1.15,
+				pos = { 0, 0.85, -2.75 },
+				color = Color3.fromRGB(255, 220, 90),
+				material = "Neon",
+			},
+			{ shape = "Ball", size = 1.4, pos = { 0, 0.85, 0.7 }, color = Color3.fromRGB(255, 130, 200) },
+			{
+				shape = "Block",
+				size = { 0.18, 0.4, 0.18 },
+				pos = { 0, 0.2, -0.45 },
+				color = Color3.fromRGB(255, 220, 90),
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.9, 0.12, 0.12 },
+				pos = { 0, 1.9, -0.7 },
+				rot = { 0, 0, 90 },
+				color = Color3.new(1, 1, 1),
+			},
+			{ shape = "Ball", size = 0.7, pos = { 0, 2.45, -0.7 }, color = Color3.fromRGB(120, 220, 255) },
+		},
 	},
 	GlueGun = {
 		name = "Glue Gun",
@@ -1055,7 +1296,74 @@ Weapons.list = {
 		range = 90,
 		glueSeconds = 5,
 		ball = { size = 1.2, color = Color3.fromRGB(120, 230, 80) },
-		handle = { size = Vector3.new(0.9, 1.2, 2.4), color = Color3.fromRGB(90, 200, 70), material = "SmoothPlastic" },
+		color = Color3.fromRGB(120, 230, 80),
+		-- A hot-glue gun with a glue tank on top and a dripping nozzle. Points toward -Z.
+		model = {
+			{ shape = "Block", size = { 0.4, 0.8, 0.4 }, pos = { 0, 0, 0 }, transparency = 1 },
+			{
+				shape = "Block",
+				size = { 0.6, 1.4, 0.7 },
+				pos = { 0, 0, 0 },
+				rot = { -15, 0, 0 },
+				color = Color3.fromRGB(60, 150, 50),
+			},
+			{ shape = "Block", size = { 0.85, 1.1, 2.4 }, pos = { 0, 1, -0.6 }, color = Color3.fromRGB(90, 200, 70) },
+			{
+				shape = "Cylinder",
+				size = { 0.8, 0.5, 0.5 },
+				pos = { 0, 1.1, -2.2 },
+				rot = { 0, 90, 0 },
+				color = Color3.fromRGB(170, 170, 180),
+				material = "Metal",
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.45, 0.26, 0.26 },
+				pos = { 0, 1.1, -2.8 },
+				rot = { 0, 90, 0 },
+				color = Color3.fromRGB(150, 150, 160),
+				material = "Metal",
+			},
+			{
+				shape = "Ball",
+				size = 0.4,
+				pos = { 0, 0.82, -3 },
+				color = Color3.fromRGB(150, 255, 90),
+				material = "Glass",
+				transparency = 0.2,
+			},
+			{
+				shape = "Cylinder",
+				size = { 1.5, 0.5, 0.5 },
+				pos = { 0, 1.1, 1.2 },
+				rot = { 0, 90, 0 },
+				color = Color3.fromRGB(255, 250, 200),
+				material = "Glass",
+				transparency = 0.25,
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.9, 0.75, 0.75 },
+				pos = { 0, 1.95, -0.4 },
+				rot = { 0, 0, 90 },
+				color = Color3.fromRGB(150, 255, 90),
+				material = "Glass",
+				transparency = 0.3,
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.12, 0.8, 0.8 },
+				pos = { 0, 2.42, -0.4 },
+				rot = { 0, 0, 90 },
+				color = Color3.fromRGB(60, 150, 50),
+			},
+			{
+				shape = "Block",
+				size = { 0.2, 0.45, 0.2 },
+				pos = { 0, 0.3, -0.5 },
+				color = Color3.fromRGB(255, 220, 60),
+			},
+		},
 	},
 }
 
@@ -1065,15 +1373,15 @@ return Weapons
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="13">
+  <Item class="ServerScriptService" referent="14">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="14">
+    <Item class="Folder" referent="15">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -1297,7 +1605,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">Carried</string>
           <string name="Source"><![CDATA[-- Which Freeks are being carried off by a thief right now. Kept in memory only: if the
@@ -1332,7 +1640,7 @@ return Carried
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -1563,7 +1871,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Discovery Book: the first player in the whole game to get each species has their
@@ -1692,7 +2000,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the Freeks in their yard, plus offline earnings
@@ -1760,7 +2068,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="20">
+      <Item class="Script" referent="21">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -1784,7 +2092,7 @@ require(Server.DataService).init()
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the map and gives every player a fenced yard. Other players can walk in to look
@@ -2303,7 +2611,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="22">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">Recipes</string>
           <string name="Source"><![CDATA[-- Secret breeding recipes. Server-only so players can't read them out of the game.
@@ -2374,7 +2682,7 @@ return Recipes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="24">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Stealing Freeks from other players' yards.
@@ -2728,7 +3036,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="25">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
@@ -3005,7 +3313,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- Weapons: giving them out, buying them, and what happens when they hit.
@@ -3022,6 +3330,7 @@ local Workspace = game:GetService("Workspace")
 
 local Format = require(ReplicatedStorage.Shared.Format)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local WeaponModel = require(ReplicatedStorage.Shared.WeaponModel)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 
 local ActionService = require(script.Parent.ActionService)
@@ -3051,33 +3360,6 @@ local function owns(player: Player, weaponId: string): boolean
 	return data ~= nil and data.weapons[weaponId] == true
 end
 
-local function buildTool(weaponId: string): Tool
-	local weapon = Weapons.list[weaponId]
-	local tool = Instance.new("Tool")
-	tool.Name = weapon.name
-	tool.CanBeDropped = false
-	tool.RequiresHandle = true
-	tool.ToolTip = weapon.description
-	if weapon.kind == "melee" then
-		-- Same grip as Roblox's classic sword: held at one end, pointing up and forward.
-		tool.GripForward = Vector3.new(-1, 0, 0)
-		tool.GripRight = Vector3.new(0, 1, 0)
-		tool.GripUp = Vector3.new(0, 0, 1)
-		tool.GripPos = Vector3.new(0, 0, -1.5)
-	end
-	tool:SetAttribute("WeaponId", weaponId)
-
-	local handle = Instance.new("Part")
-	handle.Name = "Handle"
-	handle.Size = weapon.handle.size
-	handle.Color = weapon.handle.color
-	handle.Material = Enum.Material[weapon.handle.material]
-	handle.CanCollide = false
-	handle.Massless = true
-	handle.Parent = tool
-	return tool
-end
-
 -- Makes sure the player's backpack has every weapon they own.
 local function giveWeapons(player: Player)
 	local backpack = player:FindFirstChildOfClass("Backpack")
@@ -3097,7 +3379,7 @@ local function giveWeapons(player: Player)
 	end
 	for _, weaponId in Weapons.order do
 		if owns(player, weaponId) and not have[weaponId] then
-			buildTool(weaponId).Parent = backpack
+			WeaponModel.build(weaponId).Parent = backpack
 		end
 	end
 end
@@ -3379,19 +3661,19 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="26">
+  <Item class="StarterPlayer" referent="27">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="27">
+    <Item class="StarterPlayerScripts" referent="28">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="28">
+      <Item class="Folder" referent="29">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="LocalScript" referent="29">
+        <Item class="LocalScript" referent="30">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -3746,7 +4028,7 @@ function renderers.Shop()
 		local owned = weaponId == Weapons.STARTER or (state.weapons and state.weapons[weaponId])
 		local card = UI.card({
 			lines = {
-				{ weapon.name, weapon.handle.color:Lerp(Color3.new(1, 1, 1), 0.3), 24 },
+				{ weapon.name, weapon.color:Lerp(Color3.new(1, 1, 1), 0.3), 24 },
 				{ weapon.description, colors.muted, 44 },
 			},
 			buttons = {
@@ -4386,7 +4668,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="30">
+        <Item class="ModuleScript" referent="31">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).

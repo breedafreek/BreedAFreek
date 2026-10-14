@@ -533,6 +533,70 @@ local function color(c)
 	return { c.R, c.G, c.B }
 end
 
+local function exportParts(root)
+	local exported = {}
+	for _, part in parts(root) do
+		local effects = {}
+		for _, child in methods.GetChildren(part) do
+			if not child:IsA("BasePart") and child.ClassName ~= "WeldConstraint" then
+				local props = {}
+				for key, value in rawget(child, "_props") do
+					if type(value) ~= "table" or getmetatable(value) == C3 then
+						props[key] = if getmetatable(value) == C3 then color(value) else value
+					end
+				end
+				props.Parent = nil
+				table.insert(effects, props)
+			end
+		end
+		table.insert(exported, {
+			name = part.Name,
+			class = part.ClassName,
+			shape = part.Shape.Name,
+			size = { part.Size.X, part.Size.Y, part.Size.Z },
+			position = { part.CFrame.p.X, part.CFrame.p.Y, part.CFrame.p.Z },
+			rotation = part.CFrame.r,
+			color = color(part.Color),
+			material = part.Material.Name,
+			transparency = part.Transparency,
+			rainbow = rawget(part, "_tags").RainbowFreek == true,
+			effects = effects,
+		})
+	end
+	return exported
+end
+
+-- Weapons mode: harness.luau <shared> --weapons [weaponId ...]
+if ARGS[3] == "--weapons" then
+	local Weapons = require(moduleRef(SHARED .. "/Weapons.luau"))
+	local WeaponModel = require(moduleRef(SHARED .. "/WeaponModel.luau"))
+	local ids = {}
+	for i = 4, #ARGS do
+		table.insert(ids, ARGS[i])
+	end
+	if #ids == 0 then
+		ids = Weapons.order
+	end
+	local out = {}
+	for _, id in ids do
+		local weapon = Weapons.list[id]
+		assert(weapon, "No weapon with id " .. id)
+		local tool = WeaponModel.build(id)
+		table.insert(out, {
+			id = id,
+			name = weapon.name,
+			rarity = "",
+			subtitle = if weapon.price then "Weapon · " .. weapon.price .. " coins" else "Weapon · Free",
+			season = "",
+			mutation = "",
+			height = 1,
+			parts = exportParts(tool),
+		})
+	end
+	print(json(out))
+	return
+end
+
 local Freeks = require(moduleRef(SHARED .. "/Freeks.luau"))
 local FreekModel = require(moduleRef(SHARED .. "/FreekModel.luau"))
 
