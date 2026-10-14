@@ -2,6 +2,7 @@
 -- windows. The server is the source of truth; this only shows state and sends requests.
 
 local CollectionService = game:GetService("CollectionService")
+local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -13,6 +14,7 @@ local Format = require(Shared.Format)
 local FreekModel = require(Shared.FreekModel)
 local FreekUtil = require(Shared.FreekUtil)
 local Freeks = require(Shared.Freeks)
+local GamePasses = require(Shared.GamePasses)
 local Mutations = require(Shared.Mutations)
 local Rarities = require(Shared.Rarities)
 local Remotes = require(Shared.Remotes)
@@ -46,6 +48,7 @@ local screen = UI.new("ScreenGui", {
 local setRebirthBoost = Hud.money(screen)
 Hud.eventChip(screen)
 Hud.leaderboard(screen)
+Hud.vipChatTag()
 local toast = Hud.toasts(screen)
 
 local window = UI.glass({
@@ -288,7 +291,16 @@ function renderers.Freeks()
 			placed += 1
 		end
 	end
-	heading(string.format("%d Freeks (max %d)  ·  %d / %d in yard", #list, Config.MAX_FREEKS, placed, state.slots), 1)
+	heading(
+		string.format(
+			"%d Freeks (max %d)  ·  %d / %d in yard",
+			#list,
+			GamePasses.maxFreeks(player),
+			placed,
+			state.slots
+		),
+		1
+	)
 	if #list == 0 then
 		heading("No Freeks yet! Buy one in the Shop.", 2)
 		return
@@ -755,6 +767,49 @@ function renderers.Rebirth()
 	end
 end
 
+function renderers.Store()
+	heading("Game passes are one-time purchases. Their perks last forever.", 1)
+	local grid = UI.grid(250, 230)
+	grid.LayoutOrder = 2
+	grid.Parent = body
+	for i, key in GamePasses.order do
+		local pass = GamePasses.list[key]
+		local owned = GamePasses.has(player, key)
+		local label, color
+		if owned then
+			label, color = "Owned ✓", colors.green
+		elseif pass.id == 0 then
+			label, color = "Coming soon", colors.gray
+		else
+			label, color = "R$ " .. pass.price, Color3.fromRGB(40, 180, 90)
+		end
+		local card = UI.card({
+			border = if owned then colors.green else nil,
+			lines = {
+				{ pass.icon, colors.text, 40 },
+				{ pass.name, pass.color, 24 },
+				{ pass.description, colors.muted, 50 },
+			},
+			buttons = {
+				UI.button(label, color, function()
+					if not owned and pass.id ~= 0 then
+						MarketplaceService:PromptGamePassPurchase(player, pass.id)
+					end
+				end, { Size = UDim2.new(1, 0, 0, 36) }),
+			},
+		})
+		card.LayoutOrder = i
+		card.Parent = grid
+	end
+end
+
+-- Refresh the Store as soon as a purchase goes through.
+player.AttributeChanged:Connect(function(name)
+	if string.sub(name, 1, 5) == "Pass_" and currentWindow == "Store" then
+		render()
+	end
+end)
+
 local MENU = {
 	{ "Shop", "🛒", colors.green },
 	{ "Freeks", "🐷", colors.blue },
@@ -762,6 +817,7 @@ local MENU = {
 	{ "Book", "📖", colors.orange },
 	{ "Trade", "🤝", colors.purple },
 	{ "Rebirth", "⭐", Color3.fromRGB(230, 170, 30) },
+	{ "Store", "💎", Color3.fromRGB(40, 180, 160) },
 }
 for _, entry in MENU do
 	TAB_ICONS[entry[1]] = entry[2]

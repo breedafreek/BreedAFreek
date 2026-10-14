@@ -10,6 +10,7 @@ local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
+local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
 local UI = require(script.Parent.UI)
 
@@ -357,6 +358,17 @@ function Hud.leaderboard(screen: ScreenGui)
 			Size = UDim2.new(1, -150, 1, 0),
 			Parent = frame,
 		})
+		local vip = UI.new("TextLabel", {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 46, 0, 9),
+			Size = UDim2.fromOffset(14, 14),
+			BackgroundTransparency = 1,
+			Text = "👑",
+			TextSize = 12,
+			Visible = false,
+			ZIndex = 2,
+			Parent = frame,
+		})
 		local badge = UI.new("TextLabel", {
 			AnchorPoint = Vector2.new(1, 0.5),
 			Position = UDim2.new(1, -66, 0.5, 0),
@@ -378,7 +390,7 @@ function Hud.leaderboard(screen: ScreenGui)
 			TextColor3 = colors.money,
 			Parent = frame,
 		})
-		rows[other] = { frame = frame, rank = rank, name = name, money = money, badge = badge }
+		rows[other] = { frame = frame, rank = rank, name = name, money = money, badge = badge, vip = vip }
 	end
 
 	local function stat(other: Player, key: string): number
@@ -411,6 +423,9 @@ function Hud.leaderboard(screen: ScreenGui)
 			local rebirths = stat(other, "Rebirths")
 			row.badge.Visible = rebirths > 0
 			row.badge.Text = "R" .. rebirths
+			local isVip = GamePasses.has(other, "VIP")
+			row.vip.Visible = isVip
+			row.name.TextColor3 = if isVip then colors.gold else colors.text
 		end
 		count.Text = #everyone .. "/" .. Config.PLOT_COUNT
 	end
@@ -426,6 +441,23 @@ function Hud.leaderboard(screen: ScreenGui)
 			refresh()
 		end
 	end)
+end
+
+--------------------------------------------------------------------------------
+-- VIP chat tag
+--------------------------------------------------------------------------------
+
+function Hud.vipChatTag()
+	local TextChatService = game:GetService("TextChatService")
+	TextChatService.OnIncomingMessage = function(message: TextChatMessage)
+		local properties = Instance.new("TextChatMessageProperties")
+		local source = message.TextSource
+		local sender = source and Players:GetPlayerByUserId(source.UserId)
+		if sender and GamePasses.has(sender, "VIP") then
+			properties.PrefixText = '<font color="#FFC83C">[VIP]</font> ' .. message.PrefixText
+		end
+		return properties
+	end
 end
 
 --------------------------------------------------------------------------------

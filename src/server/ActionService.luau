@@ -8,6 +8,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
@@ -66,7 +67,7 @@ function handlers.BuyFreek(player: Player, data, speciesId: any)
 	if not Seasons.available(species) then
 		return notify(player, species.name .. " is out of season!", "error")
 	end
-	if FreekUtil.count(data) >= Config.MAX_FREEKS then
+	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) then
 		return notify(player, "You have too many Freeks! Sell some first.", "error")
 	end
 	if data.money < species.price then
@@ -134,12 +135,12 @@ function handlers.StartBreed(player: Player, data, uidA: any, uidB: any)
 	if Carried.is(player, uidA) or Carried.is(player, uidB) then
 		return notify(player, "Someone is stealing that Freek! Catch them!", "error")
 	end
-	if FreekUtil.count(data) >= Config.MAX_FREEKS then
+	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) then
 		return notify(player, "No room for a baby! Sell a Freek first.", "error")
 	end
 	a.slot, b.slot = nil, nil
 	a.breeding, b.breeding = true, true
-	local duration = FreekUtil.breedTime(a, b)
+	local duration = math.ceil(FreekUtil.breedTime(a, b) * GamePasses.breedTimeMultiplier(player))
 	data.breeding = { a = uidA, b = uidB, endsAt = os.time() + duration }
 	notify(player, "Breeding started! Back in " .. Format.time(duration) .. ".", "success")
 end
@@ -156,7 +157,7 @@ function handlers.ClaimBreed(player: Player, data)
 	end
 	a.breeding, b.breeding = nil, nil
 
-	local species, mutation = Recipes.roll(a, b, rng)
+	local species, mutation = Recipes.roll(a, b, rng, GamePasses.breedingLuck(player))
 	-- Parents go back into the yard first so they keep earning.
 	a.slot = FreekUtil.freeSlot(data)
 	b.slot = FreekUtil.freeSlot(data)

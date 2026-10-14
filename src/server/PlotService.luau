@@ -1,6 +1,7 @@
 -- Builds the map and gives every player a fenced yard. Other players can walk in to look
 -- (or steal, see StealService) only while the gate is open. The owner locks the gate for
--- GATE_LOCK_SECONDS at a time and can always walk through their own gate.
+-- GATE_LOCK_SECONDS at a time (longer with the Longer Lock pass) and can always walk through
+-- their own gate.
 -- The whole yard is rebuilt whenever its owner's data changes.
 
 local PhysicsService = game:GetService("PhysicsService")
@@ -12,6 +13,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -412,7 +414,7 @@ local function onPlayerAdded(player: Player)
 			plotOf[player] = plot
 			player:SetAttribute("Plot", plot.index)
 			-- New arrivals get one free lock so they aren't robbed while loading in.
-			setGateLock(plot, Workspace:GetServerTimeNow() + Config.GATE_LOCK_SECONDS)
+			setGateLock(plot, Workspace:GetServerTimeNow() + GamePasses.gateLockSeconds(player))
 			player.CharacterAdded:Connect(function(character)
 				setCollisionGroup(character, "Owner" .. plot.index)
 				task.wait(0.1)
@@ -453,7 +455,7 @@ function PlotService.lockGate(player: Player): string?
 	if PlotService.isGateLocked(plot) then
 		return "Your gate is already locked."
 	end
-	setGateLock(plot, Workspace:GetServerTimeNow() + Config.GATE_LOCK_SECONDS)
+	setGateLock(plot, Workspace:GetServerTimeNow() + GamePasses.gateLockSeconds(player))
 	updateGate(plot)
 	return nil
 end

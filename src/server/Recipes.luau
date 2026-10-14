@@ -38,10 +38,15 @@ end
 local Recipes = {}
 
 -- Returns the baby's species and mutation (or nil) for two parent records.
-function Recipes.roll(parentA, parentB, rng: Random): (string, string?)
+-- recipeLuck / mutationLuck multiply the chances (Lucky Breeder pass).
+function Recipes.roll(parentA, parentB, rng: Random, recipeLuck: number?, mutationLuck: number?): (string, string?)
 	local species
 	local recipe = byPair[pairKey(parentA.species, parentB.species)]
-	if recipe and Seasons.available(Freeks.byId[recipe.result]) and rng:NextNumber() < recipe.chance then
+	if
+		recipe
+		and Seasons.available(Freeks.byId[recipe.result])
+		and rng:NextNumber() < recipe.chance * (recipeLuck or 1)
+	then
 		species = recipe.result
 	else
 		species = if rng:NextNumber() < 0.5 then parentA.species else parentB.species
@@ -49,7 +54,7 @@ function Recipes.roll(parentA, parentB, rng: Random): (string, string?)
 
 	local mutation = nil
 	for _, m in Mutations.list do
-		local chance = m.chance
+		local chance = m.chance * (mutationLuck or 1)
 		if parentA.mutation == m.id or parentB.mutation == m.id then
 			chance *= Mutations.INHERIT_BOOST
 		end

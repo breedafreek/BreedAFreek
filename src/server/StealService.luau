@@ -21,6 +21,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
@@ -146,7 +147,7 @@ local function deliver(carrier: Player, carry)
 	if not freek or not carrierData then
 		return sendBack(carrier, carry)
 	end
-	if FreekUtil.count(carrierData) >= Config.MAX_FREEKS then
+	if FreekUtil.count(carrierData) >= GamePasses.maxFreeks(carrier) then
 		return sendBack(carrier, carry, nil, "You have too many Freeks! It ran back home.")
 	end
 
@@ -178,7 +179,7 @@ local function cannotCarry(player: Player): string?
 	if not data or not PlotService.getPlot(player) or not rootPart(player) then
 		return ""
 	end
-	if FreekUtil.count(data) >= Config.MAX_FREEKS then
+	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) then
 		return "You have too many Freeks to steal another!"
 	end
 	return nil
@@ -323,7 +324,7 @@ function StealService.init()
 		if problem then
 			notify(player, problem, "error")
 		else
-			notify(player, "Gate locked for " .. Config.GATE_LOCK_SECONDS .. " seconds!", "success")
+			notify(player, "Gate locked for " .. GamePasses.gateLockSeconds(player) .. " seconds!", "success")
 		end
 	end)
 

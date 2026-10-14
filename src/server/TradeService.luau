@@ -9,8 +9,8 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
-local Config = require(ReplicatedStorage.Shared.Config)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local ActionService = require(script.Parent.ActionService)
@@ -110,10 +110,10 @@ local function execute(trade)
 	end
 
 	local dataA, dataB = DataService.get(a), DataService.get(b)
-	if FreekUtil.count(dataA) - #offerA + #offerB > Config.MAX_FREEKS then
+	if FreekUtil.count(dataA) - #offerA + #offerB > GamePasses.maxFreeks(a) then
 		return close(trade, "Trade cancelled: " .. a.DisplayName .. " has too many Freeks.")
 	end
-	if FreekUtil.count(dataB) - #offerB + #offerA > Config.MAX_FREEKS then
+	if FreekUtil.count(dataB) - #offerB + #offerA > GamePasses.maxFreeks(b) then
 		return close(trade, "Trade cancelled: " .. b.DisplayName .. " has too many Freeks.")
 	end
 

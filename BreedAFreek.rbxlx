@@ -758,6 +758,121 @@ return Freeks
       </Item>
       <Item class="ModuleScript" referent="8">
         <Properties>
+          <string name="Name">GamePasses</string>
+          <string name="Source"><![CDATA[-- Game passes: one-time Robux purchases with permanent perks.
+--
+-- To make a pass live:
+--   1. Publish the game, then go to create.roblox.com → your game → Monetization → Passes.
+--   2. Create the pass (name, icon, price) and copy its ID number.
+--   3. Paste the ID into `id` below. Passes with id = 0 show as "Coming soon".
+-- `price` here is only what the Store shows; the real price is set on the dashboard.
+--
+-- The server marks owners with a player attribute "Pass_<key>", so any script (server or
+-- client) can check a perk with GamePasses.has(player, key).
+
+local Config = require(script.Parent.Config)
+
+local GamePasses = {}
+
+-- Set true to pretend every player owns every pass while testing in Studio.
+GamePasses.STUDIO_GRANT_ALL = false
+
+GamePasses.order = { "DoubleCoins", "FastBreeding", "LuckyBreeder", "LongerLock", "BigBackpack", "VIP" }
+
+GamePasses.list = {
+	DoubleCoins = {
+		id = 0,
+		name = "2x Coins",
+		icon = "💰",
+		price = 199,
+		description = "Double coins from your Freeks, forever.",
+		color = Color3.fromRGB(255, 200, 60),
+	},
+	FastBreeding = {
+		id = 0,
+		name = "Fast Breeding",
+		icon = "⚡",
+		price = 149,
+		description = "Breeding takes half the time.",
+		color = Color3.fromRGB(90, 200, 255),
+	},
+	LuckyBreeder = {
+		id = 0,
+		name = "Lucky Breeder",
+		icon = "🍀",
+		price = 249,
+		description = "1.5x chance of new species and 2x mutation chance when breeding.",
+		color = Color3.fromRGB(90, 220, 110),
+	},
+	LongerLock = {
+		id = 0,
+		name = "Longer Lock",
+		icon = "🔒",
+		price = 99,
+		description = "Your gate stays locked for 5 minutes instead of 3.",
+		color = Color3.fromRGB(235, 90, 90),
+	},
+	BigBackpack = {
+		id = 0,
+		name = "Big Backpack",
+		icon = "🎒",
+		price = 99,
+		description = "Hold 100 Freeks instead of 50.",
+		color = Color3.fromRGB(170, 120, 240),
+	},
+	VIP = {
+		id = 0,
+		name = "VIP",
+		icon = "👑",
+		price = 299,
+		description = "Gold VIP badge on the leaderboard and in chat, plus +10% coins.",
+		color = Color3.fromRGB(255, 180, 40),
+	},
+}
+
+function GamePasses.has(player: Player, key: string): boolean
+	return player:GetAttribute("Pass_" .. key) == true
+end
+
+-- Perks --------------------------------------------------------------------------
+
+function GamePasses.coinMultiplier(player: Player): number
+	local multiplier = 1
+	if GamePasses.has(player, "DoubleCoins") then
+		multiplier *= 2
+	end
+	if GamePasses.has(player, "VIP") then
+		multiplier *= 1.1
+	end
+	return multiplier
+end
+
+function GamePasses.breedTimeMultiplier(player: Player): number
+	return if GamePasses.has(player, "FastBreeding") then 0.5 else 1
+end
+
+-- Returns (recipe chance multiplier, mutation chance multiplier).
+function GamePasses.breedingLuck(player: Player): (number, number)
+	if GamePasses.has(player, "LuckyBreeder") then
+		return 1.5, 2
+	end
+	return 1, 1
+end
+
+function GamePasses.gateLockSeconds(player: Player): number
+	return if GamePasses.has(player, "LongerLock") then 300 else Config.GATE_LOCK_SECONDS
+end
+
+function GamePasses.maxFreeks(player: Player): number
+	return if GamePasses.has(player, "BigBackpack") then 100 else Config.MAX_FREEKS
+end
+
+return GamePasses
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="9">
+        <Properties>
           <string name="Name">Mutations</string>
           <string name="Source"><![CDATA[-- Mutations a bred Freek can roll. Rarest first: breeding checks them in this order.
 -- chance is per breed; it is multiplied by INHERIT_BOOST when a parent has that mutation.
@@ -786,7 +901,7 @@ return Mutations
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="9">
+      <Item class="ModuleScript" referent="10">
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
@@ -816,7 +931,7 @@ return Rarities
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="10">
+      <Item class="ModuleScript" referent="11">
         <Properties>
           <string name="Name">Remotes</string>
           <string name="Source"><![CDATA[-- One place that names every remote. The server creates them; clients wait for them.
@@ -873,7 +988,7 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="11">
+      <Item class="ModuleScript" referent="12">
         <Properties>
           <string name="Name">Seasons</string>
           <string name="Source"><![CDATA[-- Limited events for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred
@@ -1010,7 +1125,7 @@ return Seasons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">WeaponModel</string>
           <string name="Source"><![CDATA[-- Builds the Tool for a weapon from its part list in Weapons.luau.
@@ -1096,7 +1211,7 @@ return WeaponModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">Weapons</string>
           <string name="Source"><![CDATA[-- Weapons. Everyone has the STARTER weapon; the rest unlock at a number of rebirths
@@ -1387,15 +1502,15 @@ return Weapons
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="14">
+  <Item class="ServerScriptService" referent="15">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="15">
+    <Item class="Folder" referent="16">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -1408,6 +1523,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
@@ -1466,7 +1582,7 @@ function handlers.BuyFreek(player: Player, data, speciesId: any)
 	if not Seasons.available(species) then
 		return notify(player, species.name .. " is out of season!", "error")
 	end
-	if FreekUtil.count(data) >= Config.MAX_FREEKS then
+	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) then
 		return notify(player, "You have too many Freeks! Sell some first.", "error")
 	end
 	if data.money < species.price then
@@ -1534,12 +1650,12 @@ function handlers.StartBreed(player: Player, data, uidA: any, uidB: any)
 	if Carried.is(player, uidA) or Carried.is(player, uidB) then
 		return notify(player, "Someone is stealing that Freek! Catch them!", "error")
 	end
-	if FreekUtil.count(data) >= Config.MAX_FREEKS then
+	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) then
 		return notify(player, "No room for a baby! Sell a Freek first.", "error")
 	end
 	a.slot, b.slot = nil, nil
 	a.breeding, b.breeding = true, true
-	local duration = FreekUtil.breedTime(a, b)
+	local duration = math.ceil(FreekUtil.breedTime(a, b) * GamePasses.breedTimeMultiplier(player))
 	data.breeding = { a = uidA, b = uidB, endsAt = os.time() + duration }
 	notify(player, "Breeding started! Back in " .. Format.time(duration) .. ".", "success")
 end
@@ -1556,7 +1672,7 @@ function handlers.ClaimBreed(player: Player, data)
 	end
 	a.breeding, b.breeding = nil, nil
 
-	local species, mutation = Recipes.roll(a, b, rng)
+	local species, mutation = Recipes.roll(a, b, rng, GamePasses.breedingLuck(player))
 	-- Parents go back into the yard first so they keep earning.
 	a.slot = FreekUtil.freeSlot(data)
 	b.slot = FreekUtil.freeSlot(data)
@@ -1619,7 +1735,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">Carried</string>
           <string name="Source"><![CDATA[-- Which Freeks are being carried off by a thief right now. Kept in memory only: if the
@@ -1659,7 +1775,7 @@ return Carried
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -1890,7 +2006,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Discovery Book: the first player in the whole game to get each species has their
@@ -2019,7 +2135,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the Freeks in their yard, plus offline earnings
@@ -2030,11 +2146,17 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local DataService = require(script.Parent.DataService)
 
 local EconomyService = {}
+
+-- Yard income including rebirths and game passes.
+local function incomeFor(player: Player, data): number
+	return FreekUtil.yardIncome(data) * GamePasses.coinMultiplier(player)
+end
 
 local function publish(player: Player, data, income: number)
 	player:SetAttribute("Money", data.money)
@@ -2061,7 +2183,7 @@ local function onLoaded(player: Player, data)
 	rebirths.Parent = stats
 	stats.Parent = player
 
-	local income = FreekUtil.yardIncome(data)
+	local income = incomeFor(player, data)
 	local away = math.clamp(os.time() - (data.lastSeen or os.time()), 0, Config.OFFLINE_MAX_SECONDS)
 	local earned = math.floor(away * income * Config.OFFLINE_RATE)
 	if earned > 0 then
@@ -2075,14 +2197,14 @@ end
 function EconomyService.init()
 	DataService.onLoaded(onLoaded)
 	DataService.onChanged(function(player, data)
-		publish(player, data, FreekUtil.yardIncome(data))
+		publish(player, data, incomeFor(player, data))
 	end)
 
 	task.spawn(function()
 		while true do
 			task.wait(1)
 			for player, data in DataService.all() do
-				local income = FreekUtil.yardIncome(data)
+				local income = incomeFor(player, data)
 				data.money += income
 				publish(player, data, income)
 			end
@@ -2094,7 +2216,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="21">
+      <Item class="Script" referent="22">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -2115,16 +2237,82 @@ require(Server.TradeService).init()
 require(Server.StealService).init()
 require(Server.WeaponService).init()
 require(Server.RebirthService).init()
+require(Server.PassService).init()
 require(Server.DataService).init()
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="22">
+      <Item class="ModuleScript" referent="23">
+        <Properties>
+          <string name="Name">PassService</string>
+          <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
+-- Purchases made in-game take effect right away.
+
+local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+
+local DataService = require(script.Parent.DataService)
+
+local PassService = {}
+
+local function grant(player: Player, key: string)
+	player:SetAttribute("Pass_" .. key, true)
+	-- Refresh income, yard and UI so the perk shows immediately.
+	DataService.changed(player)
+end
+
+local function checkOwnership(player: Player)
+	for _, key in GamePasses.order do
+		local pass = GamePasses.list[key]
+		if RunService:IsStudio() and GamePasses.STUDIO_GRANT_ALL then
+			grant(player, key)
+		elseif pass.id ~= 0 then
+			local ok, owns = pcall(MarketplaceService.UserOwnsGamePassAsync, MarketplaceService, player.UserId, pass.id)
+			if ok and owns then
+				grant(player, key)
+			elseif not ok then
+				warn("Couldn't check pass", key, "for", player.Name, owns)
+			end
+		end
+	end
+end
+
+function PassService.init()
+	Players.PlayerAdded:Connect(checkOwnership)
+	for _, player in Players:GetPlayers() do
+		task.spawn(checkOwnership, player)
+	end
+
+	MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, passId, purchased)
+		if not purchased then
+			return
+		end
+		for _, key in GamePasses.order do
+			local pass = GamePasses.list[key]
+			if pass.id == passId then
+				grant(player, key)
+				Remotes.get("Notify"):FireClient(player, "Thanks! " .. pass.name .. " is now active.", "discovery")
+			end
+		end
+	end)
+end
+
+return PassService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="24">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the map and gives every player a fenced yard. Other players can walk in to look
 -- (or steal, see StealService) only while the gate is open. The owner locks the gate for
--- GATE_LOCK_SECONDS at a time and can always walk through their own gate.
+-- GATE_LOCK_SECONDS at a time (longer with the Longer Lock pass) and can always walk through
+-- their own gate.
 -- The whole yard is rebuilt whenever its owner's data changes.
 
 local PhysicsService = game:GetService("PhysicsService")
@@ -2136,6 +2324,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -2536,7 +2725,7 @@ local function onPlayerAdded(player: Player)
 			plotOf[player] = plot
 			player:SetAttribute("Plot", plot.index)
 			-- New arrivals get one free lock so they aren't robbed while loading in.
-			setGateLock(plot, Workspace:GetServerTimeNow() + Config.GATE_LOCK_SECONDS)
+			setGateLock(plot, Workspace:GetServerTimeNow() + GamePasses.gateLockSeconds(player))
 			player.CharacterAdded:Connect(function(character)
 				setCollisionGroup(character, "Owner" .. plot.index)
 				task.wait(0.1)
@@ -2577,7 +2766,7 @@ function PlotService.lockGate(player: Player): string?
 	if PlotService.isGateLocked(plot) then
 		return "Your gate is already locked."
 	end
-	setGateLock(plot, Workspace:GetServerTimeNow() + Config.GATE_LOCK_SECONDS)
+	setGateLock(plot, Workspace:GetServerTimeNow() + GamePasses.gateLockSeconds(player))
 	updateGate(plot)
 	return nil
 end
@@ -2638,7 +2827,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="25">
         <Properties>
           <string name="Name">RebirthService</string>
           <string name="Source"><![CDATA[-- Rebirth: pay Config.rebirthCost to start over with a permanent income bonus.
@@ -2733,7 +2922,7 @@ return RebirthService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">Recipes</string>
           <string name="Source"><![CDATA[-- Secret breeding recipes. Server-only so players can't read them out of the game.
@@ -2776,10 +2965,15 @@ end
 local Recipes = {}
 
 -- Returns the baby's species and mutation (or nil) for two parent records.
-function Recipes.roll(parentA, parentB, rng: Random): (string, string?)
+-- recipeLuck / mutationLuck multiply the chances (Lucky Breeder pass).
+function Recipes.roll(parentA, parentB, rng: Random, recipeLuck: number?, mutationLuck: number?): (string, string?)
 	local species
 	local recipe = byPair[pairKey(parentA.species, parentB.species)]
-	if recipe and Seasons.available(Freeks.byId[recipe.result]) and rng:NextNumber() < recipe.chance then
+	if
+		recipe
+		and Seasons.available(Freeks.byId[recipe.result])
+		and rng:NextNumber() < recipe.chance * (recipeLuck or 1)
+	then
 		species = recipe.result
 	else
 		species = if rng:NextNumber() < 0.5 then parentA.species else parentB.species
@@ -2787,7 +2981,7 @@ function Recipes.roll(parentA, parentB, rng: Random): (string, string?)
 
 	local mutation = nil
 	for _, m in Mutations.list do
-		local chance = m.chance
+		local chance = m.chance * (mutationLuck or 1)
 		if parentA.mutation == m.id or parentB.mutation == m.id then
 			chance *= Mutations.INHERIT_BOOST
 		end
@@ -2804,7 +2998,7 @@ return Recipes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Stealing Freeks from other players' yards.
@@ -2830,6 +3024,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
@@ -2955,7 +3150,7 @@ local function deliver(carrier: Player, carry)
 	if not freek or not carrierData then
 		return sendBack(carrier, carry)
 	end
-	if FreekUtil.count(carrierData) >= Config.MAX_FREEKS then
+	if FreekUtil.count(carrierData) >= GamePasses.maxFreeks(carrier) then
 		return sendBack(carrier, carry, nil, "You have too many Freeks! It ran back home.")
 	end
 
@@ -2987,7 +3182,7 @@ local function cannotCarry(player: Player): string?
 	if not data or not PlotService.getPlot(player) or not rootPart(player) then
 		return ""
 	end
-	if FreekUtil.count(data) >= Config.MAX_FREEKS then
+	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) then
 		return "You have too many Freeks to steal another!"
 	end
 	return nil
@@ -3132,7 +3327,7 @@ function StealService.init()
 		if problem then
 			notify(player, problem, "error")
 		else
-			notify(player, "Gate locked for " .. Config.GATE_LOCK_SECONDS .. " seconds!", "success")
+			notify(player, "Gate locked for " .. GamePasses.gateLockSeconds(player) .. " seconds!", "success")
 		end
 	end)
 
@@ -3162,7 +3357,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
@@ -3176,8 +3371,8 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
-local Config = require(ReplicatedStorage.Shared.Config)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local ActionService = require(script.Parent.ActionService)
@@ -3277,10 +3472,10 @@ local function execute(trade)
 	end
 
 	local dataA, dataB = DataService.get(a), DataService.get(b)
-	if FreekUtil.count(dataA) - #offerA + #offerB > Config.MAX_FREEKS then
+	if FreekUtil.count(dataA) - #offerA + #offerB > GamePasses.maxFreeks(a) then
 		return close(trade, "Trade cancelled: " .. a.DisplayName .. " has too many Freeks.")
 	end
-	if FreekUtil.count(dataB) - #offerB + #offerA > Config.MAX_FREEKS then
+	if FreekUtil.count(dataB) - #offerB + #offerA > GamePasses.maxFreeks(b) then
 		return close(trade, "Trade cancelled: " .. b.DisplayName .. " has too many Freeks.")
 	end
 
@@ -3443,7 +3638,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- Weapons: giving them out, buying them, and what happens when they hit.
@@ -3772,19 +3967,19 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="28">
+  <Item class="StarterPlayer" referent="30">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="29">
+    <Item class="StarterPlayerScripts" referent="31">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="30">
+      <Item class="Folder" referent="32">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="31">
+        <Item class="ModuleScript" referent="33">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, event chip, menu tabs, leaderboard,
@@ -3799,6 +3994,7 @@ local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
+local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
 local UI = require(script.Parent.UI)
 
@@ -4146,6 +4342,17 @@ function Hud.leaderboard(screen: ScreenGui)
 			Size = UDim2.new(1, -150, 1, 0),
 			Parent = frame,
 		})
+		local vip = UI.new("TextLabel", {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 46, 0, 9),
+			Size = UDim2.fromOffset(14, 14),
+			BackgroundTransparency = 1,
+			Text = "👑",
+			TextSize = 12,
+			Visible = false,
+			ZIndex = 2,
+			Parent = frame,
+		})
 		local badge = UI.new("TextLabel", {
 			AnchorPoint = Vector2.new(1, 0.5),
 			Position = UDim2.new(1, -66, 0.5, 0),
@@ -4167,7 +4374,7 @@ function Hud.leaderboard(screen: ScreenGui)
 			TextColor3 = colors.money,
 			Parent = frame,
 		})
-		rows[other] = { frame = frame, rank = rank, name = name, money = money, badge = badge }
+		rows[other] = { frame = frame, rank = rank, name = name, money = money, badge = badge, vip = vip }
 	end
 
 	local function stat(other: Player, key: string): number
@@ -4200,6 +4407,9 @@ function Hud.leaderboard(screen: ScreenGui)
 			local rebirths = stat(other, "Rebirths")
 			row.badge.Visible = rebirths > 0
 			row.badge.Text = "R" .. rebirths
+			local isVip = GamePasses.has(other, "VIP")
+			row.vip.Visible = isVip
+			row.name.TextColor3 = if isVip then colors.gold else colors.text
 		end
 		count.Text = #everyone .. "/" .. Config.PLOT_COUNT
 	end
@@ -4215,6 +4425,23 @@ function Hud.leaderboard(screen: ScreenGui)
 			refresh()
 		end
 	end)
+end
+
+--------------------------------------------------------------------------------
+-- VIP chat tag
+--------------------------------------------------------------------------------
+
+function Hud.vipChatTag()
+	local TextChatService = game:GetService("TextChatService")
+	TextChatService.OnIncomingMessage = function(message: TextChatMessage)
+		local properties = Instance.new("TextChatMessageProperties")
+		local source = message.TextSource
+		local sender = source and Players:GetPlayerByUserId(source.UserId)
+		if sender and GamePasses.has(sender, "VIP") then
+			properties.PrefixText = '<font color="#FFC83C">[VIP]</font> ' .. message.PrefixText
+		end
+		return properties
+	end
 end
 
 --------------------------------------------------------------------------------
@@ -4336,13 +4563,14 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="32">
+        <Item class="LocalScript" referent="34">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
 -- windows. The server is the source of truth; this only shows state and sends requests.
 
 local CollectionService = game:GetService("CollectionService")
+local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -4354,6 +4582,7 @@ local Format = require(Shared.Format)
 local FreekModel = require(Shared.FreekModel)
 local FreekUtil = require(Shared.FreekUtil)
 local Freeks = require(Shared.Freeks)
+local GamePasses = require(Shared.GamePasses)
 local Mutations = require(Shared.Mutations)
 local Rarities = require(Shared.Rarities)
 local Remotes = require(Shared.Remotes)
@@ -4387,6 +4616,7 @@ local screen = UI.new("ScreenGui", {
 local setRebirthBoost = Hud.money(screen)
 Hud.eventChip(screen)
 Hud.leaderboard(screen)
+Hud.vipChatTag()
 local toast = Hud.toasts(screen)
 
 local window = UI.glass({
@@ -4629,7 +4859,16 @@ function renderers.Freeks()
 			placed += 1
 		end
 	end
-	heading(string.format("%d Freeks (max %d)  ·  %d / %d in yard", #list, Config.MAX_FREEKS, placed, state.slots), 1)
+	heading(
+		string.format(
+			"%d Freeks (max %d)  ·  %d / %d in yard",
+			#list,
+			GamePasses.maxFreeks(player),
+			placed,
+			state.slots
+		),
+		1
+	)
 	if #list == 0 then
 		heading("No Freeks yet! Buy one in the Shop.", 2)
 		return
@@ -5096,6 +5335,49 @@ function renderers.Rebirth()
 	end
 end
 
+function renderers.Store()
+	heading("Game passes are one-time purchases. Their perks last forever.", 1)
+	local grid = UI.grid(250, 230)
+	grid.LayoutOrder = 2
+	grid.Parent = body
+	for i, key in GamePasses.order do
+		local pass = GamePasses.list[key]
+		local owned = GamePasses.has(player, key)
+		local label, color
+		if owned then
+			label, color = "Owned ✓", colors.green
+		elseif pass.id == 0 then
+			label, color = "Coming soon", colors.gray
+		else
+			label, color = "R$ " .. pass.price, Color3.fromRGB(40, 180, 90)
+		end
+		local card = UI.card({
+			border = if owned then colors.green else nil,
+			lines = {
+				{ pass.icon, colors.text, 40 },
+				{ pass.name, pass.color, 24 },
+				{ pass.description, colors.muted, 50 },
+			},
+			buttons = {
+				UI.button(label, color, function()
+					if not owned and pass.id ~= 0 then
+						MarketplaceService:PromptGamePassPurchase(player, pass.id)
+					end
+				end, { Size = UDim2.new(1, 0, 0, 36) }),
+			},
+		})
+		card.LayoutOrder = i
+		card.Parent = grid
+	end
+end
+
+-- Refresh the Store as soon as a purchase goes through.
+player.AttributeChanged:Connect(function(name)
+	if string.sub(name, 1, 5) == "Pass_" and currentWindow == "Store" then
+		render()
+	end
+end)
+
 local MENU = {
 	{ "Shop", "🛒", colors.green },
 	{ "Freeks", "🐷", colors.blue },
@@ -5103,6 +5385,7 @@ local MENU = {
 	{ "Book", "📖", colors.orange },
 	{ "Trade", "🤝", colors.purple },
 	{ "Rebirth", "⭐", Color3.fromRGB(230, 170, 30) },
+	{ "Store", "💎", Color3.fromRGB(40, 180, 160) },
 }
 for _, entry in MENU do
 	TAB_ICONS[entry[1]] = entry[2]
@@ -5282,7 +5565,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="33">
+        <Item class="ModuleScript" referent="35">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).
