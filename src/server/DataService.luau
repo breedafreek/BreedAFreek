@@ -33,7 +33,7 @@ local function defaultData()
 		freeks = {}, -- [uid] = { species, mutation?, slot?, breeding? }
 		breeding = nil, -- { a = uid, b = uid, endsAt = unix seconds }
 		discovered = {}, -- [speciesId] = true for every species this player has owned
-		weapons = {}, -- [weaponId] = true for weapons bought in the shop
+		rebirths = 0,
 		lastSeen = os.time(),
 	}
 end

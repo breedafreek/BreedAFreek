@@ -19,6 +19,10 @@ local Config = {
 
 	PLOT_COUNT = 6, -- set the place's Max Players to this in Game Settings
 
+	REBIRTH_BASE_COST = 100000, -- coins needed for the first rebirth
+	REBIRTH_COST_GROWTH = 4, -- each rebirth costs this many times more than the last
+	REBIRTH_INCOME_BONUS = 0.5, -- +50% income per rebirth, forever
+
 	GATE_LOCK_SECONDS = 180, -- how long the gate stays locked each time the owner locks it
 	STEAL_HOLD_SECONDS = 1.5, -- how long a thief holds the prompt to pick up a Freek
 	SNATCH_HOLD_SECONDS = 1, -- how long another player holds the prompt to snatch a carried Freek
@@ -26,6 +30,14 @@ local Config = {
 
 function Config.slotPrice(currentSlots: number): number
 	return math.floor(Config.SLOT_BASE_PRICE * Config.SLOT_PRICE_GROWTH ^ (currentSlots - Config.START_SLOTS))
+end
+
+function Config.rebirthCost(rebirths: number): number
+	return math.floor(Config.REBIRTH_BASE_COST * Config.REBIRTH_COST_GROWTH ^ rebirths)
+end
+
+function Config.incomeMultiplier(rebirths: number): number
+	return 1 + (rebirths or 0) * Config.REBIRTH_INCOME_BONUS
 end
 
 return Config

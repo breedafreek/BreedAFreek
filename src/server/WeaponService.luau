@@ -10,7 +10,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
-local Format = require(ReplicatedStorage.Shared.Format)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local WeaponModel = require(ReplicatedStorage.Shared.WeaponModel)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
@@ -35,15 +34,16 @@ local function notify(player: Player, message: string, kind: string?)
 end
 
 local function owns(player: Player, weaponId: string): boolean
+	local weapon = Weapons.list[weaponId]
 	if weaponId == Weapons.STARTER then
 		return true
 	end
 	local data = DataService.get(player)
-	return data ~= nil and data.weapons[weaponId] == true
+	return weapon ~= nil and data ~= nil and data.rebirths >= (weapon.rebirth or math.huge)
 end
 
--- Makes sure the player's backpack has every weapon they own.
-local function giveWeapons(player: Player)
+-- Makes sure the player's backpack has every weapon they've unlocked.
+function WeaponService.giveWeapons(player: Player)
 	local backpack = player:FindFirstChildOfClass("Backpack")
 	if not backpack then
 		return
@@ -291,36 +291,17 @@ local function useWeapon(player: Player, _data, weaponId: any, aim: any)
 	end
 end
 
-local function buyWeapon(player: Player, data, weaponId: any)
-	local weapon = typeof(weaponId) == "string" and Weapons.list[weaponId]
-	if not weapon or not weapon.price or data.weapons[weaponId] then
-		return
-	end
-	if data.money < weapon.price then
-		return notify(
-			player,
-			"Not enough money! The " .. weapon.name .. " costs " .. Format.money(weapon.price),
-			"error"
-		)
-	end
-	data.money -= weapon.price
-	data.weapons[weaponId] = true
-	giveWeapons(player)
-	notify(player, "You bought the " .. weapon.name .. "! It's in your toolbar.", "success")
-end
-
 function WeaponService.init()
 	ActionService.register("UseWeapon", useWeapon, true)
-	ActionService.register("BuyWeapon", buyWeapon)
 
 	local function onPlayerAdded(player: Player)
 		player.CharacterAdded:Connect(function()
 			player:WaitForChild("Backpack")
 			task.wait() -- let Roblox finish refilling the backpack first
-			giveWeapons(player)
+			WeaponService.giveWeapons(player)
 		end)
 		if player.Character then
-			giveWeapons(player)
+			WeaponService.giveWeapons(player)
 		end
 	end
 	Players.PlayerAdded:Connect(onPlayerAdded)
@@ -328,7 +309,7 @@ function WeaponService.init()
 		task.spawn(onPlayerAdded, player)
 	end
 	DataService.onLoaded(function(player)
-		giveWeapons(player)
+		WeaponService.giveWeapons(player)
 	end)
 	Players.PlayerRemoving:Connect(function(player)
 		lastUse[player] = nil

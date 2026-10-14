@@ -37,6 +37,10 @@ local Config = {
 
 	PLOT_COUNT = 6, -- set the place's Max Players to this in Game Settings
 
+	REBIRTH_BASE_COST = 100000, -- coins needed for the first rebirth
+	REBIRTH_COST_GROWTH = 4, -- each rebirth costs this many times more than the last
+	REBIRTH_INCOME_BONUS = 0.5, -- +50% income per rebirth, forever
+
 	GATE_LOCK_SECONDS = 180, -- how long the gate stays locked each time the owner locks it
 	STEAL_HOLD_SECONDS = 1.5, -- how long a thief holds the prompt to pick up a Freek
 	SNATCH_HOLD_SECONDS = 1, -- how long another player holds the prompt to snatch a carried Freek
@@ -44,6 +48,14 @@ local Config = {
 
 function Config.slotPrice(currentSlots: number): number
 	return math.floor(Config.SLOT_BASE_PRICE * Config.SLOT_PRICE_GROWTH ^ (currentSlots - Config.START_SLOTS))
+end
+
+function Config.rebirthCost(rebirths: number): number
+	return math.floor(Config.REBIRTH_BASE_COST * Config.REBIRTH_COST_GROWTH ^ rebirths)
+end
+
+function Config.incomeMultiplier(rebirths: number): number
+	return 1 + (rebirths or 0) * Config.REBIRTH_INCOME_BONUS
 end
 
 return Config
@@ -425,6 +437,7 @@ function FreekUtil.rarityText(speciesId: string): string
 	return if season then species.rarity .. " · " .. season.name else species.rarity
 end
 
+-- Money per second from the yard, including the rebirth bonus.
 function FreekUtil.yardIncome(data): number
 	local total = 0
 	for _, freek in data.freeks do
@@ -432,7 +445,7 @@ function FreekUtil.yardIncome(data): number
 			total += FreekUtil.income(freek)
 		end
 	end
-	return total
+	return total * Config.incomeMultiplier(data.rebirths)
 end
 
 -- First empty yard slot, or nil if the yard is full.
@@ -1086,7 +1099,8 @@ return WeaponModel
       <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">Weapons</string>
-          <string name="Source"><![CDATA[-- Weapons. Everyone has the STARTER weapon; the rest are bought in the shop (price).
+          <string name="Source"><![CDATA[-- Weapons. Everyone has the STARTER weapon; the rest unlock at a number of rebirths
+-- (rebirth) and are kept forever.
 -- Weapons hit anyone EXCEPT a player standing inside their own yard (their safe zone).
 --
 -- kind "melee": hits players within range in front of you.
@@ -1210,7 +1224,7 @@ Weapons.list = {
 		effect = "drop",
 		knockback = 60,
 		stunSeconds = 1.2,
-		price = 2500,
+		rebirth = 1,
 		cooldown = 2.5,
 		speed = 90,
 		range = 120,
@@ -1290,7 +1304,7 @@ Weapons.list = {
 		description = "Glue anyone to the nearest wall for 5 seconds.",
 		kind = "projectile",
 		effect = "glue",
-		price = 10000,
+		rebirth = 2,
 		cooldown = 8,
 		speed = 70,
 		range = 90,
@@ -1416,7 +1430,7 @@ end
 -- What the client is allowed to see of its own save.
 local function snapshot(data)
 	return {
-		weapons = data.weapons,
+		rebirths = data.rebirths,
 		money = data.money,
 		slots = data.slots,
 		freeks = data.freeks,
@@ -1636,6 +1650,11 @@ function Carried.set(owner: Player, uid: string, thief: Player?)
 	end
 end
 
+-- True if any of this owner's Freeks are being carried off right now.
+function Carried.any(owner: Player): boolean
+	return byOwner[owner] ~= nil
+end
+
 return Carried
 ]]></string>
         </Properties>
@@ -1678,7 +1697,7 @@ local function defaultData()
 		freeks = {}, -- [uid] = { species, mutation?, slot?, breeding? }
 		breeding = nil, -- { a = uid, b = uid, endsAt = unix seconds }
 		discovered = {}, -- [speciesId] = true for every species this player has owned
-		weapons = {}, -- [weaponId] = true for weapons bought in the shop
+		rebirths = 0,
 		lastSeen = os.time(),
 	}
 end
@@ -2025,6 +2044,10 @@ local function publish(player: Player, data, income: number)
 	if money then
 		money.Value = math.floor(data.money)
 	end
+	local rebirths = stats and stats:FindFirstChild("Rebirths")
+	if rebirths then
+		rebirths.Value = data.rebirths
+	end
 end
 
 local function onLoaded(player: Player, data)
@@ -2033,6 +2056,9 @@ local function onLoaded(player: Player, data)
 	local money = Instance.new("NumberValue")
 	money.Name = "Money"
 	money.Parent = stats
+	local rebirths = Instance.new("IntValue")
+	rebirths.Name = "Rebirths"
+	rebirths.Parent = stats
 	stats.Parent = player
 
 	local income = FreekUtil.yardIncome(data)
@@ -2088,6 +2114,7 @@ require(Server.ActionService).init()
 require(Server.TradeService).init()
 require(Server.StealService).init()
 require(Server.WeaponService).init()
+require(Server.RebirthService).init()
 require(Server.DataService).init()
 ]]></string>
         </Properties>
@@ -2613,6 +2640,101 @@ return PlotService
       </Item>
       <Item class="ModuleScript" referent="23">
         <Properties>
+          <string name="Name">RebirthService</string>
+          <string name="Source"><![CDATA[-- Rebirth: pay Config.rebirthCost to start over with a permanent income bonus.
+--
+-- Resets: money (back to START_MONEY), Freeks, yard slots, the breeding pen.
+-- Keeps: the Discovery Book, Limited (seasonal) Freeks (moved to the backpack, then back into
+-- the yard), and weapons, which unlock at rebirth milestones (see Weapons.luau).
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Format = require(ReplicatedStorage.Shared.Format)
+local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Weapons = require(ReplicatedStorage.Shared.Weapons)
+
+local ActionService = require(script.Parent.ActionService)
+local Carried = require(script.Parent.Carried)
+local DataService = require(script.Parent.DataService)
+local StealService = require(script.Parent.StealService)
+local TradeService = require(script.Parent.TradeService)
+local WeaponService = require(script.Parent.WeaponService)
+
+local RebirthService = {}
+
+local notifyRemote = Remotes.get("Notify")
+
+local function notify(player: Player, message: string, kind: string?)
+	notifyRemote:FireClient(player, message, kind)
+end
+
+local function rebirth(player: Player, data)
+	local cost = Config.rebirthCost(data.rebirths)
+	if data.money < cost then
+		return notify(player, "You need " .. Format.money(cost) .. " to rebirth!", "error")
+	end
+	if TradeService.isTrading(player) then
+		return notify(player, "Finish your trade before rebirthing!", "error")
+	end
+	if StealService.isCarrying(player) or Carried.any(player) then
+		return notify(player, "You can't rebirth in the middle of a steal!", "error")
+	end
+
+	-- Limited Freeks survive; everything else is cleared.
+	local kept = {}
+	for uid, freek in data.freeks do
+		local species = FreekUtil.species(freek)
+		if species and species.season then
+			kept[uid] = { species = freek.species, mutation = freek.mutation }
+		end
+	end
+	data.freeks = kept
+	data.breeding = nil
+	data.money = Config.START_MONEY
+	data.slots = Config.START_SLOTS
+	data.rebirths += 1
+	for _, freek in data.freeks do
+		freek.slot = FreekUtil.freeSlot(data)
+	end
+
+	WeaponService.giveWeapons(player)
+	task.spawn(DataService.save, player)
+
+	local unlocked = {}
+	for _, weaponId in Weapons.order do
+		if Weapons.list[weaponId].rebirth == data.rebirths then
+			table.insert(unlocked, Weapons.list[weaponId].name)
+		end
+	end
+	local message = string.format(
+		"Rebirth %d! Your Freeks now earn x%s forever.",
+		data.rebirths,
+		tostring(Config.incomeMultiplier(data.rebirths))
+	)
+	if #unlocked > 0 then
+		message ..= " Unlocked: " .. table.concat(unlocked, ", ") .. "!"
+	end
+	notify(player, message, "discovery")
+	for _, other in Players:GetPlayers() do
+		if other ~= player then
+			notify(other, player.DisplayName .. " just reached Rebirth " .. data.rebirths .. "!", "discovery")
+		end
+	end
+end
+
+function RebirthService.init()
+	ActionService.register("Rebirth", rebirth)
+end
+
+return RebirthService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="24">
+        <Properties>
           <string name="Name">Recipes</string>
           <string name="Source"><![CDATA[-- Secret breeding recipes. Server-only so players can't read them out of the game.
 -- Order of a and b doesn't matter. chance is how often the pair produces the result;
@@ -2682,7 +2804,7 @@ return Recipes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="25">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Stealing Freeks from other players' yards.
@@ -2952,6 +3074,10 @@ local function onPromptTriggered(prompt: ProximityPrompt, player: Player)
 	end
 end
 
+function StealService.isCarrying(player: Player): boolean
+	return carries[player] ~= nil
+end
+
 -- Called by WeaponService when a "drop" weapon hits someone carrying a Freek: it goes back
 -- to its owner, whoever fired. Returns true if the target was carrying one.
 function StealService.knockLoose(attacker: Player, target: Player, weaponName: string): boolean
@@ -3036,7 +3162,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
@@ -3200,6 +3326,10 @@ local function startTrade(a: Player, b: Player)
 	push(trade)
 end
 
+function TradeService.isTrading(player: Player): boolean
+	return trades[player] ~= nil
+end
+
 function TradeService.init()
 	ActionService.register("TradeRequest", function(player: Player, _data, targetUserId: any)
 		local target = typeof(targetUserId) == "number" and Players:GetPlayerByUserId(targetUserId)
@@ -3313,7 +3443,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- Weapons: giving them out, buying them, and what happens when they hit.
@@ -3328,7 +3458,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
-local Format = require(ReplicatedStorage.Shared.Format)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local WeaponModel = require(ReplicatedStorage.Shared.WeaponModel)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
@@ -3353,15 +3482,16 @@ local function notify(player: Player, message: string, kind: string?)
 end
 
 local function owns(player: Player, weaponId: string): boolean
+	local weapon = Weapons.list[weaponId]
 	if weaponId == Weapons.STARTER then
 		return true
 	end
 	local data = DataService.get(player)
-	return data ~= nil and data.weapons[weaponId] == true
+	return weapon ~= nil and data ~= nil and data.rebirths >= (weapon.rebirth or math.huge)
 end
 
--- Makes sure the player's backpack has every weapon they own.
-local function giveWeapons(player: Player)
+-- Makes sure the player's backpack has every weapon they've unlocked.
+function WeaponService.giveWeapons(player: Player)
 	local backpack = player:FindFirstChildOfClass("Backpack")
 	if not backpack then
 		return
@@ -3609,36 +3739,17 @@ local function useWeapon(player: Player, _data, weaponId: any, aim: any)
 	end
 end
 
-local function buyWeapon(player: Player, data, weaponId: any)
-	local weapon = typeof(weaponId) == "string" and Weapons.list[weaponId]
-	if not weapon or not weapon.price or data.weapons[weaponId] then
-		return
-	end
-	if data.money < weapon.price then
-		return notify(
-			player,
-			"Not enough money! The " .. weapon.name .. " costs " .. Format.money(weapon.price),
-			"error"
-		)
-	end
-	data.money -= weapon.price
-	data.weapons[weaponId] = true
-	giveWeapons(player)
-	notify(player, "You bought the " .. weapon.name .. "! It's in your toolbar.", "success")
-end
-
 function WeaponService.init()
 	ActionService.register("UseWeapon", useWeapon, true)
-	ActionService.register("BuyWeapon", buyWeapon)
 
 	local function onPlayerAdded(player: Player)
 		player.CharacterAdded:Connect(function()
 			player:WaitForChild("Backpack")
 			task.wait() -- let Roblox finish refilling the backpack first
-			giveWeapons(player)
+			WeaponService.giveWeapons(player)
 		end)
 		if player.Character then
-			giveWeapons(player)
+			WeaponService.giveWeapons(player)
 		end
 	end
 	Players.PlayerAdded:Connect(onPlayerAdded)
@@ -3646,7 +3757,7 @@ function WeaponService.init()
 		task.spawn(onPlayerAdded, player)
 	end
 	DataService.onLoaded(function(player)
-		giveWeapons(player)
+		WeaponService.giveWeapons(player)
 	end)
 	Players.PlayerRemoving:Connect(function(player)
 		lastUse[player] = nil
@@ -3661,19 +3772,19 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="27">
+  <Item class="StarterPlayer" referent="28">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="28">
+    <Item class="StarterPlayerScripts" referent="29">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="29">
+      <Item class="Folder" referent="30">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="LocalScript" referent="30">
+        <Item class="LocalScript" referent="31">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -3777,7 +3888,7 @@ local menu = UI.new("Frame", {
 	BackgroundTransparency = 1,
 	AnchorPoint = Vector2.new(0, 0.5),
 	Position = UDim2.new(0, 12, 0.5, 0),
-	Size = UDim2.fromOffset(96, 5 * 58),
+	Size = UDim2.fromOffset(96, 6 * 58),
 	Parent = screen,
 }, {
 	UI.new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }),
@@ -4025,7 +4136,7 @@ function renderers.Shop()
 	weapons.Parent = body
 	for i, weaponId in Weapons.order do
 		local weapon = Weapons.list[weaponId]
-		local owned = weaponId == Weapons.STARTER or (state.weapons and state.weapons[weaponId])
+		local owned = weaponId == Weapons.STARTER or (state.rebirths or 0) >= (weapon.rebirth or math.huge)
 		local card = UI.card({
 			lines = {
 				{ weapon.name, weapon.color:Lerp(Color3.new(1, 1, 1), 0.3), 24 },
@@ -4033,11 +4144,11 @@ function renderers.Shop()
 			},
 			buttons = {
 				UI.button(
-					if owned then "Owned" else "Buy " .. Format.money(weapon.price),
-					if owned then colors.gray elseif state.money >= weapon.price then colors.green else colors.gray,
+					if owned then "Unlocked" else "Unlocks at Rebirth " .. weapon.rebirth,
+					if owned then colors.green else colors.gray,
 					function()
 						if not owned then
-							send("BuyWeapon", weaponId)
+							open("Rebirth")
 						end
 					end
 				),
@@ -4458,12 +4569,78 @@ end, {
 	Parent = requestPopup,
 })
 
+function renderers.Rebirth()
+	local rebirths = state.rebirths or 0
+	local cost = Config.rebirthCost(rebirths)
+	local nextMult = Config.incomeMultiplier(rebirths + 1)
+	heading(
+		string.format("Rebirth %d  ·  Your Freeks earn x%s", rebirths, tostring(Config.incomeMultiplier(rebirths))),
+		1
+	)
+
+	local unlocks = {}
+	for _, weaponId in Weapons.order do
+		if Weapons.list[weaponId].rebirth == rebirths + 1 then
+			table.insert(unlocks, Weapons.list[weaponId].name)
+		end
+	end
+
+	local grid = UI.grid(440, 270)
+	grid.LayoutOrder = 2
+	grid.Parent = body
+	local ready = state.money >= cost
+	UI.card({
+		lines = {
+			{ "Rebirth " .. (rebirths + 1), Color3.fromRGB(255, 210, 80), 30 },
+			{ "Your Freeks earn x" .. tostring(nextMult) .. " forever", colors.money, 22 },
+			{ if #unlocks > 0 then "Unlocks: " .. table.concat(unlocks, ", ") else "", colors.orange, 20 },
+			{ "Resets: coins, Freeks, yard slots", colors.red:Lerp(Color3.new(1, 1, 1), 0.3), 18 },
+			{ "Keeps: Discovery Book, Limited Freeks, weapons", colors.muted, 18 },
+			{
+				Format.money(state.money) .. " / " .. Format.money(cost),
+				if ready then colors.money else colors.text,
+				22,
+			},
+		},
+		buttons = {
+			if ready
+				then confirmButton("Rebirth for " .. Format.money(cost), Color3.fromRGB(230, 180, 40), function()
+					send("Rebirth")
+				end)
+				else UI.button("Need " .. Format.money(cost), colors.gray, function() end),
+		},
+	}).Parent =
+		grid
+
+	heading("Weapon unlocks", 3)
+	local milestones = UI.grid(200, 80)
+	milestones.LayoutOrder = 4
+	milestones.Parent = body
+	for i, weaponId in Weapons.order do
+		local weapon = Weapons.list[weaponId]
+		local at = weapon.rebirth or 0
+		local card = UI.card({
+			lines = {
+				{ weapon.name, weapon.color:Lerp(Color3.new(1, 1, 1), 0.3), 22 },
+				{
+					if at == 0 then "Free" elseif rebirths >= at then "Unlocked" else "Rebirth " .. at,
+					if rebirths >= at then colors.money else colors.muted,
+					18,
+				},
+			},
+		})
+		card.LayoutOrder = i
+		card.Parent = milestones
+	end
+end
+
 local MENU = {
 	{ "Shop", colors.green },
 	{ "Freeks", colors.blue },
 	{ "Breed", colors.pink },
 	{ "Book", colors.orange },
 	{ "Trade", colors.blue:Lerp(colors.pink, 0.5) },
+	{ "Rebirth", Color3.fromRGB(230, 180, 40) },
 }
 for i, entry in MENU do
 	UI.button(entry[1], entry[2], function()
@@ -4668,7 +4845,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="31">
+        <Item class="ModuleScript" referent="32">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).

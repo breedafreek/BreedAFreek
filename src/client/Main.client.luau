@@ -99,7 +99,7 @@ local menu = UI.new("Frame", {
 	BackgroundTransparency = 1,
 	AnchorPoint = Vector2.new(0, 0.5),
 	Position = UDim2.new(0, 12, 0.5, 0),
-	Size = UDim2.fromOffset(96, 5 * 58),
+	Size = UDim2.fromOffset(96, 6 * 58),
 	Parent = screen,
 }, {
 	UI.new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }),
@@ -347,7 +347,7 @@ function renderers.Shop()
 	weapons.Parent = body
 	for i, weaponId in Weapons.order do
 		local weapon = Weapons.list[weaponId]
-		local owned = weaponId == Weapons.STARTER or (state.weapons and state.weapons[weaponId])
+		local owned = weaponId == Weapons.STARTER or (state.rebirths or 0) >= (weapon.rebirth or math.huge)
 		local card = UI.card({
 			lines = {
 				{ weapon.name, weapon.color:Lerp(Color3.new(1, 1, 1), 0.3), 24 },
@@ -355,11 +355,11 @@ function renderers.Shop()
 			},
 			buttons = {
 				UI.button(
-					if owned then "Owned" else "Buy " .. Format.money(weapon.price),
-					if owned then colors.gray elseif state.money >= weapon.price then colors.green else colors.gray,
+					if owned then "Unlocked" else "Unlocks at Rebirth " .. weapon.rebirth,
+					if owned then colors.green else colors.gray,
 					function()
 						if not owned then
-							send("BuyWeapon", weaponId)
+							open("Rebirth")
 						end
 					end
 				),
@@ -780,12 +780,78 @@ end, {
 	Parent = requestPopup,
 })
 
+function renderers.Rebirth()
+	local rebirths = state.rebirths or 0
+	local cost = Config.rebirthCost(rebirths)
+	local nextMult = Config.incomeMultiplier(rebirths + 1)
+	heading(
+		string.format("Rebirth %d  ·  Your Freeks earn x%s", rebirths, tostring(Config.incomeMultiplier(rebirths))),
+		1
+	)
+
+	local unlocks = {}
+	for _, weaponId in Weapons.order do
+		if Weapons.list[weaponId].rebirth == rebirths + 1 then
+			table.insert(unlocks, Weapons.list[weaponId].name)
+		end
+	end
+
+	local grid = UI.grid(440, 270)
+	grid.LayoutOrder = 2
+	grid.Parent = body
+	local ready = state.money >= cost
+	UI.card({
+		lines = {
+			{ "Rebirth " .. (rebirths + 1), Color3.fromRGB(255, 210, 80), 30 },
+			{ "Your Freeks earn x" .. tostring(nextMult) .. " forever", colors.money, 22 },
+			{ if #unlocks > 0 then "Unlocks: " .. table.concat(unlocks, ", ") else "", colors.orange, 20 },
+			{ "Resets: coins, Freeks, yard slots", colors.red:Lerp(Color3.new(1, 1, 1), 0.3), 18 },
+			{ "Keeps: Discovery Book, Limited Freeks, weapons", colors.muted, 18 },
+			{
+				Format.money(state.money) .. " / " .. Format.money(cost),
+				if ready then colors.money else colors.text,
+				22,
+			},
+		},
+		buttons = {
+			if ready
+				then confirmButton("Rebirth for " .. Format.money(cost), Color3.fromRGB(230, 180, 40), function()
+					send("Rebirth")
+				end)
+				else UI.button("Need " .. Format.money(cost), colors.gray, function() end),
+		},
+	}).Parent =
+		grid
+
+	heading("Weapon unlocks", 3)
+	local milestones = UI.grid(200, 80)
+	milestones.LayoutOrder = 4
+	milestones.Parent = body
+	for i, weaponId in Weapons.order do
+		local weapon = Weapons.list[weaponId]
+		local at = weapon.rebirth or 0
+		local card = UI.card({
+			lines = {
+				{ weapon.name, weapon.color:Lerp(Color3.new(1, 1, 1), 0.3), 22 },
+				{
+					if at == 0 then "Free" elseif rebirths >= at then "Unlocked" else "Rebirth " .. at,
+					if rebirths >= at then colors.money else colors.muted,
+					18,
+				},
+			},
+		})
+		card.LayoutOrder = i
+		card.Parent = milestones
+	end
+end
+
 local MENU = {
 	{ "Shop", colors.green },
 	{ "Freeks", colors.blue },
 	{ "Breed", colors.pink },
 	{ "Book", colors.orange },
 	{ "Trade", colors.blue:Lerp(colors.pink, 0.5) },
+	{ "Rebirth", Color3.fromRGB(230, 180, 40) },
 }
 for i, entry in MENU do
 	UI.button(entry[1], entry[2], function()

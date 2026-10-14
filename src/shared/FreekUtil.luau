@@ -38,6 +38,7 @@ function FreekUtil.rarityText(speciesId: string): string
 	return if season then species.rarity .. " · " .. season.name else species.rarity
 end
 
+-- Money per second from the yard, including the rebirth bonus.
 function FreekUtil.yardIncome(data): number
 	local total = 0
 	for _, freek in data.freeks do
@@ -45,7 +46,7 @@ function FreekUtil.yardIncome(data): number
 			total += FreekUtil.income(freek)
 		end
 	end
-	return total
+	return total * Config.incomeMultiplier(data.rebirths)
 end
 
 -- First empty yard slot, or nil if the yard is full.

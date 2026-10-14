@@ -26,4 +26,9 @@ function Carried.set(owner: Player, uid: string, thief: Player?)
 	end
 end
 
+-- True if any of this owner's Freeks are being carried off right now.
+function Carried.any(owner: Player): boolean
+	return byOwner[owner] ~= nil
+end
+
 return Carried

@@ -20,6 +20,10 @@ local function publish(player: Player, data, income: number)
 	if money then
 		money.Value = math.floor(data.money)
 	end
+	local rebirths = stats and stats:FindFirstChild("Rebirths")
+	if rebirths then
+		rebirths.Value = data.rebirths
+	end
 end
 
 local function onLoaded(player: Player, data)
@@ -28,6 +32,9 @@ local function onLoaded(player: Player, data)
 	local money = Instance.new("NumberValue")
 	money.Name = "Money"
 	money.Parent = stats
+	local rebirths = Instance.new("IntValue")
+	rebirths.Name = "Rebirths"
+	rebirths.Parent = stats
 	stats.Parent = player
 
 	local income = FreekUtil.yardIncome(data)

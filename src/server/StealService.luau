@@ -265,6 +265,10 @@ local function onPromptTriggered(prompt: ProximityPrompt, player: Player)
 	end
 end
 
+function StealService.isCarrying(player: Player): boolean
+	return carries[player] ~= nil
+end
+
 -- Called by WeaponService when a "drop" weapon hits someone carrying a Freek: it goes back
 -- to its owner, whoever fired. Returns true if the target was carrying one.
 function StealService.knockLoose(attacker: Player, target: Player, weaponName: string): boolean

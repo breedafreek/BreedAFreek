@@ -1,4 +1,5 @@
--- Weapons. Everyone has the STARTER weapon; the rest are bought in the shop (price).
+-- Weapons. Everyone has the STARTER weapon; the rest unlock at a number of rebirths
+-- (rebirth) and are kept forever.
 -- Weapons hit anyone EXCEPT a player standing inside their own yard (their safe zone).
 --
 -- kind "melee": hits players within range in front of you.
@@ -122,7 +123,7 @@ Weapons.list = {
 		effect = "drop",
 		knockback = 60,
 		stunSeconds = 1.2,
-		price = 2500,
+		rebirth = 1,
 		cooldown = 2.5,
 		speed = 90,
 		range = 120,
@@ -202,7 +203,7 @@ Weapons.list = {
 		description = "Glue anyone to the nearest wall for 5 seconds.",
 		kind = "projectile",
 		effect = "glue",
-		price = 10000,
+		rebirth = 2,
 		cooldown = 8,
 		speed = 70,
 		range = 90,

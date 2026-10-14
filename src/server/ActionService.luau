@@ -30,7 +30,7 @@ end
 -- What the client is allowed to see of its own save.
 local function snapshot(data)
 	return {
-		weapons = data.weapons,
+		rebirths = data.rebirths,
 		money = data.money,
 		slots = data.slots,
 		freeks = data.freeks,

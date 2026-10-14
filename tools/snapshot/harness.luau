@@ -586,7 +586,7 @@ if ARGS[3] == "--weapons" then
 			id = id,
 			name = weapon.name,
 			rarity = "",
-			subtitle = if weapon.price then "Weapon · " .. weapon.price .. " coins" else "Weapon · Free",
+			subtitle = if weapon.rebirth then "Weapon · Unlocks at Rebirth " .. weapon.rebirth else "Weapon · Free",
 			season = "",
 			mutation = "",
 			height = 1,

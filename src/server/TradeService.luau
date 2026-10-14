@@ -159,6 +159,10 @@ local function startTrade(a: Player, b: Player)
 	push(trade)
 end
 
+function TradeService.isTrading(player: Player): boolean
+	return trades[player] ~= nil
+end
+
 function TradeService.init()
 	ActionService.register("TradeRequest", function(player: Player, _data, targetUserId: any)
 		local target = typeof(targetUserId) == "number" and Players:GetPlayerByUserId(targetUserId)
