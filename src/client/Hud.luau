@@ -191,10 +191,10 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 	local TILE = 64
 	local GAP = 8
 	local height = #entries * TILE + (#entries - 1) * GAP + 16
+	-- Starts below the money pill and event chip, and shrinks to fit above the hotbar.
 	local rail = UI.glass({
 		Name = "Menu",
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 12, 0.5, 0),
+		Position = UDim2.fromOffset(12, 118),
 		Size = UDim2.fromOffset(TILE + 16, height),
 		Parent = screen,
 	}, {
@@ -207,7 +207,7 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 		}),
 		UI.new("UIListLayout", { Padding = UDim.new(0, GAP), SortOrder = Enum.SortOrder.LayoutOrder }),
 	})
-	fitHeight(rail, height, 200)
+	fitHeight(rail, height, 118 + 24)
 
 	local tiles = {}
 	for i, entry in entries do
