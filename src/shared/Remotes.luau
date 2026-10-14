@@ -5,6 +5,7 @@
 -- Notify          server -> client   (message, kind?)
 -- DiscoveryUpdate server -> client   (speciesId, discovery)
 -- Trade           server -> client   ("Request" | "State" | "Closed", payload)
+-- Knockback       server -> client   (direction: Vector3, strength: number, seconds: number)
 -- GetState        client -> server   returns snapshot once data has loaded
 -- GetDiscoveries  client -> server   returns { [speciesId] = discovery }
 
@@ -17,6 +18,7 @@ local KINDS = {
 	Notify = "RemoteEvent",
 	DiscoveryUpdate = "RemoteEvent",
 	Trade = "RemoteEvent",
+	Knockback = "RemoteEvent",
 	GetState = "RemoteFunction",
 	GetDiscoveries = "RemoteFunction",
 }

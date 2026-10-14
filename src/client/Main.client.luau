@@ -937,6 +937,23 @@ if player.Character then
 	watchCharacter(player.Character)
 end
 
+-- Getting hit: pushed away and knocked over for a moment.
+Remotes.get("Knockback").OnClientEvent:Connect(function(direction: Vector3, strength: number, seconds: number)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not humanoid or not root then
+		return
+	end
+	humanoid.PlatformStand = true
+	root.AssemblyLinearVelocity = direction * strength + Vector3.new(0, strength * 0.5, 0)
+	task.delay(seconds, function()
+		if humanoid.Parent then
+			humanoid.PlatformStand = false
+		end
+	end)
+end)
+
 -- Breed countdown.
 task.spawn(function()
 	while true do

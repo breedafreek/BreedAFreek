@@ -813,6 +813,7 @@ return Rarities
 -- Notify          server -> client   (message, kind?)
 -- DiscoveryUpdate server -> client   (speciesId, discovery)
 -- Trade           server -> client   ("Request" | "State" | "Closed", payload)
+-- Knockback       server -> client   (direction: Vector3, strength: number, seconds: number)
 -- GetState        client -> server   returns snapshot once data has loaded
 -- GetDiscoveries  client -> server   returns { [speciesId] = discovery }
 
@@ -825,6 +826,7 @@ local KINDS = {
 	Notify = "RemoteEvent",
 	DiscoveryUpdate = "RemoteEvent",
 	Trade = "RemoteEvent",
+	Knockback = "RemoteEvent",
 	GetState = "RemoteFunction",
 	GetDiscoveries = "RemoteFunction",
 }
@@ -998,36 +1000,43 @@ return Seasons
       <Item class="ModuleScript" referent="12">
         <Properties>
           <string name="Name">Weapons</string>
-          <string name="Source"><![CDATA[-- Weapons for defending your Freeks. Everyone has the STARTER weapon; the rest are bought in
--- the shop (price). Weapons only affect players carrying one of your Freeks, except the Glue
--- Gun, which also works on anyone inside your yard.
+          <string name="Source"><![CDATA[-- Weapons. Everyone has the STARTER weapon; the rest are bought in the shop (price).
+-- Weapons hit anyone EXCEPT a player standing inside their own yard (their safe zone).
 --
 -- kind "melee": hits players within range in front of you.
 -- kind "projectile": fires a ball toward where you aim; speed/range in studs.
--- effect "drop": the target drops your Freek and it goes home.
+-- effect "drop": a target carrying a Freek drops it (it goes home to its owner); anyone else
+--   is knocked back (knockback strength) and falls over for stunSeconds.
 -- effect "glue": the target is stuck to the nearest wall for glueSeconds.
+--
+-- After a stun or glue wears off, the target is immune for IMMUNE_SECONDS.
 
 local Weapons = {}
 
 Weapons.STARTER = "BonkBat"
+Weapons.IMMUNE_SECONDS = 3
 
 Weapons.order = { "BonkBat", "CandyCannon", "GlueGun" }
 
 Weapons.list = {
 	BonkBat = {
 		name = "Bonk Bat",
-		description = "Bonk a thief up close to make them drop your Freek.",
+		description = "Bonk someone up close. Thieves drop the Freek they're carrying.",
 		kind = "melee",
 		effect = "drop",
+		knockback = 45,
+		stunSeconds = 1,
 		range = 8,
 		cooldown = 0.6,
 		handle = { size = Vector3.new(0.7, 0.7, 4.2), color = Color3.fromRGB(150, 100, 60), material = "Wood" },
 	},
 	CandyCannon = {
 		name = "Candy Cannon",
-		description = "Shoot a candy ball at a thief to make them drop your Freek.",
+		description = "Shoot a candy ball. Thieves drop the Freek they're carrying.",
 		kind = "projectile",
 		effect = "drop",
+		knockback = 60,
+		stunSeconds = 1.2,
 		price = 2500,
 		cooldown = 2.5,
 		speed = 90,
@@ -1037,7 +1046,7 @@ Weapons.list = {
 	},
 	GlueGun = {
 		name = "Glue Gun",
-		description = "Glue a thief or intruder to the nearest wall for 5 seconds.",
+		description = "Glue anyone to the nearest wall for 5 seconds.",
 		kind = "projectile",
 		effect = "glue",
 		price = 10000,
@@ -2375,8 +2384,8 @@ return Recipes
 -- for a Common, a lot for a Secret (see carrySpeed in Rarities).
 --
 -- While it's being carried:
---   * the owner can hit the carrier with a weapon (WeaponService), or Snatch it back, and it
---     goes home;
+--   * anyone can hit the carrier with a weapon (WeaponService) and it goes home;
+--   * the owner can Snatch it back and it goes home;
 --   * any other player can Snatch it and carry it to their own yard instead;
 --   * if the carrier dies or leaves, it goes home.
 -- Whoever gets it inside their own fence keeps it.
@@ -2635,25 +2644,30 @@ local function onPromptTriggered(prompt: ProximityPrompt, player: Player)
 	end
 end
 
--- True if target is carrying a Freek stolen from owner.
-function StealService.isCarryingFrom(target: Player, owner: Player): boolean
-	local carry = carries[target]
-	return carry ~= nil and carry.owner == owner
-end
-
--- Called by WeaponService when an attacker's "drop" weapon hits someone. Only the Freek's
--- owner can knock it loose; hitting anyone else does nothing. Returns true if it dropped.
+-- Called by WeaponService when a "drop" weapon hits someone carrying a Freek: it goes back
+-- to its owner, whoever fired. Returns true if the target was carrying one.
 function StealService.knockLoose(attacker: Player, target: Player, weaponName: string): boolean
 	local carry = carries[target]
-	if not carry or carry.owner ~= attacker then
+	if not carry then
 		return false
 	end
+	local ownerMessage = if attacker == carry.owner
+		then "Hit with your " .. weaponName .. "! You got your " .. carry.name .. " back!"
+		else attacker.DisplayName
+			.. " knocked your "
+			.. carry.name
+			.. " loose from "
+			.. target.DisplayName
+			.. "! It's back home."
 	sendBack(
 		target,
 		carry,
-		"Hit with your " .. weaponName .. "! You got your " .. carry.name .. " back!",
+		ownerMessage,
 		attacker.DisplayName .. " hit you with a " .. weaponName .. "! You dropped " .. carry.name .. "."
 	)
+	if attacker ~= carry.owner then
+		notify(attacker, "You knocked " .. carry.name .. " loose! It ran back to its owner.", "success")
+	end
 	return true
 end
 
@@ -2998,8 +3012,8 @@ return TradeService
 --
 -- The client sends "UseWeapon" with where the player is aiming; the server checks the
 -- weapon is owned and equipped, applies the cooldown, and does the hit (melee) or flies a
--- ball (projectile). Weapons only affect players carrying one of the attacker's Freeks; the
--- Glue Gun also works on anyone standing inside the attacker's yard.
+-- ball (projectile). Weapons hit anyone except a player inside their own yard; what a hit
+-- does is described in Weapons.luau.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -3020,6 +3034,8 @@ local WeaponService = {}
 local notifyRemote = Remotes.get("Notify")
 local lastUse = {} -- [Player] = { [weaponId] = os.clock() }
 local glued = {} -- [Player] = true while stuck
+local disabledUntil = {} -- [Player] = os.clock() until which they can't be stunned/glued again
+local knockbackRemote = Remotes.get("Knockback")
 
 local function notify(player: Player, message: string, kind: string?)
 	if player.Parent then
@@ -3122,10 +3138,11 @@ end
 -- Sticks a player to the nearest wall (or where they stand, if none is close).
 local function glue(attacker: Player, target: Player, seconds: number)
 	local root = rootOf(target)
-	if not root or glued[target] then
+	if not root or glued[target] or os.clock() < (disabledUntil[target] or 0) then
 		return
 	end
 	glued[target] = true
+	disabledUntil[target] = os.clock() + seconds + Weapons.IMMUNE_SECONDS
 
 	local exclude = {}
 	for _, player in Players:GetPlayers() do
@@ -3180,19 +3197,36 @@ local function glue(attacker: Player, target: Player, seconds: number)
 	end)
 end
 
+-- Knocks a player over, pushed away from the attacker. The target's own client applies the
+-- push, since it controls its character's physics.
+local function knockBack(attacker: Player, target: Player, weapon)
+	local root, attackerRoot = rootOf(target), rootOf(attacker)
+	if not root or os.clock() < (disabledUntil[target] or 0) then
+		return
+	end
+	disabledUntil[target] = os.clock() + weapon.stunSeconds + Weapons.IMMUNE_SECONDS
+	local away = if attackerRoot then root.Position - attackerRoot.Position else root.CFrame.LookVector
+	away = Vector3.new(away.X, 0, away.Z)
+	away = if away.Magnitude > 0.01 then away.Unit else Vector3.new(0, 0, 1)
+	knockbackRemote:FireClient(target, away, weapon.knockback, weapon.stunSeconds)
+end
+
 local function applyHit(attacker: Player, target: Player, weapon)
-	if target == attacker then
+	local root = rootOf(target)
+	if target == attacker or not root then
+		return
+	end
+	-- Your own yard is a safe zone.
+	local home = PlotService.getPlot(target)
+	if home and PlotService.isInside(home, root.Position) then
 		return
 	end
 	if weapon.effect == "drop" then
-		StealService.knockLoose(attacker, target, weapon.name)
-	elseif weapon.effect == "glue" then
-		local root = rootOf(target)
-		local plot = PlotService.getPlot(attacker)
-		local intruding = root ~= nil and plot ~= nil and PlotService.isInside(plot, root.Position)
-		if StealService.isCarryingFrom(target, attacker) or intruding then
-			glue(attacker, target, weapon.glueSeconds)
+		if not StealService.knockLoose(attacker, target, weapon.name) then
+			knockBack(attacker, target, weapon)
 		end
+	elseif weapon.effect == "glue" then
+		glue(attacker, target, weapon.glueSeconds)
 	end
 end
 
@@ -3335,6 +3369,7 @@ function WeaponService.init()
 	Players.PlayerRemoving:Connect(function(player)
 		lastUse[player] = nil
 		glued[player] = nil
+		disabledUntil[player] = nil
 	end)
 end
 
@@ -4297,6 +4332,23 @@ player.CharacterAdded:Connect(watchCharacter)
 if player.Character then
 	watchCharacter(player.Character)
 end
+
+-- Getting hit: pushed away and knocked over for a moment.
+Remotes.get("Knockback").OnClientEvent:Connect(function(direction: Vector3, strength: number, seconds: number)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not humanoid or not root then
+		return
+	end
+	humanoid.PlatformStand = true
+	root.AssemblyLinearVelocity = direction * strength + Vector3.new(0, strength * 0.5, 0)
+	task.delay(seconds, function()
+		if humanoid.Parent then
+			humanoid.PlatformStand = false
+		end
+	end)
+end)
 
 -- Breed countdown.
 task.spawn(function()

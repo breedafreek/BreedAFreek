@@ -2,8 +2,8 @@
 --
 -- The client sends "UseWeapon" with where the player is aiming; the server checks the
 -- weapon is owned and equipped, applies the cooldown, and does the hit (melee) or flies a
--- ball (projectile). Weapons only affect players carrying one of the attacker's Freeks; the
--- Glue Gun also works on anyone standing inside the attacker's yard.
+-- ball (projectile). Weapons hit anyone except a player inside their own yard; what a hit
+-- does is described in Weapons.luau.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -24,6 +24,8 @@ local WeaponService = {}
 local notifyRemote = Remotes.get("Notify")
 local lastUse = {} -- [Player] = { [weaponId] = os.clock() }
 local glued = {} -- [Player] = true while stuck
+local disabledUntil = {} -- [Player] = os.clock() until which they can't be stunned/glued again
+local knockbackRemote = Remotes.get("Knockback")
 
 local function notify(player: Player, message: string, kind: string?)
 	if player.Parent then
@@ -126,10 +128,11 @@ end
 -- Sticks a player to the nearest wall (or where they stand, if none is close).
 local function glue(attacker: Player, target: Player, seconds: number)
 	local root = rootOf(target)
-	if not root or glued[target] then
+	if not root or glued[target] or os.clock() < (disabledUntil[target] or 0) then
 		return
 	end
 	glued[target] = true
+	disabledUntil[target] = os.clock() + seconds + Weapons.IMMUNE_SECONDS
 
 	local exclude = {}
 	for _, player in Players:GetPlayers() do
@@ -184,19 +187,36 @@ local function glue(attacker: Player, target: Player, seconds: number)
 	end)
 end
 
+-- Knocks a player over, pushed away from the attacker. The target's own client applies the
+-- push, since it controls its character's physics.
+local function knockBack(attacker: Player, target: Player, weapon)
+	local root, attackerRoot = rootOf(target), rootOf(attacker)
+	if not root or os.clock() < (disabledUntil[target] or 0) then
+		return
+	end
+	disabledUntil[target] = os.clock() + weapon.stunSeconds + Weapons.IMMUNE_SECONDS
+	local away = if attackerRoot then root.Position - attackerRoot.Position else root.CFrame.LookVector
+	away = Vector3.new(away.X, 0, away.Z)
+	away = if away.Magnitude > 0.01 then away.Unit else Vector3.new(0, 0, 1)
+	knockbackRemote:FireClient(target, away, weapon.knockback, weapon.stunSeconds)
+end
+
 local function applyHit(attacker: Player, target: Player, weapon)
-	if target == attacker then
+	local root = rootOf(target)
+	if target == attacker or not root then
+		return
+	end
+	-- Your own yard is a safe zone.
+	local home = PlotService.getPlot(target)
+	if home and PlotService.isInside(home, root.Position) then
 		return
 	end
 	if weapon.effect == "drop" then
-		StealService.knockLoose(attacker, target, weapon.name)
-	elseif weapon.effect == "glue" then
-		local root = rootOf(target)
-		local plot = PlotService.getPlot(attacker)
-		local intruding = root ~= nil and plot ~= nil and PlotService.isInside(plot, root.Position)
-		if StealService.isCarryingFrom(target, attacker) or intruding then
-			glue(attacker, target, weapon.glueSeconds)
+		if not StealService.knockLoose(attacker, target, weapon.name) then
+			knockBack(attacker, target, weapon)
 		end
+	elseif weapon.effect == "glue" then
+		glue(attacker, target, weapon.glueSeconds)
 	end
 end
 
@@ -339,6 +359,7 @@ function WeaponService.init()
 	Players.PlayerRemoving:Connect(function(player)
 		lastUse[player] = nil
 		glued[player] = nil
+		disabledUntil[player] = nil
 	end)
 end
 

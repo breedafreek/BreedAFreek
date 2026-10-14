@@ -5,8 +5,8 @@
 -- for a Common, a lot for a Secret (see carrySpeed in Rarities).
 --
 -- While it's being carried:
---   * the owner can hit the carrier with a weapon (WeaponService), or Snatch it back, and it
---     goes home;
+--   * anyone can hit the carrier with a weapon (WeaponService) and it goes home;
+--   * the owner can Snatch it back and it goes home;
 --   * any other player can Snatch it and carry it to their own yard instead;
 --   * if the carrier dies or leaves, it goes home.
 -- Whoever gets it inside their own fence keeps it.
@@ -265,25 +265,30 @@ local function onPromptTriggered(prompt: ProximityPrompt, player: Player)
 	end
 end
 
--- True if target is carrying a Freek stolen from owner.
-function StealService.isCarryingFrom(target: Player, owner: Player): boolean
-	local carry = carries[target]
-	return carry ~= nil and carry.owner == owner
-end
-
--- Called by WeaponService when an attacker's "drop" weapon hits someone. Only the Freek's
--- owner can knock it loose; hitting anyone else does nothing. Returns true if it dropped.
+-- Called by WeaponService when a "drop" weapon hits someone carrying a Freek: it goes back
+-- to its owner, whoever fired. Returns true if the target was carrying one.
 function StealService.knockLoose(attacker: Player, target: Player, weaponName: string): boolean
 	local carry = carries[target]
-	if not carry or carry.owner ~= attacker then
+	if not carry then
 		return false
 	end
+	local ownerMessage = if attacker == carry.owner
+		then "Hit with your " .. weaponName .. "! You got your " .. carry.name .. " back!"
+		else attacker.DisplayName
+			.. " knocked your "
+			.. carry.name
+			.. " loose from "
+			.. target.DisplayName
+			.. "! It's back home."
 	sendBack(
 		target,
 		carry,
-		"Hit with your " .. weaponName .. "! You got your " .. carry.name .. " back!",
+		ownerMessage,
 		attacker.DisplayName .. " hit you with a " .. weaponName .. "! You dropped " .. carry.name .. "."
 	)
+	if attacker ~= carry.owner then
+		notify(attacker, "You knocked " .. carry.name .. " loose! It ran back to its owner.", "success")
+	end
 	return true
 end
 
