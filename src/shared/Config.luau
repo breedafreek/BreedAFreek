@@ -1,7 +1,7 @@
 -- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	START_MONEY = 100,
+	START_MONEY = 50,
 	START_SLOTS = 4, -- yard slots a new player gets
 	MAX_SLOTS = 12, -- most yard slots anyone can own
 	MAX_FREEKS = 50, -- yard + backpack combined
