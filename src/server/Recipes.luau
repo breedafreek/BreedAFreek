@@ -1,8 +1,12 @@
 -- Secret breeding recipes. Server-only so players can't read them out of the game.
 -- Order of a and b doesn't matter. chance is how often the pair produces the result;
--- otherwise the baby is a copy of one of the parents' species.
+-- otherwise the baby is a copy of one of the parents' species. A recipe for a Seasonal
+-- Freek only works while its season is running.
 
-local Mutations = require(game:GetService("ReplicatedStorage").Shared.Mutations)
+local Shared = game:GetService("ReplicatedStorage").Shared
+local Freeks = require(Shared.Freeks)
+local Mutations = require(Shared.Mutations)
+local Seasons = require(Shared.Seasons)
 
 local RECIPES = {
 	{ a = "Blobby", b = "Snorp", result = "Snoblob", chance = 0.5 },
@@ -17,6 +21,9 @@ local RECIPES = {
 	{ a = "EyeballEarl", b = "Chonkler", result = "KingGoob", chance = 0.15 },
 	{ a = "KingGoob", b = "Zorpdorp", result = "CosmicSnorp", chance = 0.1 },
 	{ a = "CosmicSnorp", b = "KingGoob", result = "TheFreek", chance = 0.05 },
+
+	-- Seasonal
+	{ a = "Blobby", b = "Grumbo", result = "PumpkinBlob", chance = 0.4 },
 }
 
 local function pairKey(a: string, b: string): string
@@ -34,7 +41,7 @@ local Recipes = {}
 function Recipes.roll(parentA, parentB, rng: Random): (string, string?)
 	local species
 	local recipe = byPair[pairKey(parentA.species, parentB.species)]
-	if recipe and rng:NextNumber() < recipe.chance then
+	if recipe and Seasons.available(Freeks.byId[recipe.result]) and rng:NextNumber() < recipe.chance then
 		species = recipe.result
 	else
 		species = if rng:NextNumber() < 0.5 then parentA.species else parentB.species

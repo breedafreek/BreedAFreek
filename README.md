@@ -37,6 +37,8 @@ rojo build -o BreedAFreek.rbxlx  # or build a place file
 
 - **Add or rename Freeks:** edit `src/shared/Freeks.luau`. Never change an `id` once players own that Freek, because ids are what saves store.
 - **Decide what two Freeks breed into:** edit `src/server/Recipes.luau`. It's server-only so players can't read the secret combos.
+- **Rarities:** Common, Uncommon, Rare, Legendary, Mystic, Ultra, Secret (`src/shared/Rarities.luau`).
+- **Seasonal Freeks:** add `season = "Halloween"` (or Spring, Summer, Winter) to a Freek. It can only be bred or bought during that season, but players keep it forever. Season dates are in `src/shared/Seasons.luau`.
 - **Money, slots and limits:** edit `src/shared/Config.luau`.
 - **Real 3D models:** put a Model named after the species id (e.g. `Blobby`) in a `ReplicatedStorage.FreekModels` folder. Set its pivot at its feet and face it toward -Z. It replaces the placeholder automatically.
 

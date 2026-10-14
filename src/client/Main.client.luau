@@ -17,6 +17,7 @@ local Freeks = require(Shared.Freeks)
 local Mutations = require(Shared.Mutations)
 local Rarities = require(Shared.Rarities)
 local Remotes = require(Shared.Remotes)
+local Seasons = require(Shared.Seasons)
 local UI = require(script.Parent.UI)
 
 local player = Players.LocalPlayer
@@ -268,7 +269,7 @@ function renderers.Shop()
 	grid.Parent = body
 
 	for _, species in Freeks.list do
-		if species.price then
+		if species.price and Seasons.available(species) then
 			local canAfford = state.money >= species.price
 			local card = UI.card({
 				species = species.id,
@@ -373,7 +374,7 @@ function renderers.Freeks()
 			mutation = freek.mutation,
 			lines = {
 				{ FreekUtil.displayName(freek), nameColor(freek), 20 },
-				{ Freeks.byId[freek.species].rarity, rarityColor(freek.species), 16 },
+				{ FreekUtil.rarityText(freek.species), rarityColor(freek.species), 16 },
 				{ Format.money(FreekUtil.income(freek)) .. "/s", colors.money },
 				{ status, statusColor, 14 },
 			},
@@ -456,7 +457,7 @@ function renderers.Breed()
 			border = if isSelected then colors.pink else nil,
 			lines = {
 				{ FreekUtil.displayName(freek), nameColor(freek), 20 },
-				{ Freeks.byId[freek.species].rarity, rarityColor(freek.species), 16 },
+				{ FreekUtil.rarityText(freek.species), rarityColor(freek.species), 16 },
 				{ if isSelected then "Selected!" else "Tap to pick", colors.muted, 14 },
 			},
 			onClick = function()
@@ -497,6 +498,8 @@ function renderers.Book()
 			credit = "Starter Freek"
 		elseif discovery then
 			credit = "First found by\n" .. discovery.name
+		elseif not Seasons.available(species) then
+			credit = "Seasonal: only during " .. Seasons.list[species.season].name
 		else
 			credit = "Nobody has found this yet!"
 		end
@@ -506,7 +509,7 @@ function renderers.Book()
 			border = if state.discovered[species.id] then colors.green else nil,
 			lines = {
 				{ if known then species.name else "???", if known then colors.text else colors.muted, 22 },
-				{ species.rarity, Rarities.info[species.rarity].color, 16 },
+				{ FreekUtil.rarityText(species.id), Rarities.info[species.rarity].color, 16 },
 				{ credit, if discovery then colors.orange else colors.muted, 34 },
 				{ if state.discovered[species.id] then "You have found this" else "", colors.green, 14 },
 			},

@@ -5,6 +5,7 @@ local Config = require(script.Parent.Config)
 local Freeks = require(script.Parent.Freeks)
 local Mutations = require(script.Parent.Mutations)
 local Rarities = require(script.Parent.Rarities)
+local Seasons = require(script.Parent.Seasons)
 
 local FreekUtil = {}
 
@@ -28,6 +29,13 @@ function FreekUtil.displayName(freek): string
 	local species = Freeks.byId[freek.species]
 	local name = if species then species.name else "???"
 	return if freek.mutation then freek.mutation .. " " .. name else name
+end
+
+-- "Rare" or, for Seasonal Freeks, "Rare · Halloween".
+function FreekUtil.rarityText(speciesId: string): string
+	local species = Freeks.byId[speciesId]
+	local season = species.season and Seasons.list[species.season]
+	return if season then species.rarity .. " · " .. season.name else species.rarity
 end
 
 function FreekUtil.yardIncome(data): number

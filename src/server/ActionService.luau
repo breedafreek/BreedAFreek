@@ -9,6 +9,7 @@ local Format = require(ReplicatedStorage.Shared.Format)
 local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
 local DataService = require(script.Parent.DataService)
 local DiscoveryService = require(script.Parent.DiscoveryService)
@@ -74,6 +75,9 @@ function handlers.BuyFreek(player: Player, data, speciesId: any)
 	local species = typeof(speciesId) == "string" and Freeks.byId[speciesId]
 	if not species or not species.price then
 		return
+	end
+	if not Seasons.available(species) then
+		return notify(player, species.name .. " is out of season!", "error")
 	end
 	if FreekUtil.count(data) >= Config.MAX_FREEKS then
 		return notify(player, "You have too many Freeks! Sell some first.", "error")

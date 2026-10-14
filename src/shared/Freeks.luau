@@ -3,6 +3,7 @@
 -- id       unique key saved in player data; never rename one after release
 -- income   money per second while in the yard
 -- price    set only for Freeks sold in the shop (starter Freeks)
+-- season   optional Seasonal tag (a key in Seasons.luau): only obtainable during that season
 -- look     how the placeholder model is built: shape "Ball" or "Block", size in studs,
 --          eyes 1-3, antennae 0-3
 --
@@ -93,7 +94,7 @@ Freeks.list = {
 	{
 		id = "EyeballEarl",
 		name = "Eyeball Earl",
-		rarity = "Epic",
+		rarity = "Legendary",
 		income = 250,
 		look = { color = Color3.fromRGB(245, 245, 245), shape = "Ball", size = 5, eyes = 1, antennae = 2 },
 	},
@@ -101,7 +102,7 @@ Freeks.list = {
 	{
 		id = "KingGoob",
 		name = "King Goob",
-		rarity = "Legendary",
+		rarity = "Mystic",
 		income = 1000,
 		look = { color = Color3.fromRGB(120, 255, 120), shape = "Ball", size = 6, eyes = 2, antennae = 3 },
 	},
@@ -109,9 +110,19 @@ Freeks.list = {
 	{
 		id = "CosmicSnorp",
 		name = "Cosmic Snorp",
-		rarity = "Mythic",
+		rarity = "Ultra",
 		income = 4000,
 		look = { color = Color3.fromRGB(40, 20, 90), shape = "Ball", size = 6.5, eyes = 3, antennae = 1 },
+	},
+
+	-- Seasonal
+	{
+		id = "PumpkinBlob",
+		name = "Pumpkin Blob",
+		rarity = "Rare",
+		season = "Halloween",
+		income = 90,
+		look = { color = Color3.fromRGB(255, 130, 20), shape = "Ball", size = 4.2, eyes = 2, antennae = 1 },
 	},
 
 	{

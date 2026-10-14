@@ -261,6 +261,7 @@ local Config = require(script.Parent.Config)
 local Freeks = require(script.Parent.Freeks)
 local Mutations = require(script.Parent.Mutations)
 local Rarities = require(script.Parent.Rarities)
+local Seasons = require(script.Parent.Seasons)
 
 local FreekUtil = {}
 
@@ -284,6 +285,13 @@ function FreekUtil.displayName(freek): string
 	local species = Freeks.byId[freek.species]
 	local name = if species then species.name else "???"
 	return if freek.mutation then freek.mutation .. " " .. name else name
+end
+
+-- "Rare" or, for Seasonal Freeks, "Rare · Halloween".
+function FreekUtil.rarityText(speciesId: string): string
+	local species = Freeks.byId[speciesId]
+	local season = species.season and Seasons.list[species.season]
+	return if season then species.rarity .. " · " .. season.name else species.rarity
 end
 
 function FreekUtil.yardIncome(data): number
@@ -323,6 +331,7 @@ return FreekUtil
 -- id       unique key saved in player data; never rename one after release
 -- income   money per second while in the yard
 -- price    set only for Freeks sold in the shop (starter Freeks)
+-- season   optional Seasonal tag (a key in Seasons.luau): only obtainable during that season
 -- look     how the placeholder model is built: shape "Ball" or "Block", size in studs,
 --          eyes 1-3, antennae 0-3
 --
@@ -413,7 +422,7 @@ Freeks.list = {
 	{
 		id = "EyeballEarl",
 		name = "Eyeball Earl",
-		rarity = "Epic",
+		rarity = "Legendary",
 		income = 250,
 		look = { color = Color3.fromRGB(245, 245, 245), shape = "Ball", size = 5, eyes = 1, antennae = 2 },
 	},
@@ -421,7 +430,7 @@ Freeks.list = {
 	{
 		id = "KingGoob",
 		name = "King Goob",
-		rarity = "Legendary",
+		rarity = "Mystic",
 		income = 1000,
 		look = { color = Color3.fromRGB(120, 255, 120), shape = "Ball", size = 6, eyes = 2, antennae = 3 },
 	},
@@ -429,9 +438,19 @@ Freeks.list = {
 	{
 		id = "CosmicSnorp",
 		name = "Cosmic Snorp",
-		rarity = "Mythic",
+		rarity = "Ultra",
 		income = 4000,
 		look = { color = Color3.fromRGB(40, 20, 90), shape = "Ball", size = 6.5, eyes = 3, antennae = 1 },
+	},
+
+	-- Seasonal
+	{
+		id = "PumpkinBlob",
+		name = "Pumpkin Blob",
+		rarity = "Rare",
+		season = "Halloween",
+		income = 90,
+		look = { color = Color3.fromRGB(255, 130, 20), shape = "Ball", size = 4.2, eyes = 2, antennae = 1 },
 	},
 
 	{
@@ -487,18 +506,19 @@ return Mutations
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds.
+-- "Seasonal" isn't a tier: it's a tag a Freek of any rarity can have (see Seasons).
 
 local Rarities = {}
 
-Rarities.order = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret" }
+Rarities.order = { "Common", "Uncommon", "Rare", "Legendary", "Mystic", "Ultra", "Secret" }
 
 Rarities.info = {
 	Common = { color = Color3.fromRGB(200, 200, 200), breedTime = 30 },
 	Uncommon = { color = Color3.fromRGB(90, 220, 90), breedTime = 60 },
 	Rare = { color = Color3.fromRGB(70, 150, 255), breedTime = 120 },
-	Epic = { color = Color3.fromRGB(180, 90, 255), breedTime = 300 },
-	Legendary = { color = Color3.fromRGB(255, 180, 40), breedTime = 600 },
-	Mythic = { color = Color3.fromRGB(255, 60, 100), breedTime = 1200 },
+	Legendary = { color = Color3.fromRGB(255, 180, 40), breedTime = 300 },
+	Mystic = { color = Color3.fromRGB(190, 90, 255), breedTime = 600 },
+	Ultra = { color = Color3.fromRGB(255, 60, 100), breedTime = 1200 },
 	Secret = { color = Color3.fromRGB(255, 255, 255), breedTime = 2400 },
 }
 
@@ -566,17 +586,54 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
+      <Item class="ModuleScript" referent="11">
+        <Properties>
+          <string name="Name">Seasons</string>
+          <string name="Source"><![CDATA[-- Seasons for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred (or
+-- bought, if it has a price) while that season is running. Once owned it's kept forever
+-- and still earns, trades and breeds year-round.
+--
+-- Dates are UTC, inclusive, and must not wrap past New Year.
+
+local Seasons = {}
+
+Seasons.list = {
+	Spring = { name = "Spring", color = Color3.fromRGB(255, 170, 220), from = { 3, 20 }, to = { 4, 30 } },
+	Summer = { name = "Summer", color = Color3.fromRGB(255, 220, 60), from = { 6, 21 }, to = { 8, 31 } },
+	Halloween = { name = "Halloween", color = Color3.fromRGB(255, 130, 20), from = { 10, 1 }, to = { 10, 31 } },
+	Winter = { name = "Winter", color = Color3.fromRGB(140, 220, 255), from = { 12, 1 }, to = { 12, 31 } },
+}
+
+function Seasons.isActive(seasonId: string?, now: number?): boolean
+	local season = seasonId and Seasons.list[seasonId]
+	if not season then
+		return false
+	end
+	local date = os.date("!*t", now or os.time())
+	local today = date.month * 100 + date.day
+	return today >= season.from[1] * 100 + season.from[2] and today <= season.to[1] * 100 + season.to[2]
+end
+
+-- True if this species can be obtained right now (always true for non-seasonal Freeks).
+function Seasons.available(species, now: number?): boolean
+	return species.season == nil or Seasons.isActive(species.season, now)
+end
+
+return Seasons
+]]></string>
+        </Properties>
+      </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="11">
+  <Item class="ServerScriptService" referent="12">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="12">
+    <Item class="Folder" referent="13">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -590,6 +647,7 @@ local Format = require(ReplicatedStorage.Shared.Format)
 local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
 local DataService = require(script.Parent.DataService)
 local DiscoveryService = require(script.Parent.DiscoveryService)
@@ -655,6 +713,9 @@ function handlers.BuyFreek(player: Player, data, speciesId: any)
 	local species = typeof(speciesId) == "string" and Freeks.byId[speciesId]
 	if not species or not species.price then
 		return
+	end
+	if not Seasons.available(species) then
+		return notify(player, species.name .. " is out of season!", "error")
 	end
 	if FreekUtil.count(data) >= Config.MAX_FREEKS then
 		return notify(player, "You have too many Freeks! Sell some first.", "error")
@@ -797,7 +858,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -1027,7 +1088,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Discovery Book: the first player in the whole game to get each species has their
@@ -1156,7 +1217,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the Freeks in their yard, plus offline earnings
@@ -1224,7 +1285,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="17">
+      <Item class="Script" referent="18">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -1246,7 +1307,7 @@ require(Server.DataService).init()
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the map and gives every player a yard. Yards are public so players can walk
@@ -1582,14 +1643,18 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">Recipes</string>
           <string name="Source"><![CDATA[-- Secret breeding recipes. Server-only so players can't read them out of the game.
 -- Order of a and b doesn't matter. chance is how often the pair produces the result;
--- otherwise the baby is a copy of one of the parents' species.
+-- otherwise the baby is a copy of one of the parents' species. A recipe for a Seasonal
+-- Freek only works while its season is running.
 
-local Mutations = require(game:GetService("ReplicatedStorage").Shared.Mutations)
+local Shared = game:GetService("ReplicatedStorage").Shared
+local Freeks = require(Shared.Freeks)
+local Mutations = require(Shared.Mutations)
+local Seasons = require(Shared.Seasons)
 
 local RECIPES = {
 	{ a = "Blobby", b = "Snorp", result = "Snoblob", chance = 0.5 },
@@ -1604,6 +1669,9 @@ local RECIPES = {
 	{ a = "EyeballEarl", b = "Chonkler", result = "KingGoob", chance = 0.15 },
 	{ a = "KingGoob", b = "Zorpdorp", result = "CosmicSnorp", chance = 0.1 },
 	{ a = "CosmicSnorp", b = "KingGoob", result = "TheFreek", chance = 0.05 },
+
+	-- Seasonal
+	{ a = "Blobby", b = "Grumbo", result = "PumpkinBlob", chance = 0.4 },
 }
 
 local function pairKey(a: string, b: string): string
@@ -1621,7 +1689,7 @@ local Recipes = {}
 function Recipes.roll(parentA, parentB, rng: Random): (string, string?)
 	local species
 	local recipe = byPair[pairKey(parentA.species, parentB.species)]
-	if recipe and rng:NextNumber() < recipe.chance then
+	if recipe and Seasons.available(Freeks.byId[recipe.result]) and rng:NextNumber() < recipe.chance then
 		species = recipe.result
 	else
 		species = if rng:NextNumber() < 0.5 then parentA.species else parentB.species
@@ -1646,7 +1714,7 @@ return Recipes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
@@ -1922,19 +1990,19 @@ return TradeService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="21">
+  <Item class="StarterPlayer" referent="22">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="22">
+    <Item class="StarterPlayerScripts" referent="23">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="23">
+      <Item class="Folder" referent="24">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="LocalScript" referent="24">
+        <Item class="LocalScript" referent="25">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -1956,6 +2024,7 @@ local Freeks = require(Shared.Freeks)
 local Mutations = require(Shared.Mutations)
 local Rarities = require(Shared.Rarities)
 local Remotes = require(Shared.Remotes)
+local Seasons = require(Shared.Seasons)
 local UI = require(script.Parent.UI)
 
 local player = Players.LocalPlayer
@@ -2207,7 +2276,7 @@ function renderers.Shop()
 	grid.Parent = body
 
 	for _, species in Freeks.list do
-		if species.price then
+		if species.price and Seasons.available(species) then
 			local canAfford = state.money >= species.price
 			local card = UI.card({
 				species = species.id,
@@ -2312,7 +2381,7 @@ function renderers.Freeks()
 			mutation = freek.mutation,
 			lines = {
 				{ FreekUtil.displayName(freek), nameColor(freek), 20 },
-				{ Freeks.byId[freek.species].rarity, rarityColor(freek.species), 16 },
+				{ FreekUtil.rarityText(freek.species), rarityColor(freek.species), 16 },
 				{ Format.money(FreekUtil.income(freek)) .. "/s", colors.money },
 				{ status, statusColor, 14 },
 			},
@@ -2395,7 +2464,7 @@ function renderers.Breed()
 			border = if isSelected then colors.pink else nil,
 			lines = {
 				{ FreekUtil.displayName(freek), nameColor(freek), 20 },
-				{ Freeks.byId[freek.species].rarity, rarityColor(freek.species), 16 },
+				{ FreekUtil.rarityText(freek.species), rarityColor(freek.species), 16 },
 				{ if isSelected then "Selected!" else "Tap to pick", colors.muted, 14 },
 			},
 			onClick = function()
@@ -2436,6 +2505,8 @@ function renderers.Book()
 			credit = "Starter Freek"
 		elseif discovery then
 			credit = "First found by\n" .. discovery.name
+		elseif not Seasons.available(species) then
+			credit = "Seasonal: only during " .. Seasons.list[species.season].name
 		else
 			credit = "Nobody has found this yet!"
 		end
@@ -2445,7 +2516,7 @@ function renderers.Book()
 			border = if state.discovered[species.id] then colors.green else nil,
 			lines = {
 				{ if known then species.name else "???", if known then colors.text else colors.muted, 22 },
-				{ species.rarity, Rarities.info[species.rarity].color, 16 },
+				{ FreekUtil.rarityText(species.id), Rarities.info[species.rarity].color, 16 },
 				{ credit, if discovery then colors.orange else colors.muted, 34 },
 				{ if state.discovered[species.id] then "You have found this" else "", colors.green, 14 },
 			},
@@ -2789,7 +2860,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="25">
+        <Item class="ModuleScript" referent="26">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).
