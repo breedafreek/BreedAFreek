@@ -4626,6 +4626,7 @@ local window = UI.glass({
 	Position = UDim2.fromScale(0.53, 0.52),
 	Size = UDim2.fromScale(0.66, 0.74),
 	BackgroundTransparency = 0.05,
+	ZIndex = 5, -- above the leaderboard and other HUD pieces
 	Parent = screen,
 }, {
 	UI.corner(22),
