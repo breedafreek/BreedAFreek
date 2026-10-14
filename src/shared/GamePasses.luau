@@ -24,8 +24,6 @@ GamePasses.order = {
 	"ExtraSlot1",
 	"ExtraSlot2",
 	"ExtraSlot3",
-	"LuckyBreeder",
-	"BigBackpack",
 }
 
 GamePasses.list = {
@@ -45,14 +43,6 @@ GamePasses.list = {
 		description = "Breeding takes half the time.",
 		color = Color3.fromRGB(90, 200, 255),
 	},
-	LuckyBreeder = {
-		id = 0,
-		name = "Lucky Breeder",
-		icon = "🍀",
-		price = 249,
-		description = "1.5x chance of new species and 2x mutation chance when breeding.",
-		color = Color3.fromRGB(90, 220, 110),
-	},
 	LongerLock = {
 		id = 0,
 		name = "Longer Gate Lock",
@@ -60,14 +50,6 @@ GamePasses.list = {
 		price = 499,
 		description = "Your gate stays locked for 5 minutes instead of 3.",
 		color = Color3.fromRGB(235, 90, 90),
-	},
-	BigBackpack = {
-		id = 0,
-		name = "Big Backpack",
-		icon = "🎒",
-		price = 99,
-		description = "Hold 100 Freeks instead of 50.",
-		color = Color3.fromRGB(170, 120, 240),
 	},
 	ExtraSlot1 = {
 		id = 0,
@@ -127,14 +109,6 @@ function GamePasses.breedTimeMultiplier(player: Player): number
 	return if GamePasses.has(player, "FastBreeding") then 0.5 else 1
 end
 
--- Returns (recipe chance multiplier, mutation chance multiplier).
-function GamePasses.breedingLuck(player: Player): (number, number)
-	if GamePasses.has(player, "LuckyBreeder") then
-		return 1.5, 2
-	end
-	return 1, 1
-end
-
 function GamePasses.gateLockSeconds(player: Player): number
 	return if GamePasses.has(player, "LongerLock") then 300 else Config.GATE_LOCK_SECONDS
 end
@@ -150,8 +124,9 @@ function GamePasses.passSlots(player: Player): number
 	return count
 end
 
-function GamePasses.maxFreeks(player: Player): number
-	return if GamePasses.has(player, "BigBackpack") then 100 else Config.MAX_FREEKS
+-- Kept as a hook so a future pass can raise the limit.
+function GamePasses.maxFreeks(_player: Player): number
+	return Config.MAX_FREEKS
 end
 
 return GamePasses

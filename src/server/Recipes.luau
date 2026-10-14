@@ -38,7 +38,7 @@ end
 local Recipes = {}
 
 -- Returns the baby's species and mutation (or nil) for two parent records.
--- recipeLuck / mutationLuck multiply the chances (Lucky Breeder pass).
+-- recipeLuck / mutationLuck optionally multiply the chances (for future luck boosts).
 function Recipes.roll(parentA, parentB, rng: Random, recipeLuck: number?, mutationLuck: number?): (string, string?)
 	local species
 	local recipe = byPair[pairKey(parentA.species, parentB.species)]

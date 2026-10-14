@@ -159,7 +159,7 @@ function handlers.ClaimBreed(player: Player, data)
 	end
 	a.breeding, b.breeding = nil, nil
 
-	local species, mutation = Recipes.roll(a, b, rng, GamePasses.breedingLuck(player))
+	local species, mutation = Recipes.roll(a, b, rng)
 	-- Parents go back into the yard first so they keep earning.
 	a.slot = FreekUtil.freeSlot(data)
 	b.slot = FreekUtil.freeSlot(data)
