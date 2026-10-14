@@ -19,12 +19,13 @@ local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local DataService = require(script.Parent.DataService)
+local Decor = require(script.Parent.Decor)
 
 local PLOT_SIZE = 64
 local ROW_SPACING = 70 -- between yard centres along the conveyor
 local ROW_DISTANCE = 64 -- from the conveyor's centre line to each yard's centre
 local PAD_COLUMNS = 5
-local FENCE_HEIGHT = 5 -- what you see
+local FENCE_HEIGHT = 4 -- what you see
 local WALL_HEIGHT = 16 -- invisible wall above the fence so nobody can jump it
 local GATE_WIDTH = 14
 
@@ -67,22 +68,18 @@ local function buildMap()
 	map.Name = "Map"
 	map.Parent = Workspace
 
-	part({
-		Name = "Ground",
-		Size = Vector3.new(400, 2, 400),
-		CFrame = CFrame.new(0, -1, 0),
-		Color = Color3.fromRGB(100, 190, 90),
-		Material = Enum.Material.Grass,
-		Parent = map,
-	})
-
 	local spawn = Instance.new("SpawnLocation")
 	spawn.Anchored = true
 	spawn.Neutral = true
 	spawn.Size = Vector3.new(12, 1, 12)
 	spawn.CFrame = CFrame.new(140, 0.5, 0) -- past the east end of the conveyor
 	spawn.Color = Color3.fromRGB(255, 220, 120)
+	spawn.Material = Enum.Material.Marble
 	spawn.TopSurface = Enum.SurfaceType.Smooth
+	local decal = spawn:FindFirstChildOfClass("Decal")
+	if decal then
+		decal:Destroy() -- drop the default spawn logo
+	end
 	spawn.Parent = map
 
 	local post = part({
@@ -98,6 +95,24 @@ local function buildMap()
 	title.TextColor3 = Color3.fromRGB(255, 230, 90)
 end
 
+-- Each yard gets its own accent colour for pedestal rims and its sign trim.
+local ACCENTS = {
+	Color3.fromRGB(255, 110, 170),
+	Color3.fromRGB(90, 200, 255),
+	Color3.fromRGB(255, 200, 60),
+	Color3.fromRGB(150, 110, 255),
+	Color3.fromRGB(90, 220, 130),
+	Color3.fromRGB(255, 140, 70),
+	Color3.fromRGB(80, 230, 220),
+	Color3.fromRGB(255, 90, 90),
+}
+
+local function setSign(plot, text: string)
+	for _, label in plot.signLabels do
+		label.Text = text
+	end
+end
+
 local function buildPlot(index: number)
 	-- Yards 1-4 sit north of the conveyor, 5-8 south, in rows along it.
 	local perSide = Config.PLOT_COUNT // 2
@@ -106,93 +121,154 @@ local function buildPlot(index: number)
 	local center = Vector3.new(rowX, 0, rowSide * ROW_DISTANCE)
 	-- Local -Z (the plot's front, with the gate) faces the conveyor.
 	local origin = CFrame.lookAt(center, Vector3.new(rowX, 0, 0))
+	local accent = ACCENTS[(index - 1) % #ACCENTS + 1]
+	local half = PLOT_SIZE / 2 - 0.5
 
 	local folder = Instance.new("Model")
 	folder.Name = "Plot" .. index
 	folder.Parent = Workspace:WaitForChild("Plots")
+	local decor = Instance.new("Folder")
+	decor.Name = "Decor"
+	decor.Parent = folder
 
+	-- Lawn, with a cobblestone path from the gate to the pens and across to the pedestals.
 	part({
 		Name = "Base",
 		Size = Vector3.new(PLOT_SIZE, 1, PLOT_SIZE),
 		CFrame = origin * CFrame.new(0, 0.5, 0),
-		Color = Color3.fromRGB(150, 110, 70),
-		Material = Enum.Material.Ground,
+		Color = Color3.fromRGB(105, 185, 85),
+		Material = Enum.Material.Grass,
 		Parent = folder,
 	})
+	for _, path in
+		{
+			{ size = Vector3.new(7, 0.2, 12), pos = Vector3.new(0, 1.1, -26) },
+			{ size = Vector3.new(58, 0.2, 3.5), pos = Vector3.new(0, 1.1, -6.2) },
+			{ size = Vector3.new(4, 0.2, 13), pos = Vector3.new(0, 1.1, -13.5) },
+		}
+	do
+		part({
+			Name = "Path",
+			Size = path.size,
+			CFrame = origin * CFrame.new(path.pos),
+			Color = Color3.fromRGB(175, 165, 150),
+			Material = Enum.Material.Cobblestone,
+			CanCollide = false,
+			Parent = decor,
+		})
+	end
 
+	-- Round stone pedestals with a glowing rim. Freeks stand on top (pad.ground).
 	local pads = {}
 	for i = 1, Config.MAX_SLOTS + Config.PASS_SLOTS do
 		local column = (i - 1) % PAD_COLUMNS
 		local row = (i - 1) // PAD_COLUMNS
-		local pad = part({
-			Name = "Pad" .. i,
-			Size = Vector3.new(9, 0.5, 9),
-			CFrame = origin * CFrame.new((column - (PAD_COLUMNS - 1) / 2) * 12.2, 1.25, 4 + row * 10),
-			Material = Enum.Material.SmoothPlastic,
+		local spot = origin * CFrame.new((column - (PAD_COLUMNS - 1) / 2) * 12.2, 1, 4 + row * 10)
+		local rim = part({
+			Name = "PadRim" .. i,
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.3, 9.4, 9.4),
+			CFrame = spot * CFrame.new(0, 0.15, 0) * CFrame.Angles(0, 0, math.pi / 2),
+			Material = Enum.Material.Neon,
+			Color = accent,
 			Parent = folder,
 		})
-		local lockGui, lockLabel = billboard(pad, UDim2.fromScale(4, 2), Vector3.new(0, 1.5, 0), 60)
-		lockLabel.Text = "LOCKED"
+		local base = part({
+			Name = "Pad" .. i,
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.6, 8.6, 8.6),
+			CFrame = spot * CFrame.new(0, 0.3, 0) * CFrame.Angles(0, 0, math.pi / 2),
+			Material = Enum.Material.Marble,
+			Parent = folder,
+		})
+		local lockGui, lockLabel = billboard(base, UDim2.fromScale(4, 2), Vector3.new(0, 1.5, 0), 60)
+		lockLabel.Text = "🔒"
 		lockLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
-		pads[i] = { part = pad, lock = lockGui }
+		pads[i] = { ground = spot * CFrame.new(0, 0.6, 0), base = base, rim = rim, lock = lockGui }
 	end
 
-	-- Two breeding pens side by side; the second needs the Extra Breeding Pen pass.
+	-- Two hay-floored breeding pens with low fences; the second needs the Extra Breeding Pen pass.
 	local pens = {}
 	for i, x in { -12, 12 } do
-		local pen = part({
+		local penSpot = origin * CFrame.new(x, 1, -14)
+		local floor = part({
 			Name = "BreedingPen" .. i,
-			Size = Vector3.new(20, 0.5, 10),
-			CFrame = origin * CFrame.new(x, 1.25, -14),
-			Color = Color3.fromRGB(255, 150, 200),
-			Material = Enum.Material.SmoothPlastic,
+			Size = Vector3.new(19, 0.4, 9.5),
+			CFrame = penSpot * CFrame.new(0, 0.2, 0),
+			Color = Color3.fromRGB(230, 200, 120),
+			Material = Enum.Material.Sand,
 			Parent = folder,
 		})
-		local _, label = billboard(pen, UDim2.fromScale(13, 2.3), Vector3.new(0, 9, 0), 80)
-		pens[i] = { part = pen, label = label }
+		local corner = function(dx, dz)
+			return (penSpot * CFrame.new(dx, 0, dz)).Position
+		end
+		Decor.picketFence(decor, corner(-9.7, 4.9), corner(9.7, 4.9), 2.2, Color3.fromRGB(150, 100, 65))
+		Decor.picketFence(decor, corner(-9.7, -4.9), corner(-9.7, 4.9), 2.2, Color3.fromRGB(150, 100, 65))
+		Decor.picketFence(decor, corner(9.7, -4.9), corner(9.7, 4.9), 2.2, Color3.fromRGB(150, 100, 65))
+		local _, label = billboard(floor, UDim2.fromScale(13, 2.3), Vector3.new(0, 9, 0), 80)
+		pens[i] = { part = floor, label = label }
 	end
 
-	-- Fence: visible pickets plus a tall invisible wall, with a gate gap at the front.
-	local fenceColor = Color3.fromRGB(235, 225, 205)
-	local half = PLOT_SIZE / 2 - 0.5
+	-- White picket fence plus a tall invisible wall, with the gate at the front.
+	local function edge(x: number, z: number): Vector3
+		return (origin * CFrame.new(x, 1, z)).Position
+	end
+	local postX = GATE_WIDTH / 2 + 0.6
+	Decor.picketFence(decor, edge(-half, half), edge(half, half), FENCE_HEIGHT)
+	Decor.picketFence(decor, edge(-half, -half), edge(-half, half), FENCE_HEIGHT)
+	Decor.picketFence(decor, edge(half, -half), edge(half, half), FENCE_HEIGHT)
+	Decor.picketFence(decor, edge(-half, -half), edge(-postX, -half), FENCE_HEIGHT)
+	Decor.picketFence(decor, edge(postX, -half), edge(half, -half), FENCE_HEIGHT)
 	local frontSide = (PLOT_SIZE - GATE_WIDTH) / 2
-	local sides = {
-		{ length = PLOT_SIZE, x = 0, z = half, alongX = true },
-		{ length = PLOT_SIZE, x = -half, z = 0, alongX = false },
-		{ length = PLOT_SIZE, x = half, z = 0, alongX = false },
-		{ length = frontSide, x = -(GATE_WIDTH / 2 + frontSide / 2), z = -half, alongX = true },
-		{ length = frontSide, x = GATE_WIDTH / 2 + frontSide / 2, z = -half, alongX = true },
-	}
-	for _, side in sides do
-		local size = if side.alongX then Vector3.new(side.length, 1, 1) else Vector3.new(1, 1, side.length)
-		part({
-			Name = "Fence",
-			Size = size * Vector3.new(1, FENCE_HEIGHT, 1),
-			CFrame = origin * CFrame.new(side.x, 1 + FENCE_HEIGHT / 2, side.z),
-			Color = fenceColor,
-			Material = Enum.Material.WoodPlanks,
-			Parent = folder,
-		})
+	for _, wall in
+		{
+			{ size = Vector3.new(PLOT_SIZE, WALL_HEIGHT, 1), x = 0, z = half },
+			{ size = Vector3.new(1, WALL_HEIGHT, PLOT_SIZE), x = -half, z = 0 },
+			{ size = Vector3.new(1, WALL_HEIGHT, PLOT_SIZE), x = half, z = 0 },
+			{ size = Vector3.new(frontSide, WALL_HEIGHT, 1), x = -(GATE_WIDTH / 2 + frontSide / 2), z = -half },
+			{ size = Vector3.new(frontSide, WALL_HEIGHT, 1), x = GATE_WIDTH / 2 + frontSide / 2, z = -half },
+		}
+	do
 		part({
 			Name = "Wall",
-			Size = size * Vector3.new(1, WALL_HEIGHT, 1),
-			CFrame = origin * CFrame.new(side.x, 1 + WALL_HEIGHT / 2, side.z),
+			Size = wall.size,
+			CFrame = origin * CFrame.new(wall.x, 1 + WALL_HEIGHT / 2, wall.z),
 			Transparency = 1,
 			Parent = folder,
 		})
 	end
+
+	-- Wooden gate arch with the owner's name on a sign.
 	for _, x in { -1, 1 } do
 		part({
 			Name = "GatePost",
-			Size = Vector3.new(1.6, 8, 1.6),
-			CFrame = origin * CFrame.new(x * (GATE_WIDTH / 2 + 0.3), 5, -half),
+			Size = Vector3.new(1.6, 11, 1.6),
+			CFrame = origin * CFrame.new(x * postX, 6.5, -half),
 			Color = Color3.fromRGB(120, 85, 55),
 			Material = Enum.Material.Wood,
 			Parent = folder,
 		})
+		part({
+			Name = "PostCap",
+			Size = Vector3.new(2, 0.6, 2),
+			CFrame = origin * CFrame.new(x * postX, 12.3, -half),
+			Color = accent,
+			Parent = decor,
+		})
 	end
-	-- The visible force field is fence height; an invisible part above it stops jumping over.
-	local gateHeight = FENCE_HEIGHT + 2
+	part({
+		Name = "ArchBeam",
+		Size = Vector3.new(postX * 2 + 1.6, 1.2, 1.4),
+		CFrame = origin * CFrame.new(0, 11.4, -half),
+		Color = Color3.fromRGB(120, 85, 55),
+		Material = Enum.Material.Wood,
+		Parent = folder,
+	})
+	local signLabels =
+		Decor.signboard(decor, origin * CFrame.new(0, 13.8, -half), Vector2.new(15, 3), "Empty Yard", accent)
+
+	-- The visible force field fills the gate; an invisible part above stops jumping over.
+	local gateHeight = 9.5
 	local gate = part({
 		Name = "Gate",
 		Size = Vector3.new(GATE_WIDTH, gateHeight, 1),
@@ -213,22 +289,21 @@ local function buildPlot(index: number)
 	local gateGuiPart = part({
 		Name = "GateSign",
 		Size = Vector3.new(1, 1, 1),
-		CFrame = origin * CFrame.new(0, 10, -half),
+		CFrame = origin * CFrame.new(0, 18, -half),
 		Transparency = 1,
 		CanCollide = false,
 		Parent = folder,
 	})
 	local _, gateLabel = billboard(gateGuiPart, UDim2.fromScale(12, 2.5), Vector3.zero, 120)
 
-	local signPost = part({
-		Name = "Sign",
-		Size = Vector3.new(1, 1, 1),
-		CFrame = origin * CFrame.new(0, 16, PLOT_SIZE / 2 - 2),
-		Transparency = 1,
-		CanCollide = false,
-		Parent = folder,
-	})
-	local _, signLabel = billboard(signPost, UDim2.fromScale(30, 5), Vector3.zero, 250)
+	-- Scenery: trees and bushes in the front corners, flower beds along the front fence,
+	-- lamps by the gate.
+	for _, side in { -1, 1 } do
+		Decor.tree(decor, origin * CFrame.new(side * 26.5, 1, -26.5), 0.85, index * 10 + side)
+		Decor.bush(decor, origin * CFrame.new(side * 27, 1, -14), 1, index * 20 + side)
+		Decor.flowerBed(decor, origin * CFrame.new(side * 15.5, 1, -29.3), 11, 2.2, index * 30 + side)
+		Decor.lamp(decor, origin * CFrame.new(side * (postX + 2), 1, -27.5))
+	end
 
 	local freekFolder = Instance.new("Folder")
 	freekFolder.Name = "Freeks"
@@ -237,10 +312,11 @@ local function buildPlot(index: number)
 	local plot = {
 		index = index,
 		origin = origin,
-		spawn = origin * CFrame.new(0, 4, -(PLOT_SIZE / 2 - 4)) * CFrame.Angles(0, math.pi, 0),
+		accent = accent,
+		spawn = origin * CFrame.new(0, 4, -(PLOT_SIZE / 2 - 5)) * CFrame.Angles(0, math.pi, 0),
 		pads = pads,
 		pens = pens,
-		sign = signLabel,
+		signLabels = signLabels,
 		freeks = freekFolder,
 		gate = gate,
 		gateTop = gateTop,
@@ -305,13 +381,21 @@ local function placeFreek(plot, freek, ground: CFrame, steal)
 	end
 end
 
+-- Unlocked pedestals are white marble with a glowing rim in the yard's colour.
+local function setPadLook(plot, pad, unlocked: boolean)
+	pad.base.Color = if unlocked then Color3.fromRGB(235, 232, 225) else Color3.fromRGB(85, 85, 92)
+	pad.base.Material = if unlocked then Enum.Material.Marble else Enum.Material.Slate
+	pad.rim.Color = if unlocked then plot.accent else Color3.fromRGB(55, 55, 60)
+	pad.rim.Material = if unlocked then Enum.Material.Neon else Enum.Material.SmoothPlastic
+end
+
 local function updatePenLabels(plot, data)
 	local owner = plot.owner
 	for i, pen in plot.pens do
 		local breeding = data and FreekUtil.pen(data, i)
 		local usable = owner ~= nil and i <= GamePasses.penCount(owner)
-		pen.part.Color = if usable then Color3.fromRGB(255, 150, 200) else Color3.fromRGB(90, 90, 90)
-		pen.part.Transparency = if usable then 0 else 0.5
+		pen.part.Color = if usable then Color3.fromRGB(230, 200, 120) else Color3.fromRGB(95, 95, 100)
+		pen.part.Material = if usable then Enum.Material.Sand else Enum.Material.Concrete
 		if not owner then
 			pen.label.Text = ""
 		elseif breeding then
@@ -333,19 +417,18 @@ function PlotService.render(player: Player)
 	end
 
 	plot.freeks:ClearAllChildren()
-	plot.sign.Text = player.DisplayName .. "'s Yard"
+	setSign(plot, player.DisplayName .. "'s Yard")
 
 	for i, pad in plot.pads do
 		local unlocked = i <= FreekUtil.totalSlots(data)
-		pad.part.Color = if unlocked then Color3.fromRGB(235, 225, 200) else Color3.fromRGB(90, 90, 90)
-		pad.part.Transparency = if unlocked then 0 else 0.5
+		setPadLook(plot, pad, unlocked)
 		pad.lock.Enabled = not unlocked
 	end
 
 	for uid, freek in data.freeks do
 		local pad = freek.slot and plot.pads[freek.slot]
 		if pad then
-			placeFreek(plot, freek, pad.part.CFrame * CFrame.new(0, 0.25, 0), {
+			placeFreek(plot, freek, pad.ground, {
 				uid = uid,
 				ownerUserId = player.UserId,
 			})
@@ -355,7 +438,7 @@ function PlotService.render(player: Player)
 	for i, pen in plot.pens do
 		local breeding = FreekUtil.pen(data, i)
 		if breeding then
-			local penTop = pen.part.CFrame * CFrame.new(0, 0.25, 0)
+			local penTop = pen.part.CFrame * CFrame.new(0, 0.2, 0)
 			local a = data.freeks[breeding.a]
 			local b = data.freeks[breeding.b]
 			if a then
@@ -410,11 +493,10 @@ local function clearPlot(plot)
 	setGateLock(plot, math.huge) -- empty yards stay shut
 	plot.owner = nil
 	plot.freeks:ClearAllChildren()
-	plot.sign.Text = "Empty Yard"
+	setSign(plot, "Empty Yard")
 	updatePenLabels(plot, nil)
 	for _, pad in plot.pads do
-		pad.part.Color = Color3.fromRGB(90, 90, 90)
-		pad.part.Transparency = 0.5
+		setPadLook(plot, pad, false)
 		pad.lock.Enabled = false
 	end
 	updateGate(plot)

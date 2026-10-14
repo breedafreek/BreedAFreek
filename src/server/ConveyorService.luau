@@ -26,6 +26,7 @@ local Seasons = require(ReplicatedStorage.Shared.Seasons)
 local ActionService = require(script.Parent.ActionService)
 local DataService = require(script.Parent.DataService)
 local DiscoveryService = require(script.Parent.DiscoveryService)
+local Decor = require(script.Parent.Decor)
 local PlotService = require(script.Parent.PlotService)
 
 local ConveyorService = {}
@@ -51,28 +52,10 @@ local function part(props): Part
 	return p
 end
 
-local function sign(parent: BasePart, text: string, offset: Vector3, color: Color3)
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromScale(16, 3)
-	gui.StudsOffset = offset
-	gui.MaxDistance = 300
-	gui.LightInfluence = 0
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundTransparency = 1
-	label.TextScaled = true
-	label.Font = Enum.Font.FredokaOne
-	label.Text = text
-	label.TextColor3 = color
-	label.TextStrokeTransparency = 0.2
-	label.Parent = gui
-	gui.Parent = parent
-end
-
 -- A little house with a gabled roof and a glowing doorway the lane comes out of.
 local function buildHouse(model: Model, z: number, wallColor: Color3, roofColor: Color3)
 	local x = Belt.START_X - 9
-	local walls = part({
+	part({
 		Name = "FreekHouse",
 		Size = Vector3.new(14, 11, 10),
 		CFrame = CFrame.new(x, 5.5, z),
@@ -99,7 +82,50 @@ local function buildHouse(model: Model, z: number, wallColor: Color3, roofColor:
 		Material = Enum.Material.Neon,
 		Parent = model,
 	})
-	sign(walls, "FREEK HOUSE", Vector3.new(0, 12, 0), Color3.fromRGB(255, 230, 120))
+	-- Door frame around the glowing doorway, windows on the sides, and a chimney.
+	for _, dz in { -4.1, 4.1 } do
+		part({
+			Name = "DoorFrame",
+			Size = Vector3.new(0.8, 7, 0.8),
+			CFrame = CFrame.new(Belt.START_X - 1.8, 4.5, z + dz),
+			Color = Color3.fromRGB(255, 255, 255),
+			Parent = model,
+		})
+	end
+	part({
+		Name = "DoorFrame",
+		Size = Vector3.new(0.8, 0.8, 9),
+		CFrame = CFrame.new(Belt.START_X - 1.8, 8.3, z),
+		Color = Color3.fromRGB(255, 255, 255),
+		Parent = model,
+	})
+	for _, wx in { -3.5, 2.5 } do
+		for _, side in { -1, 1 } do
+			part({
+				Name = "Window",
+				Size = Vector3.new(2.4, 2.4, 0.3),
+				CFrame = CFrame.new(x + wx, 7, z + side * 5),
+				Color = Color3.fromRGB(255, 225, 140),
+				Material = Enum.Material.Neon,
+				Parent = model,
+			})
+		end
+	end
+	part({
+		Name = "Chimney",
+		Size = Vector3.new(2, 4, 2),
+		CFrame = CFrame.new(x - 3.5, 14.5, z + 2),
+		Color = Color3.fromRGB(140, 70, 60),
+		Material = Enum.Material.Brick,
+		Parent = model,
+	})
+	Decor.signboard(
+		model,
+		CFrame.new(Belt.START_X - 1.6, 10.6, z) * CFrame.Angles(0, -math.pi / 2, 0),
+		Vector2.new(8, 1.6),
+		"FREEK HOUSE",
+		roofColor
+	)
 end
 
 local function buildBelt()
@@ -125,6 +151,26 @@ local function buildBelt()
 				CFrame = CFrame.new(centerX, 1.2, z + side * 4.9),
 				Color = Color3.fromRGB(255, 200, 40),
 				Material = Enum.Material.SmoothPlastic,
+				Parent = model,
+			})
+		end
+		-- Steel frame and legs under the belt, and a glowing strip along each rail.
+		part({
+			Name = "Frame",
+			Size = Vector3.new(length, 0.6, 9.8),
+			CFrame = CFrame.new(centerX, 0.1, z),
+			Color = Color3.fromRGB(70, 75, 85),
+			Material = Enum.Material.Metal,
+			Parent = model,
+		})
+		for _, side in { -1, 1 } do
+			part({
+				Name = "RailGlow",
+				Size = Vector3.new(length, 0.2, 0.25),
+				CFrame = CFrame.new(centerX, 1.95, z + side * 4.9),
+				Color = Color3.fromRGB(255, 240, 160),
+				Material = Enum.Material.Neon,
+				CanCollide = false,
 				Parent = model,
 			})
 		end

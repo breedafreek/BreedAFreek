@@ -1002,7 +1002,37 @@ RunService.RenderStepped:Connect(function()
 	for _, model in beltFolder:GetChildren() do
 		local spawnTime = model:GetAttribute("SpawnTime")
 		if spawnTime and model:IsA("Model") then
-			model:PivotTo(Belt.cframeAt(model:GetAttribute("Lane") or 1, spawnTime, now))
+			-- Little hops as they ride along.
+			local hop = math.abs(math.sin((now - spawnTime) * 5)) * 0.45
+			model:PivotTo(Belt.cframeAt(model:GetAttribute("Lane") or 1, spawnTime, now) * CFrame.new(0, hop, 0))
+		end
+	end
+end)
+
+-- Yard Freeks gently bob and sway so yards feel alive. Only nearby ones are animated.
+local plotsFolder = Workspace:WaitForChild("Plots")
+local restPose = setmetatable({}, { __mode = "k" }) -- [Model] = { pivot, phase }
+RunService.RenderStepped:Connect(function()
+	local camera = Workspace.CurrentCamera
+	local eye = camera and camera.CFrame.Position or Vector3.zero
+	local t = os.clock()
+	for _, plot in plotsFolder:GetChildren() do
+		local freeks = plot:FindFirstChild("Freeks")
+		if freeks then
+			for _, model in freeks:GetChildren() do
+				if model:IsA("Model") then
+					local rest = restPose[model]
+					if not rest then
+						rest = { pivot = model:GetPivot(), phase = math.random() * math.pi * 2 }
+						restPose[model] = rest
+					end
+					if (rest.pivot.Position - eye).Magnitude < 140 then
+						local bob = math.sin(t * 2.2 + rest.phase) * 0.15 + 0.15
+						local sway = math.sin(t * 1.3 + rest.phase) * math.rad(5)
+						model:PivotTo(rest.pivot * CFrame.new(0, bob, 0) * CFrame.Angles(0, sway, 0))
+					end
+				end
+			end
 		end
 	end
 end)
