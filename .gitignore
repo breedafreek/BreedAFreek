@@ -1,0 +1,5 @@
+*.rbxl
+*.rbxl.lock
+*.rbxlx.lock
+build/
+roblox.yml
