@@ -68,6 +68,31 @@ UI.new("Frame", {
 	incomeLabel,
 })
 
+-- Banner for any limited event that's running.
+local eventBanner = UI.label("", {
+	Position = UDim2.new(0, 12, 0, 82),
+	Size = UDim2.fromOffset(190, 26),
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Visible = false,
+	Parent = screen,
+})
+local function updateEventBanner()
+	local active = Seasons.active()
+	local season = active[1] and Seasons.list[active[1]]
+	eventBanner.Visible = season ~= nil
+	if season then
+		eventBanner.Text = season.name .. " Event is live!"
+		eventBanner.TextColor3 = season.color
+	end
+end
+updateEventBanner()
+task.spawn(function()
+	while true do
+		task.wait(60)
+		updateEventBanner()
+	end
+end)
+
 local menu = UI.new("Frame", {
 	Name = "Menu",
 	BackgroundTransparency = 1,
@@ -499,7 +524,7 @@ function renderers.Book()
 		elseif discovery then
 			credit = "First found by\n" .. discovery.name
 		elseif not Seasons.available(species) then
-			credit = "Seasonal: only during " .. Seasons.list[species.season].name
+			credit = "Limited: only during the " .. Seasons.list[species.season].name .. " Event"
 		else
 			credit = "Nobody has found this yet!"
 		end
