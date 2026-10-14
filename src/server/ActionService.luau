@@ -6,11 +6,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
-local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
-local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
 local Carried = require(script.Parent.Carried)
 local DataService = require(script.Parent.DataService)
@@ -52,6 +50,8 @@ local function giveFreek(player: Player, data, species: string, mutation: string
 	return uid, isNew
 end
 
+ActionService.giveFreek = giveFreek
+
 local function ownedFreek(data, uid: any)
 	if typeof(uid) ~= "string" then
 		return nil
@@ -60,25 +60,6 @@ local function ownedFreek(data, uid: any)
 end
 
 local handlers = {}
-
-function handlers.BuyFreek(player: Player, data, speciesId: any)
-	local species = typeof(speciesId) == "string" and Freeks.byId[speciesId]
-	if not species or not species.price then
-		return
-	end
-	if not Seasons.available(species) then
-		return notify(player, species.name .. " is out of season!", "error")
-	end
-	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) then
-		return notify(player, "You have too many Freeks! Sell some first.", "error")
-	end
-	if data.money < species.price then
-		return notify(player, "Not enough money!", "error")
-	end
-	data.money -= species.price
-	giveFreek(player, data, species.id, nil)
-	notify(player, "You got a " .. species.name .. "!", "success")
-end
 
 function handlers.BuySlot(player: Player, data)
 	if data.slots >= Config.MAX_SLOTS then

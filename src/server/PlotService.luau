@@ -79,7 +79,7 @@ local function buildMap()
 	spawn.Anchored = true
 	spawn.Neutral = true
 	spawn.Size = Vector3.new(12, 1, 12)
-	spawn.CFrame = CFrame.new(0, 0.5, 0)
+	spawn.CFrame = CFrame.new(0, 0.5, 20) -- beside the conveyor belt
 	spawn.Color = Color3.fromRGB(255, 220, 120)
 	spawn.TopSurface = Enum.SurfaceType.Smooth
 	spawn.Parent = map

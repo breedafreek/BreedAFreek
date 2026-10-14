@@ -9,6 +9,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Belt = require(Shared.Belt)
 local Config = require(Shared.Config)
 local Format = require(Shared.Format)
 local FreekModel = require(Shared.FreekModel)
@@ -203,35 +204,7 @@ local function confirmButton(text: string, color: Color3, onConfirm: () -> ())
 end
 
 function renderers.Shop()
-	heading("Starter Freeks", 1)
-	local grid = UI.grid(150, 230)
-	grid.LayoutOrder = 2
-	grid.Parent = body
-
-	for _, species in Freeks.list do
-		if species.price and Seasons.available(species) then
-			local canAfford = state.money >= species.price
-			local card = UI.card({
-				species = species.id,
-				lines = {
-					{ species.name, rarityColor(species.id), 22 },
-					{ Format.money(species.income) .. "/s", colors.money },
-				},
-				buttons = {
-					UI.button(
-						"Buy " .. Format.money(species.price),
-						if canAfford then colors.green else colors.gray,
-						function()
-							send("BuyFreek", species.id)
-						end
-					),
-				},
-			})
-			card.LayoutOrder = species.order
-			card.Parent = grid
-		end
-	end
-
+	heading("New Freeks come out of the Freek Machine onto the conveyor belt. Walk up and hold Buy!", 1)
 	heading("Yard", 3)
 	local yard = UI.grid(220, 120)
 	yard.LayoutOrder = 4
@@ -980,6 +953,19 @@ task.spawn(function()
 				claimButton.BackgroundColor3 = colors.pink
 				claimButton.Text = "Collect baby!"
 			end
+		end
+	end
+end)
+
+-- Conveyor belt: move each Freek along locally from its spawn time (smooth, and matches
+-- where the server thinks it is).
+local beltFolder = Workspace:WaitForChild("BeltFreeks")
+RunService.RenderStepped:Connect(function()
+	local now = Workspace:GetServerTimeNow()
+	for _, model in beltFolder:GetChildren() do
+		local spawnTime = model:GetAttribute("SpawnTime")
+		if spawnTime and model:IsA("Model") then
+			model:PivotTo(Belt.cframeAt(spawnTime, now))
 		end
 	end
 end)

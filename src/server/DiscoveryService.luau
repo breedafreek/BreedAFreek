@@ -90,6 +90,11 @@ function DiscoveryService.claim(player: Player, speciesId: string)
 	claiming[speciesId] = nil
 end
 
+-- True once someone, anywhere, has found this species.
+function DiscoveryService.isDiscovered(speciesId: string): boolean
+	return cache[speciesId] ~= nil
+end
+
 function DiscoveryService.init()
 	Remotes.get("GetDiscoveries").OnServerInvoke = function()
 		return cache

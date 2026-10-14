@@ -15,6 +15,58 @@
       </Properties>
       <Item class="ModuleScript" referent="3">
         <Properties>
+          <string name="Name">Belt</string>
+          <string name="Source"><![CDATA[-- The conveyor belt in the middle of the map. Shared so the server (which decides what's
+-- on it and checks purchases) and clients (which animate it smoothly) agree on where every
+-- Freek is: an item's position depends only on when it spawned.
+
+local Rarities = require(script.Parent.Rarities)
+
+local Belt = {}
+
+Belt.START = Vector3.new(-52, 1, 0) -- where Freeks appear (top of the belt surface)
+Belt.LENGTH = 104 -- studs travelled before falling off the far end
+Belt.SPEED = 4 -- studs per second (so each Freek rides for 26 seconds)
+Belt.SPAWN_INTERVAL = 3 -- seconds between new Freeks
+Belt.BUY_DISTANCE = 14 -- how close a player must be to buy
+
+-- Chance of each rarity per spawn. Ultra and Secret never appear: breeding only.
+Belt.ODDS = {
+	{ rarity = "Common", weight = 70 },
+	{ rarity = "Uncommon", weight = 22 },
+	{ rarity = "Rare", weight = 6.5 },
+	{ rarity = "Legendary", weight = 1.3 },
+	{ rarity = "Mystic", weight = 0.2 },
+}
+
+-- Belt Freeks are half as likely to be mutated as bred ones.
+Belt.MUTATION_FACTOR = 0.5
+
+-- Price of a Freek that has no fixed shop price: this many seconds of its income.
+Belt.PRICE_SECONDS = 50
+
+-- Rarities at or above this get announced to the whole server when they spawn.
+Belt.ANNOUNCE_RANK = Rarities.rank.Legendary
+
+-- Freeks face the way the belt moves (+X).
+local FACING = CFrame.Angles(0, -math.pi / 2, 0)
+
+-- Where an item is at time `now`, as a ground CFrame for FreekModel:PivotTo.
+function Belt.cframeAt(spawnTime: number, now: number): CFrame
+	local travelled = math.clamp((now - spawnTime) * Belt.SPEED, 0, Belt.LENGTH)
+	return CFrame.new(Belt.START + Vector3.new(travelled, 0, 0)) * FACING
+end
+
+function Belt.isGone(spawnTime: number, now: number): boolean
+	return (now - spawnTime) * Belt.SPEED >= Belt.LENGTH
+end
+
+return Belt
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="4">
+        <Properties>
           <string name="Name">Config</string>
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
@@ -63,7 +115,7 @@ return Config
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="4">
+      <Item class="ModuleScript" referent="5">
         <Properties>
           <string name="Name">Format</string>
           <string name="Source"><![CDATA[local Format = {}
@@ -102,7 +154,7 @@ return Format
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="5">
+      <Item class="ModuleScript" referent="6">
         <Properties>
           <string name="Name">FreekModel</string>
           <string name="Source"><![CDATA[-- Builds the 3D model for a Freek out of plain parts.
@@ -395,7 +447,7 @@ return FreekModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="6">
+      <Item class="ModuleScript" referent="7">
         <Properties>
           <string name="Name">FreekUtil</string>
           <string name="Source"><![CDATA[-- Helpers shared by server and client for reading a saved Freek record:
@@ -489,14 +541,15 @@ return FreekUtil
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="7">
+      <Item class="ModuleScript" referent="8">
         <Properties>
           <string name="Name">Freeks</string>
           <string name="Source"><![CDATA[-- Every Freek species in the game. These are PLACEHOLDERS until the real list arrives.
 --
 -- id       unique key saved in player data; never rename one after release
 -- income   money per second while in the yard
--- price    set only for Freeks sold in the shop (starter Freeks)
+-- price    set only for starter Freeks: always allowed on the conveyor belt, at this price.
+--          Other species appear on the belt once discovered, priced from their income.
 -- season   optional Seasonal tag (a key in Seasons.luau): only obtainable during that season
 -- look     how the placeholder model is built: shape "Ball" or "Block", size in studs,
 --          eyes 1-3, antennae 0-3
@@ -762,7 +815,7 @@ return Freeks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="8">
+      <Item class="ModuleScript" referent="9">
         <Properties>
           <string name="Name">GamePasses</string>
           <string name="Source"><![CDATA[-- Game passes: one-time Robux purchases with permanent perks.
@@ -900,7 +953,7 @@ return GamePasses
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="9">
+      <Item class="ModuleScript" referent="10">
         <Properties>
           <string name="Name">Mutations</string>
           <string name="Source"><![CDATA[-- Mutations a bred Freek can roll. Rarest first: breeding checks them in this order.
@@ -930,7 +983,7 @@ return Mutations
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="10">
+      <Item class="ModuleScript" referent="11">
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
@@ -960,7 +1013,7 @@ return Rarities
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="11">
+      <Item class="ModuleScript" referent="12">
         <Properties>
           <string name="Name">Remotes</string>
           <string name="Source"><![CDATA[-- One place that names every remote. The server creates them; clients wait for them.
@@ -1017,7 +1070,7 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">Seasons</string>
           <string name="Source"><![CDATA[-- Limited events for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred
@@ -1154,7 +1207,7 @@ return Seasons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">WeaponModel</string>
           <string name="Source"><![CDATA[-- Builds the Tool for a weapon from its part list in Weapons.luau.
@@ -1240,7 +1293,7 @@ return WeaponModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">Weapons</string>
           <string name="Source"><![CDATA[-- Weapons. Everyone has the STARTER weapon; the rest unlock at a number of rebirths
@@ -1531,15 +1584,15 @@ return Weapons
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="15">
+  <Item class="ServerScriptService" referent="16">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="16">
+    <Item class="Folder" referent="17">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -1550,11 +1603,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
-local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
-local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
 local Carried = require(script.Parent.Carried)
 local DataService = require(script.Parent.DataService)
@@ -1596,6 +1647,8 @@ local function giveFreek(player: Player, data, species: string, mutation: string
 	return uid, isNew
 end
 
+ActionService.giveFreek = giveFreek
+
 local function ownedFreek(data, uid: any)
 	if typeof(uid) ~= "string" then
 		return nil
@@ -1604,25 +1657,6 @@ local function ownedFreek(data, uid: any)
 end
 
 local handlers = {}
-
-function handlers.BuyFreek(player: Player, data, speciesId: any)
-	local species = typeof(speciesId) == "string" and Freeks.byId[speciesId]
-	if not species or not species.price then
-		return
-	end
-	if not Seasons.available(species) then
-		return notify(player, species.name .. " is out of season!", "error")
-	end
-	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) then
-		return notify(player, "You have too many Freeks! Sell some first.", "error")
-	end
-	if data.money < species.price then
-		return notify(player, "Not enough money!", "error")
-	end
-	data.money -= species.price
-	giveFreek(player, data, species.id, nil)
-	notify(player, "You got a " .. species.name .. "!", "success")
-end
 
 function handlers.BuySlot(player: Player, data)
 	if data.slots >= Config.MAX_SLOTS then
@@ -1766,7 +1800,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">Carried</string>
           <string name="Source"><![CDATA[-- Which Freeks are being carried off by a thief right now. Kept in memory only: if the
@@ -1806,7 +1840,321 @@ return Carried
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
+        <Properties>
+          <string name="Name">ConveyorService</string>
+          <string name="Source"><![CDATA[-- Runs the conveyor belt: builds it, spawns a random Freek every few seconds (odds by
+-- rarity, see Belt.luau), and sells them first come, first served.
+--
+-- Only Commons and species someone has already discovered by breeding can appear, so the
+-- belt never hands out a Discovery Book first. Limited Freeks appear only during their event.
+--
+-- Clients animate the Freeks along the belt themselves (smooth, no network traffic); the
+-- server works out where each one is from its spawn time when checking a purchase.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local Belt = require(ReplicatedStorage.Shared.Belt)
+local Format = require(ReplicatedStorage.Shared.Format)
+local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
+local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local Freeks = require(ReplicatedStorage.Shared.Freeks)
+local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
+local Mutations = require(ReplicatedStorage.Shared.Mutations)
+local Rarities = require(ReplicatedStorage.Shared.Rarities)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Seasons = require(ReplicatedStorage.Shared.Seasons)
+
+local ActionService = require(script.Parent.ActionService)
+local DataService = require(script.Parent.DataService)
+local DiscoveryService = require(script.Parent.DiscoveryService)
+local PlotService = require(script.Parent.PlotService)
+
+local ConveyorService = {}
+
+local notifyRemote = Remotes.get("Notify")
+local rng = Random.new()
+local folder: Folder
+local items = {} -- [id] = { species, mutation, price, spawnTime, model }
+local nextId = 0
+
+local function notify(player: Player, message: string, kind: string?)
+	notifyRemote:FireClient(player, message, kind)
+end
+
+local function part(props): Part
+	local p = Instance.new("Part")
+	p.Anchored = true
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	for key, value in props do
+		p[key] = value
+	end
+	return p
+end
+
+local function buildBelt()
+	local model = Instance.new("Model")
+	model.Name = "Conveyor"
+	model.Parent = Workspace
+
+	local startX = Belt.START.X
+	local centerX = startX + Belt.LENGTH / 2
+	local length = Belt.LENGTH + 8
+	part({
+		Name = "Belt",
+		Size = Vector3.new(length, 1, 9),
+		CFrame = CFrame.new(centerX, 0.5, 0),
+		Color = Color3.fromRGB(55, 55, 65),
+		Material = Enum.Material.DiamondPlate,
+		Parent = model,
+	})
+	for _, z in { -5, 5 } do
+		part({
+			Name = "Rail",
+			Size = Vector3.new(length, 1.4, 0.8),
+			CFrame = CFrame.new(centerX, 1.2, z),
+			Color = Color3.fromRGB(255, 200, 40),
+			Material = Enum.Material.SmoothPlastic,
+			Parent = model,
+		})
+	end
+	-- The machine Freeks come out of, and the chute they fall into.
+	local machine = part({
+		Name = "FreekMachine",
+		Size = Vector3.new(10, 12, 13),
+		CFrame = CFrame.new(startX - 8, 6, 0),
+		Color = Color3.fromRGB(150, 80, 220),
+		Material = Enum.Material.SmoothPlastic,
+		Parent = model,
+	})
+	part({
+		Name = "MachineMouth",
+		Size = Vector3.new(0.5, 6, 8),
+		CFrame = CFrame.new(startX - 2.8, 4, 0),
+		Color = Color3.fromRGB(20, 10, 35),
+		Material = Enum.Material.Neon,
+		Parent = model,
+	})
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromScale(16, 3)
+	gui.StudsOffset = Vector3.new(0, 8.5, 0)
+	gui.MaxDistance = 250
+	gui.LightInfluence = 0
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.TextScaled = true
+	label.Font = Enum.Font.FredokaOne
+	label.Text = "FREEK MACHINE"
+	label.TextColor3 = Color3.fromRGB(255, 230, 120)
+	label.TextStrokeTransparency = 0.2
+	label.Parent = gui
+	gui.Parent = machine
+	part({
+		Name = "Chute",
+		Size = Vector3.new(6, 3, 11),
+		CFrame = CFrame.new(startX + Belt.LENGTH + 6, 1.5, 0),
+		Color = Color3.fromRGB(30, 30, 35),
+		Material = Enum.Material.Metal,
+		Parent = model,
+	})
+
+	folder = Instance.new("Folder")
+	folder.Name = "BeltFreeks"
+	folder.Parent = Workspace
+end
+
+local function priceOf(species, mutation: string?): number
+	local base = species.price or math.floor(species.income * Belt.PRICE_SECONDS)
+	return math.floor(base * Mutations.mult(mutation))
+end
+
+-- Species that can come out of the machine right now, grouped by rarity.
+local function eligibleByRarity()
+	local groups = {}
+	for _, species in Freeks.list do
+		local allowed = species.price ~= nil or DiscoveryService.isDiscovered(species.id)
+		if allowed and Seasons.available(species) then
+			groups[species.rarity] = groups[species.rarity] or {}
+			table.insert(groups[species.rarity], species)
+		end
+	end
+	return groups
+end
+
+local function rollRarity(): string
+	local total = 0
+	for _, entry in Belt.ODDS do
+		total += entry.weight
+	end
+	local roll = rng:NextNumber() * total
+	for _, entry in Belt.ODDS do
+		roll -= entry.weight
+		if roll <= 0 then
+			return entry.rarity
+		end
+	end
+	return Belt.ODDS[1].rarity
+end
+
+local function rollMutation(): string?
+	for _, mutation in Mutations.list do
+		if rng:NextNumber() < mutation.chance * Belt.MUTATION_FACTOR then
+			return mutation.id
+		end
+	end
+	return nil
+end
+
+local function spawnFreek()
+	local groups = eligibleByRarity()
+	local rarity = rollRarity()
+	-- Nothing of that rarity discovered yet: fall back down the tiers.
+	while not groups[rarity] and Rarities.rank[rarity] > 1 do
+		rarity = Rarities.order[Rarities.rank[rarity] - 1]
+	end
+	local pool = groups[rarity]
+	if not pool then
+		return
+	end
+	local species = pool[rng:NextInteger(1, #pool)]
+	local mutation = rollMutation()
+	local price = priceOf(species, mutation)
+	local spawnTime = Workspace:GetServerTimeNow()
+
+	nextId += 1
+	local id = tostring(nextId)
+	local model, height = FreekModel.build(species.id, mutation)
+	model.Name = id
+	model:SetAttribute("SpawnTime", spawnTime)
+	model:PivotTo(Belt.cframeAt(spawnTime, spawnTime))
+
+	local anchor = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+	local freek = { species = species.id, mutation = mutation }
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromOffset(180, 50)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, height - (anchor.Position.Y - Belt.START.Y) + 1.2, 0)
+	gui.MaxDistance = 90
+	gui.LightInfluence = 0
+	local name = Instance.new("TextLabel")
+	name.Size = UDim2.fromScale(1, 0.55)
+	name.BackgroundTransparency = 1
+	name.TextScaled = true
+	name.Font = Enum.Font.FredokaOne
+	name.Text = FreekUtil.displayName(freek)
+	name.TextColor3 = if mutation then Mutations.byId[mutation].color else Rarities.info[species.rarity].color
+	name.TextStrokeTransparency = 0.2
+	name.Parent = gui
+	local cost = name:Clone()
+	cost.Size = UDim2.fromScale(1, 0.45)
+	cost.Position = UDim2.fromScale(0, 0.55)
+	cost.Text = Format.money(price) .. "  ·  " .. Format.money(FreekUtil.income(freek)) .. "/s"
+	cost.TextColor3 = Color3.fromRGB(140, 255, 140)
+	cost.Parent = gui
+	gui.Parent = anchor
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "BuyPrompt"
+	prompt.ActionText = "Buy " .. Format.money(price)
+	prompt.ObjectText = FreekUtil.displayName(freek)
+	prompt.HoldDuration = 0.25
+	prompt.MaxActivationDistance = Belt.BUY_DISTANCE - 2
+	prompt.RequiresLineOfSight = false
+	prompt:SetAttribute("ItemId", id)
+	prompt.Parent = anchor
+
+	model.Parent = folder
+	items[id] = {
+		species = species,
+		mutation = mutation,
+		price = price,
+		spawnTime = spawnTime,
+		model = model,
+	}
+
+	if Rarities.rank[species.rarity] >= Belt.ANNOUNCE_RANK then
+		for _, player in Players:GetPlayers() do
+			notify(
+				player,
+				"A " .. species.rarity .. " " .. FreekUtil.displayName(freek) .. " is on the belt!",
+				"discovery"
+			)
+		end
+	end
+end
+
+local function buy(player: Player, id: string)
+	local item = items[id]
+	local data = DataService.get(player)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not item or not data or not root then
+		return
+	end
+	local now = Workspace:GetServerTimeNow()
+	local where = Belt.cframeAt(item.spawnTime, now).Position
+	if (root.Position - where).Magnitude > Belt.BUY_DISTANCE or Belt.isGone(item.spawnTime, now) then
+		return
+	end
+	if not PlotService.getPlot(player) then
+		return
+	end
+	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) then
+		return notify(player, "You have too many Freeks! Sell some first.", "error")
+	end
+	if data.money < item.price then
+		return notify(player, "Not enough money! It costs " .. Format.money(item.price) .. ".", "error")
+	end
+
+	items[id] = nil
+	item.model:Destroy()
+	data.money -= item.price
+	local name = FreekUtil.displayName({ species = item.species.id, mutation = item.mutation })
+	ActionService.giveFreek(player, data, item.species.id, item.mutation)
+	DataService.changed(player)
+	notify(player, "You bought " .. name .. "! It's heading to your yard.", "success")
+end
+
+function ConveyorService.init()
+	buildBelt()
+
+	game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt, player)
+		local id = prompt.Name == "BuyPrompt" and prompt:GetAttribute("ItemId")
+		if typeof(id) == "string" then
+			buy(player, id)
+		end
+	end)
+
+	task.spawn(function()
+		while true do
+			spawnFreek()
+			task.wait(Belt.SPAWN_INTERVAL)
+		end
+	end)
+
+	-- Freeks nobody bought fall off the end.
+	task.spawn(function()
+		while true do
+			task.wait(0.5)
+			local now = Workspace:GetServerTimeNow()
+			for id, item in items do
+				if Belt.isGone(item.spawnTime, now) then
+					item.model:Destroy()
+					items[id] = nil
+				end
+			end
+		end
+	end)
+end
+
+return ConveyorService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -2037,7 +2385,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Discovery Book: the first player in the whole game to get each species has their
@@ -2132,6 +2480,11 @@ function DiscoveryService.claim(player: Player, speciesId: string)
 	claiming[speciesId] = nil
 end
 
+-- True once someone, anywhere, has found this species.
+function DiscoveryService.isDiscovered(speciesId: string): boolean
+	return cache[speciesId] ~= nil
+end
+
 function DiscoveryService.init()
 	Remotes.get("GetDiscoveries").OnServerInvoke = function()
 		return cache
@@ -2166,7 +2519,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the Freeks in their yard, plus offline earnings
@@ -2247,7 +2600,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="22">
+      <Item class="Script" referent="24">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -2269,11 +2622,12 @@ require(Server.StealService).init()
 require(Server.WeaponService).init()
 require(Server.RebirthService).init()
 require(Server.PassService).init()
+require(Server.ConveyorService).init()
 require(Server.DataService).init()
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="25">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -2365,7 +2719,7 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the map and gives every player a fenced yard. Other players can walk in to look
@@ -2449,7 +2803,7 @@ local function buildMap()
 	spawn.Anchored = true
 	spawn.Neutral = true
 	spawn.Size = Vector3.new(12, 1, 12)
-	spawn.CFrame = CFrame.new(0, 0.5, 0)
+	spawn.CFrame = CFrame.new(0, 0.5, 20) -- beside the conveyor belt
 	spawn.Color = Color3.fromRGB(255, 220, 120)
 	spawn.TopSurface = Enum.SurfaceType.Smooth
 	spawn.Parent = map
@@ -2886,7 +3240,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">RebirthService</string>
           <string name="Source"><![CDATA[-- Rebirth: pay Config.rebirthCost to start over with a permanent income bonus.
@@ -2981,7 +3335,7 @@ return RebirthService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">Recipes</string>
           <string name="Source"><![CDATA[-- Secret breeding recipes. Server-only so players can't read them out of the game.
@@ -3057,7 +3411,7 @@ return Recipes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Stealing Freeks from other players' yards.
@@ -3418,7 +3772,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
@@ -3699,7 +4053,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- Weapons: giving them out, buying them, and what happens when they hit.
@@ -4028,19 +4382,19 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="30">
+  <Item class="StarterPlayer" referent="32">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="31">
+    <Item class="StarterPlayerScripts" referent="33">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="32">
+      <Item class="Folder" referent="34">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="33">
+        <Item class="ModuleScript" referent="35">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, event chip, menu tabs, leaderboard,
@@ -4624,7 +4978,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="34">
+        <Item class="LocalScript" referent="36">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -4638,6 +4992,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Belt = require(Shared.Belt)
 local Config = require(Shared.Config)
 local Format = require(Shared.Format)
 local FreekModel = require(Shared.FreekModel)
@@ -4832,35 +5187,7 @@ local function confirmButton(text: string, color: Color3, onConfirm: () -> ())
 end
 
 function renderers.Shop()
-	heading("Starter Freeks", 1)
-	local grid = UI.grid(150, 230)
-	grid.LayoutOrder = 2
-	grid.Parent = body
-
-	for _, species in Freeks.list do
-		if species.price and Seasons.available(species) then
-			local canAfford = state.money >= species.price
-			local card = UI.card({
-				species = species.id,
-				lines = {
-					{ species.name, rarityColor(species.id), 22 },
-					{ Format.money(species.income) .. "/s", colors.money },
-				},
-				buttons = {
-					UI.button(
-						"Buy " .. Format.money(species.price),
-						if canAfford then colors.green else colors.gray,
-						function()
-							send("BuyFreek", species.id)
-						end
-					),
-				},
-			})
-			card.LayoutOrder = species.order
-			card.Parent = grid
-		end
-	end
-
+	heading("New Freeks come out of the Freek Machine onto the conveyor belt. Walk up and hold Buy!", 1)
 	heading("Yard", 3)
 	local yard = UI.grid(220, 120)
 	yard.LayoutOrder = 4
@@ -5613,6 +5940,19 @@ task.spawn(function()
 	end
 end)
 
+-- Conveyor belt: move each Freek along locally from its spawn time (smooth, and matches
+-- where the server thinks it is).
+local beltFolder = Workspace:WaitForChild("BeltFreeks")
+RunService.RenderStepped:Connect(function()
+	local now = Workspace:GetServerTimeNow()
+	for _, model in beltFolder:GetChildren() do
+		local spawnTime = model:GetAttribute("SpawnTime")
+		if spawnTime and model:IsA("Model") then
+			model:PivotTo(Belt.cframeAt(spawnTime, now))
+		end
+	end
+end)
+
 -- Rainbow Freeks cycle through colors.
 RunService.RenderStepped:Connect(function()
 	local color = Color3.fromHSV((os.clock() * 0.25) % 1, 0.75, 1)
@@ -5633,7 +5973,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="35">
+        <Item class="ModuleScript" referent="37">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).

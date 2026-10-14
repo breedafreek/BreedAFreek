@@ -2,7 +2,8 @@
 --
 -- id       unique key saved in player data; never rename one after release
 -- income   money per second while in the yard
--- price    set only for Freeks sold in the shop (starter Freeks)
+-- price    set only for starter Freeks: always allowed on the conveyor belt, at this price.
+--          Other species appear on the belt once discovered, priced from their income.
 -- season   optional Seasonal tag (a key in Seasons.luau): only obtainable during that season
 -- look     how the placeholder model is built: shape "Ball" or "Block", size in studs,
 --          eyes 1-3, antennae 0-3
