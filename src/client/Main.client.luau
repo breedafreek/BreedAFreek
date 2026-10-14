@@ -869,12 +869,17 @@ task.spawn(function()
 	end
 end)
 
--- Nobody needs a Steal prompt on their own Freeks.
+-- Nobody needs a Steal prompt on their own Freeks, or a Snatch prompt on the Freek
+-- they're carrying.
 local function hideOwnPrompt(instance: Instance)
-	if instance:IsA("ProximityPrompt") and instance.Name == "StealPrompt" then
-		if instance:GetAttribute("OwnerUserId") == player.UserId then
-			instance.Enabled = false
-		end
+	if not instance:IsA("ProximityPrompt") then
+		return
+	end
+	if
+		(instance.Name == "StealPrompt" and instance:GetAttribute("OwnerUserId") == player.UserId)
+		or (instance.Name == "SnatchPrompt" and instance:GetAttribute("CarrierUserId") == player.UserId)
+	then
+		instance.Enabled = false
 	end
 end
 for _, descendant in Workspace:GetDescendants() do

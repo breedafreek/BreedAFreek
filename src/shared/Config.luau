@@ -21,7 +21,7 @@ local Config = {
 
 	GATE_LOCK_SECONDS = 180, -- how long the gate stays locked each time the owner locks it
 	STEAL_HOLD_SECONDS = 1.5, -- how long a thief holds the prompt to pick up a Freek
-	CATCH_DISTANCE = 6, -- the owner catches a thief by getting this close
+	SNATCH_HOLD_SECONDS = 1, -- how long another player holds the prompt to snatch a carried Freek
 }
 
 function Config.slotPrice(currentSlots: number): number

@@ -2,9 +2,14 @@
 --
 -- While a yard's gate is open, anyone else can walk in and hold the Steal prompt on a Freek
 -- standing on a pad. The Freek floats over the thief's head and they walk slower: barely
--- for a Common, a lot for a Secret (see carrySpeed in Rarities). If the
--- owner gets within CATCH_DISTANCE before the thief is back inside their own fence, or the
--- thief dies or leaves, the Freek goes home. If the thief makes it home, it's theirs.
+-- for a Common, a lot for a Secret (see carrySpeed in Rarities).
+--
+-- While it's being carried:
+--   * the owner can bonk the carrier with a weapon (WeaponService), or Snatch it back, and it
+--     goes home;
+--   * any other player can Snatch it and carry it to their own yard instead;
+--   * if the carrier dies or leaves, it goes home.
+-- Whoever gets it inside their own fence keeps it.
 --
 -- The Freek stays in the owner's save until the moment it's delivered, so a crash mid-steal
 -- can never lose or duplicate it.
@@ -28,7 +33,8 @@ local PlotService = require(script.Parent.PlotService)
 local StealService = {}
 
 local notifyRemote = Remotes.get("Notify")
-local carries = {} -- [thief Player] = { owner, uid, slot, name, model, normalSpeed }
+-- [carrier Player] = { owner, uid, slot, name, species, mutation, model, normalSpeed }
+local carries = {}
 
 local function notify(player: Player, message: string, kind: string?)
 	if player.Parent then
@@ -45,14 +51,16 @@ local function rootPart(player: Player): BasePart?
 	return character:FindFirstChild("HumanoidRootPart") :: BasePart?
 end
 
-local function attachToHead(player: Player, freek): (Model?, number?)
-	local character = player.Character
+-- Puts the Freek on the carrier's head, slows them down, and adds a Snatch prompt for
+-- everyone else. Returns false if the carrier has no character to carry it.
+local function pickUp(carrier: Player, carry): boolean
+	local character = carrier.Character
 	local head = character and character:FindFirstChild("Head")
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not head or not humanoid then
-		return nil, nil
+	if not head or not humanoid or humanoid.Health <= 0 then
+		return false
 	end
-	local model = FreekModel.build(freek.species, freek.mutation)
+	local model = FreekModel.build(carry.species, carry.mutation)
 	pcall(function()
 		model:ScaleTo(0.6)
 	end)
@@ -68,23 +76,39 @@ local function attachToHead(player: Player, freek): (Model?, number?)
 			weld.Parent = descendant
 		end
 	end
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "SnatchPrompt"
+	prompt.ActionText = "Snatch"
+	prompt.ObjectText = carry.name
+	prompt.HoldDuration = Config.SNATCH_HOLD_SECONDS
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt:SetAttribute("CarrierUserId", carrier.UserId)
+	prompt.Parent = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+
 	model.Name = "CarriedFreek"
 	model.Parent = character
 
-	local normalSpeed = humanoid.WalkSpeed
-	-- Rarer Freeks are heavier: the thief slows down more.
-	local rarity = FreekUtil.species(freek).rarity
-	humanoid.WalkSpeed = math.min(normalSpeed, Rarities.info[rarity].carrySpeed)
-	return model, normalSpeed
+	carry.model = model
+	carry.normalSpeed = humanoid.WalkSpeed
+	-- Rarer Freeks are heavier: the carrier slows down more.
+	local rarity = FreekUtil.species(carry).rarity
+	humanoid.WalkSpeed = math.min(carry.normalSpeed, Rarities.info[rarity].carrySpeed)
+
+	carries[carrier] = carry
+	Carried.set(carry.owner, carry.uid, carrier)
+	return true
 end
 
-local function cleanup(thief: Player, carry)
-	carries[thief] = nil
-	Carried.set(carry.owner, carry.uid, nil)
+-- Takes the Freek off the carrier and gives them their speed back.
+local function putDown(carrier: Player, carry)
+	carries[carrier] = nil
 	if carry.model then
 		carry.model:Destroy()
+		carry.model = nil
 	end
-	local character = thief.Character
+	local character = carrier.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if humanoid and carry.normalSpeed then
 		humanoid.WalkSpeed = carry.normalSpeed
@@ -92,8 +116,9 @@ local function cleanup(thief: Player, carry)
 end
 
 -- The Freek goes back to its owner's yard (or backpack, if its pad was filled meanwhile).
-local function sendBack(thief: Player, carry, ownerMessage: string?, thiefMessage: string?)
-	cleanup(thief, carry)
+local function sendBack(carrier: Player, carry, ownerMessage: string?, carrierMessage: string?)
+	putDown(carrier, carry)
+	Carried.set(carry.owner, carry.uid, nil)
 	local ownerData = DataService.get(carry.owner)
 	local freek = ownerData and ownerData.freeks[carry.uid]
 	if freek and not freek.slot then
@@ -109,120 +134,166 @@ local function sendBack(thief: Player, carry, ownerMessage: string?, thiefMessag
 	if ownerMessage then
 		notify(carry.owner, ownerMessage, "success")
 	end
-	if thiefMessage then
-		notify(thief, thiefMessage, "error")
+	if carrierMessage then
+		notify(carrier, carrierMessage, "error")
 	end
 end
 
-local function deliver(thief: Player, carry)
+local function deliver(carrier: Player, carry)
 	local ownerData = DataService.get(carry.owner)
-	local thiefData = DataService.get(thief)
+	local carrierData = DataService.get(carrier)
 	local freek = ownerData and ownerData.freeks[carry.uid]
-	if not freek or not thiefData then
-		return sendBack(thief, carry)
+	if not freek or not carrierData then
+		return sendBack(carrier, carry)
 	end
-	if FreekUtil.count(thiefData) >= Config.MAX_FREEKS then
-		return sendBack(thief, carry, nil, "You have too many Freeks! It ran back home.")
+	if FreekUtil.count(carrierData) >= Config.MAX_FREEKS then
+		return sendBack(carrier, carry, nil, "You have too many Freeks! It ran back home.")
 	end
 
-	cleanup(thief, carry)
+	putDown(carrier, carry)
+	Carried.set(carry.owner, carry.uid, nil)
 	ownerData.freeks[carry.uid] = nil
-	thiefData.freeks[carry.uid] = {
+	carrierData.freeks[carry.uid] = {
 		species = freek.species,
 		mutation = freek.mutation,
-		slot = FreekUtil.freeSlot(thiefData),
+		slot = FreekUtil.freeSlot(carrierData),
 	}
-	thiefData.discovered[freek.species] = true
-	task.spawn(DiscoveryService.claim, thief, freek.species)
+	carrierData.discovered[freek.species] = true
+	task.spawn(DiscoveryService.claim, carrier, freek.species)
 
-	for _, player in { carry.owner, thief } do
+	for _, player in { carry.owner, carrier } do
 		DataService.changed(player)
 		task.spawn(DataService.save, player)
 	end
-	notify(carry.owner, thief.DisplayName .. " stole your " .. carry.name .. "! Lock your gate!", "error")
-	notify(thief, "You stole " .. carry.name .. "!", "success")
+	notify(carry.owner, carrier.DisplayName .. " stole your " .. carry.name .. "! Lock your gate!", "error")
+	notify(carrier, "You stole " .. carry.name .. "!", "success")
 end
 
-local function onPromptTriggered(prompt: ProximityPrompt, thief: Player)
-	if prompt.Name ~= "StealPrompt" then
-		return
+-- Checks a player could carry a Freek home right now. Returns an error message or nil.
+local function cannotCarry(player: Player): string?
+	if carries[player] then
+		return "You can only carry one Freek at a time!"
 	end
+	local data = DataService.get(player)
+	if not data or not PlotService.getPlot(player) or not rootPart(player) then
+		return ""
+	end
+	if FreekUtil.count(data) >= Config.MAX_FREEKS then
+		return "You have too many Freeks to steal another!"
+	end
+	return nil
+end
+
+local function steal(prompt: ProximityPrompt, thief: Player)
 	local uid = prompt:GetAttribute("Uid")
 	local owner = Players:GetPlayerByUserId(prompt:GetAttribute("OwnerUserId") or 0)
 	if not owner or owner == thief or typeof(uid) ~= "string" then
 		return
 	end
-	if carries[thief] then
-		return notify(thief, "You can only carry one Freek at a time!", "error")
+	local problem = cannotCarry(thief)
+	if problem then
+		return if problem ~= "" then notify(thief, problem, "error") else nil
 	end
 
-	local ownerData, thiefData = DataService.get(owner), DataService.get(thief)
-	local ownerPlot, thiefPlot = PlotService.getPlot(owner), PlotService.getPlot(thief)
+	local ownerData = DataService.get(owner)
+	local ownerPlot = PlotService.getPlot(owner)
 	local freek = ownerData and ownerData.freeks[uid]
-	local root = rootPart(thief)
-	if not freek or not freek.slot or freek.breeding or Carried.is(owner, uid) then
+	if not freek or not freek.slot or freek.breeding or Carried.is(owner, uid) or not ownerPlot then
 		return
 	end
-	if not thiefData or not ownerPlot or not thiefPlot or not root then
+	if PlotService.isGateLocked(ownerPlot) or not PlotService.isInside(ownerPlot, rootPart(thief).Position) then
 		return
-	end
-	if PlotService.isGateLocked(ownerPlot) or not PlotService.isInside(ownerPlot, root.Position) then
-		return
-	end
-	if FreekUtil.count(thiefData) >= Config.MAX_FREEKS then
-		return notify(thief, "You have too many Freeks to steal another!", "error")
 	end
 
-	local model, normalSpeed = attachToHead(thief, freek)
-	if not model then
-		return
-	end
-	local name = FreekUtil.displayName(freek)
-	carries[thief] = {
+	local carry = {
 		owner = owner,
 		uid = uid,
 		slot = freek.slot,
-		name = name,
-		model = model,
-		normalSpeed = normalSpeed,
+		name = FreekUtil.displayName(freek),
+		species = freek.species,
+		mutation = freek.mutation,
 	}
-	Carried.set(owner, uid, thief)
+	if not pickUp(thief, carry) then
+		return
+	end
 	freek.slot = nil
 	DataService.changed(owner)
 
+	notify(thief, "You grabbed " .. carry.name .. "! Get it back to your yard!", "success")
+	notify(owner, thief.DisplayName .. " is stealing your " .. carry.name .. "! Bonk them!", "error")
+end
+
+local function snatch(prompt: ProximityPrompt, snatcher: Player)
+	local carrier = Players:GetPlayerByUserId(prompt:GetAttribute("CarrierUserId") or 0)
+	local carry = carrier and carries[carrier]
+	if not carry or carrier == snatcher then
+		return
+	end
+
+	-- The owner snatching it back sends it straight home.
+	if snatcher == carry.owner then
+		return sendBack(
+			carrier,
+			carry,
+			"You got your " .. carry.name .. " back!",
+			snatcher.DisplayName .. " snatched their Freek back!"
+		)
+	end
+
+	local problem = cannotCarry(snatcher)
+	if problem then
+		return if problem ~= "" then notify(snatcher, problem, "error") else nil
+	end
+	putDown(carrier, carry)
+	if not pickUp(snatcher, carry) then
+		return sendBack(carrier, carry)
+	end
+	notify(carrier, snatcher.DisplayName .. " snatched " .. carry.name .. " from you!", "error")
+	notify(snatcher, "You snatched " .. carry.name .. "! Get it back to your yard!", "success")
 	notify(
-		thief,
-		"You grabbed " .. name .. "! Get back to your yard before " .. owner.DisplayName .. " catches you!",
-		"success"
+		carry.owner,
+		snatcher.DisplayName .. " snatched your " .. carry.name .. " from " .. carrier.DisplayName .. "!",
+		"error"
 	)
-	notify(owner, thief.DisplayName .. " is stealing your " .. name .. "! Catch them!", "error")
+end
+
+local function onPromptTriggered(prompt: ProximityPrompt, player: Player)
+	if prompt.Name == "StealPrompt" then
+		steal(prompt, player)
+	elseif prompt.Name == "SnatchPrompt" then
+		snatch(prompt, player)
+	end
+end
+
+-- Called by WeaponService when one player hits another. Only the Freek's owner can knock
+-- it loose; hitting anyone else does nothing.
+function StealService.onHit(attacker: Player, target: Player)
+	local carry = carries[target]
+	if carry and carry.owner == attacker then
+		sendBack(
+			target,
+			carry,
+			"BONK! You got your " .. carry.name .. " back!",
+			attacker.DisplayName .. " bonked you! You dropped " .. carry.name .. "."
+		)
+	end
 end
 
 local function checkCarries()
-	for thief, carry in carries do
-		local root = rootPart(thief)
-		if not root or not carry.model.Parent then
+	for carrier, carry in carries do
+		local root = rootPart(carrier)
+		if not root or not carry.model or not carry.model.Parent then
 			sendBack(
-				thief,
+				carrier,
 				carry,
 				"Your " .. carry.name .. " escaped and ran home!",
 				"You dropped " .. carry.name .. "!"
 			)
 			continue
 		end
-		local ownerRoot = rootPart(carry.owner)
-		if ownerRoot and (ownerRoot.Position - root.Position).Magnitude <= Config.CATCH_DISTANCE then
-			sendBack(
-				thief,
-				carry,
-				"You caught " .. thief.DisplayName .. "! " .. carry.name .. " is back home.",
-				carry.owner.DisplayName .. " caught you!"
-			)
-			continue
-		end
-		local home = PlotService.getPlot(thief)
+		local home = PlotService.getPlot(carrier)
 		if home and PlotService.isInside(home, root.Position) then
-			deliver(thief, carry)
+			deliver(carrier, carry)
 		end
 	end
 end
@@ -244,10 +315,11 @@ function StealService.init()
 		if carry then
 			sendBack(player, carry, "The thief left! Your " .. carry.name .. " is back home.")
 		end
-		for thief, other in carries do
+		for carrier, other in carries do
 			if other.owner == player then
-				cleanup(thief, other)
-				notify(thief, other.name .. "'s owner left, so it vanished!", "error")
+				putDown(carrier, other)
+				Carried.set(other.owner, other.uid, nil)
+				notify(carrier, other.name .. "'s owner left, so it vanished!", "error")
 			end
 		end
 	end)
