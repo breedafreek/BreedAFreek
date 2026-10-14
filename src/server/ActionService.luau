@@ -36,6 +36,7 @@ local function snapshot(data)
 		passSlots = data.passSlots or 0,
 		freeks = data.freeks,
 		breeding = data.breeding,
+		breeding2 = data.breeding2,
 		discovered = data.discovered,
 	}
 end
@@ -107,9 +108,22 @@ function handlers.Sell(player: Player, data, uid: any)
 	notify(player, "Sold " .. FreekUtil.displayName(freek) .. " for " .. Format.money(value), "money")
 end
 
-function handlers.StartBreed(player: Player, data, uidA: any, uidB: any)
-	if data.breeding then
-		return notify(player, "Your pen is already busy!", "error")
+-- penIndex is optional: with no pen given, the first free pen is used.
+function handlers.StartBreed(player: Player, data, uidA: any, uidB: any, penIndex: any)
+	local pens = GamePasses.penCount(player)
+	local index = nil
+	if typeof(penIndex) == "number" and penIndex >= 1 and penIndex <= pens and not FreekUtil.pen(data, penIndex) then
+		index = penIndex
+	else
+		for i = 1, pens do
+			if not FreekUtil.pen(data, i) then
+				index = i
+				break
+			end
+		end
+	end
+	if not index then
+		return notify(player, if pens > 1 then "Both your pens are busy!" else "Your pen is already busy!", "error")
 	end
 	local a, b = ownedFreek(data, uidA), ownedFreek(data, uidB)
 	if not a or not b or uidA == uidB or a.breeding or b.breeding then
@@ -124,17 +138,27 @@ function handlers.StartBreed(player: Player, data, uidA: any, uidB: any)
 	a.slot, b.slot = nil, nil
 	a.breeding, b.breeding = true, true
 	local duration = math.ceil(FreekUtil.breedTime(a, b) * GamePasses.breedTimeMultiplier(player))
-	data.breeding = { a = uidA, b = uidB, endsAt = os.time() + duration }
+	data[FreekUtil.PEN_KEYS[index]] = { a = uidA, b = uidB, endsAt = os.time() + duration }
 	notify(player, "Breeding started! Back in " .. Format.time(duration) .. ".", "success")
 end
 
-function handlers.ClaimBreed(player: Player, data)
-	local breeding = data.breeding
-	if not breeding or os.time() < breeding.endsAt then
+-- penIndex is optional: with no pen given, the first ready pen is collected.
+function handlers.ClaimBreed(player: Player, data, penIndex: any)
+	local index = nil
+	for i in FreekUtil.PEN_KEYS do
+		local pen = FreekUtil.pen(data, i)
+		if pen and os.time() >= pen.endsAt and (penIndex == nil or penIndex == i) then
+			index = i
+			break
+		end
+	end
+	if not index then
 		return
 	end
+	local key = FreekUtil.PEN_KEYS[index]
+	local breeding = data[key]
 	local a, b = data.freeks[breeding.a], data.freeks[breeding.b]
-	data.breeding = nil
+	data[key] = nil
 	if not a or not b then
 		return
 	end

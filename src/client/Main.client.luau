@@ -93,8 +93,7 @@ local body = UI.new("ScrollingFrame", {
 local currentWindow = nil
 local renderers = {}
 local breedSelection = {}
-local countdownLabel = nil
-local claimButton = nil
+local penCountdowns = {} -- { { label, button, endsAt } } for the Breed window
 local trade = nil -- the server's view of my current trade, or nil
 local tradeStatusLabel = nil
 
@@ -104,8 +103,7 @@ local function clearBody()
 			child:Destroy()
 		end
 	end
-	countdownLabel = nil
-	claimButton = nil
+	table.clear(penCountdowns)
 	tradeStatusLabel = nil
 end
 
@@ -342,27 +340,66 @@ function renderers.Freeks()
 end
 
 function renderers.Breed()
-	local breeding = state.breeding
-	if breeding then
-		local a, b = state.freeks[breeding.a], state.freeks[breeding.b]
-		heading("Your pen is busy!", 1)
-		local pair = UI.grid(150, 160)
-		pair.LayoutOrder = 2
-		pair.Parent = body
-		for _, freek in { a, b } do
-			if freek then
-				UI.card({
-					species = freek.species,
-					mutation = freek.mutation,
-					lines = { { FreekUtil.displayName(freek), nameColor(freek), 20 } },
-				}).Parent =
-					pair
+	-- Pens: what's cooking in each, and a locked card for the Extra Breeding Pen.
+	local pens = GamePasses.penCount(player)
+	local freePen = false
+	local penGrid = UI.grid(300, 250)
+	penGrid.LayoutOrder = 0
+	penGrid.Parent = body
+	for index = 1, #FreekUtil.PEN_KEYS do
+		local breeding = FreekUtil.pen(state, index)
+		local card
+		if breeding then
+			local a, b = state.freeks[breeding.a], state.freeks[breeding.b]
+			local pair = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 100) }, {
+				UI.new("UIListLayout", {
+					FillDirection = Enum.FillDirection.Horizontal,
+					HorizontalAlignment = Enum.HorizontalAlignment.Center,
+				}),
+			})
+			for _, freek in { a, b } do
+				if freek then
+					local view = UI.viewport(freek.species, freek.mutation)
+					view.Size = UDim2.new(0.5, 0, 1, 0)
+					view.Parent = pair
+				end
 			end
+			local countdown = UI.label("", { Size = UDim2.new(1, 0, 0, 22) })
+			local claim = UI.button("Collect baby!", colors.pink, function()
+				send("ClaimBreed", index)
+			end, { Size = UDim2.new(1, 0, 0, 38) })
+			card = UI.card({
+				lines = { { "Pen " .. index, colors.pink, 22 } },
+				buttons = { pair, countdown, claim },
+			})
+			table.insert(penCountdowns, { label = countdown, button = claim, endsAt = breeding.endsAt })
+		elseif index <= pens then
+			freePen = true
+			card = UI.card({
+				lines = {
+					{ "Pen " .. index, colors.pink, 22 },
+					{ "Empty. Pick two Freeks below!", colors.muted, 18 },
+				},
+			})
+		else
+			card = UI.card({
+				lines = {
+					{ "🐣", colors.text, 40 },
+					{ "Extra Breeding Pen", colors.pink, 22 },
+					{ "Breed two pairs at once.", colors.muted, 18 },
+				},
+				buttons = {
+					UI.button("Get it in the Store", colors.gray, function()
+						open("Store")
+					end, { Size = UDim2.new(1, 0, 0, 36) }),
+				},
+			})
 		end
-		countdownLabel = UI.label("", { Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 3, Parent = body })
-		claimButton = UI.button("Collect baby!", colors.pink, function()
-			send("ClaimBreed")
-		end, { Size = UDim2.new(1, 0, 0, 50), LayoutOrder = 4, Parent = body })
+		card.LayoutOrder = index
+		card.Parent = penGrid
+	end
+	if not freePen then
+		heading(if pens > 1 then "Both pens are busy!" else "Your pen is busy!", 1)
 		return
 	end
 
@@ -938,20 +975,20 @@ Remotes.get("Knockback").OnClientEvent:Connect(function(direction: Vector3, stre
 	end)
 end)
 
--- Breed countdown.
+-- Breed countdowns.
 task.spawn(function()
 	while true do
 		task.wait(0.5)
-		if countdownLabel and state and state.breeding then
-			local left = state.breeding.endsAt - Workspace:GetServerTimeNow()
+		for _, pen in penCountdowns do
+			local left = pen.endsAt - Workspace:GetServerTimeNow()
 			if left > 0 then
-				countdownLabel.Text = "Baby arrives in " .. Format.time(left)
-				claimButton.BackgroundColor3 = colors.gray
-				claimButton.Text = "Not ready yet"
+				pen.label.Text = "Baby arrives in " .. Format.time(left)
+				pen.button.BackgroundColor3 = colors.gray
+				pen.button.Text = "Not ready yet"
 			else
-				countdownLabel.Text = "Your baby is ready!"
-				claimButton.BackgroundColor3 = colors.pink
-				claimButton.Text = "Collect baby!"
+				pen.label.Text = "Your baby is ready!"
+				pen.button.BackgroundColor3 = colors.pink
+				pen.button.Text = "Collect baby!"
 			end
 		end
 	end

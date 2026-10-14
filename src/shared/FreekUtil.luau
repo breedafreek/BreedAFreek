@@ -78,6 +78,15 @@ function FreekUtil.count(data): number
 	return n
 end
 
+-- Breeding pens live in the save as data.breeding (pen 1) and data.breeding2 (pen 2, from
+-- the Extra Breeding Pen pass). Each is nil or { a = uid, b = uid, endsAt = unix seconds }.
+FreekUtil.PEN_KEYS = { "breeding", "breeding2" }
+
+function FreekUtil.pen(data, index: number)
+	local key = FreekUtil.PEN_KEYS[index]
+	return key and data[key]
+end
+
 function FreekUtil.breedTime(a, b): number
 	local rankA = Rarities.rank[Freeks.byId[a.species].rarity]
 	local rankB = Rarities.rank[Freeks.byId[b.species].rarity]

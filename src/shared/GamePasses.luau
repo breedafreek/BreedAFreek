@@ -21,6 +21,7 @@ GamePasses.order = {
 	"FastBreeding",
 	"LongerLock",
 	"VIP",
+	"ExtraPen",
 	"ExtraSlot1",
 	"ExtraSlot2",
 	"ExtraSlot3",
@@ -78,6 +79,14 @@ GamePasses.list = {
 		color = Color3.fromRGB(230, 150, 90),
 		slot = true,
 	},
+	ExtraPen = {
+		id = 0,
+		name = "Extra Breeding Pen",
+		icon = "🐣",
+		price = 399,
+		description = "A second breeding pen, so you can breed two pairs at once.",
+		color = Color3.fromRGB(255, 130, 190),
+	},
 	VIP = {
 		id = 0,
 		name = "VIP",
@@ -111,6 +120,11 @@ end
 
 function GamePasses.gateLockSeconds(player: Player): number
 	return if GamePasses.has(player, "LongerLock") then 300 else Config.GATE_LOCK_SECONDS
+end
+
+-- How many breeding pens the player can use.
+function GamePasses.penCount(player: Player): number
+	return if GamePasses.has(player, "ExtraPen") then 2 else 1
 end
 
 -- How many Extra Yard Slot passes the player owns.

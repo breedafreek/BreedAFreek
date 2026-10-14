@@ -137,15 +137,20 @@ local function buildPlot(index: number)
 		pads[i] = { part = pad, lock = lockGui }
 	end
 
-	local pen = part({
-		Name = "BreedingPen",
-		Size = Vector3.new(22, 0.5, 10),
-		CFrame = origin * CFrame.new(0, 1.25, -14),
-		Color = Color3.fromRGB(255, 150, 200),
-		Material = Enum.Material.SmoothPlastic,
-		Parent = folder,
-	})
-	local _, penLabel = billboard(pen, UDim2.fromScale(14, 2.5), Vector3.new(0, 9, 0), 80)
+	-- Two breeding pens side by side; the second needs the Extra Breeding Pen pass.
+	local pens = {}
+	for i, x in { -12, 12 } do
+		local pen = part({
+			Name = "BreedingPen" .. i,
+			Size = Vector3.new(20, 0.5, 10),
+			CFrame = origin * CFrame.new(x, 1.25, -14),
+			Color = Color3.fromRGB(255, 150, 200),
+			Material = Enum.Material.SmoothPlastic,
+			Parent = folder,
+		})
+		local _, label = billboard(pen, UDim2.fromScale(13, 2.3), Vector3.new(0, 9, 0), 80)
+		pens[i] = { part = pen, label = label }
+	end
 
 	-- Fence: visible pickets plus a tall invisible wall, with a gate gap at the front.
 	local fenceColor = Color3.fromRGB(235, 225, 205)
@@ -234,8 +239,7 @@ local function buildPlot(index: number)
 		origin = origin,
 		spawn = origin * CFrame.new(0, 4, -(PLOT_SIZE / 2 - 4)) * CFrame.Angles(0, math.pi, 0),
 		pads = pads,
-		pen = pen,
-		penLabel = penLabel,
+		pens = pens,
 		sign = signLabel,
 		freeks = freekFolder,
 		gate = gate,
@@ -301,14 +305,24 @@ local function placeFreek(plot, freek, ground: CFrame, steal)
 	end
 end
 
-local function updatePenLabel(plot, data)
-	local breeding = data and data.breeding
-	if not breeding then
-		plot.penLabel.Text = "Breeding Pen"
-		return
+local function updatePenLabels(plot, data)
+	local owner = plot.owner
+	for i, pen in plot.pens do
+		local breeding = data and FreekUtil.pen(data, i)
+		local usable = owner ~= nil and i <= GamePasses.penCount(owner)
+		pen.part.Color = if usable then Color3.fromRGB(255, 150, 200) else Color3.fromRGB(90, 90, 90)
+		pen.part.Transparency = if usable then 0 else 0.5
+		if not owner then
+			pen.label.Text = ""
+		elseif breeding then
+			local left = breeding.endsAt - os.time()
+			pen.label.Text = if left > 0 then "Breeding... " .. Format.time(left) else "Baby ready!"
+		elseif usable then
+			pen.label.Text = "Breeding Pen"
+		else
+			pen.label.Text = "Extra Pen · Store"
+		end
 	end
-	local left = breeding.endsAt - os.time()
-	plot.penLabel.Text = if left > 0 then "Breeding... " .. Format.time(left) else "Baby ready!"
 end
 
 function PlotService.render(player: Player)
@@ -338,18 +352,21 @@ function PlotService.render(player: Player)
 		end
 	end
 
-	if data.breeding then
-		local penTop = plot.pen.CFrame * CFrame.new(0, 0.25, 0)
-		local a = data.freeks[data.breeding.a]
-		local b = data.freeks[data.breeding.b]
-		if a then
-			placeFreek(plot, a, penTop * CFrame.new(-5.5, 0, 0) * CFrame.Angles(0, -math.pi / 2, 0))
-		end
-		if b then
-			placeFreek(plot, b, penTop * CFrame.new(5.5, 0, 0) * CFrame.Angles(0, math.pi / 2, 0))
+	for i, pen in plot.pens do
+		local breeding = FreekUtil.pen(data, i)
+		if breeding then
+			local penTop = pen.part.CFrame * CFrame.new(0, 0.25, 0)
+			local a = data.freeks[breeding.a]
+			local b = data.freeks[breeding.b]
+			if a then
+				placeFreek(plot, a, penTop * CFrame.new(-5, 0, 0) * CFrame.Angles(0, -math.pi / 2, 0))
+			end
+			if b then
+				placeFreek(plot, b, penTop * CFrame.new(5, 0, 0) * CFrame.Angles(0, math.pi / 2, 0))
+			end
 		end
 	end
-	updatePenLabel(plot, data)
+	updatePenLabels(plot, data)
 end
 
 local function setGateLock(plot, lockedUntil: number)
@@ -394,7 +411,7 @@ local function clearPlot(plot)
 	plot.owner = nil
 	plot.freeks:ClearAllChildren()
 	plot.sign.Text = "Empty Yard"
-	plot.penLabel.Text = ""
+	updatePenLabels(plot, nil)
 	for _, pad in plot.pads do
 		pad.part.Color = Color3.fromRGB(90, 90, 90)
 		pad.part.Transparency = 0.5
@@ -508,8 +525,8 @@ function PlotService.init()
 			task.wait(1)
 			for player, plot in plotOf do
 				local data = DataService.get(player)
-				if data and data.breeding then
-					updatePenLabel(plot, data)
+				if data and (data.breeding or data.breeding2) then
+					updatePenLabels(plot, data)
 				end
 			end
 		end
