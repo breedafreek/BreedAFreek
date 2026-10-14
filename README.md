@@ -30,7 +30,7 @@ rojo build -o BreedAFreek.rbxlx  # or build a place file
 | Folder | Becomes | What's in it |
 |---|---|---|
 | `src/shared` | ReplicatedStorage.Shared | Freek list, rarities, mutations, tuning, 3D placeholder builder |
-| `src/server` | ServerScriptService.Server | Saving, yards, money, breeding, Discovery Book, breeding recipes |
+| `src/server` | ServerScriptService.Server | Saving, yards, money, breeding, trading, Discovery Book, breeding recipes |
 | `src/client` | StarterPlayerScripts.Client | All the menus |
 
 ### Common changes
@@ -47,6 +47,5 @@ rojo build -o BreedAFreek.rbxlx  # or build a place file
 - **Breeding:** pick two Freeks and wait out the timer. The rarer parent sets how long it takes. A pair with a recipe has a chance to make the new species. Otherwise the baby copies a parent. Any baby can roll a mutation (Shadow ×2, Golden ×3, Rainbow ×10 income), and a parent's mutation makes that roll 4× more likely.
 - **Discovery Book:** every species, shown as a black "???" until someone finds it. The first finder in any server is saved forever and announced to everyone.
 - **Offline:** you earn 50% while away, up to 8 hours.
+- **Trading:** send a request to anyone in your server, each side offers up to 8 Freeks, and both press Ready. A 3 second countdown runs before the swap, and any change to an offer clears both Ready buttons, so nobody can switch Freeks at the last second. The server re-checks ownership at the moment of the swap and saves both players right away.
 - **Saving:** session-locked so a fast rejoin into another server can't duplicate or wipe Freeks.
-
-Coming next: trading.

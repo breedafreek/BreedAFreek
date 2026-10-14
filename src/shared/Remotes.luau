@@ -4,6 +4,7 @@
 -- State           server -> client   (snapshot of the player's own data)
 -- Notify          server -> client   (message, kind?)
 -- DiscoveryUpdate server -> client   (speciesId, discovery)
+-- Trade           server -> client   ("Request" | "State" | "Closed", payload)
 -- GetState        client -> server   returns snapshot once data has loaded
 -- GetDiscoveries  client -> server   returns { [speciesId] = discovery }
 
@@ -15,6 +16,7 @@ local KINDS = {
 	State = "RemoteEvent",
 	Notify = "RemoteEvent",
 	DiscoveryUpdate = "RemoteEvent",
+	Trade = "RemoteEvent",
 	GetState = "RemoteFunction",
 	GetDiscoveries = "RemoteFunction",
 }

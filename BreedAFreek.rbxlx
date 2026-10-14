@@ -520,6 +520,7 @@ return Rarities
 -- State           server -> client   (snapshot of the player's own data)
 -- Notify          server -> client   (message, kind?)
 -- DiscoveryUpdate server -> client   (speciesId, discovery)
+-- Trade           server -> client   ("Request" | "State" | "Closed", payload)
 -- GetState        client -> server   returns snapshot once data has loaded
 -- GetDiscoveries  client -> server   returns { [speciesId] = discovery }
 
@@ -531,6 +532,7 @@ local KINDS = {
 	State = "RemoteEvent",
 	Notify = "RemoteEvent",
 	DiscoveryUpdate = "RemoteEvent",
+	Trade = "RemoteEvent",
 	GetState = "RemoteFunction",
 	GetDiscoveries = "RemoteFunction",
 }
@@ -750,6 +752,11 @@ function handlers.ClaimBreed(player: Player, data)
 	else
 		notify(player, "You bred a " .. name .. "!", "success")
 	end
+end
+
+-- Lets other services add actions (they get the same rate limit and refresh).
+function ActionService.register(name: string, handler)
+	handlers[name] = handler
 end
 
 function ActionService.init()
@@ -1234,6 +1241,7 @@ require(Server.PlotService).init()
 require(Server.DiscoveryService).init()
 require(Server.EconomyService).init()
 require(Server.ActionService).init()
+require(Server.TradeService).init()
 require(Server.DataService).init()
 ]]></string>
         </Properties>
@@ -1638,21 +1646,295 @@ return Recipes
 ]]></string>
         </Properties>
       </Item>
+      <Item class="ModuleScript" referent="20">
+        <Properties>
+          <string name="Name">TradeService</string>
+          <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
+--
+-- Flow: request -> accept -> both sides add Freeks -> both press Ready -> 3 second
+-- countdown -> swap. Any change to either offer clears both Ready buttons and stops the
+-- countdown, so nobody can swap something out at the last second. Ownership is checked
+-- again at the moment of the swap, and both players are saved right after.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+
+local ActionService = require(script.Parent.ActionService)
+local DataService = require(script.Parent.DataService)
+
+local MAX_OFFER = 8
+local REQUEST_SECONDS = 30
+local COUNTDOWN_SECONDS = 3
+
+local TradeService = {}
+
+local tradeRemote = Remotes.get("Trade")
+local notifyRemote = Remotes.get("Notify")
+
+local trades = {} -- [Player] = trade (both players point at the same table)
+local requests = {} -- [target Player] = { from = Player, expires = os.clock() }
+
+local function notify(player: Player, message: string, kind: string?)
+	notifyRemote:FireClient(player, message, kind)
+end
+
+local function otherSide(trade, player: Player): Player
+	return if trade.a == player then trade.b else trade.a
+end
+
+local function offerView(player: Player, uids)
+	local data = DataService.get(player)
+	local list = {}
+	for _, uid in uids do
+		local freek = data and data.freeks[uid]
+		if freek then
+			table.insert(list, { uid = uid, species = freek.species, mutation = freek.mutation })
+		end
+	end
+	return list
+end
+
+local function push(trade)
+	for _, player in { trade.a, trade.b } do
+		local other = otherSide(trade, player)
+		tradeRemote:FireClient(player, "State", {
+			partner = other.DisplayName,
+			mine = offerView(player, trade.offers[player]),
+			theirs = offerView(other, trade.offers[other]),
+			myReady = trade.ready[player] == true,
+			theirReady = trade.ready[other] == true,
+			countdownEndsAt = trade.countdownEndsAt,
+		})
+	end
+end
+
+local function close(trade, reason: string)
+	for _, player in { trade.a, trade.b } do
+		if trades[player] == trade then
+			trades[player] = nil
+		end
+		tradeRemote:FireClient(player, "Closed", reason)
+	end
+	trade.closed = true
+end
+
+local function unready(trade)
+	trade.ready = {}
+	trade.countdownEndsAt = nil
+	trade.token += 1
+end
+
+-- Checks a side's offer is still theirs and tradeable. Returns nil if fine, else why not.
+local function offerProblem(player: Player, uids): string?
+	local data = DataService.get(player)
+	if not data then
+		return player.DisplayName .. " isn't loaded"
+	end
+	for _, uid in uids do
+		local freek = data.freeks[uid]
+		if not freek then
+			return player.DisplayName .. " no longer has one of their Freeks"
+		elseif freek.breeding then
+			return player.DisplayName .. " put an offered Freek in the breeding pen"
+		end
+	end
+	return nil
+end
+
+local function execute(trade)
+	local a, b = trade.a, trade.b
+	local offerA, offerB = trade.offers[a], trade.offers[b]
+	if #offerA == 0 and #offerB == 0 then
+		return close(trade, "Trade cancelled: nothing was offered.")
+	end
+	local problem = offerProblem(a, offerA) or offerProblem(b, offerB)
+	if problem then
+		return close(trade, "Trade cancelled: " .. problem .. ".")
+	end
+
+	local dataA, dataB = DataService.get(a), DataService.get(b)
+	if FreekUtil.count(dataA) - #offerA + #offerB > Config.MAX_FREEKS then
+		return close(trade, "Trade cancelled: " .. a.DisplayName .. " has too many Freeks.")
+	end
+	if FreekUtil.count(dataB) - #offerB + #offerA > Config.MAX_FREEKS then
+		return close(trade, "Trade cancelled: " .. b.DisplayName .. " has too many Freeks.")
+	end
+
+	-- Take everything out first, then hand it over, so neither side can end up with both.
+	local fromA, fromB = {}, {}
+	for _, uid in offerA do
+		fromA[uid] = dataA.freeks[uid]
+		dataA.freeks[uid] = nil
+	end
+	for _, uid in offerB do
+		fromB[uid] = dataB.freeks[uid]
+		dataB.freeks[uid] = nil
+	end
+	local function receive(data, freeks)
+		for uid, freek in freeks do
+			freek.slot = nil
+			freek.breeding = nil
+			data.freeks[uid] = freek
+			data.discovered[freek.species] = true
+		end
+	end
+	receive(dataA, fromB)
+	receive(dataB, fromA)
+
+	close(trade, "Trade complete! New Freeks are in your backpack.")
+	for _, player in { a, b } do
+		DataService.changed(player)
+		task.spawn(DataService.save, player)
+	end
+end
+
+local function startTrade(a: Player, b: Player)
+	local trade = {
+		a = a,
+		b = b,
+		offers = { [a] = {}, [b] = {} },
+		ready = {},
+		countdownEndsAt = nil,
+		token = 0,
+	}
+	trades[a] = trade
+	trades[b] = trade
+	push(trade)
+end
+
+function TradeService.init()
+	ActionService.register("TradeRequest", function(player: Player, _data, targetUserId: any)
+		local target = typeof(targetUserId) == "number" and Players:GetPlayerByUserId(targetUserId)
+		if not target or target == player or not DataService.get(target) then
+			return
+		end
+		if trades[player] then
+			return notify(player, "Finish your current trade first!", "error")
+		end
+		if trades[target] then
+			return notify(player, target.DisplayName .. " is already trading.", "error")
+		end
+		local pending = requests[target]
+		if pending and pending.from == player and os.clock() < pending.expires then
+			return notify(player, "Request already sent!", "error")
+		end
+		requests[target] = { from = player, expires = os.clock() + REQUEST_SECONDS }
+		tradeRemote:FireClient(target, "Request", { name = player.DisplayName, userId = player.UserId })
+		notify(player, "Trade request sent to " .. target.DisplayName .. ".", "success")
+	end)
+
+	ActionService.register("TradeRespond", function(player: Player, _data, fromUserId: any, accept: any)
+		local request = requests[player]
+		if not request or request.from.UserId ~= fromUserId then
+			return
+		end
+		requests[player] = nil
+		local from = request.from
+		if os.clock() > request.expires or not from.Parent then
+			return notify(player, "That trade request expired.", "error")
+		end
+		if accept ~= true then
+			return notify(from, player.DisplayName .. " declined your trade.", "error")
+		end
+		if trades[player] or trades[from] then
+			return notify(player, "One of you is already trading.", "error")
+		end
+		startTrade(from, player)
+	end)
+
+	ActionService.register("TradeOffer", function(player: Player, data, uid: any, add: any)
+		local trade = trades[player]
+		if not trade or typeof(uid) ~= "string" then
+			return
+		end
+		local offer = trade.offers[player]
+		local index = table.find(offer, uid)
+		if add == true then
+			local freek = data.freeks[uid]
+			if index or not freek or freek.breeding then
+				return
+			end
+			if #offer >= MAX_OFFER then
+				return notify(player, "You can offer up to " .. MAX_OFFER .. " Freeks.", "error")
+			end
+			table.insert(offer, uid)
+		elseif index then
+			table.remove(offer, index)
+		else
+			return
+		end
+		unready(trade)
+		push(trade)
+	end)
+
+	ActionService.register("TradeReady", function(player: Player, _data, ready: any)
+		local trade = trades[player]
+		if not trade then
+			return
+		end
+		if ready == true then
+			trade.ready[player] = true
+		else
+			unready(trade)
+		end
+
+		if trade.ready[trade.a] and trade.ready[trade.b] and not trade.countdownEndsAt then
+			trade.countdownEndsAt = Workspace:GetServerTimeNow() + COUNTDOWN_SECONDS
+			local token = trade.token
+			task.delay(COUNTDOWN_SECONDS, function()
+				if not trade.closed and trade.token == token then
+					execute(trade)
+				end
+			end)
+		end
+		push(trade)
+	end)
+
+	ActionService.register("TradeCancel", function(player: Player)
+		local trade = trades[player]
+		if trade then
+			close(trade, player.DisplayName .. " cancelled the trade.")
+		end
+	end)
+
+	Players.PlayerRemoving:Connect(function(player)
+		local trade = trades[player]
+		if trade then
+			close(trade, player.DisplayName .. " left the game.")
+		end
+		requests[player] = nil
+		for target, request in requests do
+			if request.from == player then
+				requests[target] = nil
+			end
+		end
+	end)
+end
+
+return TradeService
+]]></string>
+        </Properties>
+      </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="20">
+  <Item class="StarterPlayer" referent="21">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="21">
+    <Item class="StarterPlayerScripts" referent="22">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="22">
+      <Item class="Folder" referent="23">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="LocalScript" referent="23">
+        <Item class="LocalScript" referent="24">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -1729,7 +2011,7 @@ local menu = UI.new("Frame", {
 	BackgroundTransparency = 1,
 	AnchorPoint = Vector2.new(0, 0.5),
 	Position = UDim2.new(0, 12, 0.5, 0),
-	Size = UDim2.fromOffset(96, 4 * 58),
+	Size = UDim2.fromOffset(96, 5 * 58),
 	Parent = screen,
 }, {
 	UI.new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }),
@@ -1816,6 +2098,8 @@ local renderers = {}
 local breedSelection = {}
 local countdownLabel = nil
 local claimButton = nil
+local trade = nil -- the server's view of my current trade, or nil
+local tradeStatusLabel = nil
 
 local function clearBody()
 	for _, child in body:GetChildren() do
@@ -1825,6 +2109,7 @@ local function clearBody()
 	end
 	countdownLabel = nil
 	claimButton = nil
+	tradeStatusLabel = nil
 end
 
 local function render()
@@ -2170,11 +2455,219 @@ function renderers.Book()
 	end
 end
 
+local function tradeStatus(): string
+	if not trade then
+		return ""
+	end
+	if trade.countdownEndsAt then
+		local left = math.max(0, math.ceil(trade.countdownEndsAt - Workspace:GetServerTimeNow()))
+		return "Trading in " .. left .. "..."
+	elseif trade.myReady then
+		return "Waiting for " .. trade.partner .. " to press Ready..."
+	elseif trade.theirReady then
+		return trade.partner .. " is ready! Press Ready to accept."
+	end
+	return "Add Freeks, then both press Ready."
+end
+
+local function tradeCard(item, footer: string, onClick)
+	return UI.card({
+		species = item.species,
+		mutation = item.mutation,
+		lines = {
+			{ FreekUtil.displayName(item), nameColor(item), 18 },
+			{ Format.money(FreekUtil.income(item)) .. "/s", colors.money, 14 },
+			{ footer, colors.muted, 14 },
+		},
+		onClick = onClick,
+	})
+end
+
+function renderers.Trade()
+	if not trade then
+		heading("Trade Freeks with other players in this server.", 1)
+		local grid = UI.grid(200, 100)
+		grid.LayoutOrder = 2
+		grid.Parent = body
+		local anyone = false
+		for _, other in Players:GetPlayers() do
+			if other ~= player then
+				anyone = true
+				UI.card({
+					lines = { { other.DisplayName, colors.text, 24 } },
+					buttons = {
+						UI.button("Send trade request", colors.blue, function()
+							send("TradeRequest", other.UserId)
+						end, { Size = UDim2.new(1, 0, 0, 36) }),
+					},
+				}).Parent =
+					grid
+			end
+		end
+		if not anyone then
+			heading("Nobody else is here yet!", 3)
+		end
+		return
+	end
+
+	heading("Trading with " .. trade.partner, 1)
+
+	local offered = {}
+	for _, item in trade.mine do
+		offered[item.uid] = true
+	end
+
+	local columns = UI.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 2,
+		Parent = body,
+	}, {
+		UI.new("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			Padding = UDim.new(0, 10),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	local function column(title: string, color: Color3, ready: boolean, order: number)
+		local frame = UI.new("Frame", {
+			BackgroundColor3 = Color3.fromRGB(30, 20, 50),
+			Size = UDim2.new(0.5, -5, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = order,
+			Parent = columns,
+		}, {
+			UI.corner(12),
+			UI.stroke(if ready then colors.green else Color3.fromRGB(20, 10, 35), 3),
+			UI.new("UIPadding", {
+				PaddingTop = UDim.new(0, 6),
+				PaddingBottom = UDim.new(0, 8),
+				PaddingLeft = UDim.new(0, 6),
+				PaddingRight = UDim.new(0, 6),
+			}),
+			UI.new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }),
+		})
+		UI.label(title .. (if ready then "  READY" else ""), {
+			TextColor3 = color,
+			Size = UDim2.new(1, 0, 0, 24),
+			LayoutOrder = 1,
+			Parent = frame,
+		})
+		local grid = UI.grid(120, 165)
+		grid.LayoutOrder = 2
+		grid.Parent = frame
+		return grid
+	end
+
+	local giveGrid = column("You give", colors.orange, trade.myReady, 1)
+	for i, item in trade.mine do
+		local card = tradeCard(item, "Tap to remove", function()
+			send("TradeOffer", item.uid, false)
+		end)
+		card.LayoutOrder = i
+		card.Parent = giveGrid
+	end
+	local getGrid = column("You get", colors.money, trade.theirReady, 2)
+	for i, item in trade.theirs do
+		local card = tradeCard(item, "", nil)
+		card.LayoutOrder = i
+		card.Parent = getGrid
+	end
+
+	tradeStatusLabel = UI.label(tradeStatus(), { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 3, Parent = body })
+
+	local buttons = UI.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 46),
+		LayoutOrder = 4,
+		Parent = body,
+	}, {
+		UI.new("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			Padding = UDim.new(0, 10),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	UI.button(
+		if trade.myReady then "Not ready" else "Ready",
+		if trade.myReady then colors.gray else colors.green,
+		function()
+			if trade then
+				send("TradeReady", not trade.myReady)
+			end
+		end,
+		{ Size = UDim2.new(0.5, -5, 1, 0), LayoutOrder = 1, Parent = buttons }
+	)
+	UI.button("Cancel trade", colors.red, function()
+		send("TradeCancel")
+	end, { Size = UDim2.new(0.5, -5, 1, 0), LayoutOrder = 2, Parent = buttons })
+
+	heading("Tap your Freeks to offer them", 5)
+	local mine = UI.grid(120, 165)
+	mine.LayoutOrder = 6
+	mine.Parent = body
+	for i, item in sortedFreeks() do
+		if not offered[item.uid] and not item.freek.breeding then
+			local card = tradeCard(item.freek, "Tap to offer", function()
+				send("TradeOffer", item.uid, true)
+			end)
+			card.LayoutOrder = i
+			card.Parent = mine
+		end
+	end
+end
+
+-- Incoming trade request popup.
+local requestPopup = UI.new("Frame", {
+	Visible = false,
+	AnchorPoint = Vector2.new(0.5, 0),
+	Position = UDim2.new(0.5, 0, 0, 90),
+	Size = UDim2.fromOffset(320, 110),
+	BackgroundColor3 = colors.panel,
+	ZIndex = 10,
+	Parent = screen,
+}, {
+	UI.corner(14),
+	UI.stroke(colors.blue, 3),
+})
+local requestLabel = UI.label("", {
+	Size = UDim2.new(1, -20, 0, 40),
+	Position = UDim2.fromOffset(10, 8),
+	ZIndex = 10,
+	Parent = requestPopup,
+})
+local pendingRequest = nil
+local function answerRequest(accept: boolean)
+	if pendingRequest then
+		send("TradeRespond", pendingRequest.userId, accept)
+	end
+	pendingRequest = nil
+	requestPopup.Visible = false
+end
+UI.button("Accept", colors.green, function()
+	answerRequest(true)
+end, {
+	Size = UDim2.new(0.5, -15, 0, 42),
+	Position = UDim2.new(0, 10, 1, -52),
+	ZIndex = 10,
+	Parent = requestPopup,
+})
+UI.button("Decline", colors.red, function()
+	answerRequest(false)
+end, {
+	Size = UDim2.new(0.5, -15, 0, 42),
+	Position = UDim2.new(0.5, 5, 1, -52),
+	ZIndex = 10,
+	Parent = requestPopup,
+})
+
 local MENU = {
 	{ "Shop", colors.green },
 	{ "Freeks", colors.blue },
 	{ "Breed", colors.pink },
 	{ "Book", colors.orange },
+	{ "Trade", colors.blue:Lerp(colors.pink, 0.5) },
 }
 for i, entry in MENU do
 	UI.button(entry[1], entry[2], function()
@@ -2208,6 +2701,55 @@ Remotes.get("DiscoveryUpdate").OnClientEvent:Connect(function(speciesId, discove
 	discoveries[speciesId] = discovery
 	if currentWindow == "Book" then
 		render()
+	end
+end)
+
+Remotes.get("Trade").OnClientEvent:Connect(function(kind, payload)
+	if kind == "Request" then
+		pendingRequest = payload
+		requestLabel.Text = payload.name .. " wants to trade!"
+		requestPopup.Visible = true
+		task.delay(30, function()
+			if pendingRequest == payload then
+				pendingRequest = nil
+				requestPopup.Visible = false
+			end
+		end)
+	elseif kind == "State" then
+		local isNew = trade == nil
+		trade = payload
+		if isNew and currentWindow ~= "Trade" then
+			open("Trade")
+		elseif currentWindow == "Trade" then
+			render()
+		end
+	elseif kind == "Closed" then
+		trade = nil
+		toast(payload, if string.find(payload, "complete") then "success" else "error")
+		if currentWindow == "Trade" then
+			render()
+		end
+	end
+end)
+
+-- Refresh the player list while the Trade window is open with no trade going.
+local function refreshTradeList()
+	if currentWindow == "Trade" and not trade then
+		render()
+	end
+end
+Players.PlayerAdded:Connect(refreshTradeList)
+Players.PlayerRemoving:Connect(function()
+	task.defer(refreshTradeList)
+end)
+
+-- Trade countdown.
+task.spawn(function()
+	while true do
+		task.wait(0.25)
+		if tradeStatusLabel then
+			tradeStatusLabel.Text = tradeStatus()
+		end
 	end
 end)
 
@@ -2247,7 +2789,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="24">
+        <Item class="ModuleScript" referent="25">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).

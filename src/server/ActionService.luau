@@ -173,6 +173,11 @@ function handlers.ClaimBreed(player: Player, data)
 	end
 end
 
+-- Lets other services add actions (they get the same rate limit and refresh).
+function ActionService.register(name: string, handler)
+	handlers[name] = handler
+end
+
 function ActionService.init()
 	Remotes.get("GetState").OnServerInvoke = function(player)
 		local data = DataService.waitFor(player)

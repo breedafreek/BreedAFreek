@@ -72,7 +72,7 @@ local menu = UI.new("Frame", {
 	BackgroundTransparency = 1,
 	AnchorPoint = Vector2.new(0, 0.5),
 	Position = UDim2.new(0, 12, 0.5, 0),
-	Size = UDim2.fromOffset(96, 4 * 58),
+	Size = UDim2.fromOffset(96, 5 * 58),
 	Parent = screen,
 }, {
 	UI.new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }),
@@ -159,6 +159,8 @@ local renderers = {}
 local breedSelection = {}
 local countdownLabel = nil
 local claimButton = nil
+local trade = nil -- the server's view of my current trade, or nil
+local tradeStatusLabel = nil
 
 local function clearBody()
 	for _, child in body:GetChildren() do
@@ -168,6 +170,7 @@ local function clearBody()
 	end
 	countdownLabel = nil
 	claimButton = nil
+	tradeStatusLabel = nil
 end
 
 local function render()
@@ -513,11 +516,219 @@ function renderers.Book()
 	end
 end
 
+local function tradeStatus(): string
+	if not trade then
+		return ""
+	end
+	if trade.countdownEndsAt then
+		local left = math.max(0, math.ceil(trade.countdownEndsAt - Workspace:GetServerTimeNow()))
+		return "Trading in " .. left .. "..."
+	elseif trade.myReady then
+		return "Waiting for " .. trade.partner .. " to press Ready..."
+	elseif trade.theirReady then
+		return trade.partner .. " is ready! Press Ready to accept."
+	end
+	return "Add Freeks, then both press Ready."
+end
+
+local function tradeCard(item, footer: string, onClick)
+	return UI.card({
+		species = item.species,
+		mutation = item.mutation,
+		lines = {
+			{ FreekUtil.displayName(item), nameColor(item), 18 },
+			{ Format.money(FreekUtil.income(item)) .. "/s", colors.money, 14 },
+			{ footer, colors.muted, 14 },
+		},
+		onClick = onClick,
+	})
+end
+
+function renderers.Trade()
+	if not trade then
+		heading("Trade Freeks with other players in this server.", 1)
+		local grid = UI.grid(200, 100)
+		grid.LayoutOrder = 2
+		grid.Parent = body
+		local anyone = false
+		for _, other in Players:GetPlayers() do
+			if other ~= player then
+				anyone = true
+				UI.card({
+					lines = { { other.DisplayName, colors.text, 24 } },
+					buttons = {
+						UI.button("Send trade request", colors.blue, function()
+							send("TradeRequest", other.UserId)
+						end, { Size = UDim2.new(1, 0, 0, 36) }),
+					},
+				}).Parent =
+					grid
+			end
+		end
+		if not anyone then
+			heading("Nobody else is here yet!", 3)
+		end
+		return
+	end
+
+	heading("Trading with " .. trade.partner, 1)
+
+	local offered = {}
+	for _, item in trade.mine do
+		offered[item.uid] = true
+	end
+
+	local columns = UI.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 2,
+		Parent = body,
+	}, {
+		UI.new("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			Padding = UDim.new(0, 10),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	local function column(title: string, color: Color3, ready: boolean, order: number)
+		local frame = UI.new("Frame", {
+			BackgroundColor3 = Color3.fromRGB(30, 20, 50),
+			Size = UDim2.new(0.5, -5, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = order,
+			Parent = columns,
+		}, {
+			UI.corner(12),
+			UI.stroke(if ready then colors.green else Color3.fromRGB(20, 10, 35), 3),
+			UI.new("UIPadding", {
+				PaddingTop = UDim.new(0, 6),
+				PaddingBottom = UDim.new(0, 8),
+				PaddingLeft = UDim.new(0, 6),
+				PaddingRight = UDim.new(0, 6),
+			}),
+			UI.new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }),
+		})
+		UI.label(title .. (if ready then "  READY" else ""), {
+			TextColor3 = color,
+			Size = UDim2.new(1, 0, 0, 24),
+			LayoutOrder = 1,
+			Parent = frame,
+		})
+		local grid = UI.grid(120, 165)
+		grid.LayoutOrder = 2
+		grid.Parent = frame
+		return grid
+	end
+
+	local giveGrid = column("You give", colors.orange, trade.myReady, 1)
+	for i, item in trade.mine do
+		local card = tradeCard(item, "Tap to remove", function()
+			send("TradeOffer", item.uid, false)
+		end)
+		card.LayoutOrder = i
+		card.Parent = giveGrid
+	end
+	local getGrid = column("You get", colors.money, trade.theirReady, 2)
+	for i, item in trade.theirs do
+		local card = tradeCard(item, "", nil)
+		card.LayoutOrder = i
+		card.Parent = getGrid
+	end
+
+	tradeStatusLabel = UI.label(tradeStatus(), { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 3, Parent = body })
+
+	local buttons = UI.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 46),
+		LayoutOrder = 4,
+		Parent = body,
+	}, {
+		UI.new("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			Padding = UDim.new(0, 10),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	UI.button(
+		if trade.myReady then "Not ready" else "Ready",
+		if trade.myReady then colors.gray else colors.green,
+		function()
+			if trade then
+				send("TradeReady", not trade.myReady)
+			end
+		end,
+		{ Size = UDim2.new(0.5, -5, 1, 0), LayoutOrder = 1, Parent = buttons }
+	)
+	UI.button("Cancel trade", colors.red, function()
+		send("TradeCancel")
+	end, { Size = UDim2.new(0.5, -5, 1, 0), LayoutOrder = 2, Parent = buttons })
+
+	heading("Tap your Freeks to offer them", 5)
+	local mine = UI.grid(120, 165)
+	mine.LayoutOrder = 6
+	mine.Parent = body
+	for i, item in sortedFreeks() do
+		if not offered[item.uid] and not item.freek.breeding then
+			local card = tradeCard(item.freek, "Tap to offer", function()
+				send("TradeOffer", item.uid, true)
+			end)
+			card.LayoutOrder = i
+			card.Parent = mine
+		end
+	end
+end
+
+-- Incoming trade request popup.
+local requestPopup = UI.new("Frame", {
+	Visible = false,
+	AnchorPoint = Vector2.new(0.5, 0),
+	Position = UDim2.new(0.5, 0, 0, 90),
+	Size = UDim2.fromOffset(320, 110),
+	BackgroundColor3 = colors.panel,
+	ZIndex = 10,
+	Parent = screen,
+}, {
+	UI.corner(14),
+	UI.stroke(colors.blue, 3),
+})
+local requestLabel = UI.label("", {
+	Size = UDim2.new(1, -20, 0, 40),
+	Position = UDim2.fromOffset(10, 8),
+	ZIndex = 10,
+	Parent = requestPopup,
+})
+local pendingRequest = nil
+local function answerRequest(accept: boolean)
+	if pendingRequest then
+		send("TradeRespond", pendingRequest.userId, accept)
+	end
+	pendingRequest = nil
+	requestPopup.Visible = false
+end
+UI.button("Accept", colors.green, function()
+	answerRequest(true)
+end, {
+	Size = UDim2.new(0.5, -15, 0, 42),
+	Position = UDim2.new(0, 10, 1, -52),
+	ZIndex = 10,
+	Parent = requestPopup,
+})
+UI.button("Decline", colors.red, function()
+	answerRequest(false)
+end, {
+	Size = UDim2.new(0.5, -15, 0, 42),
+	Position = UDim2.new(0.5, 5, 1, -52),
+	ZIndex = 10,
+	Parent = requestPopup,
+})
+
 local MENU = {
 	{ "Shop", colors.green },
 	{ "Freeks", colors.blue },
 	{ "Breed", colors.pink },
 	{ "Book", colors.orange },
+	{ "Trade", colors.blue:Lerp(colors.pink, 0.5) },
 }
 for i, entry in MENU do
 	UI.button(entry[1], entry[2], function()
@@ -551,6 +762,55 @@ Remotes.get("DiscoveryUpdate").OnClientEvent:Connect(function(speciesId, discove
 	discoveries[speciesId] = discovery
 	if currentWindow == "Book" then
 		render()
+	end
+end)
+
+Remotes.get("Trade").OnClientEvent:Connect(function(kind, payload)
+	if kind == "Request" then
+		pendingRequest = payload
+		requestLabel.Text = payload.name .. " wants to trade!"
+		requestPopup.Visible = true
+		task.delay(30, function()
+			if pendingRequest == payload then
+				pendingRequest = nil
+				requestPopup.Visible = false
+			end
+		end)
+	elseif kind == "State" then
+		local isNew = trade == nil
+		trade = payload
+		if isNew and currentWindow ~= "Trade" then
+			open("Trade")
+		elseif currentWindow == "Trade" then
+			render()
+		end
+	elseif kind == "Closed" then
+		trade = nil
+		toast(payload, if string.find(payload, "complete") then "success" else "error")
+		if currentWindow == "Trade" then
+			render()
+		end
+	end
+end)
+
+-- Refresh the player list while the Trade window is open with no trade going.
+local function refreshTradeList()
+	if currentWindow == "Trade" and not trade then
+		render()
+	end
+end
+Players.PlayerAdded:Connect(refreshTradeList)
+Players.PlayerRemoving:Connect(function()
+	task.defer(refreshTradeList)
+end)
+
+-- Trade countdown.
+task.spawn(function()
+	while true do
+		task.wait(0.25)
+		if tradeStatusLabel then
+			tradeStatusLabel.Text = tradeStatus()
+		end
 	end
 end)
 
