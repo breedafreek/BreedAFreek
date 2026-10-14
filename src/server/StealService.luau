@@ -1,7 +1,8 @@
 -- Stealing Freeks from other players' yards.
 --
 -- While a yard's gate is open, anyone else can walk in and hold the Steal prompt on a Freek
--- standing on a pad. The Freek floats over the thief's head and they walk slower. If the
+-- standing on a pad. The Freek floats over the thief's head and they walk slower: barely
+-- for a Common, a lot for a Secret (see carrySpeed in Rarities). If the
 -- owner gets within CATCH_DISTANCE before the thief is back inside their own fence, or the
 -- thief dies or leaves, the Freek goes home. If the thief makes it home, it's theirs.
 --
@@ -15,6 +16,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local ActionService = require(script.Parent.ActionService)
@@ -70,7 +72,9 @@ local function attachToHead(player: Player, freek): (Model?, number?)
 	model.Parent = character
 
 	local normalSpeed = humanoid.WalkSpeed
-	humanoid.WalkSpeed = Config.CARRY_WALK_SPEED
+	-- Rarer Freeks are heavier: the thief slows down more.
+	local rarity = FreekUtil.species(freek).rarity
+	humanoid.WalkSpeed = math.min(normalSpeed, Rarities.info[rarity].carrySpeed)
 	return model, normalSpeed
 end
 

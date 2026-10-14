@@ -39,7 +39,6 @@ local Config = {
 
 	GATE_LOCK_SECONDS = 180, -- how long the gate stays locked each time the owner locks it
 	STEAL_HOLD_SECONDS = 1.5, -- how long a thief holds the prompt to pick up a Freek
-	CARRY_WALK_SPEED = 12, -- thieves walk slower while carrying (normal is 16)
 	CATCH_DISTANCE = 6, -- the owner catches a thief by getting this close
 }
 
@@ -777,7 +776,8 @@ return Mutations
       <Item class="ModuleScript" referent="9">
         <Properties>
           <string name="Name">Rarities</string>
-          <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds.
+          <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
+-- walks while carrying a Freek of this rarity (normal walking speed is 16).
 -- "Seasonal" isn't a tier: it's a tag a Freek of any rarity can have (see Seasons).
 
 local Rarities = {}
@@ -785,13 +785,13 @@ local Rarities = {}
 Rarities.order = { "Common", "Uncommon", "Rare", "Legendary", "Mystic", "Ultra", "Secret" }
 
 Rarities.info = {
-	Common = { color = Color3.fromRGB(200, 200, 200), breedTime = 30 },
-	Uncommon = { color = Color3.fromRGB(90, 220, 90), breedTime = 60 },
-	Rare = { color = Color3.fromRGB(70, 150, 255), breedTime = 120 },
-	Legendary = { color = Color3.fromRGB(255, 180, 40), breedTime = 300 },
-	Mystic = { color = Color3.fromRGB(190, 90, 255), breedTime = 600 },
-	Ultra = { color = Color3.fromRGB(255, 60, 100), breedTime = 1200 },
-	Secret = { color = Color3.fromRGB(255, 255, 255), breedTime = 2400 },
+	Common = { color = Color3.fromRGB(200, 200, 200), breedTime = 30, carrySpeed = 15 },
+	Uncommon = { color = Color3.fromRGB(90, 220, 90), breedTime = 60, carrySpeed = 14 },
+	Rare = { color = Color3.fromRGB(70, 150, 255), breedTime = 120, carrySpeed = 12.5 },
+	Legendary = { color = Color3.fromRGB(255, 180, 40), breedTime = 300, carrySpeed = 11 },
+	Mystic = { color = Color3.fromRGB(190, 90, 255), breedTime = 600, carrySpeed = 9.5 },
+	Ultra = { color = Color3.fromRGB(255, 60, 100), breedTime = 1200, carrySpeed = 8 },
+	Secret = { color = Color3.fromRGB(255, 255, 255), breedTime = 2400, carrySpeed = 6.5 },
 }
 
 Rarities.rank = {}
@@ -2303,7 +2303,8 @@ return Recipes
           <string name="Source"><![CDATA[-- Stealing Freeks from other players' yards.
 --
 -- While a yard's gate is open, anyone else can walk in and hold the Steal prompt on a Freek
--- standing on a pad. The Freek floats over the thief's head and they walk slower. If the
+-- standing on a pad. The Freek floats over the thief's head and they walk slower: barely
+-- for a Common, a lot for a Secret (see carrySpeed in Rarities). If the
 -- owner gets within CATCH_DISTANCE before the thief is back inside their own fence, or the
 -- thief dies or leaves, the Freek goes home. If the thief makes it home, it's theirs.
 --
@@ -2317,6 +2318,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local ActionService = require(script.Parent.ActionService)
@@ -2372,7 +2374,9 @@ local function attachToHead(player: Player, freek): (Model?, number?)
 	model.Parent = character
 
 	local normalSpeed = humanoid.WalkSpeed
-	humanoid.WalkSpeed = Config.CARRY_WALK_SPEED
+	-- Rarer Freeks are heavier: the thief slows down more.
+	local rarity = FreekUtil.species(freek).rarity
+	humanoid.WalkSpeed = math.min(normalSpeed, Rarities.info[rarity].carrySpeed)
 	return model, normalSpeed
 end
 

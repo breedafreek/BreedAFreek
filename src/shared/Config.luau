@@ -21,7 +21,6 @@ local Config = {
 
 	GATE_LOCK_SECONDS = 180, -- how long the gate stays locked each time the owner locks it
 	STEAL_HOLD_SECONDS = 1.5, -- how long a thief holds the prompt to pick up a Freek
-	CARRY_WALK_SPEED = 12, -- thieves walk slower while carrying (normal is 16)
 	CATCH_DISTANCE = 6, -- the owner catches a thief by getting this close
 }
 
