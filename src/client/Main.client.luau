@@ -942,7 +942,8 @@ local gateButton = UI.button("LOCK GATE", colors.red, function()
 	send("LockGate")
 end, {
 	AnchorPoint = Vector2.new(0.5, 1),
-	Position = UDim2.new(0.5, 0, 1, -16),
+	-- Sits above Roblox's tool hotbar, which takes the bottom-centre of the screen.
+	Position = UDim2.new(0.5, 0, 1, -96),
 	Size = UDim2.fromOffset(230, 56),
 	Parent = screen,
 })
