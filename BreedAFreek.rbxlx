@@ -3784,7 +3784,559 @@ return WeaponService
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="LocalScript" referent="31">
+        <Item class="ModuleScript" referent="31">
+          <Properties>
+            <string name="Name">Hud</string>
+            <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, event chip, menu tabs, leaderboard,
+-- gate button and pop-up notifications. Windows (Shop, Freeks, ...) live in Main.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local StarterGui = game:GetService("StarterGui")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Format = require(ReplicatedStorage.Shared.Format)
+local Seasons = require(ReplicatedStorage.Shared.Seasons)
+local UI = require(script.Parent.UI)
+
+local colors = UI.colors
+local player = Players.LocalPlayer
+
+local Hud = {}
+
+local function text(value: string, size: number, props)
+	local label = UI.new("TextLabel", {
+		BackgroundTransparency = 1,
+		FontFace = UI.fonts.bold,
+		Text = value,
+		TextSize = size,
+		TextColor3 = colors.text,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+	})
+	for key, v in props or {} do
+		label[key] = v
+	end
+	return label
+end
+
+-- Scales a frame down on short screens (phones) so it never runs off the edge.
+local function fitHeight(frame: GuiObject, designHeight: number, reserved: number)
+	local scale = UI.new("UIScale", { Parent = frame })
+	local function update()
+		local camera = Workspace.CurrentCamera
+		local available = camera.ViewportSize.Y - reserved
+		scale.Scale = math.clamp(available / designHeight, 0.55, 1)
+	end
+	update()
+	Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(update)
+end
+
+local function hoverGrow(button: GuiButton)
+	local scale = UI.new("UIScale", { Parent = button })
+	local info = TweenInfo.new(0.12, Enum.EasingStyle.Quad)
+	button.MouseEnter:Connect(function()
+		TweenService:Create(scale, info, { Scale = 1.06 }):Play()
+	end)
+	button.MouseLeave:Connect(function()
+		TweenService:Create(scale, info, { Scale = 1 }):Play()
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- Money
+--------------------------------------------------------------------------------
+
+function Hud.money(screen: ScreenGui)
+	local pill = UI.glass({
+		Name = "Money",
+		Position = UDim2.fromOffset(12, 12),
+		Size = UDim2.fromOffset(236, 60),
+		Parent = screen,
+	}, { UI.corner(18) })
+
+	UI.new("Frame", {
+		Name = "Coin",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 10, 0.5, 0),
+		Size = UDim2.fromOffset(40, 40),
+		BackgroundColor3 = colors.gold,
+		Parent = pill,
+	}, {
+		UI.corner(20),
+		UI.new("UIGradient", {
+			Color = ColorSequence.new(Color3.fromRGB(255, 226, 120), Color3.fromRGB(235, 150, 30)),
+			Rotation = 90,
+		}),
+		UI.stroke(Color3.fromRGB(255, 240, 190), 1.5, 0.2),
+		text("$", 24, {
+			Size = UDim2.fromScale(1, 1),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			FontFace = UI.fonts.heavy,
+			TextColor3 = Color3.fromRGB(120, 70, 10),
+		}),
+	})
+
+	local amount = text("$0", 26, {
+		Position = UDim2.fromOffset(60, 7),
+		Size = UDim2.new(1, -116, 0, 28),
+		FontFace = UI.fonts.heavy,
+		Parent = pill,
+	})
+	local income = text("+$0/s", 15, {
+		Position = UDim2.fromOffset(60, 35),
+		Size = UDim2.new(1, -116, 0, 18),
+		TextColor3 = colors.money,
+		Parent = pill,
+	})
+	local boost = UI.new("TextLabel", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -10, 0.5, 0),
+		Size = UDim2.fromOffset(46, 22),
+		BackgroundColor3 = colors.gold,
+		BackgroundTransparency = 0.75,
+		FontFace = UI.fonts.heavy,
+		TextSize = 14,
+		TextColor3 = colors.gold,
+		Visible = false,
+		Parent = pill,
+	}, { UI.corner(11) })
+
+	-- The number glides to its new value instead of jumping.
+	local shown = player:GetAttribute("Money") or 0
+	RunService.RenderStepped:Connect(function(dt)
+		local target = player:GetAttribute("Money") or 0
+		shown += (target - shown) * math.min(1, dt * 8)
+		if math.abs(target - shown) < 1 then
+			shown = target
+		end
+		amount.Text = Format.money(shown)
+	end)
+	local function updateIncome()
+		income.Text = "+" .. Format.money(player:GetAttribute("Income") or 0) .. "/s"
+	end
+	player:GetAttributeChangedSignal("Income"):Connect(updateIncome)
+	updateIncome()
+
+	return function(rebirths: number)
+		boost.Visible = rebirths > 0
+		boost.Text = "x" .. tostring(Config.incomeMultiplier(rebirths))
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Event chip
+--------------------------------------------------------------------------------
+
+function Hud.eventChip(screen: ScreenGui)
+	local chip = UI.glass({
+		Name = "Event",
+		Position = UDim2.fromOffset(12, 80),
+		Size = UDim2.fromOffset(0, 28),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Visible = false,
+		Parent = screen,
+	}, {
+		UI.corner(14),
+		UI.new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 12) }),
+		UI.new("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			Padding = UDim.new(0, 7),
+		}),
+	})
+	local dot = UI.new("Frame", { Size = UDim2.fromOffset(9, 9), Parent = chip }, { UI.corner(5) })
+	local label = text("", 14, { Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, Parent = chip })
+
+	local function update()
+		local active = Seasons.active()
+		local season = active[1] and Seasons.list[active[1]]
+		chip.Visible = season ~= nil
+		if season then
+			dot.BackgroundColor3 = season.color
+			label.Text = season.name .. " Event · Live"
+			label.TextColor3 = season.color:Lerp(Color3.new(1, 1, 1), 0.35)
+		end
+	end
+	update()
+	task.spawn(function()
+		while true do
+			task.wait(60)
+			update()
+		end
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- Menu tabs
+--------------------------------------------------------------------------------
+
+-- entries = { { name, icon, color } }. Returns setActive(name or nil).
+function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
+	local TILE = 64
+	local GAP = 8
+	local height = #entries * TILE + (#entries - 1) * GAP + 16
+	local rail = UI.glass({
+		Name = "Menu",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 12, 0.5, 0),
+		Size = UDim2.fromOffset(TILE + 16, height),
+		Parent = screen,
+	}, {
+		UI.corner(20),
+		UI.new("UIPadding", {
+			PaddingTop = UDim.new(0, 8),
+			PaddingBottom = UDim.new(0, 8),
+			PaddingLeft = UDim.new(0, 8),
+			PaddingRight = UDim.new(0, 8),
+		}),
+		UI.new("UIListLayout", { Padding = UDim.new(0, GAP), SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
+	fitHeight(rail, height, 200)
+
+	local tiles = {}
+	for i, entry in entries do
+		local name, icon, color = entry[1], entry[2], entry[3]
+		local tile = UI.new("TextButton", {
+			Name = name,
+			Text = "",
+			AutoButtonColor = false,
+			BackgroundColor3 = color,
+			Size = UDim2.fromOffset(TILE, TILE),
+			LayoutOrder = i,
+			Parent = rail,
+		}, {
+			UI.corner(16),
+			UI.gradient(color, 0.22),
+			text(icon, 26, {
+				Position = UDim2.fromOffset(0, 6),
+				Size = UDim2.new(1, 0, 0, 32),
+				TextXAlignment = Enum.TextXAlignment.Center,
+			}),
+			text(name, 12, {
+				Position = UDim2.new(0, 0, 1, -22),
+				Size = UDim2.new(1, 0, 0, 16),
+				TextXAlignment = Enum.TextXAlignment.Center,
+				FontFace = UI.fonts.heavy,
+			}),
+		})
+		local ring = UI.stroke(Color3.new(1, 1, 1), 2.5, 1)
+		ring.Parent = tile
+		tiles[name] = ring
+		hoverGrow(tile)
+		tile.Activated:Connect(function()
+			onSelect(name)
+		end)
+	end
+
+	return function(active: string?)
+		for name, ring in tiles do
+			TweenService:Create(ring, TweenInfo.new(0.15), { Transparency = if name == active then 0 else 1 }):Play()
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Leaderboard (replaces Roblox's default player list)
+--------------------------------------------------------------------------------
+
+function Hud.leaderboard(screen: ScreenGui)
+	pcall(function()
+		StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)
+	end)
+
+	local ROW = 40
+	local board = UI.glass({
+		Name = "Leaderboard",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -12, 0, 12),
+		Size = UDim2.fromOffset(250, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Parent = screen,
+	}, {
+		UI.corner(16),
+		UI.new("UIPadding", {
+			PaddingTop = UDim.new(0, 8),
+			PaddingBottom = UDim.new(0, 8),
+			PaddingLeft = UDim.new(0, 8),
+			PaddingRight = UDim.new(0, 8),
+		}),
+		UI.new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
+
+	local header = UI.new("TextButton", {
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 26),
+		LayoutOrder = 0,
+		Parent = board,
+	}, {
+		text("🏆  Leaderboard", 15, {
+			Position = UDim2.fromOffset(4, 0),
+			Size = UDim2.new(1, -40, 1, 0),
+			FontFace = UI.fonts.heavy,
+		}),
+	})
+	local count = text("", 13, {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -4, 0, 0),
+		Size = UDim2.fromOffset(40, 26),
+		TextXAlignment = Enum.TextXAlignment.Right,
+		TextColor3 = colors.muted,
+		Parent = header,
+	})
+
+	local list = UI.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 1,
+		Parent = board,
+	}, {
+		UI.new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
+	header.Activated:Connect(function()
+		list.Visible = not list.Visible
+	end)
+
+	local rows = {} -- [Player] = { frame, rank, name, money, badge }
+	local thumbnails = {}
+
+	local function makeRow(other: Player)
+		local isMe = other == player
+		local frame = UI.new("Frame", {
+			BackgroundColor3 = if isMe then colors.blue else Color3.new(1, 1, 1),
+			BackgroundTransparency = if isMe then 0.72 else 0.95,
+			Size = UDim2.new(1, 0, 0, ROW),
+			Parent = list,
+		}, { UI.corner(10) })
+		local rank = text("1", 13, {
+			Position = UDim2.fromOffset(6, 0),
+			Size = UDim2.fromOffset(16, ROW),
+			TextColor3 = colors.muted,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Parent = frame,
+		})
+		local avatar = UI.new("ImageLabel", {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 26, 0.5, 0),
+			Size = UDim2.fromOffset(28, 28),
+			BackgroundColor3 = colors.card,
+			Parent = frame,
+		}, { UI.corner(14) })
+		task.spawn(function()
+			if not thumbnails[other.UserId] then
+				local ok, image = pcall(function()
+					return Players:GetUserThumbnailAsync(
+						other.UserId,
+						Enum.ThumbnailType.HeadShot,
+						Enum.ThumbnailSize.Size48x48
+					)
+				end)
+				thumbnails[other.UserId] = if ok then image else ""
+			end
+			avatar.Image = thumbnails[other.UserId]
+		end)
+		local name = text(other.DisplayName, 14, {
+			Position = UDim2.fromOffset(62, 0),
+			Size = UDim2.new(1, -150, 1, 0),
+			Parent = frame,
+		})
+		local badge = UI.new("TextLabel", {
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, -66, 0.5, 0),
+			Size = UDim2.fromOffset(28, 18),
+			BackgroundColor3 = colors.gold,
+			BackgroundTransparency = 0.75,
+			FontFace = UI.fonts.heavy,
+			TextSize = 11,
+			TextColor3 = colors.gold,
+			Visible = false,
+			Parent = frame,
+		}, { UI.corner(9) })
+		local money = text("$0", 14, {
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -8, 0, 0),
+			Size = UDim2.fromOffset(56, ROW),
+			TextXAlignment = Enum.TextXAlignment.Right,
+			FontFace = UI.fonts.heavy,
+			TextColor3 = colors.money,
+			Parent = frame,
+		})
+		rows[other] = { frame = frame, rank = rank, name = name, money = money, badge = badge }
+	end
+
+	local function stat(other: Player, key: string): number
+		local stats = other:FindFirstChild("leaderstats")
+		local value = stats and stats:FindFirstChild(key)
+		return if value then value.Value else 0
+	end
+
+	local function refresh()
+		local everyone = Players:GetPlayers()
+		for _, other in everyone do
+			if not rows[other] then
+				makeRow(other)
+			end
+		end
+		for other, row in rows do
+			if not other.Parent then
+				row.frame:Destroy()
+				rows[other] = nil
+			end
+		end
+		table.sort(everyone, function(a, b)
+			return stat(a, "Money") > stat(b, "Money")
+		end)
+		for i, other in everyone do
+			local row = rows[other]
+			row.frame.LayoutOrder = i
+			row.rank.Text = tostring(i)
+			row.money.Text = Format.money(stat(other, "Money"))
+			local rebirths = stat(other, "Rebirths")
+			row.badge.Visible = rebirths > 0
+			row.badge.Text = "R" .. rebirths
+		end
+		count.Text = #everyone .. "/" .. Config.PLOT_COUNT
+	end
+
+	refresh()
+	Players.PlayerAdded:Connect(refresh)
+	Players.PlayerRemoving:Connect(function()
+		task.defer(refresh)
+	end)
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			refresh()
+		end
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- Gate button
+--------------------------------------------------------------------------------
+
+function Hud.gateButton(screen: ScreenGui, onLock: () -> ())
+	local button = UI.new("TextButton", {
+		Name = "Gate",
+		Text = "",
+		AutoButtonColor = false,
+		AnchorPoint = Vector2.new(0.5, 1),
+		-- Sits above Roblox's tool hotbar, which takes the bottom-centre of the screen.
+		Position = UDim2.new(0.5, 0, 1, -96),
+		Size = UDim2.fromOffset(250, 52),
+		BackgroundColor3 = colors.panel,
+		BackgroundTransparency = UI.GLASS_TRANSPARENCY,
+		Parent = screen,
+	}, { UI.corner(26) })
+	local ring = UI.stroke(colors.green, 2, 0.1)
+	ring.Parent = button
+	local label = text("", 18, {
+		Size = UDim2.fromScale(1, 1),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		FontFace = UI.fonts.heavy,
+		Parent = button,
+	})
+	hoverGrow(button)
+	button.Activated:Connect(onLock)
+
+	task.spawn(function()
+		while true do
+			local left = (player:GetAttribute("GateLockedUntil") or 0) - Workspace:GetServerTimeNow()
+			if left > 0 and left < 1e9 then
+				label.Text = "🔒  Locked · " .. Format.time(left)
+				label.TextColor3 = colors.money
+				ring.Color = colors.green
+				button.BackgroundColor3 = colors.panel
+			else
+				-- Pulses red while open so the owner notices.
+				local pulse = (math.sin(os.clock() * 6) + 1) / 2
+				label.Text = "🔓  Gate open · Lock it!"
+				label.TextColor3 = colors.text
+				ring.Color = colors.red
+				button.BackgroundColor3 = colors.red:Lerp(Color3.fromRGB(120, 25, 35), pulse)
+			end
+			task.wait(0.05)
+		end
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- Notifications
+--------------------------------------------------------------------------------
+
+local TOAST_COLORS = {
+	error = colors.red,
+	success = colors.green,
+	money = colors.money,
+	discovery = colors.gold,
+}
+
+-- Returns toast(message, kind?).
+function Hud.toasts(screen: ScreenGui)
+	local holder = UI.new("Frame", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 12),
+		Size = UDim2.new(0.5, 0, 0, 220),
+		Parent = screen,
+	}, {
+		UI.new("UIListLayout", {
+			Padding = UDim.new(0, 6),
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+
+	return function(message: string, kind: string?)
+		local accent = TOAST_COLORS[kind or ""] or colors.blue
+		local big = kind == "discovery"
+		local frame = UI.glass({
+			Size = UDim2.fromOffset(0, if big then 44 else 36),
+			AutomaticSize = Enum.AutomaticSize.X,
+			Parent = holder,
+		}, {
+			UI.corner(18),
+			UI.new("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 16) }),
+			UI.new("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				VerticalAlignment = Enum.VerticalAlignment.Center,
+				Padding = UDim.new(0, 10),
+			}),
+		})
+		UI.new("Frame", {
+			BackgroundColor3 = accent,
+			Size = UDim2.fromOffset(4, if big then 24 else 18),
+			Parent = frame,
+		}, { UI.corner(2) })
+		local label = text(message, if big then 17 else 15, {
+			Size = UDim2.fromOffset(0, 24),
+			AutomaticSize = Enum.AutomaticSize.X,
+			TextColor3 = if big then accent:Lerp(Color3.new(1, 1, 1), 0.3) else colors.text,
+			Parent = frame,
+		})
+		label.TextTruncate = Enum.TextTruncate.None
+
+		task.delay(if big then 7 else 3.5, function()
+			local info = TweenInfo.new(0.35)
+			TweenService:Create(frame, info, { BackgroundTransparency = 1 }):Play()
+			TweenService:Create(label, info, { TextTransparency = 1 }):Play()
+			task.wait(0.35)
+			frame:Destroy()
+		end)
+	end
+end
+
+return Hud
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="LocalScript" referent="32">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -3794,7 +4346,6 @@ local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -3808,6 +4359,7 @@ local Rarities = require(Shared.Rarities)
 local Remotes = require(Shared.Remotes)
 local Seasons = require(Shared.Seasons)
 local Weapons = require(Shared.Weapons)
+local Hud = require(script.Parent.Hud)
 local UI = require(script.Parent.UI)
 
 local player = Players.LocalPlayer
@@ -3832,85 +4384,28 @@ local screen = UI.new("ScreenGui", {
 	Parent = player:WaitForChild("PlayerGui"),
 })
 
-local moneyLabel = UI.label("$0", {
-	Size = UDim2.new(1, 0, 0.62, 0),
-	TextColor3 = colors.money,
-	TextXAlignment = Enum.TextXAlignment.Left,
-})
-local incomeLabel = UI.label("+$0/s", {
-	Size = UDim2.new(1, 0, 0.38, 0),
-	Position = UDim2.fromScale(0, 0.62),
-	TextColor3 = colors.muted,
-	TextXAlignment = Enum.TextXAlignment.Left,
-})
-UI.new("Frame", {
-	Name = "Money",
-	BackgroundColor3 = colors.panel,
-	BackgroundTransparency = 0.15,
-	Position = UDim2.new(0, 12, 0, 12),
-	Size = UDim2.fromOffset(190, 64),
-	Parent = screen,
-}, {
-	UI.corner(12),
-	UI.stroke(Color3.fromRGB(20, 10, 35), 3),
-	UI.new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6) }),
-	moneyLabel,
-	incomeLabel,
-})
+local setRebirthBoost = Hud.money(screen)
+Hud.eventChip(screen)
+Hud.leaderboard(screen)
+local toast = Hud.toasts(screen)
 
--- Banner for any limited event that's running.
-local eventBanner = UI.label("", {
-	Position = UDim2.new(0, 12, 0, 82),
-	Size = UDim2.fromOffset(190, 26),
-	TextXAlignment = Enum.TextXAlignment.Left,
-	Visible = false,
-	Parent = screen,
-})
-local function updateEventBanner()
-	local active = Seasons.active()
-	local season = active[1] and Seasons.list[active[1]]
-	eventBanner.Visible = season ~= nil
-	if season then
-		eventBanner.Text = season.name .. " Event is live!"
-		eventBanner.TextColor3 = season.color
-	end
-end
-updateEventBanner()
-task.spawn(function()
-	while true do
-		task.wait(60)
-		updateEventBanner()
-	end
-end)
-
-local menu = UI.new("Frame", {
-	Name = "Menu",
-	BackgroundTransparency = 1,
-	AnchorPoint = Vector2.new(0, 0.5),
-	Position = UDim2.new(0, 12, 0.5, 0),
-	Size = UDim2.fromOffset(96, 6 * 58),
-	Parent = screen,
-}, {
-	UI.new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }),
-})
-
-local window = UI.new("Frame", {
+local window = UI.glass({
 	Name = "Window",
 	Visible = false,
 	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.fromScale(0.55, 0.5),
-	Size = UDim2.fromScale(0.72, 0.8),
-	BackgroundColor3 = colors.panel,
+	Position = UDim2.fromScale(0.53, 0.52),
+	Size = UDim2.fromScale(0.66, 0.74),
+	BackgroundTransparency = 0.05,
 	Parent = screen,
 }, {
-	UI.corner(16),
-	UI.stroke(Color3.fromRGB(20, 10, 35), 4),
-	UI.new("UISizeConstraint", { MaxSize = Vector2.new(880, 620) }),
+	UI.corner(22),
+	UI.new("UISizeConstraint", { MaxSize = Vector2.new(860, 600) }),
 })
 local windowTitle = UI.label("", {
-	Size = UDim2.new(1, -60, 0, 40),
-	Position = UDim2.fromOffset(16, 8),
+	Size = UDim2.new(1, -70, 0, 34),
+	Position = UDim2.fromOffset(20, 12),
 	TextXAlignment = Enum.TextXAlignment.Left,
+	FontFace = UI.fonts.heavy,
 	Parent = window,
 })
 local body = UI.new("ScrollingFrame", {
@@ -3926,45 +4421,6 @@ local body = UI.new("ScrollingFrame", {
 	UI.new("UIListLayout", { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }),
 	UI.new("UIPadding", { PaddingBottom = UDim.new(0, 10), PaddingRight = UDim.new(0, 8) }),
 })
-
-local toasts = UI.new("Frame", {
-	BackgroundTransparency = 1,
-	AnchorPoint = Vector2.new(0.5, 0),
-	Position = UDim2.new(0.5, 0, 0, 12),
-	Size = UDim2.new(0.6, 0, 0, 200),
-	Parent = screen,
-}, {
-	UI.new("UIListLayout", {
-		Padding = UDim.new(0, 6),
-		HorizontalAlignment = Enum.HorizontalAlignment.Center,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-	}),
-})
-
-local TOAST_COLORS = {
-	error = colors.red,
-	success = colors.green,
-	money = Color3.fromRGB(40, 150, 70),
-	discovery = colors.orange,
-}
-
-local function toast(message: string, kind: string?)
-	local frame = UI.new("Frame", {
-		BackgroundColor3 = TOAST_COLORS[kind or ""] or colors.panel,
-		Size = UDim2.new(1, 0, 0, if kind == "discovery" then 44 else 34),
-		Parent = toasts,
-	}, {
-		UI.corner(10),
-		UI.stroke(Color3.fromRGB(20, 10, 35), 2),
-		UI.label(message, { Size = UDim2.new(1, -16, 1, -8), Position = UDim2.fromOffset(8, 4) }),
-	})
-	task.delay(if kind == "discovery" then 7 else 3.5, function()
-		local fade = TweenService:Create(frame, TweenInfo.new(0.4), { BackgroundTransparency = 1 })
-		fade:Play()
-		fade.Completed:Wait()
-		frame:Destroy()
-	end)
-end
 
 --------------------------------------------------------------------------------
 -- Windows
@@ -3997,27 +4453,33 @@ local function render()
 	renderers[currentWindow]()
 end
 
+local setActiveTab = function(_name: string?) end
+local TAB_ICONS = {}
+
 local function open(name: string)
 	if currentWindow == name then
 		currentWindow = nil
 		window.Visible = false
+		setActiveTab(nil)
 		return
 	end
 	currentWindow = name
-	windowTitle.Text = name
+	setActiveTab(name)
+	windowTitle.Text = (TAB_ICONS[name] or "") .. "  " .. name
 	window.Visible = true
 	body.CanvasPosition = Vector2.zero
 	render()
 end
 
-UI.button("X", colors.red, function()
-	currentWindow = nil
-	window.Visible = false
+UI.button("✕", colors.gray, function()
+	open(currentWindow)
 end, {
-	Size = UDim2.fromOffset(40, 40),
-	Position = UDim2.new(1, -50, 0, 10),
+	Size = UDim2.fromOffset(36, 36),
+	Position = UDim2.new(1, -50, 0, 12),
 	Parent = window,
 })
+	:FindFirstChildOfClass("UICorner").CornerRadius =
+	UDim.new(0, 18)
 
 local function heading(text: string, order: number)
 	return UI.label(text, {
@@ -4296,7 +4758,7 @@ function renderers.Breed()
 		local card = UI.card({
 			species = freek.species,
 			mutation = freek.mutation,
-			background = if isSelected then Color3.fromRGB(150, 60, 120) else nil,
+			background = if isSelected then Color3.fromRGB(90, 40, 80) else nil,
 			border = if isSelected then colors.pink else nil,
 			lines = {
 				{ FreekUtil.displayName(freek), nameColor(freek), 20 },
@@ -4439,14 +4901,14 @@ function renderers.Trade()
 	})
 	local function column(title: string, color: Color3, ready: boolean, order: number)
 		local frame = UI.new("Frame", {
-			BackgroundColor3 = Color3.fromRGB(30, 20, 50),
+			BackgroundColor3 = Color3.fromRGB(30, 26, 46),
 			Size = UDim2.new(0.5, -5, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
 			LayoutOrder = order,
 			Parent = columns,
 		}, {
 			UI.corner(12),
-			UI.stroke(if ready then colors.green else Color3.fromRGB(20, 10, 35), 3),
+			if ready then UI.stroke(colors.green, 2.5) else UI.stroke(),
 			UI.new("UIPadding", {
 				PaddingTop = UDim.new(0, 6),
 				PaddingBottom = UDim.new(0, 8),
@@ -4535,8 +4997,8 @@ local requestPopup = UI.new("Frame", {
 	ZIndex = 10,
 	Parent = screen,
 }, {
-	UI.corner(14),
-	UI.stroke(colors.blue, 3),
+	UI.corner(18),
+	UI.stroke(colors.blue, 2),
 })
 local requestLabel = UI.label("", {
 	Size = UDim2.new(1, -20, 0, 40),
@@ -4635,38 +5097,33 @@ function renderers.Rebirth()
 end
 
 local MENU = {
-	{ "Shop", colors.green },
-	{ "Freeks", colors.blue },
-	{ "Breed", colors.pink },
-	{ "Book", colors.orange },
-	{ "Trade", colors.blue:Lerp(colors.pink, 0.5) },
-	{ "Rebirth", Color3.fromRGB(230, 180, 40) },
+	{ "Shop", "🛒", colors.green },
+	{ "Freeks", "🐷", colors.blue },
+	{ "Breed", "💕", colors.pink },
+	{ "Book", "📖", colors.orange },
+	{ "Trade", "🤝", colors.purple },
+	{ "Rebirth", "⭐", Color3.fromRGB(230, 170, 30) },
 }
-for i, entry in MENU do
-	UI.button(entry[1], entry[2], function()
-		open(entry[1])
-	end, { Size = UDim2.new(1, 0, 0, 50), LayoutOrder = i, Parent = menu })
+for _, entry in MENU do
+	TAB_ICONS[entry[1]] = entry[2]
 end
+setActiveTab = Hud.menu(screen, MENU, open)
 
 --------------------------------------------------------------------------------
 -- Live updates
 --------------------------------------------------------------------------------
 
-local function updateMoney()
-	moneyLabel.Text = Format.money(player:GetAttribute("Money") or 0)
-	incomeLabel.Text = "+" .. Format.money(player:GetAttribute("Income") or 0) .. "/s"
+player:GetAttributeChangedSignal("Money"):Connect(function()
 	if state then
 		state.money = player:GetAttribute("Money") or state.money
 	end
-end
-player:GetAttributeChangedSignal("Money"):Connect(updateMoney)
-player:GetAttributeChangedSignal("Income"):Connect(updateMoney)
-updateMoney()
+end)
 
 Remotes.get("Notify").OnClientEvent:Connect(toast)
 
 Remotes.get("State").OnClientEvent:Connect(function(newState)
 	state = newState
+	setRebirthBoost(state.rebirths or 0)
 	render()
 end)
 
@@ -4726,32 +5183,8 @@ task.spawn(function()
 	end
 end)
 
--- Gate lock button. The gate stays locked for GATE_LOCK_SECONDS, then must be locked again.
-local gateButton = UI.button("LOCK GATE", colors.red, function()
+Hud.gateButton(screen, function()
 	send("LockGate")
-end, {
-	AnchorPoint = Vector2.new(0.5, 1),
-	-- Sits above Roblox's tool hotbar, which takes the bottom-centre of the screen.
-	Position = UDim2.new(0.5, 0, 1, -96),
-	Size = UDim2.fromOffset(230, 56),
-	Parent = screen,
-})
-local function updateGateButton()
-	local left = (player:GetAttribute("GateLockedUntil") or 0) - Workspace:GetServerTimeNow()
-	if left > 0 and left < 1e9 then
-		gateButton.Text = "Gate locked " .. Format.time(left)
-		gateButton.BackgroundColor3 = colors.green
-	else
-		-- Flash while the gate is open so the owner notices.
-		gateButton.Text = "GATE OPEN! Lock it"
-		gateButton.BackgroundColor3 = if os.clock() % 1 < 0.5 then colors.red else Color3.fromRGB(170, 40, 40)
-	end
-end
-task.spawn(function()
-	while true do
-		updateGateButton()
-		task.wait(0.25)
-	end
 end)
 
 -- Nobody needs a Steal prompt on their own Freeks, or a Snatch prompt on the Freek
@@ -4842,14 +5275,18 @@ task.spawn(function()
 	render()
 end)
 state = Remotes.get("GetState"):InvokeServer()
+if state then
+	setRebirthBoost(state.rebirths or 0)
+end
 render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="32">
+        <Item class="ModuleScript" referent="33">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).
+-- Style: dark frosted-glass panels, rounded corners, Builder Sans, soft gradient buttons.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -4857,20 +5294,30 @@ local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 
 local UI = {}
 
-UI.FONT = Enum.Font.FredokaOne
-UI.colors = {
-	panel = Color3.fromRGB(45, 30, 70),
-	card = Color3.fromRGB(70, 50, 105),
-	text = Color3.fromRGB(255, 255, 255),
-	muted = Color3.fromRGB(190, 180, 210),
-	green = Color3.fromRGB(70, 200, 90),
-	blue = Color3.fromRGB(70, 140, 255),
-	pink = Color3.fromRGB(255, 100, 170),
-	orange = Color3.fromRGB(255, 160, 50),
-	red = Color3.fromRGB(230, 70, 70),
-	gray = Color3.fromRGB(110, 105, 120),
-	money = Color3.fromRGB(140, 255, 140),
+local FAMILY = "rbxasset://fonts/families/BuilderSans.json"
+UI.fonts = {
+	regular = Font.new(FAMILY, Enum.FontWeight.Medium),
+	bold = Font.new(FAMILY, Enum.FontWeight.Bold),
+	heavy = Font.new(FAMILY, Enum.FontWeight.ExtraBold),
 }
+
+UI.colors = {
+	panel = Color3.fromRGB(22, 19, 34), -- glass panels
+	card = Color3.fromRGB(40, 34, 60),
+	text = Color3.fromRGB(255, 255, 255),
+	muted = Color3.fromRGB(170, 164, 192),
+	green = Color3.fromRGB(60, 200, 110),
+	blue = Color3.fromRGB(70, 140, 255),
+	pink = Color3.fromRGB(255, 95, 170),
+	orange = Color3.fromRGB(255, 160, 50),
+	red = Color3.fromRGB(235, 70, 80),
+	gray = Color3.fromRGB(95, 90, 115),
+	money = Color3.fromRGB(110, 235, 140),
+	gold = Color3.fromRGB(255, 200, 60),
+	purple = Color3.fromRGB(160, 110, 240),
+}
+
+UI.GLASS_TRANSPARENCY = 0.12
 
 -- UI.new("Frame", { Size = ... }, { children... })
 function UI.new(className: string, props, children)
@@ -4893,18 +5340,48 @@ function UI.corner(radius: number?)
 	return UI.new("UICorner", { CornerRadius = UDim.new(0, radius or 10) })
 end
 
-function UI.stroke(color: Color3?, thickness: number?)
+-- A thin outline; defaults to the faint white edge used on glass panels.
+function UI.stroke(color: Color3?, thickness: number?, transparency: number?)
 	return UI.new("UIStroke", {
-		Color = color or Color3.new(0, 0, 0),
-		Thickness = thickness or 2,
+		Color = color or Color3.new(1, 1, 1),
+		Thickness = thickness or 1.5,
+		Transparency = transparency or (if color then 0 else 0.86),
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 	})
+end
+
+-- Vertical gradient from a lighter version of color at the top to color at the bottom.
+function UI.gradient(color: Color3, lighten: number?)
+	return UI.new("UIGradient", {
+		Color = ColorSequence.new(color:Lerp(Color3.new(1, 1, 1), lighten or 0.18), color),
+		Rotation = 90,
+	})
+end
+
+-- A frosted-glass panel.
+function UI.glass(props, children)
+	local frame = UI.new("Frame", {
+		BackgroundColor3 = UI.colors.panel,
+		BackgroundTransparency = UI.GLASS_TRANSPARENCY,
+	}, { UI.corner(14), UI.stroke() })
+	for key, value in props or {} do
+		if key ~= "Parent" then
+			frame[key] = value
+		end
+	end
+	for _, child in children or {} do
+		child.Parent = frame
+	end
+	if props and props.Parent then
+		frame.Parent = props.Parent
+	end
+	return frame
 end
 
 function UI.label(text: string, props)
 	local label = UI.new("TextLabel", {
 		BackgroundTransparency = 1,
-		Font = UI.FONT,
+		FontFace = UI.fonts.bold,
 		Text = text,
 		TextColor3 = UI.colors.text,
 		TextScaled = true,
@@ -4919,20 +5396,20 @@ end
 function UI.button(text: string, color: Color3, onClick: () -> (), props)
 	local button = UI.new("TextButton", {
 		BackgroundColor3 = color,
-		Font = UI.FONT,
+		FontFace = UI.fonts.heavy,
 		Text = text,
 		TextColor3 = UI.colors.text,
 		TextScaled = true,
 		AutoButtonColor = true,
 		Size = UDim2.new(1, 0, 0, 30),
 	}, {
-		UI.corner(8),
-		UI.stroke(color:Lerp(Color3.new(0, 0, 0), 0.5), 2),
+		UI.corner(10),
+		UI.gradient(color),
 		UI.new("UIPadding", {
-			PaddingLeft = UDim.new(0, 6),
-			PaddingRight = UDim.new(0, 6),
-			PaddingTop = UDim.new(0, 4),
-			PaddingBottom = UDim.new(0, 4),
+			PaddingLeft = UDim.new(0, 8),
+			PaddingRight = UDim.new(0, 8),
+			PaddingTop = UDim.new(0, 5),
+			PaddingBottom = UDim.new(0, 5),
 		}),
 	})
 	for key, value in props or {} do
@@ -4973,12 +5450,12 @@ function UI.card(opts)
 		BackgroundColor3 = opts.background or UI.colors.card,
 	}, {
 		UI.corner(12),
-		UI.stroke(opts.border or Color3.fromRGB(25, 15, 40), if opts.border then 3 else 2),
+		if opts.border then UI.stroke(opts.border, 2.5) else UI.stroke(),
 		UI.new("UIPadding", {
-			PaddingLeft = UDim.new(0, 6),
-			PaddingRight = UDim.new(0, 6),
-			PaddingTop = UDim.new(0, 6),
-			PaddingBottom = UDim.new(0, 6),
+			PaddingLeft = UDim.new(0, 8),
+			PaddingRight = UDim.new(0, 8),
+			PaddingTop = UDim.new(0, 8),
+			PaddingBottom = UDim.new(0, 8),
 		}),
 		UI.new("UIListLayout", {
 			SortOrder = Enum.SortOrder.LayoutOrder,
@@ -5028,7 +5505,7 @@ function UI.grid(cellWidth: number, cellHeight: number)
 	}, {
 		UI.new("UIGridLayout", {
 			CellSize = UDim2.fromOffset(cellWidth, cellHeight),
-			CellPadding = UDim2.fromOffset(8, 8),
+			CellPadding = UDim2.fromOffset(10, 10),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			HorizontalAlignment = Enum.HorizontalAlignment.Center,
 		}),

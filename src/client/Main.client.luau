@@ -5,7 +5,6 @@ local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -19,6 +18,7 @@ local Rarities = require(Shared.Rarities)
 local Remotes = require(Shared.Remotes)
 local Seasons = require(Shared.Seasons)
 local Weapons = require(Shared.Weapons)
+local Hud = require(script.Parent.Hud)
 local UI = require(script.Parent.UI)
 
 local player = Players.LocalPlayer
@@ -43,85 +43,28 @@ local screen = UI.new("ScreenGui", {
 	Parent = player:WaitForChild("PlayerGui"),
 })
 
-local moneyLabel = UI.label("$0", {
-	Size = UDim2.new(1, 0, 0.62, 0),
-	TextColor3 = colors.money,
-	TextXAlignment = Enum.TextXAlignment.Left,
-})
-local incomeLabel = UI.label("+$0/s", {
-	Size = UDim2.new(1, 0, 0.38, 0),
-	Position = UDim2.fromScale(0, 0.62),
-	TextColor3 = colors.muted,
-	TextXAlignment = Enum.TextXAlignment.Left,
-})
-UI.new("Frame", {
-	Name = "Money",
-	BackgroundColor3 = colors.panel,
-	BackgroundTransparency = 0.15,
-	Position = UDim2.new(0, 12, 0, 12),
-	Size = UDim2.fromOffset(190, 64),
-	Parent = screen,
-}, {
-	UI.corner(12),
-	UI.stroke(Color3.fromRGB(20, 10, 35), 3),
-	UI.new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6) }),
-	moneyLabel,
-	incomeLabel,
-})
+local setRebirthBoost = Hud.money(screen)
+Hud.eventChip(screen)
+Hud.leaderboard(screen)
+local toast = Hud.toasts(screen)
 
--- Banner for any limited event that's running.
-local eventBanner = UI.label("", {
-	Position = UDim2.new(0, 12, 0, 82),
-	Size = UDim2.fromOffset(190, 26),
-	TextXAlignment = Enum.TextXAlignment.Left,
-	Visible = false,
-	Parent = screen,
-})
-local function updateEventBanner()
-	local active = Seasons.active()
-	local season = active[1] and Seasons.list[active[1]]
-	eventBanner.Visible = season ~= nil
-	if season then
-		eventBanner.Text = season.name .. " Event is live!"
-		eventBanner.TextColor3 = season.color
-	end
-end
-updateEventBanner()
-task.spawn(function()
-	while true do
-		task.wait(60)
-		updateEventBanner()
-	end
-end)
-
-local menu = UI.new("Frame", {
-	Name = "Menu",
-	BackgroundTransparency = 1,
-	AnchorPoint = Vector2.new(0, 0.5),
-	Position = UDim2.new(0, 12, 0.5, 0),
-	Size = UDim2.fromOffset(96, 6 * 58),
-	Parent = screen,
-}, {
-	UI.new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }),
-})
-
-local window = UI.new("Frame", {
+local window = UI.glass({
 	Name = "Window",
 	Visible = false,
 	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.fromScale(0.55, 0.5),
-	Size = UDim2.fromScale(0.72, 0.8),
-	BackgroundColor3 = colors.panel,
+	Position = UDim2.fromScale(0.53, 0.52),
+	Size = UDim2.fromScale(0.66, 0.74),
+	BackgroundTransparency = 0.05,
 	Parent = screen,
 }, {
-	UI.corner(16),
-	UI.stroke(Color3.fromRGB(20, 10, 35), 4),
-	UI.new("UISizeConstraint", { MaxSize = Vector2.new(880, 620) }),
+	UI.corner(22),
+	UI.new("UISizeConstraint", { MaxSize = Vector2.new(860, 600) }),
 })
 local windowTitle = UI.label("", {
-	Size = UDim2.new(1, -60, 0, 40),
-	Position = UDim2.fromOffset(16, 8),
+	Size = UDim2.new(1, -70, 0, 34),
+	Position = UDim2.fromOffset(20, 12),
 	TextXAlignment = Enum.TextXAlignment.Left,
+	FontFace = UI.fonts.heavy,
 	Parent = window,
 })
 local body = UI.new("ScrollingFrame", {
@@ -137,45 +80,6 @@ local body = UI.new("ScrollingFrame", {
 	UI.new("UIListLayout", { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }),
 	UI.new("UIPadding", { PaddingBottom = UDim.new(0, 10), PaddingRight = UDim.new(0, 8) }),
 })
-
-local toasts = UI.new("Frame", {
-	BackgroundTransparency = 1,
-	AnchorPoint = Vector2.new(0.5, 0),
-	Position = UDim2.new(0.5, 0, 0, 12),
-	Size = UDim2.new(0.6, 0, 0, 200),
-	Parent = screen,
-}, {
-	UI.new("UIListLayout", {
-		Padding = UDim.new(0, 6),
-		HorizontalAlignment = Enum.HorizontalAlignment.Center,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-	}),
-})
-
-local TOAST_COLORS = {
-	error = colors.red,
-	success = colors.green,
-	money = Color3.fromRGB(40, 150, 70),
-	discovery = colors.orange,
-}
-
-local function toast(message: string, kind: string?)
-	local frame = UI.new("Frame", {
-		BackgroundColor3 = TOAST_COLORS[kind or ""] or colors.panel,
-		Size = UDim2.new(1, 0, 0, if kind == "discovery" then 44 else 34),
-		Parent = toasts,
-	}, {
-		UI.corner(10),
-		UI.stroke(Color3.fromRGB(20, 10, 35), 2),
-		UI.label(message, { Size = UDim2.new(1, -16, 1, -8), Position = UDim2.fromOffset(8, 4) }),
-	})
-	task.delay(if kind == "discovery" then 7 else 3.5, function()
-		local fade = TweenService:Create(frame, TweenInfo.new(0.4), { BackgroundTransparency = 1 })
-		fade:Play()
-		fade.Completed:Wait()
-		frame:Destroy()
-	end)
-end
 
 --------------------------------------------------------------------------------
 -- Windows
@@ -208,27 +112,33 @@ local function render()
 	renderers[currentWindow]()
 end
 
+local setActiveTab = function(_name: string?) end
+local TAB_ICONS = {}
+
 local function open(name: string)
 	if currentWindow == name then
 		currentWindow = nil
 		window.Visible = false
+		setActiveTab(nil)
 		return
 	end
 	currentWindow = name
-	windowTitle.Text = name
+	setActiveTab(name)
+	windowTitle.Text = (TAB_ICONS[name] or "") .. "  " .. name
 	window.Visible = true
 	body.CanvasPosition = Vector2.zero
 	render()
 end
 
-UI.button("X", colors.red, function()
-	currentWindow = nil
-	window.Visible = false
+UI.button("✕", colors.gray, function()
+	open(currentWindow)
 end, {
-	Size = UDim2.fromOffset(40, 40),
-	Position = UDim2.new(1, -50, 0, 10),
+	Size = UDim2.fromOffset(36, 36),
+	Position = UDim2.new(1, -50, 0, 12),
 	Parent = window,
 })
+	:FindFirstChildOfClass("UICorner").CornerRadius =
+	UDim.new(0, 18)
 
 local function heading(text: string, order: number)
 	return UI.label(text, {
@@ -507,7 +417,7 @@ function renderers.Breed()
 		local card = UI.card({
 			species = freek.species,
 			mutation = freek.mutation,
-			background = if isSelected then Color3.fromRGB(150, 60, 120) else nil,
+			background = if isSelected then Color3.fromRGB(90, 40, 80) else nil,
 			border = if isSelected then colors.pink else nil,
 			lines = {
 				{ FreekUtil.displayName(freek), nameColor(freek), 20 },
@@ -650,14 +560,14 @@ function renderers.Trade()
 	})
 	local function column(title: string, color: Color3, ready: boolean, order: number)
 		local frame = UI.new("Frame", {
-			BackgroundColor3 = Color3.fromRGB(30, 20, 50),
+			BackgroundColor3 = Color3.fromRGB(30, 26, 46),
 			Size = UDim2.new(0.5, -5, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
 			LayoutOrder = order,
 			Parent = columns,
 		}, {
 			UI.corner(12),
-			UI.stroke(if ready then colors.green else Color3.fromRGB(20, 10, 35), 3),
+			if ready then UI.stroke(colors.green, 2.5) else UI.stroke(),
 			UI.new("UIPadding", {
 				PaddingTop = UDim.new(0, 6),
 				PaddingBottom = UDim.new(0, 8),
@@ -746,8 +656,8 @@ local requestPopup = UI.new("Frame", {
 	ZIndex = 10,
 	Parent = screen,
 }, {
-	UI.corner(14),
-	UI.stroke(colors.blue, 3),
+	UI.corner(18),
+	UI.stroke(colors.blue, 2),
 })
 local requestLabel = UI.label("", {
 	Size = UDim2.new(1, -20, 0, 40),
@@ -846,38 +756,33 @@ function renderers.Rebirth()
 end
 
 local MENU = {
-	{ "Shop", colors.green },
-	{ "Freeks", colors.blue },
-	{ "Breed", colors.pink },
-	{ "Book", colors.orange },
-	{ "Trade", colors.blue:Lerp(colors.pink, 0.5) },
-	{ "Rebirth", Color3.fromRGB(230, 180, 40) },
+	{ "Shop", "🛒", colors.green },
+	{ "Freeks", "🐷", colors.blue },
+	{ "Breed", "💕", colors.pink },
+	{ "Book", "📖", colors.orange },
+	{ "Trade", "🤝", colors.purple },
+	{ "Rebirth", "⭐", Color3.fromRGB(230, 170, 30) },
 }
-for i, entry in MENU do
-	UI.button(entry[1], entry[2], function()
-		open(entry[1])
-	end, { Size = UDim2.new(1, 0, 0, 50), LayoutOrder = i, Parent = menu })
+for _, entry in MENU do
+	TAB_ICONS[entry[1]] = entry[2]
 end
+setActiveTab = Hud.menu(screen, MENU, open)
 
 --------------------------------------------------------------------------------
 -- Live updates
 --------------------------------------------------------------------------------
 
-local function updateMoney()
-	moneyLabel.Text = Format.money(player:GetAttribute("Money") or 0)
-	incomeLabel.Text = "+" .. Format.money(player:GetAttribute("Income") or 0) .. "/s"
+player:GetAttributeChangedSignal("Money"):Connect(function()
 	if state then
 		state.money = player:GetAttribute("Money") or state.money
 	end
-end
-player:GetAttributeChangedSignal("Money"):Connect(updateMoney)
-player:GetAttributeChangedSignal("Income"):Connect(updateMoney)
-updateMoney()
+end)
 
 Remotes.get("Notify").OnClientEvent:Connect(toast)
 
 Remotes.get("State").OnClientEvent:Connect(function(newState)
 	state = newState
+	setRebirthBoost(state.rebirths or 0)
 	render()
 end)
 
@@ -937,32 +842,8 @@ task.spawn(function()
 	end
 end)
 
--- Gate lock button. The gate stays locked for GATE_LOCK_SECONDS, then must be locked again.
-local gateButton = UI.button("LOCK GATE", colors.red, function()
+Hud.gateButton(screen, function()
 	send("LockGate")
-end, {
-	AnchorPoint = Vector2.new(0.5, 1),
-	-- Sits above Roblox's tool hotbar, which takes the bottom-centre of the screen.
-	Position = UDim2.new(0.5, 0, 1, -96),
-	Size = UDim2.fromOffset(230, 56),
-	Parent = screen,
-})
-local function updateGateButton()
-	local left = (player:GetAttribute("GateLockedUntil") or 0) - Workspace:GetServerTimeNow()
-	if left > 0 and left < 1e9 then
-		gateButton.Text = "Gate locked " .. Format.time(left)
-		gateButton.BackgroundColor3 = colors.green
-	else
-		-- Flash while the gate is open so the owner notices.
-		gateButton.Text = "GATE OPEN! Lock it"
-		gateButton.BackgroundColor3 = if os.clock() % 1 < 0.5 then colors.red else Color3.fromRGB(170, 40, 40)
-	end
-end
-task.spawn(function()
-	while true do
-		updateGateButton()
-		task.wait(0.25)
-	end
 end)
 
 -- Nobody needs a Steal prompt on their own Freeks, or a Snatch prompt on the Freek
@@ -1053,4 +934,7 @@ task.spawn(function()
 	render()
 end)
 state = Remotes.get("GetState"):InvokeServer()
+if state then
+	setRebirthBoost(state.rebirths or 0)
+end
 render()
