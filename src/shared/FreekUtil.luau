@@ -48,6 +48,22 @@ function FreekUtil.yardIncome(data): number
 	return total
 end
 
+-- First empty yard slot, or nil if the yard is full.
+function FreekUtil.freeSlot(data): number?
+	local used = {}
+	for _, freek in data.freeks do
+		if freek.slot then
+			used[freek.slot] = true
+		end
+	end
+	for i = 1, data.slots do
+		if not used[i] then
+			return i
+		end
+	end
+	return nil
+end
+
 function FreekUtil.count(data): number
 	local n = 0
 	for _ in data.freeks do

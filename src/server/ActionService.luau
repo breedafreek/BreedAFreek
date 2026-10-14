@@ -11,6 +11,7 @@ local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
+local Carried = require(script.Parent.Carried)
 local DataService = require(script.Parent.DataService)
 local DiscoveryService = require(script.Parent.DiscoveryService)
 local Recipes = require(script.Parent.Recipes)
@@ -37,25 +38,10 @@ local function snapshot(data)
 	}
 end
 
-local function freeSlot(data): number?
-	local used = {}
-	for _, freek in data.freeks do
-		if freek.slot then
-			used[freek.slot] = true
-		end
-	end
-	for i = 1, data.slots do
-		if not used[i] then
-			return i
-		end
-	end
-	return nil
-end
-
 -- Adds a Freek, puts it in the yard if there's room, and records the discovery.
 local function giveFreek(player: Player, data, species: string, mutation: string?)
 	local uid = HttpService:GenerateGUID(false)
-	data.freeks[uid] = { species = species, mutation = mutation, slot = freeSlot(data) }
+	data.freeks[uid] = { species = species, mutation = mutation, slot = FreekUtil.freeSlot(data) }
 	local isNew = not data.discovered[species]
 	data.discovered[species] = true
 	task.spawn(DiscoveryService.claim, player, species)
@@ -105,10 +91,10 @@ end
 
 function handlers.Place(player: Player, data, uid: any)
 	local freek = ownedFreek(data, uid)
-	if not freek or freek.breeding or freek.slot then
+	if not freek or freek.breeding or freek.slot or Carried.is(player, uid) then
 		return
 	end
-	local slot = freeSlot(data)
+	local slot = FreekUtil.freeSlot(data)
 	if not slot then
 		return notify(player, "Your yard is full! Buy more slots or remove a Freek.", "error")
 	end
@@ -127,6 +113,9 @@ function handlers.Sell(player: Player, data, uid: any)
 	if not freek or freek.breeding then
 		return
 	end
+	if Carried.is(player, uid) then
+		return notify(player, "Someone is stealing that Freek! Catch them!", "error")
+	end
 	local value = FreekUtil.sellValue(freek)
 	data.freeks[uid] = nil
 	data.money += value
@@ -140,6 +129,9 @@ function handlers.StartBreed(player: Player, data, uidA: any, uidB: any)
 	local a, b = ownedFreek(data, uidA), ownedFreek(data, uidB)
 	if not a or not b or uidA == uidB or a.breeding or b.breeding then
 		return
+	end
+	if Carried.is(player, uidA) or Carried.is(player, uidB) then
+		return notify(player, "Someone is stealing that Freek! Catch them!", "error")
 	end
 	if FreekUtil.count(data) >= Config.MAX_FREEKS then
 		return notify(player, "No room for a baby! Sell a Freek first.", "error")
@@ -165,8 +157,8 @@ function handlers.ClaimBreed(player: Player, data)
 
 	local species, mutation = Recipes.roll(a, b, rng)
 	-- Parents go back into the yard first so they keep earning.
-	a.slot = freeSlot(data)
-	b.slot = freeSlot(data)
+	a.slot = FreekUtil.freeSlot(data)
+	b.slot = FreekUtil.freeSlot(data)
 	local _, isNew = giveFreek(player, data, species, mutation)
 
 	local name = FreekUtil.displayName({ species = species, mutation = mutation })

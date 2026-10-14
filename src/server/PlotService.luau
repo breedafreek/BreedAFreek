@@ -1,6 +1,9 @@
--- Builds the map and gives every player a yard. Yards are public so players can walk
--- around and show off. The whole yard is rebuilt whenever its owner's data changes.
+-- Builds the map and gives every player a fenced yard. Other players can walk in to look
+-- (or steal, see StealService) only while the gate is open. The owner locks the gate for
+-- GATE_LOCK_SECONDS at a time and can always walk through their own gate.
+-- The whole yard is rebuilt whenever its owner's data changes.
 
+local PhysicsService = game:GetService("PhysicsService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
@@ -18,6 +21,9 @@ local DataService = require(script.Parent.DataService)
 local PLOT_SIZE = 64
 local RING_RADIUS = 100
 local PAD_COLUMNS = 4
+local FENCE_HEIGHT = 5 -- what you see
+local WALL_HEIGHT = 16 -- invisible wall above the fence so nobody can jump it
+local GATE_WIDTH = 14
 
 local PlotService = {}
 
@@ -135,6 +141,74 @@ local function buildPlot(index: number)
 	})
 	local _, penLabel = billboard(pen, UDim2.fromScale(14, 2.5), Vector3.new(0, 9, 0), 80)
 
+	-- Fence: visible pickets plus a tall invisible wall, with a gate gap at the front.
+	local fenceColor = Color3.fromRGB(235, 225, 205)
+	local half = PLOT_SIZE / 2 - 0.5
+	local frontSide = (PLOT_SIZE - GATE_WIDTH) / 2
+	local sides = {
+		{ length = PLOT_SIZE, x = 0, z = half, alongX = true },
+		{ length = PLOT_SIZE, x = -half, z = 0, alongX = false },
+		{ length = PLOT_SIZE, x = half, z = 0, alongX = false },
+		{ length = frontSide, x = -(GATE_WIDTH / 2 + frontSide / 2), z = -half, alongX = true },
+		{ length = frontSide, x = GATE_WIDTH / 2 + frontSide / 2, z = -half, alongX = true },
+	}
+	for _, side in sides do
+		local size = if side.alongX then Vector3.new(side.length, 1, 1) else Vector3.new(1, 1, side.length)
+		part({
+			Name = "Fence",
+			Size = size * Vector3.new(1, FENCE_HEIGHT, 1),
+			CFrame = origin * CFrame.new(side.x, 1 + FENCE_HEIGHT / 2, side.z),
+			Color = fenceColor,
+			Material = Enum.Material.WoodPlanks,
+			Parent = folder,
+		})
+		part({
+			Name = "Wall",
+			Size = size * Vector3.new(1, WALL_HEIGHT, 1),
+			CFrame = origin * CFrame.new(side.x, 1 + WALL_HEIGHT / 2, side.z),
+			Transparency = 1,
+			Parent = folder,
+		})
+	end
+	for _, x in { -1, 1 } do
+		part({
+			Name = "GatePost",
+			Size = Vector3.new(1.6, 8, 1.6),
+			CFrame = origin * CFrame.new(x * (GATE_WIDTH / 2 + 0.3), 5, -half),
+			Color = Color3.fromRGB(120, 85, 55),
+			Material = Enum.Material.Wood,
+			Parent = folder,
+		})
+	end
+	-- The visible force field is fence height; an invisible part above it stops jumping over.
+	local gateHeight = FENCE_HEIGHT + 2
+	local gate = part({
+		Name = "Gate",
+		Size = Vector3.new(GATE_WIDTH, gateHeight, 1),
+		CFrame = origin * CFrame.new(0, 1 + gateHeight / 2, -half),
+		Color = Color3.fromRGB(255, 60, 60),
+		Material = Enum.Material.ForceField,
+		CollisionGroup = "Gate" .. index,
+		Parent = folder,
+	})
+	local gateTop = part({
+		Name = "GateTop",
+		Size = Vector3.new(GATE_WIDTH, WALL_HEIGHT - gateHeight, 1),
+		CFrame = origin * CFrame.new(0, 1 + gateHeight + (WALL_HEIGHT - gateHeight) / 2, -half),
+		Transparency = 1,
+		CollisionGroup = "Gate" .. index,
+		Parent = folder,
+	})
+	local gateGuiPart = part({
+		Name = "GateSign",
+		Size = Vector3.new(1, 1, 1),
+		CFrame = origin * CFrame.new(0, 10, -half),
+		Transparency = 1,
+		CanCollide = false,
+		Parent = folder,
+	})
+	local _, gateLabel = billboard(gateGuiPart, UDim2.fromScale(12, 2.5), Vector3.zero, 120)
+
 	local signPost = part({
 		Name = "Sign",
 		Size = Vector3.new(1, 1, 1),
@@ -158,13 +232,18 @@ local function buildPlot(index: number)
 		penLabel = penLabel,
 		sign = signLabel,
 		freeks = freekFolder,
+		gate = gate,
+		gateTop = gateTop,
+		gateLabel = gateLabel,
+		lockedUntil = math.huge,
 		owner = nil,
 	}
 	plots[index] = plot
 	return plot
 end
 
-local function placeFreek(plot, freek, ground: CFrame)
+-- steal = { uid, ownerUserId } for Freeks on pads, so other players get a Steal prompt.
+local function placeFreek(plot, freek, ground: CFrame, steal)
 	local model, height = FreekModel.build(freek.species, freek.mutation)
 	model:PivotTo(ground)
 	model.Parent = plot.freeks
@@ -201,6 +280,19 @@ local function placeFreek(plot, freek, ground: CFrame)
 	-- The tag hangs off the body, so measure the offset from the body's center, not the feet.
 	gui.StudsOffsetWorldSpace = Vector3.new(0, height - (anchor.Position.Y - ground.Position.Y) + 1, 0)
 	gui.Parent = anchor
+
+	if steal then
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "StealPrompt"
+		prompt.ActionText = "Steal"
+		prompt.ObjectText = FreekUtil.displayName(freek)
+		prompt.HoldDuration = Config.STEAL_HOLD_SECONDS
+		prompt.MaxActivationDistance = 9
+		prompt.RequiresLineOfSight = false
+		prompt:SetAttribute("Uid", steal.uid)
+		prompt:SetAttribute("OwnerUserId", steal.ownerUserId)
+		prompt.Parent = anchor
+	end
 end
 
 local function updatePenLabel(plot, data)
@@ -230,10 +322,13 @@ function PlotService.render(player: Player)
 		pad.lock.Enabled = not unlocked
 	end
 
-	for _, freek in data.freeks do
+	for uid, freek in data.freeks do
 		local pad = freek.slot and plot.pads[freek.slot]
 		if pad then
-			placeFreek(plot, freek, pad.part.CFrame * CFrame.new(0, 0.25, 0))
+			placeFreek(plot, freek, pad.part.CFrame * CFrame.new(0, 0.25, 0), {
+				uid = uid,
+				ownerUserId = player.UserId,
+			})
 		end
 	end
 
@@ -251,7 +346,45 @@ function PlotService.render(player: Player)
 	updatePenLabel(plot, data)
 end
 
+local function setGateLock(plot, lockedUntil: number)
+	plot.lockedUntil = lockedUntil
+	if plot.owner then
+		plot.owner:SetAttribute("GateLockedUntil", lockedUntil)
+	end
+end
+
+local function updateGate(plot)
+	local left = plot.lockedUntil - Workspace:GetServerTimeNow()
+	local locked = left > 0
+	plot.gate.CanCollide = locked
+	plot.gateTop.CanCollide = locked
+	plot.gate.Transparency = if locked then 0.4 else 1
+	if not plot.owner then
+		plot.gateLabel.Text = ""
+	elseif locked then
+		plot.gateLabel.Text = "LOCKED " .. Format.time(left)
+		plot.gateLabel.TextColor3 = Color3.fromRGB(255, 120, 120)
+	else
+		plot.gateLabel.Text = "GATE OPEN"
+		plot.gateLabel.TextColor3 = Color3.fromRGB(120, 255, 120)
+	end
+end
+
+-- Lets the owner's character pass through their own locked gate.
+local function setCollisionGroup(character: Model, group: string)
+	local function apply(descendant)
+		if descendant:IsA("BasePart") then
+			descendant.CollisionGroup = group
+		end
+	end
+	for _, descendant in character:GetDescendants() do
+		apply(descendant)
+	end
+	character.DescendantAdded:Connect(apply)
+end
+
 local function clearPlot(plot)
+	setGateLock(plot, math.huge) -- empty yards stay shut
 	plot.owner = nil
 	plot.freeks:ClearAllChildren()
 	plot.sign.Text = "Empty Yard"
@@ -261,6 +394,7 @@ local function clearPlot(plot)
 		pad.part.Transparency = 0.5
 		pad.lock.Enabled = false
 	end
+	updateGate(plot)
 end
 
 local function sendHome(player: Player)
@@ -277,10 +411,16 @@ local function onPlayerAdded(player: Player)
 			plot.owner = player
 			plotOf[player] = plot
 			player:SetAttribute("Plot", plot.index)
-			player.CharacterAdded:Connect(function()
+			-- New arrivals get one free lock so they aren't robbed while loading in.
+			setGateLock(plot, Workspace:GetServerTimeNow() + Config.GATE_LOCK_SECONDS)
+			player.CharacterAdded:Connect(function(character)
+				setCollisionGroup(character, "Owner" .. plot.index)
 				task.wait(0.1)
 				sendHome(player)
 			end)
+			if player.Character then
+				setCollisionGroup(player.Character, "Owner" .. plot.index)
+			end
 			sendHome(player)
 			PlotService.render(player)
 			return
@@ -289,7 +429,41 @@ local function onPlayerAdded(player: Player)
 	Remotes.get("Notify"):FireClient(player, "This server is full of yards! Try another server.", "error")
 end
 
+function PlotService.getPlot(player: Player)
+	return plotOf[player]
+end
+
+-- True if a world position is inside a plot's fence.
+function PlotService.isInside(plot, position: Vector3): boolean
+	local localPos = plot.origin:PointToObjectSpace(position)
+	local limit = PLOT_SIZE / 2 - 1
+	return math.abs(localPos.X) < limit and math.abs(localPos.Z) < limit
+end
+
+function PlotService.isGateLocked(plot): boolean
+	return Workspace:GetServerTimeNow() < plot.lockedUntil
+end
+
+-- Returns an error message, or nil if the gate was locked.
+function PlotService.lockGate(player: Player): string?
+	local plot = plotOf[player]
+	if not plot then
+		return "You don't have a yard."
+	end
+	if PlotService.isGateLocked(plot) then
+		return "Your gate is already locked."
+	end
+	setGateLock(plot, Workspace:GetServerTimeNow() + Config.GATE_LOCK_SECONDS)
+	updateGate(plot)
+	return nil
+end
+
 function PlotService.init()
+	for i = 1, Config.PLOT_COUNT do
+		PhysicsService:RegisterCollisionGroup("Gate" .. i)
+		PhysicsService:RegisterCollisionGroup("Owner" .. i)
+		PhysicsService:CollisionGroupSetCollidable("Gate" .. i, "Owner" .. i, false)
+	end
 	buildMap()
 	local plotsFolder = Instance.new("Folder")
 	plotsFolder.Name = "Plots"
@@ -312,6 +486,15 @@ function PlotService.init()
 
 	DataService.onChanged(function(player)
 		PlotService.render(player)
+	end)
+
+	task.spawn(function()
+		while true do
+			task.wait(0.25)
+			for _, plot in plots do
+				updateGate(plot)
+			end
+		end
 	end)
 
 	task.spawn(function()

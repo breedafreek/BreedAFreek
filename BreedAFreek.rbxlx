@@ -36,6 +36,11 @@ local Config = {
 	SESSION_LOCK_TIMEOUT = 150, -- seconds before another server may take over a player's save
 
 	PLOT_COUNT = 6, -- set the place's Max Players to this in Game Settings
+
+	GATE_LOCK_SECONDS = 180, -- how long the gate stays locked each time the owner locks it
+	STEAL_HOLD_SECONDS = 1.5, -- how long a thief holds the prompt to pick up a Freek
+	CARRY_WALK_SPEED = 12, -- thieves walk slower while carrying (normal is 16)
+	CATCH_DISTANCE = 6, -- the owner catches a thief by getting this close
 }
 
 function Config.slotPrice(currentSlots: number): number
@@ -429,6 +434,22 @@ function FreekUtil.yardIncome(data): number
 		end
 	end
 	return total
+end
+
+-- First empty yard slot, or nil if the yard is full.
+function FreekUtil.freeSlot(data): number?
+	local used = {}
+	for _, freek in data.freeks do
+		if freek.slot then
+			used[freek.slot] = true
+		end
+	end
+	for i = 1, data.slots do
+		if not used[i] then
+			return i
+		end
+	end
+	return nil
 end
 
 function FreekUtil.count(data): number
@@ -1000,6 +1021,7 @@ local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
+local Carried = require(script.Parent.Carried)
 local DataService = require(script.Parent.DataService)
 local DiscoveryService = require(script.Parent.DiscoveryService)
 local Recipes = require(script.Parent.Recipes)
@@ -1026,25 +1048,10 @@ local function snapshot(data)
 	}
 end
 
-local function freeSlot(data): number?
-	local used = {}
-	for _, freek in data.freeks do
-		if freek.slot then
-			used[freek.slot] = true
-		end
-	end
-	for i = 1, data.slots do
-		if not used[i] then
-			return i
-		end
-	end
-	return nil
-end
-
 -- Adds a Freek, puts it in the yard if there's room, and records the discovery.
 local function giveFreek(player: Player, data, species: string, mutation: string?)
 	local uid = HttpService:GenerateGUID(false)
-	data.freeks[uid] = { species = species, mutation = mutation, slot = freeSlot(data) }
+	data.freeks[uid] = { species = species, mutation = mutation, slot = FreekUtil.freeSlot(data) }
 	local isNew = not data.discovered[species]
 	data.discovered[species] = true
 	task.spawn(DiscoveryService.claim, player, species)
@@ -1094,10 +1101,10 @@ end
 
 function handlers.Place(player: Player, data, uid: any)
 	local freek = ownedFreek(data, uid)
-	if not freek or freek.breeding or freek.slot then
+	if not freek or freek.breeding or freek.slot or Carried.is(player, uid) then
 		return
 	end
-	local slot = freeSlot(data)
+	local slot = FreekUtil.freeSlot(data)
 	if not slot then
 		return notify(player, "Your yard is full! Buy more slots or remove a Freek.", "error")
 	end
@@ -1116,6 +1123,9 @@ function handlers.Sell(player: Player, data, uid: any)
 	if not freek or freek.breeding then
 		return
 	end
+	if Carried.is(player, uid) then
+		return notify(player, "Someone is stealing that Freek! Catch them!", "error")
+	end
 	local value = FreekUtil.sellValue(freek)
 	data.freeks[uid] = nil
 	data.money += value
@@ -1129,6 +1139,9 @@ function handlers.StartBreed(player: Player, data, uidA: any, uidB: any)
 	local a, b = ownedFreek(data, uidA), ownedFreek(data, uidB)
 	if not a or not b or uidA == uidB or a.breeding or b.breeding then
 		return
+	end
+	if Carried.is(player, uidA) or Carried.is(player, uidB) then
+		return notify(player, "Someone is stealing that Freek! Catch them!", "error")
 	end
 	if FreekUtil.count(data) >= Config.MAX_FREEKS then
 		return notify(player, "No room for a baby! Sell a Freek first.", "error")
@@ -1154,8 +1167,8 @@ function handlers.ClaimBreed(player: Player, data)
 
 	local species, mutation = Recipes.roll(a, b, rng)
 	-- Parents go back into the yard first so they keep earning.
-	a.slot = freeSlot(data)
-	b.slot = freeSlot(data)
+	a.slot = FreekUtil.freeSlot(data)
+	b.slot = FreekUtil.freeSlot(data)
 	local _, isNew = giveFreek(player, data, species, mutation)
 
 	local name = FreekUtil.displayName({ species = species, mutation = mutation })
@@ -1210,6 +1223,41 @@ return ActionService
         </Properties>
       </Item>
       <Item class="ModuleScript" referent="15">
+        <Properties>
+          <string name="Name">Carried</string>
+          <string name="Source"><![CDATA[-- Which Freeks are being carried off by a thief right now. Kept in memory only: if the
+-- server stops mid-steal, the owner simply keeps the Freek.
+
+local Carried = {}
+
+local byOwner = {} -- [owner Player] = { [uid] = thief Player }
+
+function Carried.is(owner: Player, uid: string): boolean
+	local list = byOwner[owner]
+	return list ~= nil and list[uid] ~= nil
+end
+
+function Carried.set(owner: Player, uid: string, thief: Player?)
+	local list = byOwner[owner]
+	if thief then
+		if not list then
+			list = {}
+			byOwner[owner] = list
+		end
+		list[uid] = thief
+	elseif list then
+		list[uid] = nil
+		if next(list) == nil then
+			byOwner[owner] = nil
+		end
+	end
+end
+
+return Carried
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -1439,7 +1487,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Discovery Book: the first player in the whole game to get each species has their
@@ -1568,7 +1616,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the Freeks in their yard, plus offline earnings
@@ -1636,7 +1684,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="18">
+      <Item class="Script" referent="19">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -1654,16 +1702,20 @@ require(Server.DiscoveryService).init()
 require(Server.EconomyService).init()
 require(Server.ActionService).init()
 require(Server.TradeService).init()
+require(Server.StealService).init()
 require(Server.DataService).init()
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">PlotService</string>
-          <string name="Source"><![CDATA[-- Builds the map and gives every player a yard. Yards are public so players can walk
--- around and show off. The whole yard is rebuilt whenever its owner's data changes.
+          <string name="Source"><![CDATA[-- Builds the map and gives every player a fenced yard. Other players can walk in to look
+-- (or steal, see StealService) only while the gate is open. The owner locks the gate for
+-- GATE_LOCK_SECONDS at a time and can always walk through their own gate.
+-- The whole yard is rebuilt whenever its owner's data changes.
 
+local PhysicsService = game:GetService("PhysicsService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
@@ -1681,6 +1733,9 @@ local DataService = require(script.Parent.DataService)
 local PLOT_SIZE = 64
 local RING_RADIUS = 100
 local PAD_COLUMNS = 4
+local FENCE_HEIGHT = 5 -- what you see
+local WALL_HEIGHT = 16 -- invisible wall above the fence so nobody can jump it
+local GATE_WIDTH = 14
 
 local PlotService = {}
 
@@ -1798,6 +1853,74 @@ local function buildPlot(index: number)
 	})
 	local _, penLabel = billboard(pen, UDim2.fromScale(14, 2.5), Vector3.new(0, 9, 0), 80)
 
+	-- Fence: visible pickets plus a tall invisible wall, with a gate gap at the front.
+	local fenceColor = Color3.fromRGB(235, 225, 205)
+	local half = PLOT_SIZE / 2 - 0.5
+	local frontSide = (PLOT_SIZE - GATE_WIDTH) / 2
+	local sides = {
+		{ length = PLOT_SIZE, x = 0, z = half, alongX = true },
+		{ length = PLOT_SIZE, x = -half, z = 0, alongX = false },
+		{ length = PLOT_SIZE, x = half, z = 0, alongX = false },
+		{ length = frontSide, x = -(GATE_WIDTH / 2 + frontSide / 2), z = -half, alongX = true },
+		{ length = frontSide, x = GATE_WIDTH / 2 + frontSide / 2, z = -half, alongX = true },
+	}
+	for _, side in sides do
+		local size = if side.alongX then Vector3.new(side.length, 1, 1) else Vector3.new(1, 1, side.length)
+		part({
+			Name = "Fence",
+			Size = size * Vector3.new(1, FENCE_HEIGHT, 1),
+			CFrame = origin * CFrame.new(side.x, 1 + FENCE_HEIGHT / 2, side.z),
+			Color = fenceColor,
+			Material = Enum.Material.WoodPlanks,
+			Parent = folder,
+		})
+		part({
+			Name = "Wall",
+			Size = size * Vector3.new(1, WALL_HEIGHT, 1),
+			CFrame = origin * CFrame.new(side.x, 1 + WALL_HEIGHT / 2, side.z),
+			Transparency = 1,
+			Parent = folder,
+		})
+	end
+	for _, x in { -1, 1 } do
+		part({
+			Name = "GatePost",
+			Size = Vector3.new(1.6, 8, 1.6),
+			CFrame = origin * CFrame.new(x * (GATE_WIDTH / 2 + 0.3), 5, -half),
+			Color = Color3.fromRGB(120, 85, 55),
+			Material = Enum.Material.Wood,
+			Parent = folder,
+		})
+	end
+	-- The visible force field is fence height; an invisible part above it stops jumping over.
+	local gateHeight = FENCE_HEIGHT + 2
+	local gate = part({
+		Name = "Gate",
+		Size = Vector3.new(GATE_WIDTH, gateHeight, 1),
+		CFrame = origin * CFrame.new(0, 1 + gateHeight / 2, -half),
+		Color = Color3.fromRGB(255, 60, 60),
+		Material = Enum.Material.ForceField,
+		CollisionGroup = "Gate" .. index,
+		Parent = folder,
+	})
+	local gateTop = part({
+		Name = "GateTop",
+		Size = Vector3.new(GATE_WIDTH, WALL_HEIGHT - gateHeight, 1),
+		CFrame = origin * CFrame.new(0, 1 + gateHeight + (WALL_HEIGHT - gateHeight) / 2, -half),
+		Transparency = 1,
+		CollisionGroup = "Gate" .. index,
+		Parent = folder,
+	})
+	local gateGuiPart = part({
+		Name = "GateSign",
+		Size = Vector3.new(1, 1, 1),
+		CFrame = origin * CFrame.new(0, 10, -half),
+		Transparency = 1,
+		CanCollide = false,
+		Parent = folder,
+	})
+	local _, gateLabel = billboard(gateGuiPart, UDim2.fromScale(12, 2.5), Vector3.zero, 120)
+
 	local signPost = part({
 		Name = "Sign",
 		Size = Vector3.new(1, 1, 1),
@@ -1821,13 +1944,18 @@ local function buildPlot(index: number)
 		penLabel = penLabel,
 		sign = signLabel,
 		freeks = freekFolder,
+		gate = gate,
+		gateTop = gateTop,
+		gateLabel = gateLabel,
+		lockedUntil = math.huge,
 		owner = nil,
 	}
 	plots[index] = plot
 	return plot
 end
 
-local function placeFreek(plot, freek, ground: CFrame)
+-- steal = { uid, ownerUserId } for Freeks on pads, so other players get a Steal prompt.
+local function placeFreek(plot, freek, ground: CFrame, steal)
 	local model, height = FreekModel.build(freek.species, freek.mutation)
 	model:PivotTo(ground)
 	model.Parent = plot.freeks
@@ -1864,6 +1992,19 @@ local function placeFreek(plot, freek, ground: CFrame)
 	-- The tag hangs off the body, so measure the offset from the body's center, not the feet.
 	gui.StudsOffsetWorldSpace = Vector3.new(0, height - (anchor.Position.Y - ground.Position.Y) + 1, 0)
 	gui.Parent = anchor
+
+	if steal then
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "StealPrompt"
+		prompt.ActionText = "Steal"
+		prompt.ObjectText = FreekUtil.displayName(freek)
+		prompt.HoldDuration = Config.STEAL_HOLD_SECONDS
+		prompt.MaxActivationDistance = 9
+		prompt.RequiresLineOfSight = false
+		prompt:SetAttribute("Uid", steal.uid)
+		prompt:SetAttribute("OwnerUserId", steal.ownerUserId)
+		prompt.Parent = anchor
+	end
 end
 
 local function updatePenLabel(plot, data)
@@ -1893,10 +2034,13 @@ function PlotService.render(player: Player)
 		pad.lock.Enabled = not unlocked
 	end
 
-	for _, freek in data.freeks do
+	for uid, freek in data.freeks do
 		local pad = freek.slot and plot.pads[freek.slot]
 		if pad then
-			placeFreek(plot, freek, pad.part.CFrame * CFrame.new(0, 0.25, 0))
+			placeFreek(plot, freek, pad.part.CFrame * CFrame.new(0, 0.25, 0), {
+				uid = uid,
+				ownerUserId = player.UserId,
+			})
 		end
 	end
 
@@ -1914,7 +2058,45 @@ function PlotService.render(player: Player)
 	updatePenLabel(plot, data)
 end
 
+local function setGateLock(plot, lockedUntil: number)
+	plot.lockedUntil = lockedUntil
+	if plot.owner then
+		plot.owner:SetAttribute("GateLockedUntil", lockedUntil)
+	end
+end
+
+local function updateGate(plot)
+	local left = plot.lockedUntil - Workspace:GetServerTimeNow()
+	local locked = left > 0
+	plot.gate.CanCollide = locked
+	plot.gateTop.CanCollide = locked
+	plot.gate.Transparency = if locked then 0.4 else 1
+	if not plot.owner then
+		plot.gateLabel.Text = ""
+	elseif locked then
+		plot.gateLabel.Text = "LOCKED " .. Format.time(left)
+		plot.gateLabel.TextColor3 = Color3.fromRGB(255, 120, 120)
+	else
+		plot.gateLabel.Text = "GATE OPEN"
+		plot.gateLabel.TextColor3 = Color3.fromRGB(120, 255, 120)
+	end
+end
+
+-- Lets the owner's character pass through their own locked gate.
+local function setCollisionGroup(character: Model, group: string)
+	local function apply(descendant)
+		if descendant:IsA("BasePart") then
+			descendant.CollisionGroup = group
+		end
+	end
+	for _, descendant in character:GetDescendants() do
+		apply(descendant)
+	end
+	character.DescendantAdded:Connect(apply)
+end
+
 local function clearPlot(plot)
+	setGateLock(plot, math.huge) -- empty yards stay shut
 	plot.owner = nil
 	plot.freeks:ClearAllChildren()
 	plot.sign.Text = "Empty Yard"
@@ -1924,6 +2106,7 @@ local function clearPlot(plot)
 		pad.part.Transparency = 0.5
 		pad.lock.Enabled = false
 	end
+	updateGate(plot)
 end
 
 local function sendHome(player: Player)
@@ -1940,10 +2123,16 @@ local function onPlayerAdded(player: Player)
 			plot.owner = player
 			plotOf[player] = plot
 			player:SetAttribute("Plot", plot.index)
-			player.CharacterAdded:Connect(function()
+			-- New arrivals get one free lock so they aren't robbed while loading in.
+			setGateLock(plot, Workspace:GetServerTimeNow() + Config.GATE_LOCK_SECONDS)
+			player.CharacterAdded:Connect(function(character)
+				setCollisionGroup(character, "Owner" .. plot.index)
 				task.wait(0.1)
 				sendHome(player)
 			end)
+			if player.Character then
+				setCollisionGroup(player.Character, "Owner" .. plot.index)
+			end
 			sendHome(player)
 			PlotService.render(player)
 			return
@@ -1952,7 +2141,41 @@ local function onPlayerAdded(player: Player)
 	Remotes.get("Notify"):FireClient(player, "This server is full of yards! Try another server.", "error")
 end
 
+function PlotService.getPlot(player: Player)
+	return plotOf[player]
+end
+
+-- True if a world position is inside a plot's fence.
+function PlotService.isInside(plot, position: Vector3): boolean
+	local localPos = plot.origin:PointToObjectSpace(position)
+	local limit = PLOT_SIZE / 2 - 1
+	return math.abs(localPos.X) < limit and math.abs(localPos.Z) < limit
+end
+
+function PlotService.isGateLocked(plot): boolean
+	return Workspace:GetServerTimeNow() < plot.lockedUntil
+end
+
+-- Returns an error message, or nil if the gate was locked.
+function PlotService.lockGate(player: Player): string?
+	local plot = plotOf[player]
+	if not plot then
+		return "You don't have a yard."
+	end
+	if PlotService.isGateLocked(plot) then
+		return "Your gate is already locked."
+	end
+	setGateLock(plot, Workspace:GetServerTimeNow() + Config.GATE_LOCK_SECONDS)
+	updateGate(plot)
+	return nil
+end
+
 function PlotService.init()
+	for i = 1, Config.PLOT_COUNT do
+		PhysicsService:RegisterCollisionGroup("Gate" .. i)
+		PhysicsService:RegisterCollisionGroup("Owner" .. i)
+		PhysicsService:CollisionGroupSetCollidable("Gate" .. i, "Owner" .. i, false)
+	end
 	buildMap()
 	local plotsFolder = Instance.new("Folder")
 	plotsFolder.Name = "Plots"
@@ -1979,6 +2202,15 @@ function PlotService.init()
 
 	task.spawn(function()
 		while true do
+			task.wait(0.25)
+			for _, plot in plots do
+				updateGate(plot)
+			end
+		end
+	end)
+
+	task.spawn(function()
+		while true do
 			task.wait(1)
 			for player, plot in plotOf do
 				local data = DataService.get(player)
@@ -1994,7 +2226,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">Recipes</string>
           <string name="Source"><![CDATA[-- Secret breeding recipes. Server-only so players can't read them out of the game.
@@ -2065,7 +2297,272 @@ return Recipes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="22">
+        <Properties>
+          <string name="Name">StealService</string>
+          <string name="Source"><![CDATA[-- Stealing Freeks from other players' yards.
+--
+-- While a yard's gate is open, anyone else can walk in and hold the Steal prompt on a Freek
+-- standing on a pad. The Freek floats over the thief's head and they walk slower. If the
+-- owner gets within CATCH_DISTANCE before the thief is back inside their own fence, or the
+-- thief dies or leaves, the Freek goes home. If the thief makes it home, it's theirs.
+--
+-- The Freek stays in the owner's save until the moment it's delivered, so a crash mid-steal
+-- can never lose or duplicate it.
+
+local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
+local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+
+local ActionService = require(script.Parent.ActionService)
+local Carried = require(script.Parent.Carried)
+local DataService = require(script.Parent.DataService)
+local DiscoveryService = require(script.Parent.DiscoveryService)
+local PlotService = require(script.Parent.PlotService)
+
+local StealService = {}
+
+local notifyRemote = Remotes.get("Notify")
+local carries = {} -- [thief Player] = { owner, uid, slot, name, model, normalSpeed }
+
+local function notify(player: Player, message: string, kind: string?)
+	if player.Parent then
+		notifyRemote:FireClient(player, message, kind)
+	end
+end
+
+local function rootPart(player: Player): BasePart?
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then
+		return nil
+	end
+	return character:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
+local function attachToHead(player: Player, freek): (Model?, number?)
+	local character = player.Character
+	local head = character and character:FindFirstChild("Head")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not head or not humanoid then
+		return nil, nil
+	end
+	local model = FreekModel.build(freek.species, freek.mutation)
+	pcall(function()
+		model:ScaleTo(0.6)
+	end)
+	model:PivotTo(head.CFrame * CFrame.new(0, 1, 0))
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.Anchored = false
+			descendant.CanCollide = false
+			descendant.Massless = true
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = head
+			weld.Part1 = descendant
+			weld.Parent = descendant
+		end
+	end
+	model.Name = "CarriedFreek"
+	model.Parent = character
+
+	local normalSpeed = humanoid.WalkSpeed
+	humanoid.WalkSpeed = Config.CARRY_WALK_SPEED
+	return model, normalSpeed
+end
+
+local function cleanup(thief: Player, carry)
+	carries[thief] = nil
+	Carried.set(carry.owner, carry.uid, nil)
+	if carry.model then
+		carry.model:Destroy()
+	end
+	local character = thief.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid and carry.normalSpeed then
+		humanoid.WalkSpeed = carry.normalSpeed
+	end
+end
+
+-- The Freek goes back to its owner's yard (or backpack, if its pad was filled meanwhile).
+local function sendBack(thief: Player, carry, ownerMessage: string?, thiefMessage: string?)
+	cleanup(thief, carry)
+	local ownerData = DataService.get(carry.owner)
+	local freek = ownerData and ownerData.freeks[carry.uid]
+	if freek and not freek.slot then
+		local taken = false
+		for _, other in ownerData.freeks do
+			if other.slot == carry.slot then
+				taken = true
+			end
+		end
+		freek.slot = if taken or carry.slot > ownerData.slots then FreekUtil.freeSlot(ownerData) else carry.slot
+		DataService.changed(carry.owner)
+	end
+	if ownerMessage then
+		notify(carry.owner, ownerMessage, "success")
+	end
+	if thiefMessage then
+		notify(thief, thiefMessage, "error")
+	end
+end
+
+local function deliver(thief: Player, carry)
+	local ownerData = DataService.get(carry.owner)
+	local thiefData = DataService.get(thief)
+	local freek = ownerData and ownerData.freeks[carry.uid]
+	if not freek or not thiefData then
+		return sendBack(thief, carry)
+	end
+	if FreekUtil.count(thiefData) >= Config.MAX_FREEKS then
+		return sendBack(thief, carry, nil, "You have too many Freeks! It ran back home.")
+	end
+
+	cleanup(thief, carry)
+	ownerData.freeks[carry.uid] = nil
+	thiefData.freeks[carry.uid] = {
+		species = freek.species,
+		mutation = freek.mutation,
+		slot = FreekUtil.freeSlot(thiefData),
+	}
+	thiefData.discovered[freek.species] = true
+	task.spawn(DiscoveryService.claim, thief, freek.species)
+
+	for _, player in { carry.owner, thief } do
+		DataService.changed(player)
+		task.spawn(DataService.save, player)
+	end
+	notify(carry.owner, thief.DisplayName .. " stole your " .. carry.name .. "! Lock your gate!", "error")
+	notify(thief, "You stole " .. carry.name .. "!", "success")
+end
+
+local function onPromptTriggered(prompt: ProximityPrompt, thief: Player)
+	if prompt.Name ~= "StealPrompt" then
+		return
+	end
+	local uid = prompt:GetAttribute("Uid")
+	local owner = Players:GetPlayerByUserId(prompt:GetAttribute("OwnerUserId") or 0)
+	if not owner or owner == thief or typeof(uid) ~= "string" then
+		return
+	end
+	if carries[thief] then
+		return notify(thief, "You can only carry one Freek at a time!", "error")
+	end
+
+	local ownerData, thiefData = DataService.get(owner), DataService.get(thief)
+	local ownerPlot, thiefPlot = PlotService.getPlot(owner), PlotService.getPlot(thief)
+	local freek = ownerData and ownerData.freeks[uid]
+	local root = rootPart(thief)
+	if not freek or not freek.slot or freek.breeding or Carried.is(owner, uid) then
+		return
+	end
+	if not thiefData or not ownerPlot or not thiefPlot or not root then
+		return
+	end
+	if PlotService.isGateLocked(ownerPlot) or not PlotService.isInside(ownerPlot, root.Position) then
+		return
+	end
+	if FreekUtil.count(thiefData) >= Config.MAX_FREEKS then
+		return notify(thief, "You have too many Freeks to steal another!", "error")
+	end
+
+	local model, normalSpeed = attachToHead(thief, freek)
+	if not model then
+		return
+	end
+	local name = FreekUtil.displayName(freek)
+	carries[thief] = {
+		owner = owner,
+		uid = uid,
+		slot = freek.slot,
+		name = name,
+		model = model,
+		normalSpeed = normalSpeed,
+	}
+	Carried.set(owner, uid, thief)
+	freek.slot = nil
+	DataService.changed(owner)
+
+	notify(
+		thief,
+		"You grabbed " .. name .. "! Get back to your yard before " .. owner.DisplayName .. " catches you!",
+		"success"
+	)
+	notify(owner, thief.DisplayName .. " is stealing your " .. name .. "! Catch them!", "error")
+end
+
+local function checkCarries()
+	for thief, carry in carries do
+		local root = rootPart(thief)
+		if not root or not carry.model.Parent then
+			sendBack(
+				thief,
+				carry,
+				"Your " .. carry.name .. " escaped and ran home!",
+				"You dropped " .. carry.name .. "!"
+			)
+			continue
+		end
+		local ownerRoot = rootPart(carry.owner)
+		if ownerRoot and (ownerRoot.Position - root.Position).Magnitude <= Config.CATCH_DISTANCE then
+			sendBack(
+				thief,
+				carry,
+				"You caught " .. thief.DisplayName .. "! " .. carry.name .. " is back home.",
+				carry.owner.DisplayName .. " caught you!"
+			)
+			continue
+		end
+		local home = PlotService.getPlot(thief)
+		if home and PlotService.isInside(home, root.Position) then
+			deliver(thief, carry)
+		end
+	end
+end
+
+function StealService.init()
+	ProximityPromptService.PromptTriggered:Connect(onPromptTriggered)
+
+	ActionService.register("LockGate", function(player: Player)
+		local problem = PlotService.lockGate(player)
+		if problem then
+			notify(player, problem, "error")
+		else
+			notify(player, "Gate locked for " .. Config.GATE_LOCK_SECONDS .. " seconds!", "success")
+		end
+	end)
+
+	Players.PlayerRemoving:Connect(function(player)
+		local carry = carries[player]
+		if carry then
+			sendBack(player, carry, "The thief left! Your " .. carry.name .. " is back home.")
+		end
+		for thief, other in carries do
+			if other.owner == player then
+				cleanup(thief, other)
+				notify(thief, other.name .. "'s owner left, so it vanished!", "error")
+			end
+		end
+	end)
+
+	task.spawn(function()
+		while true do
+			task.wait(0.1)
+			checkCarries()
+		end
+	end)
+end
+
+return StealService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
@@ -2084,6 +2581,7 @@ local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local ActionService = require(script.Parent.ActionService)
+local Carried = require(script.Parent.Carried)
 local DataService = require(script.Parent.DataService)
 
 local MAX_OFFER = 8
@@ -2160,6 +2658,8 @@ local function offerProblem(player: Player, uids): string?
 			return player.DisplayName .. " no longer has one of their Freeks"
 		elseif freek.breeding then
 			return player.DisplayName .. " put an offered Freek in the breeding pen"
+		elseif Carried.is(player, uid) then
+			return "one of " .. player.DisplayName .. "'s Freeks is being stolen"
 		end
 	end
 	return nil
@@ -2275,7 +2775,7 @@ function TradeService.init()
 		local index = table.find(offer, uid)
 		if add == true then
 			local freek = data.freeks[uid]
-			if index or not freek or freek.breeding then
+			if index or not freek or freek.breeding or Carried.is(player, uid) then
 				return
 			end
 			if #offer >= MAX_OFFER then
@@ -2341,19 +2841,19 @@ return TradeService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="22">
+  <Item class="StarterPlayer" referent="24">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="23">
+    <Item class="StarterPlayerScripts" referent="25">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="24">
+      <Item class="Folder" referent="26">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="LocalScript" referent="25">
+        <Item class="LocalScript" referent="27">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -3200,6 +3700,46 @@ task.spawn(function()
 	end
 end)
 
+-- Gate lock button. The gate stays locked for GATE_LOCK_SECONDS, then must be locked again.
+local gateButton = UI.button("LOCK GATE", colors.red, function()
+	send("LockGate")
+end, {
+	AnchorPoint = Vector2.new(0.5, 1),
+	Position = UDim2.new(0.5, 0, 1, -16),
+	Size = UDim2.fromOffset(230, 56),
+	Parent = screen,
+})
+local function updateGateButton()
+	local left = (player:GetAttribute("GateLockedUntil") or 0) - Workspace:GetServerTimeNow()
+	if left > 0 and left < 1e9 then
+		gateButton.Text = "Gate locked " .. Format.time(left)
+		gateButton.BackgroundColor3 = colors.green
+	else
+		-- Flash while the gate is open so the owner notices.
+		gateButton.Text = "GATE OPEN! Lock it"
+		gateButton.BackgroundColor3 = if os.clock() % 1 < 0.5 then colors.red else Color3.fromRGB(170, 40, 40)
+	end
+end
+task.spawn(function()
+	while true do
+		updateGateButton()
+		task.wait(0.25)
+	end
+end)
+
+-- Nobody needs a Steal prompt on their own Freeks.
+local function hideOwnPrompt(instance: Instance)
+	if instance:IsA("ProximityPrompt") and instance.Name == "StealPrompt" then
+		if instance:GetAttribute("OwnerUserId") == player.UserId then
+			instance.Enabled = false
+		end
+	end
+end
+for _, descendant in Workspace:GetDescendants() do
+	hideOwnPrompt(descendant)
+end
+Workspace.DescendantAdded:Connect(hideOwnPrompt)
+
 -- Breed countdown.
 task.spawn(function()
 	while true do
@@ -3236,7 +3776,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="26">
+        <Item class="ModuleScript" referent="28">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).

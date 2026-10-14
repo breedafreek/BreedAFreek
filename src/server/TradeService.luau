@@ -14,6 +14,7 @@ local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local ActionService = require(script.Parent.ActionService)
+local Carried = require(script.Parent.Carried)
 local DataService = require(script.Parent.DataService)
 
 local MAX_OFFER = 8
@@ -90,6 +91,8 @@ local function offerProblem(player: Player, uids): string?
 			return player.DisplayName .. " no longer has one of their Freeks"
 		elseif freek.breeding then
 			return player.DisplayName .. " put an offered Freek in the breeding pen"
+		elseif Carried.is(player, uid) then
+			return "one of " .. player.DisplayName .. "'s Freeks is being stolen"
 		end
 	end
 	return nil
@@ -205,7 +208,7 @@ function TradeService.init()
 		local index = table.find(offer, uid)
 		if add == true then
 			local freek = data.freeks[uid]
-			if index or not freek or freek.breeding then
+			if index or not freek or freek.breeding or Carried.is(player, uid) then
 				return
 			end
 			if #offer >= MAX_OFFER then

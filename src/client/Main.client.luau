@@ -842,6 +842,46 @@ task.spawn(function()
 	end
 end)
 
+-- Gate lock button. The gate stays locked for GATE_LOCK_SECONDS, then must be locked again.
+local gateButton = UI.button("LOCK GATE", colors.red, function()
+	send("LockGate")
+end, {
+	AnchorPoint = Vector2.new(0.5, 1),
+	Position = UDim2.new(0.5, 0, 1, -16),
+	Size = UDim2.fromOffset(230, 56),
+	Parent = screen,
+})
+local function updateGateButton()
+	local left = (player:GetAttribute("GateLockedUntil") or 0) - Workspace:GetServerTimeNow()
+	if left > 0 and left < 1e9 then
+		gateButton.Text = "Gate locked " .. Format.time(left)
+		gateButton.BackgroundColor3 = colors.green
+	else
+		-- Flash while the gate is open so the owner notices.
+		gateButton.Text = "GATE OPEN! Lock it"
+		gateButton.BackgroundColor3 = if os.clock() % 1 < 0.5 then colors.red else Color3.fromRGB(170, 40, 40)
+	end
+end
+task.spawn(function()
+	while true do
+		updateGateButton()
+		task.wait(0.25)
+	end
+end)
+
+-- Nobody needs a Steal prompt on their own Freeks.
+local function hideOwnPrompt(instance: Instance)
+	if instance:IsA("ProximityPrompt") and instance.Name == "StealPrompt" then
+		if instance:GetAttribute("OwnerUserId") == player.UserId then
+			instance.Enabled = false
+		end
+	end
+end
+for _, descendant in Workspace:GetDescendants() do
+	hideOwnPrompt(descendant)
+end
+Workspace.DescendantAdded:Connect(hideOwnPrompt)
+
 -- Breed countdown.
 task.spawn(function()
 	while true do
