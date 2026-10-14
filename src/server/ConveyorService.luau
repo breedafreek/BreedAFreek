@@ -1,5 +1,6 @@
--- Runs the conveyor belt: builds it, spawns a random Freek every few seconds (odds by
--- rarity, see Belt.luau), and sells them first come, first served.
+-- Runs the conveyor: two lanes down the middle of the map, each fed by its own Freek House.
+-- Spawns a random Freek on each lane every few seconds (odds by rarity, see Belt.luau) and
+-- sells them first come, first served.
 --
 -- Only Commons and species someone has already discovered by breeding can appear, so the
 -- belt never hands out a Discovery Book first. Limited Freeks appear only during their event.
@@ -32,7 +33,7 @@ local ConveyorService = {}
 local notifyRemote = Remotes.get("Notify")
 local rng = Random.new()
 local folder: Folder
-local items = {} -- [id] = { species, mutation, price, spawnTime, model }
+local items = {} -- [id] = { species, mutation, price, spawnTime, lane, model }
 local nextId = 0
 
 local function notify(player: Player, message: string, kind: string?)
@@ -50,72 +51,94 @@ local function part(props): Part
 	return p
 end
 
-local function buildBelt()
-	local model = Instance.new("Model")
-	model.Name = "Conveyor"
-	model.Parent = Workspace
-
-	local startX = Belt.START.X
-	local centerX = startX + Belt.LENGTH / 2
-	local length = Belt.LENGTH + 8
-	part({
-		Name = "Belt",
-		Size = Vector3.new(length, 1, 9),
-		CFrame = CFrame.new(centerX, 0.5, 0),
-		Color = Color3.fromRGB(55, 55, 65),
-		Material = Enum.Material.DiamondPlate,
-		Parent = model,
-	})
-	for _, z in { -5, 5 } do
-		part({
-			Name = "Rail",
-			Size = Vector3.new(length, 1.4, 0.8),
-			CFrame = CFrame.new(centerX, 1.2, z),
-			Color = Color3.fromRGB(255, 200, 40),
-			Material = Enum.Material.SmoothPlastic,
-			Parent = model,
-		})
-	end
-	-- The machine Freeks come out of, and the chute they fall into.
-	local machine = part({
-		Name = "FreekMachine",
-		Size = Vector3.new(10, 12, 13),
-		CFrame = CFrame.new(startX - 8, 6, 0),
-		Color = Color3.fromRGB(150, 80, 220),
-		Material = Enum.Material.SmoothPlastic,
-		Parent = model,
-	})
-	part({
-		Name = "MachineMouth",
-		Size = Vector3.new(0.5, 6, 8),
-		CFrame = CFrame.new(startX - 2.8, 4, 0),
-		Color = Color3.fromRGB(20, 10, 35),
-		Material = Enum.Material.Neon,
-		Parent = model,
-	})
+local function sign(parent: BasePart, text: string, offset: Vector3, color: Color3)
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromScale(16, 3)
-	gui.StudsOffset = Vector3.new(0, 8.5, 0)
-	gui.MaxDistance = 250
+	gui.StudsOffset = offset
+	gui.MaxDistance = 300
 	gui.LightInfluence = 0
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.fromScale(1, 1)
 	label.BackgroundTransparency = 1
 	label.TextScaled = true
 	label.Font = Enum.Font.FredokaOne
-	label.Text = "FREEK MACHINE"
-	label.TextColor3 = Color3.fromRGB(255, 230, 120)
+	label.Text = text
+	label.TextColor3 = color
 	label.TextStrokeTransparency = 0.2
 	label.Parent = gui
-	gui.Parent = machine
-	part({
-		Name = "Chute",
-		Size = Vector3.new(6, 3, 11),
-		CFrame = CFrame.new(startX + Belt.LENGTH + 6, 1.5, 0),
-		Color = Color3.fromRGB(30, 30, 35),
-		Material = Enum.Material.Metal,
+	gui.Parent = parent
+end
+
+-- A little house with a gabled roof and a glowing doorway the lane comes out of.
+local function buildHouse(model: Model, z: number, wallColor: Color3, roofColor: Color3)
+	local x = Belt.START_X - 9
+	local walls = part({
+		Name = "FreekHouse",
+		Size = Vector3.new(14, 11, 10),
+		CFrame = CFrame.new(x, 5.5, z),
+		Color = wallColor,
+		Material = Enum.Material.SmoothPlastic,
 		Parent = model,
 	})
+	-- Two wedges meeting at the ridge make the roof.
+	for _, side in { -1, 1 } do
+		local roof = Instance.new("WedgePart")
+		roof.Anchored = true
+		roof.Name = "Roof"
+		roof.Size = Vector3.new(15, 4, 6)
+		roof.CFrame = CFrame.new(x, 13, z + side * 3) * CFrame.Angles(0, if side > 0 then math.pi else 0, 0)
+		roof.Color = roofColor
+		roof.Material = Enum.Material.SmoothPlastic
+		roof.Parent = model
+	end
+	part({
+		Name = "Doorway",
+		Size = Vector3.new(0.4, 6, 7.5),
+		CFrame = CFrame.new(Belt.START_X - 1.9, 4, z),
+		Color = Color3.fromRGB(255, 220, 120),
+		Material = Enum.Material.Neon,
+		Parent = model,
+	})
+	sign(walls, "FREEK HOUSE", Vector3.new(0, 12, 0), Color3.fromRGB(255, 230, 120))
+end
+
+local function buildBelt()
+	local model = Instance.new("Model")
+	model.Name = "Conveyor"
+	model.Parent = Workspace
+
+	local length = Belt.LENGTH + 6
+	local centerX = Belt.START_X + Belt.LENGTH / 2
+	for _, z in Belt.LANES do
+		part({
+			Name = "Belt",
+			Size = Vector3.new(length, 1, 9),
+			CFrame = CFrame.new(centerX, 0.5, z),
+			Color = Color3.fromRGB(55, 55, 65),
+			Material = Enum.Material.DiamondPlate,
+			Parent = model,
+		})
+		for _, side in { -1, 1 } do
+			part({
+				Name = "Rail",
+				Size = Vector3.new(length, 1.4, 0.8),
+				CFrame = CFrame.new(centerX, 1.2, z + side * 4.9),
+				Color = Color3.fromRGB(255, 200, 40),
+				Material = Enum.Material.SmoothPlastic,
+				Parent = model,
+			})
+		end
+		part({
+			Name = "Chute",
+			Size = Vector3.new(6, 3, 9.5),
+			CFrame = CFrame.new(Belt.START_X + Belt.LENGTH + 5, 1.5, z),
+			Color = Color3.fromRGB(30, 30, 35),
+			Material = Enum.Material.Metal,
+			Parent = model,
+		})
+	end
+	buildHouse(model, Belt.LANES[1], Color3.fromRGB(150, 80, 220), Color3.fromRGB(90, 40, 150))
+	buildHouse(model, Belt.LANES[2], Color3.fromRGB(80, 170, 230), Color3.fromRGB(40, 100, 160))
 
 	folder = Instance.new("Folder")
 	folder.Name = "BeltFreeks"
@@ -164,7 +187,7 @@ local function rollMutation(): string?
 	return nil
 end
 
-local function spawnFreek()
+local function spawnFreek(lane: number)
 	local groups = eligibleByRarity()
 	local rarity = rollRarity()
 	-- Nothing of that rarity discovered yet: fall back down the tiers.
@@ -185,13 +208,14 @@ local function spawnFreek()
 	local model, height = FreekModel.build(species.id, mutation)
 	model.Name = id
 	model:SetAttribute("SpawnTime", spawnTime)
-	model:PivotTo(Belt.cframeAt(spawnTime, spawnTime))
+	model:SetAttribute("Lane", lane)
+	model:PivotTo(Belt.cframeAt(lane, spawnTime, spawnTime))
 
 	local anchor = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
 	local freek = { species = species.id, mutation = mutation }
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromOffset(180, 50)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, height - (anchor.Position.Y - Belt.START.Y) + 1.2, 0)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, height - (anchor.Position.Y - Belt.Y) + 1.2, 0)
 	gui.MaxDistance = 90
 	gui.LightInfluence = 0
 	local name = Instance.new("TextLabel")
@@ -227,6 +251,7 @@ local function spawnFreek()
 		mutation = mutation,
 		price = price,
 		spawnTime = spawnTime,
+		lane = lane,
 		model = model,
 	}
 
@@ -250,7 +275,7 @@ local function buy(player: Player, id: string)
 		return
 	end
 	local now = Workspace:GetServerTimeNow()
-	local where = Belt.cframeAt(item.spawnTime, now).Position
+	local where = Belt.cframeAt(item.lane, item.spawnTime, now).Position
 	if (root.Position - where).Magnitude > Belt.BUY_DISTANCE or Belt.isGone(item.spawnTime, now) then
 		return
 	end
@@ -283,12 +308,15 @@ function ConveyorService.init()
 		end
 	end)
 
-	task.spawn(function()
-		while true do
-			spawnFreek()
-			task.wait(Belt.SPAWN_INTERVAL)
-		end
-	end)
+	-- Each lane has its own house; they take turns so a Freek appears every half interval.
+	for lane in Belt.LANES do
+		task.delay((lane - 1) * Belt.SPAWN_INTERVAL / 2, function()
+			while true do
+				spawnFreek(lane)
+				task.wait(Belt.SPAWN_INTERVAL)
+			end
+		end)
+	end
 
 	-- Freeks nobody bought fall off the end.
 	task.spawn(function()

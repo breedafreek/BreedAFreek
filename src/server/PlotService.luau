@@ -21,7 +21,8 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local DataService = require(script.Parent.DataService)
 
 local PLOT_SIZE = 64
-local RING_RADIUS = 100
+local ROW_SPACING = 70 -- between yard centres along the conveyor
+local ROW_DISTANCE = 64 -- from the conveyor's centre line to each yard's centre
 local PAD_COLUMNS = 5
 local FENCE_HEIGHT = 5 -- what you see
 local WALL_HEIGHT = 16 -- invisible wall above the fence so nobody can jump it
@@ -79,7 +80,7 @@ local function buildMap()
 	spawn.Anchored = true
 	spawn.Neutral = true
 	spawn.Size = Vector3.new(12, 1, 12)
-	spawn.CFrame = CFrame.new(0, 0.5, 20) -- beside the conveyor belt
+	spawn.CFrame = CFrame.new(140, 0.5, 0) -- past the east end of the conveyor
 	spawn.Color = Color3.fromRGB(255, 220, 120)
 	spawn.TopSurface = Enum.SurfaceType.Smooth
 	spawn.Parent = map
@@ -87,7 +88,7 @@ local function buildMap()
 	local post = part({
 		Name = "TitleSign",
 		Size = Vector3.new(1, 1, 1),
-		CFrame = CFrame.new(0, 14, 0),
+		CFrame = CFrame.new(0, 22, 0),
 		Transparency = 1,
 		CanCollide = false,
 		Parent = map,
@@ -98,10 +99,13 @@ local function buildMap()
 end
 
 local function buildPlot(index: number)
-	local angle = (index - 1) / Config.PLOT_COUNT * math.pi * 2
-	local center = Vector3.new(math.cos(angle) * RING_RADIUS, 0, math.sin(angle) * RING_RADIUS)
-	-- Local -Z (the plot's front) faces the middle of the map.
-	local origin = CFrame.lookAt(center, Vector3.zero)
+	-- Yards 1-4 sit north of the conveyor, 5-8 south, in rows along it.
+	local perSide = Config.PLOT_COUNT // 2
+	local rowSide = if index <= perSide then -1 else 1
+	local rowX = ((index - 1) % perSide - (perSide - 1) / 2) * ROW_SPACING
+	local center = Vector3.new(rowX, 0, rowSide * ROW_DISTANCE)
+	-- Local -Z (the plot's front, with the gate) faces the conveyor.
+	local origin = CFrame.lookAt(center, Vector3.new(rowX, 0, 0))
 
 	local folder = Instance.new("Model")
 	folder.Name = "Plot" .. index

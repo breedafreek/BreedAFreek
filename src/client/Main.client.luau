@@ -965,7 +965,7 @@ RunService.RenderStepped:Connect(function()
 	for _, model in beltFolder:GetChildren() do
 		local spawnTime = model:GetAttribute("SpawnTime")
 		if spawnTime and model:IsA("Model") then
-			model:PivotTo(Belt.cframeAt(spawnTime, now))
+			model:PivotTo(Belt.cframeAt(model:GetAttribute("Lane") or 1, spawnTime, now))
 		end
 	end
 end)

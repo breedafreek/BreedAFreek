@@ -18,7 +18,7 @@ local Config = {
 	AUTOSAVE_INTERVAL = 60,
 	SESSION_LOCK_TIMEOUT = 150, -- seconds before another server may take over a player's save
 
-	PLOT_COUNT = 6, -- set the place's Max Players to this in Game Settings
+	PLOT_COUNT = 8, -- 4 yards each side of the conveyor; set the place's Max Players to this
 
 	REBIRTH_BASE_COST = 100000, -- coins needed for the first rebirth
 	REBIRTH_COST_GROWTH = 4, -- each rebirth costs this many times more than the last

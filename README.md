@@ -15,7 +15,7 @@ In Studio progress isn't saved unless the place is published and **Game Settings
 ## Publishing
 
 1. **File → Publish to Roblox**.
-2. **Game Settings → Places → Max Players: 6.** There are 6 yards per server (`Config.PLOT_COUNT`).
+2. **Game Settings → Places → Max Players: 8.** There are 8 yards per server, 4 on each side of the conveyor (`Config.PLOT_COUNT`).
 3. Saving and the Discovery Book work automatically on live servers.
 
 ## Working on the code
@@ -47,7 +47,7 @@ rojo build -o BreedAFreek.rbxlx  # or build a place file
 ## How the game works
 
 - **Yard:** 4 slots to start, buy up to 12. Only Freeks in the yard earn money. Extra Freeks wait in your backpack (50 total).
-- **Conveyor belt:** a new Freek comes out of the Freek Machine every 3 seconds and rides the belt through the middle of the map for about 26 seconds. Walk up and hold **Buy**, first come first served. Odds (`src/shared/Belt.luau`): Common 70%, Uncommon 22%, Rare 6.5%, Legendary 1.3%, Mystic 0.2%. Ultra and Secret are breeding-only. Only starter Commons and species someone has already discovered by breeding can appear, and Limited Freeks only during their event. Legendary and up are announced to the server. Prices are the starter price, or 50 seconds of the Freek's income, times any mutation.
+- **Conveyor belt:** two lanes run down the middle of the map between the two rows of 4 yards. Each lane comes out of its own Freek House at the west end, and a new Freek appears on each lane every 4 seconds and rides for about 40 seconds. Walk up and hold **Buy**, first come first served. Odds (`src/shared/Belt.luau`): Common 70%, Uncommon 22%, Rare 6.5%, Legendary 1.3%, Mystic 0.2%. Ultra and Secret are breeding-only. Only starter Commons and species someone has already discovered by breeding can appear, and Limited Freeks only during their event. Legendary and up are announced to the server. Prices are the starter price, or 50 seconds of the Freek's income, times any mutation.
 - **Shop:** yard slots and weapons.
 - **Breeding:** pick two Freeks and wait out the timer. The rarer parent sets how long it takes. A pair with a recipe has a chance to make the new species. Otherwise the baby copies a parent. Any baby can roll a mutation (Shadow ×2, Golden ×3, Rainbow ×10 income), and a parent's mutation makes that roll 4× more likely.
 - **Discovery Book:** every species, shown as a black "???" until someone finds it. The first finder in any server is saved forever and announced to everyone.
