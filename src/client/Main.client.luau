@@ -18,6 +18,7 @@ local Mutations = require(Shared.Mutations)
 local Rarities = require(Shared.Rarities)
 local Remotes = require(Shared.Remotes)
 local Seasons = require(Shared.Seasons)
+local Weapons = require(Shared.Weapons)
 local UI = require(script.Parent.UI)
 
 local player = Players.LocalPlayer
@@ -339,6 +340,34 @@ function renderers.Shop()
 		},
 	}).Parent =
 		yard
+
+	heading("Weapons", 5)
+	local weapons = UI.grid(220, 150)
+	weapons.LayoutOrder = 6
+	weapons.Parent = body
+	for i, weaponId in Weapons.order do
+		local weapon = Weapons.list[weaponId]
+		local owned = weaponId == Weapons.STARTER or (state.weapons and state.weapons[weaponId])
+		local card = UI.card({
+			lines = {
+				{ weapon.name, weapon.handle.color:Lerp(Color3.new(1, 1, 1), 0.3), 24 },
+				{ weapon.description, colors.muted, 44 },
+			},
+			buttons = {
+				UI.button(
+					if owned then "Owned" else "Buy " .. Format.money(weapon.price),
+					if owned then colors.gray elseif state.money >= weapon.price then colors.green else colors.gray,
+					function()
+						if not owned then
+							send("BuyWeapon", weaponId)
+						end
+					end
+				),
+			},
+		})
+		card.LayoutOrder = i
+		card.Parent = weapons
+	end
 end
 
 function renderers.Freeks()
@@ -886,6 +915,27 @@ for _, descendant in Workspace:GetDescendants() do
 	hideOwnPrompt(descendant)
 end
 Workspace.DescendantAdded:Connect(hideOwnPrompt)
+
+-- Weapons: when an equipped weapon is used, tell the server where we're aiming.
+local mouse = player:GetMouse()
+local function watchTool(child: Instance)
+	if child:IsA("Tool") and child:GetAttribute("WeaponId") and not child:GetAttribute("Hooked") then
+		child:SetAttribute("Hooked", true)
+		child.Activated:Connect(function()
+			send("UseWeapon", child:GetAttribute("WeaponId"), mouse.Hit.Position)
+		end)
+	end
+end
+local function watchCharacter(character: Model)
+	for _, child in character:GetChildren() do
+		watchTool(child)
+	end
+	character.ChildAdded:Connect(watchTool)
+end
+player.CharacterAdded:Connect(watchCharacter)
+if player.Character then
+	watchCharacter(player.Character)
+end
 
 -- Breed countdown.
 task.spawn(function()

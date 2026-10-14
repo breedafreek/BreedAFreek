@@ -5,7 +5,7 @@
 -- for a Common, a lot for a Secret (see carrySpeed in Rarities).
 --
 -- While it's being carried:
---   * the owner can bonk the carrier with a weapon (WeaponService), or Snatch it back, and it
+--   * the owner can hit the carrier with a weapon (WeaponService), or Snatch it back, and it
 --     goes home;
 --   * any other player can Snatch it and carry it to their own yard instead;
 --   * if the carrier dies or leaves, it goes home.
@@ -265,18 +265,26 @@ local function onPromptTriggered(prompt: ProximityPrompt, player: Player)
 	end
 end
 
--- Called by WeaponService when one player hits another. Only the Freek's owner can knock
--- it loose; hitting anyone else does nothing.
-function StealService.onHit(attacker: Player, target: Player)
+-- True if target is carrying a Freek stolen from owner.
+function StealService.isCarryingFrom(target: Player, owner: Player): boolean
 	local carry = carries[target]
-	if carry and carry.owner == attacker then
-		sendBack(
-			target,
-			carry,
-			"BONK! You got your " .. carry.name .. " back!",
-			attacker.DisplayName .. " bonked you! You dropped " .. carry.name .. "."
-		)
+	return carry ~= nil and carry.owner == owner
+end
+
+-- Called by WeaponService when an attacker's "drop" weapon hits someone. Only the Freek's
+-- owner can knock it loose; hitting anyone else does nothing. Returns true if it dropped.
+function StealService.knockLoose(attacker: Player, target: Player, weaponName: string): boolean
+	local carry = carries[target]
+	if not carry or carry.owner ~= attacker then
+		return false
 	end
+	sendBack(
+		target,
+		carry,
+		"Hit with your " .. weaponName .. "! You got your " .. carry.name .. " back!",
+		attacker.DisplayName .. " hit you with a " .. weaponName .. "! You dropped " .. carry.name .. "."
+	)
+	return true
 end
 
 local function checkCarries()

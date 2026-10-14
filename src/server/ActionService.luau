@@ -30,6 +30,7 @@ end
 -- What the client is allowed to see of its own save.
 local function snapshot(data)
 	return {
+		weapons = data.weapons,
 		money = data.money,
 		slots = data.slots,
 		freeks = data.freeks,
@@ -169,9 +170,13 @@ function handlers.ClaimBreed(player: Player, data)
 	end
 end
 
+local quiet = {} -- actions that don't change saved data, so skip the refresh
+
 -- Lets other services add actions (they get the same rate limit and refresh).
-function ActionService.register(name: string, handler)
+-- Pass isQuiet = true for actions that never change the player's data.
+function ActionService.register(name: string, handler, isQuiet: boolean?)
 	handlers[name] = handler
+	quiet[name] = isQuiet == true
 end
 
 function ActionService.init()
@@ -200,7 +205,9 @@ function ActionService.init()
 		if not ok then
 			warn("Action", action, "failed for", player.Name, err)
 		end
-		DataService.changed(player)
+		if not quiet[action] then
+			DataService.changed(player)
+		end
 	end)
 
 	game:GetService("Players").PlayerRemoving:Connect(function(player)
