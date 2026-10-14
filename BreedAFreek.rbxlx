@@ -2522,7 +2522,18 @@ return DataService
           <string name="Source"><![CDATA[-- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
 -- fences and signboards. Every builder takes a parent and a CFrame on the ground.
 
+local CollectionService = game:GetService("CollectionService")
+
 local Decor = {}
+
+-- Tags let SeasonalService recolour scenery for events (e.g. orange leaves at Halloween).
+Decor.TAGS = { leaves = "TreeLeaves", bulb = "LampBulb", lawn = "Lawn" }
+
+-- Remembers a part's normal colour so a seasonal theme can be undone.
+function Decor.tag(instance: BasePart, tag: string)
+	instance:SetAttribute("BaseColor", instance.Color)
+	CollectionService:AddTag(instance, tag)
+end
 
 local function part(props, className: string?): BasePart
 	local p = Instance.new(className or "Part")
@@ -2560,16 +2571,19 @@ function Decor.tree(parent: Instance, ground: CFrame, scale: number?, seed: numb
 		local size = (5.5 + rng:NextNumber() * 2) * s
 		local offset =
 			Vector3.new((rng:NextNumber() - 0.5) * 3 * s, (7.5 + i * 1.6) * s, (rng:NextNumber() - 0.5) * 3 * s)
-		part({
-			Name = "Leaves",
-			Shape = Enum.PartType.Ball,
-			Size = Vector3.one * size,
-			CFrame = ground * CFrame.new(offset),
-			Color = LEAF_COLORS[rng:NextInteger(1, #LEAF_COLORS)],
-			Material = Enum.Material.Grass,
-			CanCollide = false,
-			Parent = parent,
-		})
+		Decor.tag(
+			part({
+				Name = "Leaves",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.one * size,
+				CFrame = ground * CFrame.new(offset),
+				Color = LEAF_COLORS[rng:NextInteger(1, #LEAF_COLORS)],
+				Material = Enum.Material.Grass,
+				CanCollide = false,
+				Parent = parent,
+			}),
+			Decor.TAGS.leaves
+		)
 	end
 end
 
@@ -2674,6 +2688,118 @@ function Decor.lamp(parent: Instance, ground: CFrame, color: Color3?)
 	light.Brightness = 1.2
 	light.Shadows = false
 	light.Parent = bulb
+	Decor.tag(bulb, Decor.TAGS.bulb)
+end
+
+-- A glowing jack-o'-lantern. scale 1 is about 3 studs wide; its face looks along -Z.
+function Decor.pumpkin(parent: Instance, ground: CFrame, scale: number?)
+	local s = scale or 1
+	local orange = Color3.fromRGB(235, 125, 30)
+	local center = ground * CFrame.new(0, 1.2 * s, 0)
+	-- Three overlapping balls make the ribbed shape.
+	local body
+	for _, dx in { -0.55, 0, 0.55 } do
+		local ball = part({
+			Name = "Pumpkin",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * (if dx == 0 then 2.5 else 2.2) * s,
+			CFrame = center * CFrame.new(dx * s, 0, 0),
+			Color = if dx == 0 then orange else orange:Lerp(Color3.new(0, 0, 0), 0.08),
+			Parent = parent,
+		})
+		if dx == 0 then
+			body = ball
+		end
+	end
+	part({
+		Name = "Stem",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.7 * s, 0.35 * s, 0.35 * s),
+		CFrame = center * CFrame.new(0, 1.3 * s, 0) * CFrame.Angles(0, 0, math.pi / 2 + 0.2),
+		Color = Color3.fromRGB(90, 110, 40),
+		CanCollide = false,
+		Parent = parent,
+	})
+	-- Glowing face: two triangle eyes and a grin.
+	local glow = Color3.fromRGB(255, 200, 70)
+	for _, dx in { -0.45, 0.45 } do
+		part({
+			Name = "Eye",
+			Size = Vector3.new(0.12, 0.45 * s, 0.5 * s),
+			CFrame = center * CFrame.new(dx * s, 0.3 * s, -1.18 * s) * CFrame.Angles(0, math.pi / 2, 0),
+			Color = glow,
+			Material = Enum.Material.Neon,
+			CanCollide = false,
+			Parent = parent,
+		}, "WedgePart")
+	end
+	part({
+		Name = "Grin",
+		Size = Vector3.new(1.1 * s, 0.25 * s, 0.12),
+		CFrame = center * CFrame.new(0, -0.35 * s, -1.2 * s),
+		Color = glow,
+		Material = Enum.Material.Neon,
+		CanCollide = false,
+		Parent = parent,
+	})
+	local light = Instance.new("PointLight")
+	light.Color = Color3.fromRGB(255, 150, 50)
+	light.Range = 10 * s
+	light.Brightness = 1.5
+	light.Shadows = false
+	light.Parent = body
+end
+
+-- A hay bale with twine bands, lying along X.
+function Decor.hayBale(parent: Instance, ground: CFrame)
+	part({
+		Name = "HayBale",
+		Size = Vector3.new(4, 2.4, 2.6),
+		CFrame = ground * CFrame.new(0, 1.2, 0),
+		Color = Color3.fromRGB(225, 190, 95),
+		Material = Enum.Material.Sand,
+		Parent = parent,
+	})
+	for _, dx in { -1, 1 } do
+		part({
+			Name = "Twine",
+			Size = Vector3.new(0.25, 2.5, 2.7),
+			CFrame = ground * CFrame.new(dx, 1.2, 0),
+			Color = Color3.fromRGB(140, 100, 55),
+			Material = Enum.Material.Fabric,
+			CanCollide = false,
+			Parent = parent,
+		})
+	end
+end
+
+local FALL_LEAVES = {
+	Color3.fromRGB(230, 120, 40),
+	Color3.fromRGB(200, 70, 40),
+	Color3.fromRGB(235, 180, 50),
+	Color3.fromRGB(170, 100, 50),
+}
+Decor.FALL_LEAVES = FALL_LEAVES
+
+-- A low pile of fallen leaves: overlapping flat discs in autumn colours.
+function Decor.leafPile(parent: Instance, ground: CFrame, seed: number?)
+	local rng = Random.new(seed or 9)
+	for i = 1, 6 do
+		local size = 1.6 + rng:NextNumber() * 1.6
+		part({
+			Name = "LeafPile",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.35, size, size),
+			CFrame = ground
+				* CFrame.new((rng:NextNumber() - 0.5) * 3, 0.1 + i * 0.07, (rng:NextNumber() - 0.5) * 3)
+				* CFrame.Angles(0, 0, math.pi / 2),
+			Color = FALL_LEAVES[rng:NextInteger(1, #FALL_LEAVES)],
+			Material = Enum.Material.Grass,
+			CanCollide = false,
+			CastShadow = false,
+			Parent = parent,
+		})
+	end
 end
 
 -- A white picket fence from a to b (both on the ground). Pickets every `spacing` studs.
@@ -3131,6 +3257,7 @@ require(Server.WeaponService).init()
 require(Server.RebirthService).init()
 require(Server.PassService).init()
 require(Server.ConveyorService).init()
+require(Server.SeasonalService).init() -- after the map and yards exist
 require(Server.DataService).init()
 ]]></string>
         </Properties>
@@ -3364,14 +3491,17 @@ local function buildPlot(index: number)
 	decor.Parent = folder
 
 	-- Lawn, with a cobblestone path from the gate to the pens and across to the pedestals.
-	part({
-		Name = "Base",
-		Size = Vector3.new(PLOT_SIZE, 1, PLOT_SIZE),
-		CFrame = origin * CFrame.new(0, 0.5, 0),
-		Color = Color3.fromRGB(105, 185, 85),
-		Material = Enum.Material.Grass,
-		Parent = folder,
-	})
+	Decor.tag(
+		part({
+			Name = "Base",
+			Size = Vector3.new(PLOT_SIZE, 1, PLOT_SIZE),
+			CFrame = origin * CFrame.new(0, 0.5, 0),
+			Color = Color3.fromRGB(105, 185, 85),
+			Material = Enum.Material.Grass,
+			Parent = folder,
+		}),
+		Decor.TAGS.lawn
+	)
 	for _, path in
 		{
 			{ size = Vector3.new(7, 0.2, 12), pos = Vector3.new(0, 1.1, -26) },
@@ -3766,6 +3896,15 @@ local function onPlayerAdded(player: Player)
 	Remotes.get("Notify"):FireClient(player, "This server is full of yards! Try another server.", "error")
 end
 
+-- Every yard's origin (gate faces -Z), for scenery that decorates all yards.
+function PlotService.origins(): { CFrame }
+	local list = {}
+	for _, plot in plots do
+		table.insert(list, plot.origin)
+	end
+	return list
+end
+
 function PlotService.getPlot(player: Player)
 	return plotOf[player]
 end
@@ -4024,6 +4163,219 @@ return Recipes
         </Properties>
       </Item>
       <Item class="ModuleScript" referent="32">
+        <Properties>
+          <string name="Name">SeasonalService</string>
+          <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
+-- trees, props, lighting) and goes back to normal when the event ends. Checked every two
+-- minutes, so themes switch on and off without restarting servers.
+--
+-- To add a theme for another event, add an entry to THEMES keyed by its Seasons id.
+
+local CollectionService = game:GetService("CollectionService")
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local Belt = require(ReplicatedStorage.Shared.Belt)
+local Seasons = require(ReplicatedStorage.Shared.Seasons)
+
+local Decor = require(script.Parent.Decor)
+local PlotService = require(script.Parent.PlotService)
+
+local SeasonalService = {}
+
+local current = nil -- id of the theme on show, or nil
+local folder = nil -- props added by the current theme
+local defaults = {} -- lighting/terrain values to restore
+
+-- Pick a colour from a palette based on a part's position, so it's stable but varied.
+local function pick(palette, part: BasePart)
+	local p = part.Position
+	local index = math.floor(math.abs(p.X * 7 + p.Y * 13 + p.Z * 3)) % #palette + 1
+	return palette[index]
+end
+
+local function facingBelt(position: Vector3): CFrame
+	return CFrame.lookAt(position, Vector3.new(position.X, position.Y, 0))
+end
+
+local THEMES = {}
+
+THEMES.Halloween = {
+	leaves = Decor.FALL_LEAVES,
+	grass = Color3.fromRGB(150, 165, 75),
+	lawn = Color3.fromRGB(150, 170, 80),
+	bulb = Color3.fromRGB(255, 140, 40),
+	lighting = {
+		ClockTime = 16.9,
+		atmosphere = {
+			Density = 0.34,
+			Color = Color3.fromRGB(255, 205, 165),
+			Decay = Color3.fromRGB(130, 80, 100),
+			Haze = 1.6,
+		},
+		color = { TintColor = Color3.fromRGB(255, 232, 210), Saturation = 0.2 },
+	},
+	build = function(props: Folder)
+		-- Every yard: jack-o'-lanterns flanking the gate, one inside by the pens, and a
+		-- pile of leaves under each corner tree.
+		for i, origin in PlotService.origins() do
+			for _, side in { -1, 1 } do
+				Decor.pumpkin(props, origin * CFrame.new(side * 10.5, 0, -33.5), 1) -- outside, on the grass
+				Decor.pumpkin(props, origin * CFrame.new(side * 21, 1, -24.5), 0.8) -- on the lawn
+				Decor.leafPile(props, origin * CFrame.new(side * 27, 1, -21), i * 10 + side)
+			end
+		end
+		-- Pumpkins between the lamps along both walkways, facing the conveyor.
+		for x = Belt.START_X + 27.5, Belt.START_X + Belt.LENGTH - 10, 35 do
+			for _, z in { -27.5, 27.5 } do
+				Decor.pumpkin(props, facingBelt(Vector3.new(x, 0.3, z)), 0.9)
+			end
+		end
+		-- Hay bales topped with pumpkins by the Freek Houses and the spawn.
+		local houseX = Belt.START_X - 9
+		for _, spot in
+			{
+				Vector3.new(houseX, 0, -15),
+				Vector3.new(houseX, 0, 15),
+				Vector3.new(houseX + 8, 0, -16),
+				Vector3.new(houseX + 8, 0, 16),
+				Vector3.new(150, 0, -7),
+				Vector3.new(150, 0, 7),
+			}
+		do
+			local ground = facingBelt(spot)
+			Decor.hayBale(props, ground)
+			Decor.pumpkin(props, ground * CFrame.new(0, 2.4, 0), 0.8)
+		end
+		for _, z in { -9, 9 } do
+			Decor.pumpkin(props, CFrame.new(132, 0, z) * CFrame.Angles(0, math.pi / 2, 0), 1.2)
+		end
+		-- Leaf piles scattered along the tree line.
+		for x = -190, 190, 38 do
+			for _, z in { -142, 142 } do
+				Decor.leafPile(props, CFrame.new(x, 0, z), x + z)
+			end
+		end
+	end,
+}
+
+local function recolour(tag: string, palette)
+	for _, part in CollectionService:GetTagged(tag) do
+		if palette == nil then
+			part.Color = part:GetAttribute("BaseColor") or part.Color
+		elseif typeof(palette) == "Color3" then
+			part.Color = palette
+		else
+			part.Color = pick(palette, part)
+		end
+	end
+end
+
+local function setLamps(color: Color3?)
+	for _, bulb in CollectionService:GetTagged(Decor.TAGS.bulb) do
+		bulb.Color = color or bulb:GetAttribute("BaseColor") or bulb.Color
+		local light = bulb:FindFirstChildOfClass("PointLight")
+		if light then
+			light.Color = color or bulb.Color
+		end
+	end
+end
+
+local function captureDefaults()
+	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
+	local color = Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
+	defaults = {
+		ClockTime = Lighting.ClockTime,
+		atmosphere = atmosphere and {
+			Density = atmosphere.Density,
+			Color = atmosphere.Color,
+			Decay = atmosphere.Decay,
+			Haze = atmosphere.Haze,
+		},
+		color = color and { TintColor = color.TintColor, Saturation = color.Saturation },
+		grass = Workspace.Terrain:GetMaterialColor(Enum.Material.Grass),
+	}
+end
+
+local function applyLighting(settings)
+	Lighting.ClockTime = settings.ClockTime
+	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
+	if atmosphere and settings.atmosphere then
+		for key, value in settings.atmosphere do
+			atmosphere[key] = value
+		end
+	end
+	local color = Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
+	if color and settings.color then
+		for key, value in settings.color do
+			color[key] = value
+		end
+	end
+end
+
+local function clearTheme()
+	if folder then
+		folder:Destroy()
+		folder = nil
+	end
+	recolour(Decor.TAGS.leaves, nil)
+	recolour(Decor.TAGS.lawn, nil)
+	setLamps(nil)
+	applyLighting(defaults)
+	Workspace.Terrain:SetMaterialColor(Enum.Material.Grass, defaults.grass)
+	current = nil
+end
+
+local function applyTheme(id: string)
+	local theme = THEMES[id]
+	folder = Instance.new("Folder")
+	folder.Name = "Seasonal_" .. id
+	folder.Parent = Workspace
+	theme.build(folder)
+	recolour(Decor.TAGS.leaves, theme.leaves)
+	recolour(Decor.TAGS.lawn, theme.lawn)
+	setLamps(theme.bulb)
+	applyLighting(theme.lighting)
+	Workspace.Terrain:SetMaterialColor(Enum.Material.Grass, theme.grass)
+	current = id
+end
+
+local function update()
+	local wanted = nil
+	for _, id in Seasons.active() do
+		if THEMES[id] then
+			wanted = id
+			break
+		end
+	end
+	if wanted == current then
+		return
+	end
+	if current then
+		clearTheme()
+	end
+	if wanted then
+		applyTheme(wanted)
+	end
+end
+
+function SeasonalService.init()
+	captureDefaults()
+	update()
+	task.spawn(function()
+		while true do
+			task.wait(120)
+			update()
+		end
+	end)
+end
+
+return SeasonalService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Stealing Freeks from other players' yards.
@@ -4384,7 +4736,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
@@ -4665,7 +5017,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- Weapons: giving them out, buying them, and what happens when they hit.
@@ -4994,19 +5346,19 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="35">
+  <Item class="StarterPlayer" referent="36">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="36">
+    <Item class="StarterPlayerScripts" referent="37">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="37">
+      <Item class="Folder" referent="38">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="38">
+        <Item class="ModuleScript" referent="39">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, event chip, menu tabs, leaderboard,
@@ -5590,7 +5942,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="39">
+        <Item class="LocalScript" referent="40">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -6652,7 +7004,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="40">
+        <Item class="ModuleScript" referent="41">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).

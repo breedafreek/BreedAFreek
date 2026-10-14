@@ -1,7 +1,18 @@
 -- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
 -- fences and signboards. Every builder takes a parent and a CFrame on the ground.
 
+local CollectionService = game:GetService("CollectionService")
+
 local Decor = {}
+
+-- Tags let SeasonalService recolour scenery for events (e.g. orange leaves at Halloween).
+Decor.TAGS = { leaves = "TreeLeaves", bulb = "LampBulb", lawn = "Lawn" }
+
+-- Remembers a part's normal colour so a seasonal theme can be undone.
+function Decor.tag(instance: BasePart, tag: string)
+	instance:SetAttribute("BaseColor", instance.Color)
+	CollectionService:AddTag(instance, tag)
+end
 
 local function part(props, className: string?): BasePart
 	local p = Instance.new(className or "Part")
@@ -39,16 +50,19 @@ function Decor.tree(parent: Instance, ground: CFrame, scale: number?, seed: numb
 		local size = (5.5 + rng:NextNumber() * 2) * s
 		local offset =
 			Vector3.new((rng:NextNumber() - 0.5) * 3 * s, (7.5 + i * 1.6) * s, (rng:NextNumber() - 0.5) * 3 * s)
-		part({
-			Name = "Leaves",
-			Shape = Enum.PartType.Ball,
-			Size = Vector3.one * size,
-			CFrame = ground * CFrame.new(offset),
-			Color = LEAF_COLORS[rng:NextInteger(1, #LEAF_COLORS)],
-			Material = Enum.Material.Grass,
-			CanCollide = false,
-			Parent = parent,
-		})
+		Decor.tag(
+			part({
+				Name = "Leaves",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.one * size,
+				CFrame = ground * CFrame.new(offset),
+				Color = LEAF_COLORS[rng:NextInteger(1, #LEAF_COLORS)],
+				Material = Enum.Material.Grass,
+				CanCollide = false,
+				Parent = parent,
+			}),
+			Decor.TAGS.leaves
+		)
 	end
 end
 
@@ -153,6 +167,118 @@ function Decor.lamp(parent: Instance, ground: CFrame, color: Color3?)
 	light.Brightness = 1.2
 	light.Shadows = false
 	light.Parent = bulb
+	Decor.tag(bulb, Decor.TAGS.bulb)
+end
+
+-- A glowing jack-o'-lantern. scale 1 is about 3 studs wide; its face looks along -Z.
+function Decor.pumpkin(parent: Instance, ground: CFrame, scale: number?)
+	local s = scale or 1
+	local orange = Color3.fromRGB(235, 125, 30)
+	local center = ground * CFrame.new(0, 1.2 * s, 0)
+	-- Three overlapping balls make the ribbed shape.
+	local body
+	for _, dx in { -0.55, 0, 0.55 } do
+		local ball = part({
+			Name = "Pumpkin",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * (if dx == 0 then 2.5 else 2.2) * s,
+			CFrame = center * CFrame.new(dx * s, 0, 0),
+			Color = if dx == 0 then orange else orange:Lerp(Color3.new(0, 0, 0), 0.08),
+			Parent = parent,
+		})
+		if dx == 0 then
+			body = ball
+		end
+	end
+	part({
+		Name = "Stem",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.7 * s, 0.35 * s, 0.35 * s),
+		CFrame = center * CFrame.new(0, 1.3 * s, 0) * CFrame.Angles(0, 0, math.pi / 2 + 0.2),
+		Color = Color3.fromRGB(90, 110, 40),
+		CanCollide = false,
+		Parent = parent,
+	})
+	-- Glowing face: two triangle eyes and a grin.
+	local glow = Color3.fromRGB(255, 200, 70)
+	for _, dx in { -0.45, 0.45 } do
+		part({
+			Name = "Eye",
+			Size = Vector3.new(0.12, 0.45 * s, 0.5 * s),
+			CFrame = center * CFrame.new(dx * s, 0.3 * s, -1.18 * s) * CFrame.Angles(0, math.pi / 2, 0),
+			Color = glow,
+			Material = Enum.Material.Neon,
+			CanCollide = false,
+			Parent = parent,
+		}, "WedgePart")
+	end
+	part({
+		Name = "Grin",
+		Size = Vector3.new(1.1 * s, 0.25 * s, 0.12),
+		CFrame = center * CFrame.new(0, -0.35 * s, -1.2 * s),
+		Color = glow,
+		Material = Enum.Material.Neon,
+		CanCollide = false,
+		Parent = parent,
+	})
+	local light = Instance.new("PointLight")
+	light.Color = Color3.fromRGB(255, 150, 50)
+	light.Range = 10 * s
+	light.Brightness = 1.5
+	light.Shadows = false
+	light.Parent = body
+end
+
+-- A hay bale with twine bands, lying along X.
+function Decor.hayBale(parent: Instance, ground: CFrame)
+	part({
+		Name = "HayBale",
+		Size = Vector3.new(4, 2.4, 2.6),
+		CFrame = ground * CFrame.new(0, 1.2, 0),
+		Color = Color3.fromRGB(225, 190, 95),
+		Material = Enum.Material.Sand,
+		Parent = parent,
+	})
+	for _, dx in { -1, 1 } do
+		part({
+			Name = "Twine",
+			Size = Vector3.new(0.25, 2.5, 2.7),
+			CFrame = ground * CFrame.new(dx, 1.2, 0),
+			Color = Color3.fromRGB(140, 100, 55),
+			Material = Enum.Material.Fabric,
+			CanCollide = false,
+			Parent = parent,
+		})
+	end
+end
+
+local FALL_LEAVES = {
+	Color3.fromRGB(230, 120, 40),
+	Color3.fromRGB(200, 70, 40),
+	Color3.fromRGB(235, 180, 50),
+	Color3.fromRGB(170, 100, 50),
+}
+Decor.FALL_LEAVES = FALL_LEAVES
+
+-- A low pile of fallen leaves: overlapping flat discs in autumn colours.
+function Decor.leafPile(parent: Instance, ground: CFrame, seed: number?)
+	local rng = Random.new(seed or 9)
+	for i = 1, 6 do
+		local size = 1.6 + rng:NextNumber() * 1.6
+		part({
+			Name = "LeafPile",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.35, size, size),
+			CFrame = ground
+				* CFrame.new((rng:NextNumber() - 0.5) * 3, 0.1 + i * 0.07, (rng:NextNumber() - 0.5) * 3)
+				* CFrame.Angles(0, 0, math.pi / 2),
+			Color = FALL_LEAVES[rng:NextInteger(1, #FALL_LEAVES)],
+			Material = Enum.Material.Grass,
+			CanCollide = false,
+			CastShadow = false,
+			Parent = parent,
+		})
+	end
 end
 
 -- A white picket fence from a to b (both on the ground). Pickets every `spacing` studs.

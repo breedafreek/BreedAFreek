@@ -132,14 +132,17 @@ local function buildPlot(index: number)
 	decor.Parent = folder
 
 	-- Lawn, with a cobblestone path from the gate to the pens and across to the pedestals.
-	part({
-		Name = "Base",
-		Size = Vector3.new(PLOT_SIZE, 1, PLOT_SIZE),
-		CFrame = origin * CFrame.new(0, 0.5, 0),
-		Color = Color3.fromRGB(105, 185, 85),
-		Material = Enum.Material.Grass,
-		Parent = folder,
-	})
+	Decor.tag(
+		part({
+			Name = "Base",
+			Size = Vector3.new(PLOT_SIZE, 1, PLOT_SIZE),
+			CFrame = origin * CFrame.new(0, 0.5, 0),
+			Color = Color3.fromRGB(105, 185, 85),
+			Material = Enum.Material.Grass,
+			Parent = folder,
+		}),
+		Decor.TAGS.lawn
+	)
 	for _, path in
 		{
 			{ size = Vector3.new(7, 0.2, 12), pos = Vector3.new(0, 1.1, -26) },
@@ -532,6 +535,15 @@ local function onPlayerAdded(player: Player)
 		end
 	end
 	Remotes.get("Notify"):FireClient(player, "This server is full of yards! Try another server.", "error")
+end
+
+-- Every yard's origin (gate faces -Z), for scenery that decorates all yards.
+function PlotService.origins(): { CFrame }
+	local list = {}
+	for _, plot in plots do
+		table.insert(list, plot.origin)
+	end
+	return list
 end
 
 function PlotService.getPlot(player: Player)

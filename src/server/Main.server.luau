@@ -12,4 +12,5 @@ require(Server.WeaponService).init()
 require(Server.RebirthService).init()
 require(Server.PassService).init()
 require(Server.ConveyorService).init()
+require(Server.SeasonalService).init() -- after the map and yards exist
 require(Server.DataService).init()
