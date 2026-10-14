@@ -1,9 +1,20 @@
--- Builds the placeholder 3D model for a Freek out of plain parts.
+-- Builds the 3D model for a Freek out of plain parts.
 -- The model's pivot sits at its feet and its face points along -Z (the model's front),
 -- so model:PivotTo(groundCFrame) stands it on the ground facing groundCFrame.LookVector.
 --
--- When real models exist, put them in ReplicatedStorage.FreekModels named by species id
--- and they will be used instead.
+-- A Freek's look is either:
+--   * a part list (look.parts, look.effects), for designed Freeks; see buildFromParts, or
+--   * the simple generator (look.shape/size/eyes/antennae), for placeholders.
+-- A Model in ReplicatedStorage.FreekModels named after the species id overrides both.
+--
+-- Part list format, in studs, with y = 0 at the ground and the face toward -Z:
+--   { shape = "Ball" | "Block" | "Cylinder" | "Wedge", size = { x, y, z } (or one number),
+--     pos = { x, y, z }, rot = { x, y, z } (degrees, optional), color = Color3,
+--     material = "Neon" etc. (optional), transparency = 0-1 (optional),
+--     detail = true (optional: keeps its color when mutated, e.g. eyes) }
+-- The first part is the main body. Effects:
+--   { type = "Sparkles" | "Fire" | "Smoke" | "Glow", part = index (default 1), color = Color3,
+--     size = number (optional) }
 
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -43,11 +54,123 @@ local EYE_LAYOUTS = {
 	[3] = { size = 0.22, xs = { -0.27, 0, 0.27 } },
 }
 
+local SHAPES = {
+	Ball = Enum.PartType.Ball,
+	Block = Enum.PartType.Block,
+	Cylinder = Enum.PartType.Cylinder,
+}
+
+local function vector(value): Vector3
+	if type(value) == "number" then
+		return Vector3.one * value
+	end
+	return Vector3.new(value[1], value[2], value[3])
+end
+
+local function addEffect(part: BasePart, effect)
+	local kind = effect.type
+	local color = effect.color or Color3.fromRGB(255, 230, 120)
+	local instance
+	if kind == "Sparkles" then
+		instance = Instance.new("Sparkles")
+		instance.SparkleColor = color
+	elseif kind == "Fire" then
+		instance = Instance.new("Fire")
+		instance.Color = color
+		instance.SecondaryColor = effect.color2 or Color3.fromRGB(255, 220, 80)
+		instance.Size = effect.size or 5
+		instance.Heat = effect.heat or 9
+	elseif kind == "Smoke" then
+		instance = Instance.new("Smoke")
+		instance.Color = color
+		instance.Size = effect.size or 2
+		instance.Opacity = 0.3
+		instance.RiseVelocity = 2
+	elseif kind == "Glow" then
+		instance = Instance.new("PointLight")
+		instance.Color = color
+		instance.Range = effect.size or 10
+		instance.Brightness = 2
+	else
+		warn("Unknown Freek effect " .. tostring(kind))
+		return
+	end
+	instance.Parent = part
+end
+
+local function buildFromParts(species, mutationId: string?): (Model, number)
+	local look = species.look
+	local model = Instance.new("Model")
+	model.Name = species.name
+
+	local parts = {}
+	local top = 0
+	for i, spec in look.parts do
+		local shape = spec.shape or "Block"
+		local size = vector(spec.size)
+		local rot = spec.rot or { 0, 0, 0 }
+		local cframe = CFrame.new(vector(spec.pos))
+			* CFrame.Angles(math.rad(rot[1]), math.rad(rot[2]), math.rad(rot[3]))
+		local part
+		if shape == "Wedge" then
+			part = Instance.new("WedgePart")
+			part.Anchored = true
+			part.CanCollide = false
+			part.CanTouch = false
+			part.Material = Enum.Material.SmoothPlastic
+		else
+			part = newPart({ Shape = SHAPES[shape] or Enum.PartType.Block })
+		end
+		part.Name = spec.name or (if i == 1 then "Body" else "Part" .. i)
+		part.Size = size
+		part.CFrame = cframe
+		part.Color = spec.color or Color3.new(1, 1, 1)
+		if spec.material then
+			part.Material = Enum.Material[spec.material]
+		end
+		part.Transparency = spec.transparency or 0
+
+		if not spec.detail then
+			if mutationId == "Golden" then
+				part.Color = Color3.fromRGB(255, 196, 40):Lerp(part.Color, 0.15)
+				part.Material = Enum.Material.Foil
+			elseif mutationId == "Shadow" then
+				part.Color = Color3.fromRGB(35, 25, 50):Lerp(part.Color, 0.1)
+			elseif mutationId == "Rainbow" then
+				part.Material = Enum.Material.Neon
+				CollectionService:AddTag(part, FreekModel.RAINBOW_TAG)
+			end
+		end
+
+		part.Parent = model
+		parts[i] = part
+		top = math.max(top, spec.pos[2] + size.Y / 2)
+	end
+
+	local body = parts[1]
+	body.PivotOffset = body.CFrame:Inverse()
+	model.PrimaryPart = body
+
+	for _, effect in look.effects or {} do
+		addEffect(parts[effect.part or 1], effect)
+	end
+	if mutationId == "Golden" or mutationId == "Rainbow" then
+		addEffect(body, {
+			type = "Sparkles",
+			color = if mutationId == "Golden" then Color3.fromRGB(255, 220, 80) else Color3.new(1, 1, 1),
+		})
+	elseif mutationId == "Shadow" then
+		addEffect(body, { type = "Smoke", color = Color3.fromRGB(60, 30, 90), size = 1.5 })
+	end
+
+	return model, top
+end
+
 -- Returns the model and roughly how tall it is (for placing name tags).
 function FreekModel.build(speciesId: string, mutationId: string?): (Model, number)
 	local species = Freeks.byId[speciesId] or Freeks.list[1]
 	local look = species.look
-	local s = look.size
+	local s = look.size or 3
 
 	local custom = ReplicatedStorage:FindFirstChild("FreekModels")
 	custom = custom and custom:FindFirstChild(species.id)
@@ -55,6 +178,10 @@ function FreekModel.build(speciesId: string, mutationId: string?): (Model, numbe
 		local model = custom:Clone()
 		local _, extents = model:GetBoundingBox()
 		return model, extents.Y
+	end
+
+	if look.parts then
+		return buildFromParts(species, mutationId)
 	end
 
 	local bodyColor = look.color
