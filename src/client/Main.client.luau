@@ -236,12 +236,18 @@ function renderers.Shop()
 	local yard = UI.grid(220, 120)
 	yard.LayoutOrder = 4
 	yard.Parent = body
-	local maxed = state.slots >= Config.MAX_SLOTS
-	local price = Config.slotPrice(state.slots)
+	local bought = state.boughtSlots or state.slots
+	local maxed = bought >= Config.MAX_SLOTS
+	local price = Config.slotPrice(bought)
 	UI.card({
 		lines = {
 			{ "Yard Slots", colors.text, 26 },
-			{ state.slots .. " / " .. Config.MAX_SLOTS .. " unlocked", colors.muted },
+			{
+				bought .. " / " .. Config.MAX_SLOTS .. " bought" .. (if (state.passSlots or 0) > 0
+					then "  ·  +" .. state.passSlots .. " from passes"
+					else ""),
+				colors.muted,
+			},
 		},
 		buttons = {
 			UI.button(

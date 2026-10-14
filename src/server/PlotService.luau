@@ -22,7 +22,7 @@ local DataService = require(script.Parent.DataService)
 
 local PLOT_SIZE = 64
 local RING_RADIUS = 100
-local PAD_COLUMNS = 4
+local PAD_COLUMNS = 5
 local FENCE_HEIGHT = 5 -- what you see
 local WALL_HEIGHT = 16 -- invisible wall above the fence so nobody can jump it
 local GATE_WIDTH = 14
@@ -117,13 +117,13 @@ local function buildPlot(index: number)
 	})
 
 	local pads = {}
-	for i = 1, Config.MAX_SLOTS do
+	for i = 1, Config.MAX_SLOTS + Config.PASS_SLOTS do
 		local column = (i - 1) % PAD_COLUMNS
 		local row = (i - 1) // PAD_COLUMNS
 		local pad = part({
 			Name = "Pad" .. i,
 			Size = Vector3.new(9, 0.5, 9),
-			CFrame = origin * CFrame.new((column - (PAD_COLUMNS - 1) / 2) * 13, 1.25, 4 + row * 10),
+			CFrame = origin * CFrame.new((column - (PAD_COLUMNS - 1) / 2) * 12.2, 1.25, 4 + row * 10),
 			Material = Enum.Material.SmoothPlastic,
 			Parent = folder,
 		})
@@ -318,7 +318,7 @@ function PlotService.render(player: Player)
 	plot.sign.Text = player.DisplayName .. "'s Yard"
 
 	for i, pad in plot.pads do
-		local unlocked = i <= data.slots
+		local unlocked = i <= FreekUtil.totalSlots(data)
 		pad.part.Color = if unlocked then Color3.fromRGB(235, 225, 200) else Color3.fromRGB(90, 90, 90)
 		pad.part.Transparency = if unlocked then 0 else 0.5
 		pad.lock.Enabled = not unlocked

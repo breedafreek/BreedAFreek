@@ -129,7 +129,9 @@ local function sendBack(carrier: Player, carry, ownerMessage: string?, carrierMe
 				taken = true
 			end
 		end
-		freek.slot = if taken or carry.slot > ownerData.slots then FreekUtil.freeSlot(ownerData) else carry.slot
+		freek.slot = if taken or carry.slot > FreekUtil.totalSlots(ownerData)
+			then FreekUtil.freeSlot(ownerData)
+			else carry.slot
 		DataService.changed(carry.owner)
 	end
 	if ownerMessage then

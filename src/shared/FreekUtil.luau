@@ -49,6 +49,11 @@ function FreekUtil.yardIncome(data): number
 	return total * Config.incomeMultiplier(data.rebirths)
 end
 
+-- Yard slots a player can use: bought with coins plus any from Extra Yard Slot passes.
+function FreekUtil.totalSlots(data): number
+	return data.slots + (data.passSlots or 0)
+end
+
 -- First empty yard slot, or nil if the yard is full.
 function FreekUtil.freeSlot(data): number?
 	local used = {}
@@ -57,7 +62,7 @@ function FreekUtil.freeSlot(data): number?
 			used[freek.slot] = true
 		end
 	end
-	for i = 1, data.slots do
+	for i = 1, FreekUtil.totalSlots(data) do
 		if not used[i] then
 			return i
 		end

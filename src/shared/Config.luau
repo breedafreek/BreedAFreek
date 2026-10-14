@@ -3,7 +3,8 @@
 local Config = {
 	START_MONEY = 50,
 	START_SLOTS = 4, -- yard slots a new player gets
-	MAX_SLOTS = 12, -- most yard slots anyone can own
+	MAX_SLOTS = 12, -- most yard slots you can buy with coins
+	PASS_SLOTS = 3, -- extra slots from the three Extra Yard Slot game passes (15 pads per yard)
 	MAX_FREEKS = 50, -- yard + backpack combined
 
 	SLOT_BASE_PRICE = 250,

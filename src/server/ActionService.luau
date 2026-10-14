@@ -33,7 +33,9 @@ local function snapshot(data)
 	return {
 		rebirths = data.rebirths,
 		money = data.money,
-		slots = data.slots,
+		slots = FreekUtil.totalSlots(data),
+		boughtSlots = data.slots,
+		passSlots = data.passSlots or 0,
 		freeks = data.freeks,
 		breeding = data.breeding,
 		discovered = data.discovered,

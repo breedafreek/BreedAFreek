@@ -16,14 +16,24 @@ local GamePasses = {}
 -- Set true to pretend every player owns every pass while testing in Studio.
 GamePasses.STUDIO_GRANT_ALL = false
 
-GamePasses.order = { "DoubleCoins", "FastBreeding", "LuckyBreeder", "LongerLock", "BigBackpack", "VIP" }
+GamePasses.order = {
+	"DoubleCoins",
+	"FastBreeding",
+	"LongerLock",
+	"VIP",
+	"ExtraSlot1",
+	"ExtraSlot2",
+	"ExtraSlot3",
+	"LuckyBreeder",
+	"BigBackpack",
+}
 
 GamePasses.list = {
 	DoubleCoins = {
 		id = 0,
 		name = "2x Coins",
 		icon = "💰",
-		price = 199,
+		price = 499,
 		description = "Double coins from your Freeks, forever.",
 		color = Color3.fromRGB(255, 200, 60),
 	},
@@ -31,7 +41,7 @@ GamePasses.list = {
 		id = 0,
 		name = "Fast Breeding",
 		icon = "⚡",
-		price = 149,
+		price = 999,
 		description = "Breeding takes half the time.",
 		color = Color3.fromRGB(90, 200, 255),
 	},
@@ -45,9 +55,9 @@ GamePasses.list = {
 	},
 	LongerLock = {
 		id = 0,
-		name = "Longer Lock",
+		name = "Longer Gate Lock",
 		icon = "🔒",
-		price = 99,
+		price = 499,
 		description = "Your gate stays locked for 5 minutes instead of 3.",
 		color = Color3.fromRGB(235, 90, 90),
 	},
@@ -58,6 +68,33 @@ GamePasses.list = {
 		price = 99,
 		description = "Hold 100 Freeks instead of 50.",
 		color = Color3.fromRGB(170, 120, 240),
+	},
+	ExtraSlot1 = {
+		id = 0,
+		name = "Extra Yard Slot 1",
+		icon = "🧱",
+		price = 299,
+		description = "+1 yard slot on top of the 12 you can buy with coins.",
+		color = Color3.fromRGB(230, 150, 90),
+		slot = true,
+	},
+	ExtraSlot2 = {
+		id = 0,
+		name = "Extra Yard Slot 2",
+		icon = "🧱",
+		price = 299,
+		description = "+1 yard slot on top of the 12 you can buy with coins.",
+		color = Color3.fromRGB(230, 150, 90),
+		slot = true,
+	},
+	ExtraSlot3 = {
+		id = 0,
+		name = "Extra Yard Slot 3",
+		icon = "🧱",
+		price = 299,
+		description = "+1 yard slot on top of the 12 you can buy with coins.",
+		color = Color3.fromRGB(230, 150, 90),
+		slot = true,
 	},
 	VIP = {
 		id = 0,
@@ -100,6 +137,17 @@ end
 
 function GamePasses.gateLockSeconds(player: Player): number
 	return if GamePasses.has(player, "LongerLock") then 300 else Config.GATE_LOCK_SECONDS
+end
+
+-- How many Extra Yard Slot passes the player owns.
+function GamePasses.passSlots(player: Player): number
+	local count = 0
+	for _, key in GamePasses.order do
+		if GamePasses.list[key].slot and GamePasses.has(player, key) then
+			count += 1
+		end
+	end
+	return count
 end
 
 function GamePasses.maxFreeks(player: Player): number
