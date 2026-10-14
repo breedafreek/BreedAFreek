@@ -469,6 +469,130 @@ local Freeks = {}
 Freeks.list = {
 	-- Starter Freeks (shop)
 	{
+		id = "Oinkle",
+		name = "Oinkle",
+		rarity = "Common",
+		income = 1,
+		price = 50,
+		look = {
+			parts = {
+				-- Body
+				{ shape = "Ball", size = 3.4, pos = { 0, 2.1, 0 }, color = Color3.fromRGB(255, 170, 190) },
+				-- Legs
+				{
+					shape = "Cylinder",
+					size = { 1, 0.75, 0.75 },
+					pos = { -0.8, 0.5, -0.75 },
+					rot = { 0, 0, 90 },
+					color = Color3.fromRGB(240, 145, 170),
+				},
+				{
+					shape = "Cylinder",
+					size = { 1, 0.75, 0.75 },
+					pos = { 0.8, 0.5, -0.75 },
+					rot = { 0, 0, 90 },
+					color = Color3.fromRGB(240, 145, 170),
+				},
+				{
+					shape = "Cylinder",
+					size = { 1, 0.75, 0.75 },
+					pos = { -0.8, 0.5, 0.75 },
+					rot = { 0, 0, 90 },
+					color = Color3.fromRGB(240, 145, 170),
+				},
+				{
+					shape = "Cylinder",
+					size = { 1, 0.75, 0.75 },
+					pos = { 0.8, 0.5, 0.75 },
+					rot = { 0, 0, 90 },
+					color = Color3.fromRGB(240, 145, 170),
+				},
+				-- Snout and nostrils
+				{
+					shape = "Cylinder",
+					size = { 0.55, 1.15, 1.15 },
+					pos = { 0, 1.95, -1.72 },
+					rot = { 0, 90, 0 },
+					color = Color3.fromRGB(255, 135, 160),
+				},
+				{
+					shape = "Ball",
+					size = 0.24,
+					pos = { -0.22, 1.95, -2.0 },
+					color = Color3.fromRGB(110, 40, 60),
+					detail = true,
+				},
+				{
+					shape = "Ball",
+					size = 0.24,
+					pos = { 0.22, 1.95, -2.0 },
+					color = Color3.fromRGB(110, 40, 60),
+					detail = true,
+				},
+				-- Eyes
+				{
+					shape = "Ball",
+					size = 0.62,
+					pos = { -0.6, 2.75, -1.42 },
+					color = Color3.new(1, 1, 1),
+					detail = true,
+				},
+				{
+					shape = "Ball",
+					size = 0.32,
+					pos = { -0.6, 2.75, -1.68 },
+					color = Color3.new(0, 0, 0),
+					detail = true,
+				},
+				{ shape = "Ball", size = 0.62, pos = { 0.6, 2.75, -1.42 }, color = Color3.new(1, 1, 1), detail = true },
+				{ shape = "Ball", size = 0.32, pos = { 0.6, 2.75, -1.68 }, color = Color3.new(0, 0, 0), detail = true },
+				-- Rosy cheeks
+				{
+					shape = "Ball",
+					size = 0.5,
+					pos = { -1.0, 2.0, -1.22 },
+					color = Color3.fromRGB(255, 110, 140),
+					detail = true,
+				},
+				{
+					shape = "Ball",
+					size = 0.5,
+					pos = { 1.0, 2.0, -1.22 },
+					color = Color3.fromRGB(255, 110, 140),
+					detail = true,
+				},
+				-- Smile
+				{
+					shape = "Block",
+					size = { 0.55, 0.1, 0.1 },
+					pos = { 0, 1.18, -1.45 },
+					color = Color3.fromRGB(110, 40, 60),
+					detail = true,
+				},
+				-- Floppy ears
+				{
+					shape = "Wedge",
+					size = { 0.2, 1.1, 1 },
+					pos = { -0.85, 3.55, -0.4 },
+					rot = { -15, 90, 20 },
+					color = Color3.fromRGB(240, 140, 165),
+				},
+				{
+					shape = "Wedge",
+					size = { 0.2, 1.1, 1 },
+					pos = { 0.85, 3.55, -0.4 },
+					rot = { -15, -90, -20 },
+					color = Color3.fromRGB(240, 140, 165),
+				},
+				-- Curly tail
+				{ shape = "Ball", size = 0.3, pos = { 0, 2.25, 1.75 }, color = Color3.fromRGB(240, 145, 170) },
+				{ shape = "Ball", size = 0.3, pos = { 0.18, 2.42, 1.88 }, color = Color3.fromRGB(240, 145, 170) },
+				{ shape = "Ball", size = 0.3, pos = { 0.05, 2.62, 1.96 }, color = Color3.fromRGB(240, 145, 170) },
+				{ shape = "Ball", size = 0.3, pos = { -0.14, 2.5, 2.02 }, color = Color3.fromRGB(240, 145, 170) },
+			},
+		},
+	},
+	{
 		id = "Blobby",
 		name = "Blobby",
 		rarity = "Common",
