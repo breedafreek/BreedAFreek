@@ -38,10 +38,10 @@ GamePasses.list = {
 	},
 	FastBreeding = {
 		id = 0,
-		name = "Fast Breeding",
+		name = "Fast Fusing",
 		icon = "⚡",
 		price = 999,
-		description = "Breeding takes half the time.",
+		description = "Fusing takes half the time.",
 		color = Color3.fromRGB(90, 200, 255),
 	},
 	LongerLock = {
@@ -81,10 +81,10 @@ GamePasses.list = {
 	},
 	ExtraPen = {
 		id = 0,
-		name = "Extra Breeding Pen",
+		name = "Extra Fusion Pod",
 		icon = "🐣",
 		price = 399,
-		description = "A second breeding pen, so you can breed two pairs at once.",
+		description = "A second Fusion Pod, so you can fuse two pairs at once.",
 		color = Color3.fromRGB(255, 130, 190),
 	},
 	VIP = {

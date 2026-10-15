@@ -10,7 +10,7 @@ local RunService = game:GetService("RunService")
 local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
-local STORE_NAME = "BreedAFreek_Discoveries_v1"
+local STORE_NAME = "FuseAFreek_Discoveries_v1"
 local TOPIC = "FreekDiscovered"
 
 local DiscoveryService = {}

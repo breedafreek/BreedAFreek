@@ -12,7 +12,7 @@ local RunService = game:GetService("RunService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
 
-local STORE_NAME = "BreedAFreek_Players_v1"
+local STORE_NAME = "FuseAFreek_Players_v1"
 
 local DataService = {}
 

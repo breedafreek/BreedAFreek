@@ -92,7 +92,7 @@ local function buildMap()
 		Parent = map,
 	})
 	local _, title = billboard(post, UDim2.fromScale(40, 8), Vector3.zero, 400)
-	title.Text = "BREED A FREEK"
+	title.Text = "FUSE A FREEK"
 	title.TextColor3 = Color3.fromRGB(255, 230, 90)
 end
 
@@ -351,7 +351,7 @@ local function buildPlot(index: number)
 	for i, x in { -12, 12 } do
 		local penSpot = origin * CFrame.new(x, 1, -14)
 		local floor = part({
-			Name = "BreedingPen" .. i,
+			Name = "FusionPod" .. i,
 			Size = Vector3.new(19, 0.4, 9.5),
 			CFrame = penSpot * CFrame.new(0, 0.2, 0),
 			Color = Color3.fromRGB(230, 200, 120),
@@ -534,11 +534,11 @@ local function updatePenLabels(plot, data)
 			pen.label.Text = ""
 		elseif breeding then
 			local left = breeding.endsAt - os.time()
-			pen.label.Text = if left > 0 then "Breeding... " .. Format.time(left) else "Baby ready!"
+			pen.label.Text = if left > 0 then "Fusing... " .. Format.time(left) else "Fusion complete!"
 		elseif usable then
-			pen.label.Text = "Breeding Pen"
+			pen.label.Text = "Fusion Pod"
 		else
-			pen.label.Text = "Extra Pen · Store"
+			pen.label.Text = "Extra Pod · Store"
 		end
 	end
 end

@@ -124,7 +124,11 @@ function handlers.StartBreed(player: Player, data, uidA: any, uidB: any, penInde
 		end
 	end
 	if not index then
-		return notify(player, if pens > 1 then "Both your pens are busy!" else "Your pen is already busy!", "error")
+		return notify(
+			player,
+			if pens > 1 then "Both your Fusion Pods are busy!" else "Your Fusion Pod is already busy!",
+			"error"
+		)
 	end
 	local a, b = ownedFreek(data, uidA), ownedFreek(data, uidB)
 	if not a or not b or uidA == uidB or a.breeding or b.breeding then
@@ -134,13 +138,13 @@ function handlers.StartBreed(player: Player, data, uidA: any, uidB: any, penInde
 		return notify(player, "Someone is stealing that Freek! Catch them!", "error")
 	end
 	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) then
-		return notify(player, "No room for a baby! Sell a Freek first.", "error")
+		return notify(player, "No room for the new Freek! Sell one first.", "error")
 	end
 	a.slot, b.slot = nil, nil
 	a.breeding, b.breeding = true, true
 	local duration = math.ceil(FreekUtil.breedTime(a, b) * GamePasses.breedTimeMultiplier(player))
 	data[FreekUtil.PEN_KEYS[index]] = { a = uidA, b = uidB, endsAt = os.time() + duration }
-	notify(player, "Breeding started! Back in " .. Format.time(duration) .. ".", "success")
+	notify(player, "Fusing started! Ready in " .. Format.time(duration) .. ".", "success")
 end
 
 -- penIndex is optional: with no pen given, the first ready pen is collected.
@@ -173,9 +177,9 @@ function handlers.ClaimBreed(player: Player, data, penIndex: any)
 
 	local name = FreekUtil.displayName({ species = species, mutations = mutations })
 	if isNew then
-		notify(player, "NEW FREEK! You bred a " .. name .. "!", "discovery")
+		notify(player, "NEW FREEK! You fused a " .. name .. "!", "discovery")
 	else
-		notify(player, "You bred a " .. name .. "!", "success")
+		notify(player, "You fused a " .. name .. "!", "success")
 	end
 end
 

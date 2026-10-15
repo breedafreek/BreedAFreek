@@ -43,7 +43,7 @@ local discoveries = {}
 --------------------------------------------------------------------------------
 
 local screen = UI.new("ScreenGui", {
-	Name = "BreedAFreekUI",
+	Name = "FuseAFreekUI",
 	ResetOnSpawn = false,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 	Parent = player:WaitForChild("PlayerGui"),
@@ -96,7 +96,7 @@ local body = UI.new("ScrollingFrame", {
 local currentWindow = nil
 local renderers = {}
 local breedSelection = {}
-local penCountdowns = {} -- { { label, button, endsAt } } for the Breed window
+local penCountdowns = {} -- { { label, button, endsAt } } for the Fuse window
 local trade = nil -- the server's view of my current trade, or nil
 local tradeStatusLabel = nil
 
@@ -295,7 +295,7 @@ function renderers.Freeks()
 		local uid, freek = item.uid, item.freek
 		local status, statusColor
 		if freek.breeding then
-			status, statusColor = "Breeding", colors.pink
+			status, statusColor = "Fusing", colors.pink
 		elseif freek.slot then
 			status, statusColor = "In yard", colors.money
 		else
@@ -343,7 +343,7 @@ function renderers.Freeks()
 	end
 end
 
-function renderers.Breed()
+function renderers.Fuse()
 	-- Pens: what's cooking in each, and a locked card for the Extra Breeding Pen.
 	local pens = GamePasses.penCount(player)
 	local freePen = false
@@ -369,11 +369,11 @@ function renderers.Breed()
 				end
 			end
 			local countdown = UI.label("", { Size = UDim2.new(1, 0, 0, 22) })
-			local claim = UI.button("Collect baby!", colors.pink, function()
+			local claim = UI.button("Collect!", colors.pink, function()
 				send("ClaimBreed", index)
 			end, { Size = UDim2.new(1, 0, 0, 38) })
 			card = UI.card({
-				lines = { { "Pen " .. index, colors.pink, 22 } },
+				lines = { { "Pod " .. index, colors.pink, 22 } },
 				buttons = { pair, countdown, claim },
 			})
 			table.insert(penCountdowns, { label = countdown, button = claim, endsAt = breeding.endsAt })
@@ -381,7 +381,7 @@ function renderers.Breed()
 			freePen = true
 			card = UI.card({
 				lines = {
-					{ "Pen " .. index, colors.pink, 22 },
+					{ "Pod " .. index, colors.pink, 22 },
 					{ "Empty. Pick two Freeks below!", colors.muted, 18 },
 				},
 			})
@@ -389,8 +389,8 @@ function renderers.Breed()
 			card = UI.card({
 				lines = {
 					{ "🐣", colors.text, 40 },
-					{ "Extra Breeding Pen", colors.pink, 22 },
-					{ "Breed two pairs at once.", colors.muted, 18 },
+					{ "Extra Fusion Pod", colors.pink, 22 },
+					{ "Fuse two pairs at once.", colors.muted, 18 },
 				},
 				buttons = {
 					UI.button("Get it in the Store", colors.gray, function()
@@ -403,7 +403,7 @@ function renderers.Breed()
 		card.Parent = penGrid
 	end
 	if not freePen then
-		heading(if pens > 1 then "Both pens are busy!" else "Your pen is busy!", 1)
+		heading(if pens > 1 then "Both Fusion Pods are busy!" else "Your Fusion Pod is busy!", 1)
 		return
 	end
 
@@ -415,7 +415,7 @@ function renderers.Breed()
 		end
 	end
 
-	heading("Babies match the rarer parent's rarity. Some Ultra pairs make a Secret!", 1)
+	heading("You get the rarity of the rarer Freek. Some Ultra pairs make a Secret!", 1)
 
 	local selected = {}
 	for _, uid in breedSelection do
@@ -426,7 +426,7 @@ function renderers.Breed()
 	local label = "Pick 2 Freeks (" .. #breedSelection .. "/2)"
 	if ready then
 		local a, b = state.freeks[breedSelection[1]], state.freeks[breedSelection[2]]
-		label = "Breed "
+		label = "Fuse "
 			.. FreekUtil.displayName(a)
 			.. " + "
 			.. FreekUtil.displayName(b)
@@ -436,7 +436,7 @@ function renderers.Breed()
 
 		-- What this pair will make. Which Ultra pairs make a Secret stays a surprise.
 		local rarity, bothUltra = Breeding.babyRarity(a, b)
-		local parts = { "Baby: " .. rarity .. (if bothUltra then " (or a Secret?!)" else "") }
+		local parts = { "Result: " .. rarity .. (if bothUltra then " (or a Secret?!)" else "") }
 		local odds = Breeding.mutationOdds(a, b)
 		for _, option in odds do
 			table.insert(parts, math.round(option.chance * 100) .. "% " .. option.id)
@@ -854,7 +854,7 @@ end)
 local MENU = {
 	{ "Shop", "🛒", colors.green },
 	{ "Freeks", "🐷", colors.blue },
-	{ "Breed", "💕", colors.pink },
+	{ "Fuse", "🧪", colors.pink },
 	{ "Book", "📖", colors.orange },
 	{ "Trade", "🤝", colors.purple },
 	{ "Rebirth", "⭐", Color3.fromRGB(230, 170, 30) },
@@ -1006,13 +1006,13 @@ task.spawn(function()
 		for _, pen in penCountdowns do
 			local left = pen.endsAt - Workspace:GetServerTimeNow()
 			if left > 0 then
-				pen.label.Text = "Baby arrives in " .. Format.time(left)
+				pen.label.Text = "Fusing... " .. Format.time(left)
 				pen.button.BackgroundColor3 = colors.gray
 				pen.button.Text = "Not ready yet"
 			else
-				pen.label.Text = "Your baby is ready!"
+				pen.label.Text = "Fusion complete!"
 				pen.button.BackgroundColor3 = colors.pink
-				pen.button.Text = "Collect baby!"
+				pen.button.Text = "Collect!"
 			end
 		end
 	end
