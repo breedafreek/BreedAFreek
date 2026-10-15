@@ -90,7 +90,7 @@ local function buildMap()
 	local post = part({
 		Name = "TitleSign",
 		Size = Vector3.new(1, 1, 1),
-		CFrame = CFrame.new(0, 22, 0),
+		CFrame = CFrame.new(0, 60, 0), -- high over the square, out of the way
 		Transparency = 1,
 		CanCollide = false,
 		Parent = map,

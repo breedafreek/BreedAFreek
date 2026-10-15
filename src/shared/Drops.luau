@@ -14,6 +14,7 @@ local Drops = {}
 
 -- The bubble and its cannons.
 Drops.DOME_RADIUS = 285
+Drops.DOME_HEIGHT = 0.6 -- the bubble is squashed: its top is this fraction of the radius up
 Drops.CANNON_COUNT = 8
 Drops.CANNON_ELEVATION = math.rad(30) -- how high up the bubble the cannons hang
 Drops.FIRE_INTERVAL = 30 -- seconds between shots from each cannon
@@ -53,15 +54,25 @@ Drops.PRICE_SECONDS = 50
 -- Rarities at or above this get announced to the whole server when they're fired.
 Drops.ANNOUNCE_RANK = Rarities.rank.Legendary
 
+-- A point on the bubble: `around` radians round from +X, `up` radians up from the ground.
+function Drops.domePoint(around: number, up: number): Vector3
+	local r = Drops.DOME_RADIUS
+	return Vector3.new(
+		math.cos(around) * math.cos(up) * r,
+		math.sin(up) * r * Drops.DOME_HEIGHT,
+		math.sin(around) * math.cos(up) * r
+	)
+end
+
+-- The outward direction of the bubble's surface at a point on it.
+function Drops.domeNormal(point: Vector3): Vector3
+	return Vector3.new(point.X, point.Y / (Drops.DOME_HEIGHT * Drops.DOME_HEIGHT), point.Z).Unit
+end
+
 -- Where cannon `index` hangs on the bubble, pointing at the middle of the town square.
 function Drops.cannonCFrame(index: number): CFrame
 	local angle = (index - 0.5) / Drops.CANNON_COUNT * math.pi * 2
-	local flat = Drops.DOME_RADIUS * math.cos(Drops.CANNON_ELEVATION)
-	local position = Vector3.new(
-		math.cos(angle) * flat,
-		Drops.DOME_RADIUS * math.sin(Drops.CANNON_ELEVATION),
-		math.sin(angle) * flat
-	)
+	local position = Drops.domePoint(angle, Drops.CANNON_ELEVATION)
 	return CFrame.lookAt(position, Vector3.new(0, 10, 0))
 end
 

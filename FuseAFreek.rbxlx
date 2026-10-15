@@ -171,6 +171,7 @@ local Drops = {}
 
 -- The bubble and its cannons.
 Drops.DOME_RADIUS = 285
+Drops.DOME_HEIGHT = 0.6 -- the bubble is squashed: its top is this fraction of the radius up
 Drops.CANNON_COUNT = 8
 Drops.CANNON_ELEVATION = math.rad(30) -- how high up the bubble the cannons hang
 Drops.FIRE_INTERVAL = 30 -- seconds between shots from each cannon
@@ -210,15 +211,25 @@ Drops.PRICE_SECONDS = 50
 -- Rarities at or above this get announced to the whole server when they're fired.
 Drops.ANNOUNCE_RANK = Rarities.rank.Legendary
 
+-- A point on the bubble: `around` radians round from +X, `up` radians up from the ground.
+function Drops.domePoint(around: number, up: number): Vector3
+	local r = Drops.DOME_RADIUS
+	return Vector3.new(
+		math.cos(around) * math.cos(up) * r,
+		math.sin(up) * r * Drops.DOME_HEIGHT,
+		math.sin(around) * math.cos(up) * r
+	)
+end
+
+-- The outward direction of the bubble's surface at a point on it.
+function Drops.domeNormal(point: Vector3): Vector3
+	return Vector3.new(point.X, point.Y / (Drops.DOME_HEIGHT * Drops.DOME_HEIGHT), point.Z).Unit
+end
+
 -- Where cannon `index` hangs on the bubble, pointing at the middle of the town square.
 function Drops.cannonCFrame(index: number): CFrame
 	local angle = (index - 0.5) / Drops.CANNON_COUNT * math.pi * 2
-	local flat = Drops.DOME_RADIUS * math.cos(Drops.CANNON_ELEVATION)
-	local position = Vector3.new(
-		math.cos(angle) * flat,
-		Drops.DOME_RADIUS * math.sin(Drops.CANNON_ELEVATION),
-		math.sin(angle) * flat
-	)
+	local position = Drops.domePoint(angle, Drops.CANNON_ELEVATION)
 	return CFrame.lookAt(position, Vector3.new(0, 10, 0))
 end
 
@@ -7355,34 +7366,34 @@ local function buildDome(model: Model)
 	for ring = 0, rings - 1 do
 		local low, high = ring * step, (ring + 1) * step
 		local middle = (low + high) / 2
-		-- Each panel is a flat chord of the sphere, so neighbours meet edge to edge.
-		local height = 2 * radius * math.sin(step / 2)
-		local width = 2 * radius * math.cos(middle) * math.sin(slice / 2)
 		for i = 0, around - 1 do
+			-- Each panel is a flat quad between four points on the bubble.
+			local a0, a1 = i * slice, (i + 1) * slice
 			local angle = (i + 0.5) * slice
-			local direction =
-				Vector3.new(math.cos(angle) * math.cos(middle), math.sin(middle), math.sin(angle) * math.cos(middle))
-			local center = direction * radius * math.cos(step / 2)
+			local bottom = (Drops.domePoint(a0, low) + Drops.domePoint(a1, low)) / 2
+			local topEdge = (Drops.domePoint(a0, high) + Drops.domePoint(a1, high)) / 2
+			local width = (Drops.domePoint(a1, middle) - Drops.domePoint(a0, middle)).Magnitude
+			local center = (bottom + topEdge) / 2
+			local up = (topEdge - bottom).Unit
+			local right = Vector3.new(-math.sin(angle), 0, math.cos(angle))
 			-- Soap-bubble colours swirl round and up: cyan, violet, pink, gold, mint.
 			local hue = (0.5 + 0.18 * math.sin(angle * 2 + ring * 0.45) + ring * 0.025) % 1
 			local tint = Color3.fromHSV(hue, 0.32, 1)
 			local shine = glare(angle, ring)
 			glass({
 				Name = "Bubble",
-				Size = Vector3.new(width, height, 0.4),
-				CFrame = CFrame.lookAt(center, center + direction),
+				Size = Vector3.new(width, (topEdge - bottom).Magnitude, 0.4),
+				CFrame = CFrame.fromMatrix(center, right, up),
 				Color = tint:Lerp(Color3.new(1, 1, 1), shine),
 				Material = Enum.Material.Glass,
 				Transparency = 0.88 - shine * 0.3,
 			})
 		end
 		-- A frame ring along the bottom edge of each band.
-		local ringRadius = radius * math.cos(low)
 		local thick = if ring == 0 then 1.4 else 0.6
 		for i = 0, around - 1 do
-			local a0, a1 = i * slice, (i + 1) * slice
-			local p0 = Vector3.new(math.cos(a0) * ringRadius, radius * math.sin(low), math.sin(a0) * ringRadius)
-			local p1 = Vector3.new(math.cos(a1) * ringRadius, radius * math.sin(low), math.sin(a1) * ringRadius)
+			local p0 = Drops.domePoint(i * slice, low)
+			local p1 = Drops.domePoint((i + 1) * slice, low)
 			glass({
 				Name = "BubbleFrame",
 				Size = Vector3.new(thick, thick, (p1 - p0).Magnitude + thick),
@@ -7395,8 +7406,8 @@ local function buildDome(model: Model)
 		-- Ribs up the bubble every few panels, with gold rivets where they cross the rings.
 		for i = 0, around - 1, 4 do
 			local a = i * slice
-			local p0 = Vector3.new(math.cos(a) * math.cos(low), math.sin(low), math.sin(a) * math.cos(low)) * radius
-			local p1 = Vector3.new(math.cos(a) * math.cos(high), math.sin(high), math.sin(a) * math.cos(high)) * radius
+			local p0 = Drops.domePoint(a, low)
+			local p1 = Drops.domePoint(a, high)
 			glass({
 				Name = "BubbleFrame",
 				Size = Vector3.new(0.9, 0.9, (p1 - p0).Magnitude + 0.9),
@@ -7453,11 +7464,12 @@ local function buildDome(model: Model)
 	end
 
 	-- The crown on top: a gold ring holding a big glowing star-orb.
-	local apex = Vector3.new(0, radius, 0)
+	local apex = Vector3.new(0, radius * Drops.DOME_HEIGHT, 0)
+	local capWidth = 2 * radius * math.cos(math.pi / 2 - step) + 0.5
 	glass({
 		Name = "Bubble",
 		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(0.4, 2 * radius * math.sin(step / 2) + 0.5, 2 * radius * math.sin(step / 2) + 0.5),
+		Size = Vector3.new(0.4, capWidth, capWidth),
 		CFrame = CFrame.new(apex) * CFrame.Angles(0, 0, math.pi / 2),
 		Color = Color3.fromRGB(240, 200, 255),
 		Material = Enum.Material.Glass,
@@ -7714,7 +7726,7 @@ local function buildCannon(parent: Instance, index: number): Model
 		Name = "Plate",
 		Shape = Enum.PartType.Cylinder,
 		Size = Vector3.new(1.4, 14 * S, 14 * S),
-		CFrame = CFrame.lookAt(wall, wall * 2) * along,
+		CFrame = CFrame.lookAt(wall, wall + Drops.domeNormal(wall)) * along,
 		Color = gold,
 		Material = Enum.Material.Foil,
 	})
@@ -7722,7 +7734,7 @@ local function buildCannon(parent: Instance, index: number): Model
 		Name = "PlateMiddle",
 		Shape = Enum.PartType.Cylinder,
 		Size = Vector3.new(1.6, 10 * S, 10 * S),
-		CFrame = CFrame.lookAt(wall, wall * 2) * along,
+		CFrame = CFrame.lookAt(wall, wall + Drops.domeNormal(wall)) * along,
 		Color = color,
 	})
 	model.Parent = parent
@@ -10270,7 +10282,7 @@ local function buildMap()
 	local post = part({
 		Name = "TitleSign",
 		Size = Vector3.new(1, 1, 1),
-		CFrame = CFrame.new(0, 22, 0),
+		CFrame = CFrame.new(0, 60, 0), -- high over the square, out of the way
 		Transparency = 1,
 		CanCollide = false,
 		Parent = map,
