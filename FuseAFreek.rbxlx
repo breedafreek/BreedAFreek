@@ -3190,7 +3190,9 @@ function DiscoveryService.init()
 		return cache
 	end
 
-	pcall(function()
+	-- In the background: SubscribeAsync can hang for a long time in Studio, and nothing
+	-- else should wait on it.
+	task.spawn(pcall, function()
 		MessagingService:SubscribeAsync(TOPIC, function(message)
 			local data = message.Data
 			if typeof(data) == "table" and Freeks.byId[data.species] then
@@ -3917,9 +3919,17 @@ local SERVICES = {
 }
 
 for _, name in SERVICES do
+	-- Startup shouldn't wait on anything; if a service hangs, say which one.
+	local done = false
+	task.delay(5, function()
+		if not done then
+			warn("[Fuse a Freek] " .. name .. " is stuck starting up (still waiting after 5 seconds)")
+		end
+	end)
 	local ok, err = xpcall(function()
 		require(Server[name]).init()
 	end, debug.traceback)
+	done = true
 	if not ok then
 		warn("[Fuse a Freek] " .. name .. " failed to start:\n" .. tostring(err))
 	end

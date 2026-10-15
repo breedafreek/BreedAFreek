@@ -100,7 +100,9 @@ function DiscoveryService.init()
 		return cache
 	end
 
-	pcall(function()
+	-- In the background: SubscribeAsync can hang for a long time in Studio, and nothing
+	-- else should wait on it.
+	task.spawn(pcall, function()
 		MessagingService:SubscribeAsync(TOPIC, function(message)
 			local data = message.Data
 			if typeof(data) == "table" and Freeks.byId[data.species] then

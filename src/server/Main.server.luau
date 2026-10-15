@@ -21,9 +21,17 @@ local SERVICES = {
 }
 
 for _, name in SERVICES do
+	-- Startup shouldn't wait on anything; if a service hangs, say which one.
+	local done = false
+	task.delay(5, function()
+		if not done then
+			warn("[Fuse a Freek] " .. name .. " is stuck starting up (still waiting after 5 seconds)")
+		end
+	end)
 	local ok, err = xpcall(function()
 		require(Server[name]).init()
 	end, debug.traceback)
+	done = true
 	if not ok then
 		warn("[Fuse a Freek] " .. name .. " failed to start:\n" .. tostring(err))
 	end
