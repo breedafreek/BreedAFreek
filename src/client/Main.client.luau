@@ -1484,7 +1484,8 @@ RunService.RenderStepped:Connect(function()
 			end
 			path = Drops.plan(seed, cannon, launch)
 			path.landed = now >= path.land
-			path.rig = FreekAnimator.rig(model, seed)
+			-- The server keeps the model at the muzzle; parts that arrive late start there.
+			path.rig = FreekAnimator.rig(model, seed, CFrame.new(path.muzzle))
 			paths[model] = path
 		end
 		local cframe, doing, moving = Drops.cframeAt(path, now)
@@ -1503,6 +1504,8 @@ RunService.RenderStepped:Connect(function()
 		if onFoot and path.rig then
 			-- Walking with its own gait, or idling (blinking, looking around) when it stops.
 			FreekAnimator.pose(path.rig, cframe, now, moving)
+		elseif path.rig then
+			FreekAnimator.place(path.rig, cframe)
 		else
 			model:PivotTo(cframe)
 		end
@@ -1552,7 +1555,7 @@ RunService.RenderStepped:Connect(function()
 					if rig == nil then
 						-- Rig it from where it rests, so the pose is always relative to the ground.
 						model:PivotTo(ground)
-						rig = FreekAnimator.rig(model) or false
+						rig = FreekAnimator.rig(model, nil, ground) or false
 						yardRigs[model] = rig
 					end
 					if rig then

@@ -723,6 +723,12 @@ end
 
 export type Rig = {
 	model: Model,
+	home: CFrame,
+	seedArg: number?,
+	dirty: boolean,
+	added: RBXScriptConnection,
+	childCount: number,
+	nextCheck: number,
 	walk: any,
 	seed: number,
 	parts: { BasePart },
@@ -739,12 +745,19 @@ export type Rig = {
 }
 
 -- Collects what moves on a model. Returns nil for a model with no parts.
-function FreekAnimator.rig(model: Model, seed: number?): Rig?
+-- `home` is where the server put the model (its pivot there); it defaults to where the model
+-- is now. Parts are measured from it, so parts that arrive late (a big model can reach a
+-- client a few parts at a time) are picked up at their right place, and none are left
+-- behind on the ground.
+function FreekAnimator.rig(model: Model, seed: number?, home: CFrame?): Rig?
 	if not model.PrimaryPart then
 		return nil
 	end
-	local pivot = model:GetPivot()
+	local pivot = home or model:GetPivot()
 	local rig = {
+		home = pivot,
+		seedArg = seed,
+		dirty = false,
 		model = model,
 		walk = FreekAnimator.WALKS[model:GetAttribute("Walk")] or FreekAnimator.WALKS.waddle,
 		seed = 0,
@@ -822,7 +835,34 @@ function FreekAnimator.rig(model: Model, seed: number?): Rig?
 	end
 	rig.seed = seed or (model:GetAttribute("Seed") or (pivot.Position.X * 0.37 + pivot.Position.Z * 0.61))
 	rig.seed = (rig.seed % 97) / 97
+	rig.childCount = #model:GetChildren()
+	rig.nextCheck = os.clock() + 1
+	rig.added = model.DescendantAdded:Connect(function(descendant)
+		if descendant:IsA("BasePart") then
+			rig.dirty = true
+		end
+	end)
 	return rig :: any
+end
+
+-- Some parts arrived after the rig was made: put every part back where the server has it
+-- and measure the whole model again.
+local function refresh(rig)
+	for i, part in rig.parts do
+		if part.Parent then
+			part.Size = rig.sizes[i]
+			part.CFrame = rig.home * rig.rest[i]
+		end
+	end
+	rig.added:Disconnect()
+	local fresh = FreekAnimator.rig(rig.model, rig.seedArg, rig.home)
+	if fresh then
+		for key, value in fresh :: any do
+			rig[key] = value
+		end
+	else
+		rig.dirty = false
+	end
 end
 
 -- How open the eyes are (1 open, 0 shut) at time t.
@@ -863,8 +903,45 @@ local function headLook(t: number, seed: number): (number, number, number)
 	return y0 + (y1 - y0) * a, p0 + (p1 - p0) * a, r0 + (r1 - r0) * a
 end
 
+local function checkArrivals(rig)
+	-- Also count the parts now and then, in case an arrival was missed.
+	local now = os.clock()
+	if now >= rig.nextCheck then
+		rig.nextCheck = now + 1
+		if #rig.model:GetChildren() ~= rig.childCount then
+			rig.dirty = true
+		end
+	end
+	if rig.dirty then
+		refresh(rig)
+	end
+end
+
+-- Stands the model at `cframe` exactly as built (no pose), e.g. while it flies.
+function FreekAnimator.place(rig: Rig, cframe: CFrame)
+	checkArrivals(rig)
+	local cframes = table.create(#rig.parts)
+	local resize = rig.blinking or rig.squashed
+	for i, part in rig.parts do
+		if resize then
+			part.Size = rig.sizes[i]
+		end
+		cframes[i] = cframe * rig.rest[i]
+	end
+	local ok = pcall(function()
+		Workspace:BulkMoveTo(rig.parts, cframes, Enum.BulkMoveMode.FireCFrameChanged)
+	end)
+	if not ok then
+		for i, part in rig.parts do
+			part.CFrame = cframes[i]
+		end
+	end
+	rig.blinking, rig.squashed = false, false
+end
+
 -- Works out the pose for time t and moves the model there, standing at `ground`.
 function FreekAnimator.pose(rig: Rig, ground: CFrame, t: number, walking: boolean?)
+	checkArrivals(rig)
 	local walk = rig.walk
 	local seed = rig.seed
 	t += seed * 31
@@ -14478,7 +14555,8 @@ RunService.RenderStepped:Connect(function()
 			end
 			path = Drops.plan(seed, cannon, launch)
 			path.landed = now >= path.land
-			path.rig = FreekAnimator.rig(model, seed)
+			-- The server keeps the model at the muzzle; parts that arrive late start there.
+			path.rig = FreekAnimator.rig(model, seed, CFrame.new(path.muzzle))
 			paths[model] = path
 		end
 		local cframe, doing, moving = Drops.cframeAt(path, now)
@@ -14497,6 +14575,8 @@ RunService.RenderStepped:Connect(function()
 		if onFoot and path.rig then
 			-- Walking with its own gait, or idling (blinking, looking around) when it stops.
 			FreekAnimator.pose(path.rig, cframe, now, moving)
+		elseif path.rig then
+			FreekAnimator.place(path.rig, cframe)
 		else
 			model:PivotTo(cframe)
 		end
@@ -14546,7 +14626,7 @@ RunService.RenderStepped:Connect(function()
 					if rig == nil then
 						-- Rig it from where it rests, so the pose is always relative to the ground.
 						model:PivotTo(ground)
-						rig = FreekAnimator.rig(model) or false
+						rig = FreekAnimator.rig(model, nil, ground) or false
 						yardRigs[model] = rig
 					end
 					if rig then
