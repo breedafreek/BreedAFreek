@@ -763,7 +763,7 @@ function buildHybrid(species, mutationId: string?): (Model, number)
 	-- The fusion collar where the head meets the body: a chunky two-tone ring with a glowing
 	-- trim and a gem in front, so the join looks made that way.
 	local bodyColor = body.Color
-	local neck = target - Vector3.new(0, targetRadius * 0.82, 0)
+	local neck = target - Vector3.new(0, targetRadius * 1.0, 0)
 	local ring = targetRadius * 1.45
 	for k, layer in
 		{
