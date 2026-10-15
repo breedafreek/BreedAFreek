@@ -6,6 +6,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
+local EggModel = require(ReplicatedStorage.Shared.EggModel)
 
 local UI = {}
 
@@ -189,6 +190,28 @@ function UI.viewport(speciesId: string, mutations: { string }?, silhouette: bool
 	return frame
 end
 
+-- A little 3D picture of a Monster Egg.
+function UI.eggViewport(eggId: string, size: number?)
+	local frame = UI.new("ViewportFrame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, size or 100),
+		Ambient = Color3.fromRGB(180, 170, 190),
+		LightColor = Color3.fromRGB(255, 240, 220),
+		LightDirection = Vector3.new(-1, -1, 1),
+	})
+	local model, height = EggModel.build(eggId)
+	model:PivotTo(CFrame.new())
+	model.Parent = frame
+	local camera = Instance.new("Camera")
+	camera.FieldOfView = 40
+	local distance = height * 1.9
+	camera.CFrame =
+		CFrame.lookAt(Vector3.new(distance * 0.2, height * 0.6, -distance), Vector3.new(0, height * 0.45, 0))
+	camera.Parent = frame
+	frame.CurrentCamera = camera
+	return frame
+end
+
 -- A card for grids: picture, lines of text, and buttons.
 -- opts = { species, mutations?, silhouette?, lines = { {text, color?} }, buttons = { button instances } }
 function UI.card(opts)
@@ -224,7 +247,9 @@ function UI.card(opts)
 		child.Parent = card
 	end
 
-	if opts.species then
+	if opts.egg then
+		add(UI.eggViewport(opts.egg))
+	elseif opts.species then
 		add(UI.viewport(opts.species, opts.mutations, opts.silhouette))
 	end
 	for _, line in opts.lines or {} do

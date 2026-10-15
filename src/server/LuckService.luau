@@ -6,13 +6,16 @@
 -- purchase (receipts are remembered in the player's save) and only tells Roblox the
 -- purchase went through after the save succeeds, so nobody pays without getting it.
 
+local CollectionService = game:GetService("CollectionService")
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 local PolicyService = game:GetService("PolicyService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local EggModel = require(ReplicatedStorage.Shared.EggModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
@@ -136,17 +139,17 @@ local function buyCrate(player: Player, data, crateId: any)
 		return
 	end
 	if player:GetAttribute("CratesRestricted") then
-		return notify(player, "Monster Crates aren't available where you live.", "error")
+		return notify(player, "Monster Eggs aren't available where you live.", "error")
 	end
 	if not hasRoom(player, data) then
 		return notify(player, "You have too many Freeks! Sell or fuse some first.", "error")
 	end
 	if crate.productId == 0 then
 		if RunService:IsStudio() and Luck.STUDIO_FREE_CRATES then
-			notify(player, "Studio test: opening " .. crate.name .. " for free.", "success")
+			notify(player, "Studio test: hatching a " .. crate.name .. " for free.", "success")
 			return openCrate(player, data, crate)
 		end
-		return notify(player, "Monster Crates are coming soon!", "error")
+		return notify(player, "Monster Eggs are coming soon!", "error")
 	end
 	MarketplaceService:PromptProductPurchase(player, crate.productId)
 end
@@ -180,7 +183,7 @@ local function processReceipt(receipt)
 			data.crates[crate.id] = (data.crates[crate.id] or 0) + 1
 			notify(
 				player,
-				"Your barn is full, so your " .. crate.name .. " was saved. Open it from the 🍀 Luck tab!",
+				"Your barn is full, so your " .. crate.name .. " was saved. Hatch it from the 🍀 Luck tab!",
 				"success"
 			)
 		end
@@ -264,7 +267,133 @@ local function checkPolicy(player: Player)
 	player:SetAttribute("CratesRestricted", not cratesAllowed(player))
 end
 
+-- The Egg Stand by the spawn: the three Monster Eggs on glowing pedestals, each with its
+-- odds floating above it (like the egg stands in pet games). Hold E to hatch one.
+local STAND_X = 128
+local OUTLINE = Color3.fromRGB(20, 22, 48)
+
+local function outlinedLabel(parent: Instance, text: string, color: Color3, top: number, height: number, font)
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Position = UDim2.fromScale(0, top)
+	label.Size = UDim2.fromScale(1, height)
+	label.TextScaled = true
+	label.Font = font
+	label.Text = text
+	label.TextColor3 = color
+	label.Parent = parent
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = OUTLINE
+	stroke.Thickness = 2.5
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
+	stroke.Parent = label
+	return label
+end
+
+local function buildEggStand()
+	local folder = Instance.new("Folder")
+	folder.Name = "EggStand"
+	folder.Parent = Workspace
+	for i, crate in Luck.CRATES do
+		local z = (i - 2) * 13
+		local base = CFrame.lookAt(Vector3.new(STAND_X, 0, z), Vector3.new(STAND_X + 10, 0, z)) -- faces the spawn
+		local pedestal = Instance.new("Part")
+		pedestal.Name = "EggPedestal"
+		pedestal.Anchored = true
+		pedestal.Shape = Enum.PartType.Cylinder
+		pedestal.Size = Vector3.new(1.2, 7, 7)
+		pedestal.CFrame = base * CFrame.new(0, 0.6, 0) * CFrame.Angles(0, 0, math.rad(90))
+		pedestal.Color = Color3.fromRGB(45, 35, 65)
+		pedestal.Material = Enum.Material.Slate
+		pedestal.Parent = folder
+		local rim = pedestal:Clone()
+		rim.Name = "EggRim"
+		rim.Size = Vector3.new(0.3, 7.6, 7.6)
+		rim.CFrame = base * CFrame.new(0, 0.85, 0) * CFrame.Angles(0, 0, math.rad(90))
+		rim.Color = crate.color
+		rim.Material = Enum.Material.Neon
+		rim.Parent = folder
+
+		local egg, height = EggModel.build(crate.id)
+		local rest = base * CFrame.new(0, 1.2, 0)
+		egg:PivotTo(rest)
+		egg:SetAttribute("Rest", rest) -- clients spin and bob it around here
+		CollectionService:AddTag(egg, "DisplayEgg")
+		egg.Parent = folder
+
+		-- The odds float above the egg.
+		local odds = Luck.oddsList(crate)
+		local gui = Instance.new("BillboardGui")
+		gui.Size = UDim2.fromOffset(230, 46 + #odds * 20)
+		gui.StudsOffsetWorldSpace = Vector3.new(0, height + 3.2, 0)
+		gui.MaxDistance = 80
+		gui.LightInfluence = 0
+		local total = 46 + #odds * 20
+		outlinedLabel(gui, string.upper(crate.name), crate.color, 0, 26 / total, Enum.Font.LuckiestGuy)
+		outlinedLabel(
+			gui,
+			"R$ " .. crate.robux,
+			Color3.fromRGB(110, 240, 120),
+			26 / total,
+			20 / total,
+			Enum.Font.LuckiestGuy
+		)
+		for k, entry in odds do
+			local species = Freeks.byId[entry.species]
+			local percent = if entry.percent < 1
+				then string.format("%.1f", entry.percent)
+				else string.format("%.0f", entry.percent)
+			outlinedLabel(
+				gui,
+				species.name .. "  " .. percent .. "%",
+				Rarities.info[species.rarity].color,
+				(46 + (k - 1) * 20) / total,
+				19 / total,
+				Enum.Font.FredokaOne
+			)
+		end
+		gui.Parent = egg.PrimaryPart
+
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "EggPrompt"
+		prompt.ActionText = "Hatch (R$ " .. crate.robux .. ")"
+		prompt.ObjectText = crate.name
+		prompt.HoldDuration = 0.3
+		prompt.MaxActivationDistance = 10
+		prompt.RequiresLineOfSight = false
+		prompt:SetAttribute("EggId", crate.id)
+		prompt.Parent = egg.PrimaryPart
+	end
+
+	-- A big sign over the stand.
+	local signPart = Instance.new("Part")
+	signPart.Name = "EggSign"
+	signPart.Anchored = true
+	signPart.Transparency = 1
+	signPart.CanCollide = false
+	signPart.Size = Vector3.one
+	signPart.CFrame = CFrame.new(STAND_X, 17, 0)
+	signPart.Parent = folder
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromScale(26, 5)
+	gui.MaxDistance = 300
+	gui.LightInfluence = 0
+	local label =
+		outlinedLabel(gui, "🥚 MONSTER EGGS 🥚", Color3.fromRGB(255, 160, 40), 0, 1, Enum.Font.LuckiestGuy)
+	label:FindFirstChildOfClass("UIStroke").Thickness = 4
+	gui.Parent = signPart
+end
+
 function LuckService.init()
+	buildEggStand()
+	ProximityPromptService.PromptTriggered:Connect(function(prompt, player)
+		local eggId = prompt.Name == "EggPrompt" and prompt:GetAttribute("EggId")
+		local data = DataService.get(player)
+		if eggId and data then
+			buyCrate(player, data, eggId)
+			DataService.changed(player)
+		end
+	end)
 	ActionService.register("BuyCrate", buyCrate)
 	ActionService.register("OpenCrate", openOwnedCrate)
 	ActionService.register("SpinWheel", spin)

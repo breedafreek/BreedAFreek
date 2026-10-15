@@ -1,8 +1,8 @@
--- Luck: Monster Crates, the daily Lucky Wheel and Lucky Hour events. Shared so the client
+-- Luck: Monster Eggs, the daily Lucky Wheel and Lucky Hour events. Shared so the client
 -- can show every chance on screen (players always see the odds before buying), while the
 -- server does all the rolling (server/LuckService).
 --
--- Monster Crates are Developer Products bought with Robux. They're the only way to get
+-- Monster Eggs are Developer Products bought with Robux. They're the only way to get
 -- the Monster line (Freeks with exclusive = true). Roblox's rules for paid random items:
 -- the odds are shown before buying, and players in countries where paid random items
 -- aren't allowed can't buy them (LuckService checks PolicyService).
@@ -12,23 +12,24 @@ local Rarities = require(script.Parent.Rarities)
 
 local Luck = {}
 
--- Monster Crates. productId: create a Developer Product for each on the Creator Dashboard
+-- Monster Eggs (Halloween style; models in EggModel.luau). In the code they're still
+-- called crates. productId: create a Developer Product for each on the Creator Dashboard
 -- (Monetization -> Developer Products) at this price and paste its ID here. Until then
--- the crate shows "Coming soon", except in Studio where it opens free for testing.
+-- the egg shows "Coming soon", except in Studio where it hatches free for testing.
 -- odds are weights per Monster; mutation multiplies each mutation's normal chance.
 Luck.CRATES = {
 	{
 		id = "Monster",
-		name = "Monster Crate",
+		name = "Monster Egg",
 		robux = 49,
 		productId = 0,
-		color = Color3.fromRGB(120, 200, 120),
+		color = Color3.fromRGB(255, 140, 30),
 		odds = { BooBoo = 45, Zomboy = 35, Mumbles = 15, CountFangula = 4.5, Howlz = 0.5 },
 		mutation = 1,
 	},
 	{
 		id = "MegaMonster",
-		name = "Mega Monster Crate",
+		name = "Mega Monster Egg",
 		robux = 149,
 		productId = 0,
 		color = Color3.fromRGB(160, 110, 240),
@@ -37,7 +38,7 @@ Luck.CRATES = {
 	},
 	{
 		id = "LegendaryMonster",
-		name = "Legendary Monster Crate",
+		name = "Legendary Monster Egg",
 		robux = 399,
 		productId = 0,
 		color = Color3.fromRGB(255, 200, 60),
@@ -95,10 +96,10 @@ Luck.WHEEL = {
 	{ label = "Coins", minutes = 3, weight = 34, color = Color3.fromRGB(110, 235, 140) },
 	{ label = "Big Coins", minutes = 10, weight = 22, color = Color3.fromRGB(60, 200, 110) },
 	{ label = "Golden Freek", golden = true, weight = 14, color = Color3.fromRGB(255, 220, 90) },
-	{ label = "Monster Crate", crate = "Monster", weight = 12, color = Color3.fromRGB(120, 200, 120) },
+	{ label = "Monster Egg", crate = "Monster", weight = 12, color = Color3.fromRGB(255, 140, 30) },
 	{ label = "Huge Coins", minutes = 30, weight = 10, color = Color3.fromRGB(40, 160, 90) },
 	{ label = "Rainbow Freek", rainbow = true, weight = 4, color = Color3.fromRGB(255, 120, 255) },
-	{ label = "Mega Crate", crate = "MegaMonster", weight = 3, color = Color3.fromRGB(160, 110, 240) },
+	{ label = "Mega Egg", crate = "MegaMonster", weight = 3, color = Color3.fromRGB(160, 110, 240) },
 	{ label = "JACKPOT", crate = "LegendaryMonster", weight = 1, color = Color3.fromRGB(255, 200, 60) },
 }
 Luck.MIN_COIN_PRIZE = 200 -- coin prizes are never less than this
@@ -139,9 +140,9 @@ Luck.EVENTS = {
 		fireRate = 2,
 	},
 	CrateLuck = {
-		name = "Crate Luck",
+		name = "Egg Luck",
 		icon = "📦",
-		description = "Legendary and better Monsters are 2x as likely from Monster Crates!",
+		description = "Legendary and better Monsters are 2x as likely from Monster Eggs!",
 		color = Color3.fromRGB(110, 200, 255),
 		crateLuck = 2,
 	},

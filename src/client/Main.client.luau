@@ -563,7 +563,7 @@ function renderers.Book()
 		if species.price then
 			credit = "Starter Freek"
 		elseif species.exclusive and not discovery then
-			credit = "Only from Monster Crates (🍀 Luck tab)"
+			credit = "Only from Monster Eggs (🍀 Luck tab)"
 		elseif discovery then
 			credit = "First found by\n" .. discovery.name
 		elseif not Seasons.available(species) then
@@ -1024,7 +1024,7 @@ local function freekPrize(box: Frame, freek, rarity: string, isNew: boolean, clo
 	prizeCard(box, if isNew then "NEW FREEK!" else "You got...", freek, color, subtitle, close)
 end
 
--- A crate that shakes harder and harder, flashes, then shows what was inside.
+-- The egg wobbles harder and harder, cracks with a flash, then shows what hatched.
 local function revealCrate(result, done)
 	local crate = Luck.crateById[result.crate]
 	local shade, box = overlay()
@@ -1032,39 +1032,45 @@ local function revealCrate(result, done)
 		shade:Destroy()
 		done()
 	end
-	local crateBox = UI.new("TextLabel", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(170, 170),
-		BackgroundColor3 = crate.color,
-		Text = "?",
-		TextSize = 90,
+	local egg = UI.eggViewport(crate.id, 240)
+	egg.AnchorPoint = Vector2.new(0.5, 0.5)
+	egg.Position = UDim2.fromScale(0.5, 0.5)
+	egg.Size = UDim2.fromOffset(240, 240)
+	egg.ZIndex = 52
+	egg.Parent = box
+	local title = UI.label("Hatching " .. crate.name .. "...", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.5, 130),
+		Size = UDim2.fromOffset(420, 40),
 		FontFace = UI.fonts.heavy,
-		TextColor3 = Color3.new(1, 1, 1),
-		ZIndex = 52,
+		TextSize = 30,
+		TextColor3 = crate.color,
+		ZIndex = 53,
 		Parent = box,
-	}, { UI.corner(22), UI.stroke(Color3.new(1, 1, 1), 4) })
+	})
 	local insideColor = Rarities.info[result.rarity].color
 	task.spawn(function()
-		for i = 1, 14 do
-			local strength = 4 + i * 1.6
-			crateBox.Rotation = if i % 2 == 0 then strength else -strength
-			crateBox.Size = UDim2.fromOffset(170 + i * 4, 170 + i * 4)
-			-- Glow in the colour of what's inside for the last few shakes.
-			if i > 9 then
-				crateBox.BackgroundColor3 = crate.color:Lerp(insideColor, (i - 9) / 5)
+		for i = 1, 16 do
+			local strength = 3 + i * 1.4
+			egg.Rotation = if i % 2 == 0 then strength else -strength
+			local grow = 240 + i * 6
+			egg.Size = UDim2.fromOffset(grow, grow)
+			-- Glow in the colour of what's inside for the last few wobbles.
+			if i > 10 then
+				egg.ImageColor3 = Color3.new(1, 1, 1):Lerp(insideColor, (i - 10) / 8)
 			end
-			task.wait(0.11)
+			task.wait(if i > 12 then 0.08 else 0.12)
 		end
 		local flash = UI.new("Frame", {
 			Size = UDim2.fromScale(1, 1),
-			BackgroundColor3 = Color3.new(1, 1, 1),
+			BackgroundColor3 = insideColor:Lerp(Color3.new(1, 1, 1), 0.6),
 			ZIndex = 60,
 			Parent = shade,
 		})
-		TweenService:Create(flash, TweenInfo.new(0.5), { BackgroundTransparency = 1 }):Play()
-		task.delay(0.5, flash.Destroy, flash)
-		crateBox:Destroy()
+		TweenService:Create(flash, TweenInfo.new(0.6), { BackgroundTransparency = 1 }):Play()
+		task.delay(0.6, flash.Destroy, flash)
+		egg:Destroy()
+		title:Destroy()
 		freekPrize(box, result.freek, result.rarity, result.isNew, close)
 	end)
 end
@@ -1153,7 +1159,7 @@ local function revealWheel(result, done)
 				if slice.crate == "Diamond" then "JACKPOT!" else "You won!",
 				nil,
 				slice.color,
-				"A " .. Luck.crateById[result.crate].name .. "!\nOpen it from the 🍀 Luck tab.",
+				"A " .. Luck.crateById[result.crate].name .. "!\nHatch it from the 🍀 Luck tab.",
 				close
 			)
 		else
@@ -1191,7 +1197,7 @@ end
 
 function renderers.Luck()
 	heading(
-		"Monster Crates hold Freeks you can't get anywhere else. Every chance is shown. Spin the wheel free every day!",
+		"Monster Eggs hatch Freeks you can't get anywhere else. Every chance is shown. Spin the wheel free every day!",
 		1
 	)
 
@@ -1231,7 +1237,6 @@ function renderers.Luck()
 	grid.Parent = body
 	for i, crate in Luck.CRATES do
 		local odds = Luck.oddsList(crate)
-		local best = odds[#odds].species
 		local lines = { { crate.name, crate.color, 24 } }
 		for _, entry in odds do
 			local species = Freeks.byId[entry.species]
@@ -1265,13 +1270,12 @@ function renderers.Luck()
 		if owned > 0 then
 			table.insert(
 				buttons,
-				UI.button("Open yours (" .. owned .. ")", colors.pink, function()
+				UI.button("Hatch yours (" .. owned .. ")", colors.pink, function()
 					send("OpenCrate", crate.id)
 				end, { Size = UDim2.new(1, 0, 0, 36) })
 			)
 		end
-		-- Show off the rarest Monster inside.
-		local card = UI.card({ species = best, lines = lines, buttons = buttons, border = crate.color })
+		local card = UI.card({ egg = crate.id, lines = lines, buttons = buttons, border = crate.color })
 		card.LayoutOrder = i
 		card.Parent = grid
 	end
@@ -1671,6 +1675,20 @@ RunService.RenderStepped:Connect(function()
 	local color = Color3.fromHSV((os.clock() * 0.25) % 1, 0.75, 1)
 	for _, part in CollectionService:GetTagged(FreekModel.RAINBOW_TAG) do
 		part.Color = color
+	end
+end)
+
+-- The Monster Eggs on the egg stand turn slowly and bob up and down.
+RunService.RenderStepped:Connect(function()
+	local t = os.clock()
+	for i, egg in CollectionService:GetTagged("DisplayEgg") do
+		local rest = egg:GetAttribute("Rest")
+		if egg:IsA("Model") and egg.PrimaryPart and typeof(rest) == "CFrame" then
+			local phase = i * 1.7
+			egg:PivotTo(
+				rest * CFrame.new(0, 0.35 + math.sin(t * 2 + phase) * 0.35, 0) * CFrame.Angles(0, t * 0.8 + phase, 0)
+			)
+		end
 	end
 end)
 

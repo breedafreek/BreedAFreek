@@ -108,8 +108,9 @@ THEMES.Halloween = {
 			Decor.hayBale(props, ground)
 			Decor.pumpkin(props, ground * CFrame.new(0, 2.4, 0), 0.8)
 		end
-		for _, z in { -9, 9 } do
-			Decor.pumpkin(props, CFrame.new(132, 0, z) * CFrame.Angles(0, math.pi / 2, 0), 1.2)
+		-- Jack-o'-lanterns flanking the Monster Egg stand.
+		for _, z in { -21, 21 } do
+			Decor.pumpkin(props, CFrame.new(128, 0, z) * CFrame.Angles(0, math.pi / 2, 0), 1.4)
 		end
 		-- Leaf piles scattered along the tree line.
 		for x = -190, 190, 38 do

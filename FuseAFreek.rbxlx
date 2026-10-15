@@ -323,6 +323,278 @@ return Drops
       </Item>
       <Item class="ModuleScript" referent="7">
         <Properties>
+          <string name="Name">EggModel</string>
+          <string name="Source"><![CDATA[-- 3D models of the Monster Eggs (Halloween style), used for the egg stands in the world,
+-- the Luck window and the hatch animation. Built from parts like the Freeks: the egg is a
+-- ball stretched tall with a SpecialMesh, and the decorations sit on its surface.
+--
+-- EggModel.build(eggId) returns the model (pivot at the bottom of the egg, facing -Z)
+-- and its height.
+
+local EggModel = {}
+
+local A, B = 1.5, 1.9 -- the egg's radius across and its half-height
+local CENTER_Y = B
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+local function newPart(model: Model, props)
+	local part = Instance.new(props.ClassName or "Part")
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanTouch = false
+	part.CastShadow = true
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	part.Material = Enum.Material.SmoothPlastic
+	for key, value in props do
+		if key ~= "ClassName" and key ~= "Mesh" then
+			part[key] = value
+		end
+	end
+	if props.Mesh then
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Scale = props.Mesh
+		mesh.Parent = part
+	end
+	part.Parent = model
+	return part
+end
+
+-- A spot on the egg's surface: angle round from the front (radians, 0 = facing -Z), height
+-- from the egg's middle, pushed out by `out`. Faces outward.
+local function onEgg(angle: number, y: number, out: number?): CFrame
+	local ring = A * math.sqrt(math.max(1 - (y * y) / (B * B), 0.02))
+	local direction = Vector3.new(math.sin(angle), 0, -math.cos(angle))
+	local position = direction * (ring + (out or 0)) + Vector3.new(0, CENTER_Y + y, 0)
+	local normal = (direction / A + Vector3.new(0, y / (B * B), 0)).Unit
+	return CFrame.lookAt(position, position + normal)
+end
+
+-- A diamond (a square turned 45°) flat on the surface.
+local function diamond(model, cframe: CFrame, size: number, color: Color3, material)
+	return newPart(model, {
+		Size = Vector3.new(size, size, 0.12),
+		CFrame = cframe * CFrame.Angles(0, 0, math.rad(45)),
+		Color = color,
+		Material = material or Enum.Material.Neon,
+	})
+end
+
+local function body(model: Model, color: Color3, material)
+	local egg = newPart(model, {
+		Name = "Egg",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.one * (A * 2),
+		CFrame = CFrame.new(0, CENTER_Y, 0),
+		Color = color,
+		Material = material or Enum.Material.SmoothPlastic,
+		Mesh = Vector3.new(1, B / A, 1),
+	})
+	egg.PivotOffset = CFrame.new(0, -CENTER_Y, 0)
+	model.PrimaryPart = egg
+	return egg
+end
+
+local function effect(part: BasePart, kind: string, color: Color3)
+	local instance
+	if kind == "Glow" then
+		instance = Instance.new("PointLight")
+		instance.Color = color
+		instance.Range = 10
+		instance.Brightness = 2
+	else
+		instance = Instance.new("Sparkles")
+		instance.SparkleColor = color
+	end
+	instance.Parent = part
+end
+
+local BUILDERS = {}
+
+-- A pumpkin egg: orange with ribs, a stem, and a glowing jack-o'-lantern face.
+function BUILDERS.Monster(model: Model)
+	local egg = body(model, rgb(255, 140, 30))
+	for i = 0, 3 do
+		newPart(model, {
+			Name = "Rib",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * (A * 2),
+			CFrame = CFrame.new(0, CENTER_Y, 0) * CFrame.Angles(0, math.rad(i * 45), 0),
+			Color = rgb(205, 90, 10),
+			Mesh = Vector3.new(0.1, B / A * 1.006, 1.02),
+		})
+	end
+	newPart(model, {
+		Name = "Stem",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.8, 0.45, 0.45),
+		CFrame = CFrame.new(0.05, CENTER_Y + B + 0.25, 0) * CFrame.Angles(0, 0, math.rad(80)),
+		Color = rgb(95, 120, 45),
+	})
+	newPart(model, {
+		Name = "Leaf",
+		Size = Vector3.new(0.7, 0.08, 0.4),
+		CFrame = CFrame.new(0.4, CENTER_Y + B + 0.05, -0.1) * CFrame.Angles(0, 0, math.rad(-20)),
+		Color = rgb(110, 190, 60),
+	})
+	local glow = rgb(255, 215, 70)
+	for _, side in { -1, 1 } do
+		diamond(model, onEgg(side * 0.38, 0.45, 0.02), 0.45, glow)
+	end
+	diamond(model, onEgg(0, 0.05, 0.02), 0.25, glow)
+	for i = -2, 2 do
+		local y = -0.5 + math.abs(i) * 0.1
+		diamond(model, onEgg(i * 0.17, y, 0.02), if i % 2 == 0 then 0.3 else 0.22, glow)
+	end
+	effect(egg, "Glow", rgb(255, 160, 50))
+end
+
+-- A bat egg: purple with spots, bat wings, glowing green eyes and little fangs.
+function BUILDERS.MegaMonster(model: Model)
+	local egg = body(model, rgb(130, 70, 200))
+	for _, spot in { { 0.9, 0.9 }, { 2.4, -0.6 }, { -2.2, 0.5 }, { 3.4, 1.0 }, { -1.0, -1.2 } } do
+		newPart(model, {
+			Name = "Spot",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * 0.6,
+			CFrame = onEgg(spot[1], spot[2], -0.2),
+			Color = rgb(95, 45, 160),
+		})
+	end
+	for _, side in { -1, 1 } do
+		-- Wings: a black flap with a scalloped edge.
+		local base = CFrame.new(side * 2.1, CENTER_Y + 0.5, 0.2) * CFrame.Angles(0, 0, math.rad(side * -25))
+		newPart(model, {
+			Name = "Wing",
+			Size = Vector3.new(1.6, 0.9, 0.12),
+			CFrame = base,
+			Color = rgb(30, 25, 40),
+		})
+		for k = -1, 1 do
+			newPart(model, {
+				Name = "Wing",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.one * 0.55,
+				CFrame = base * CFrame.new(k * 0.5, -0.45, 0),
+				Color = rgb(30, 25, 40),
+			})
+		end
+		-- Pointy ears on top.
+		newPart(model, {
+			ClassName = "WedgePart",
+			Name = "Ear",
+			Size = Vector3.new(0.15, 0.6, 0.45),
+			CFrame = CFrame.new(side * 0.55, CENTER_Y + B - 0.05, -0.1) * CFrame.Angles(0, math.rad(side * 90), 0),
+			Color = rgb(30, 25, 40),
+		})
+		local eye = onEgg(side * 0.36, 0.4, 0.05)
+		newPart(model, {
+			Name = "Eye",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * 0.48,
+			CFrame = eye,
+			Color = rgb(120, 255, 120),
+			Material = Enum.Material.Neon,
+		})
+		newPart(model, {
+			Name = "Pupil",
+			Size = Vector3.new(0.08, 0.3, 0.05),
+			CFrame = eye * CFrame.new(0, 0, -0.22),
+			Color = rgb(10, 10, 15),
+		})
+		newPart(model, {
+			ClassName = "WedgePart",
+			Name = "Fang",
+			Size = Vector3.new(0.08, 0.25, 0.16),
+			CFrame = onEgg(side * 0.13, -0.25, 0.02) * CFrame.Angles(math.rad(180), 0, 0),
+			Color = rgb(255, 255, 255),
+		})
+	end
+	effect(egg, "Glow", rgb(170, 110, 255))
+end
+
+-- A haunted golden egg: black with glowing golden cracks, a gold crown and purple eyes
+-- peeking out of the dark.
+function BUILDERS.LegendaryMonster(model: Model)
+	local egg = body(model, rgb(35, 28, 48))
+	local gold = rgb(255, 200, 60)
+	-- Zig-zag cracks running down the egg, front and sides.
+	for _, crack in { { 0.0, 1 }, { 1.6, -1 }, { -1.7, 1 }, { 3.1, -1 } } do
+		local angle = crack[1]
+		for k = 0, 4 do
+			local y = 1.2 - k * 0.55
+			local tilt = (if k % 2 == 0 then 1 else -1) * crack[2] * 35
+			newPart(model, {
+				Name = "Crack",
+				Size = Vector3.new(0.12, 0.65, 0.1),
+				CFrame = onEgg(angle + (if k % 2 == 0 then 0.06 else -0.06), y, 0.01)
+					* CFrame.Angles(0, 0, math.rad(tilt)),
+				Color = gold,
+				Material = Enum.Material.Neon,
+			})
+		end
+	end
+	for _, side in { -1, 1 } do
+		newPart(model, {
+			Name = "Eye",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * 0.32,
+			CFrame = onEgg(side * 0.3, 0.55, 0.02),
+			Color = rgb(200, 120, 255),
+			Material = Enum.Material.Neon,
+		})
+	end
+	-- A golden crown with a red gem.
+	local crownY = CENTER_Y + B - 0.15
+	newPart(model, {
+		Name = "Crown",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.35, 1.4, 1.4),
+		CFrame = CFrame.new(0, crownY, 0) * CFrame.Angles(0, 0, math.rad(90)),
+		Color = gold,
+		Material = Enum.Material.Foil,
+	})
+	for i = 0, 4 do
+		local a = i / 5 * math.pi * 2
+		newPart(model, {
+			Name = "Crown",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * 0.3,
+			CFrame = CFrame.new(math.sin(a) * 0.62, crownY + 0.35, -math.cos(a) * 0.62),
+			Color = gold,
+			Material = Enum.Material.Foil,
+		})
+	end
+	local gem = newPart(model, {
+		Name = "Gem",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.one * 0.35,
+		CFrame = CFrame.new(0, crownY, -0.7),
+		Color = rgb(255, 50, 80),
+		Material = Enum.Material.Neon,
+	})
+	effect(egg, "Glow", gold)
+	effect(gem, "Sparkles", rgb(255, 230, 140))
+end
+
+function EggModel.build(eggId: string): (Model, number)
+	local model = Instance.new("Model")
+	model.Name = eggId .. "Egg"
+	local builder = BUILDERS[eggId] or BUILDERS.Monster
+	builder(model)
+	return model, B * 2 + 0.6
+end
+
+return EggModel
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="8">
+        <Properties>
           <string name="Name">Format</string>
           <string name="Source"><![CDATA[local Format = {}
 
@@ -365,7 +637,7 @@ return Format
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="8">
+      <Item class="ModuleScript" referent="9">
         <Properties>
           <string name="Name">FreekModel</string>
           <string name="Source"><![CDATA[-- Builds the 3D model for a Freek out of plain parts.
@@ -754,7 +1026,7 @@ return FreekModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="9">
+      <Item class="ModuleScript" referent="10">
         <Properties>
           <string name="Name">FreekUtil</string>
           <string name="Source"><![CDATA[-- Helpers shared by server and client for reading a saved Freek record:
@@ -865,7 +1137,7 @@ return FreekUtil
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="10">
+      <Item class="ModuleScript" referent="11">
         <Properties>
           <string name="Name">Freeks</string>
           <string name="Source"><![CDATA[-- Every Freek species in the game.
@@ -2609,7 +2881,7 @@ return Freeks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="11">
+      <Item class="ModuleScript" referent="12">
         <Properties>
           <string name="Name">GamePasses</string>
           <string name="Source"><![CDATA[-- Game passes: one-time Robux purchases with permanent perks.
@@ -2761,7 +3033,7 @@ return GamePasses
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">GateTiers</string>
           <string name="Source"><![CDATA[-- The frame around each barn's doors upgrades with rebirths: Iron, then Bronze, Silver and
@@ -2817,7 +3089,7 @@ return GateTiers
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">Hybrids</string>
           <string name="Source"><![CDATA[-- Hybrids: what you get when two different Freeks fuse.
@@ -3000,14 +3272,14 @@ return Hybrids
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">Luck</string>
-          <string name="Source"><![CDATA[-- Luck: Monster Crates, the daily Lucky Wheel and Lucky Hour events. Shared so the client
+          <string name="Source"><![CDATA[-- Luck: Monster Eggs, the daily Lucky Wheel and Lucky Hour events. Shared so the client
 -- can show every chance on screen (players always see the odds before buying), while the
 -- server does all the rolling (server/LuckService).
 --
--- Monster Crates are Developer Products bought with Robux. They're the only way to get
+-- Monster Eggs are Developer Products bought with Robux. They're the only way to get
 -- the Monster line (Freeks with exclusive = true). Roblox's rules for paid random items:
 -- the odds are shown before buying, and players in countries where paid random items
 -- aren't allowed can't buy them (LuckService checks PolicyService).
@@ -3017,23 +3289,24 @@ local Rarities = require(script.Parent.Rarities)
 
 local Luck = {}
 
--- Monster Crates. productId: create a Developer Product for each on the Creator Dashboard
+-- Monster Eggs (Halloween style; models in EggModel.luau). In the code they're still
+-- called crates. productId: create a Developer Product for each on the Creator Dashboard
 -- (Monetization -> Developer Products) at this price and paste its ID here. Until then
--- the crate shows "Coming soon", except in Studio where it opens free for testing.
+-- the egg shows "Coming soon", except in Studio where it hatches free for testing.
 -- odds are weights per Monster; mutation multiplies each mutation's normal chance.
 Luck.CRATES = {
 	{
 		id = "Monster",
-		name = "Monster Crate",
+		name = "Monster Egg",
 		robux = 49,
 		productId = 0,
-		color = Color3.fromRGB(120, 200, 120),
+		color = Color3.fromRGB(255, 140, 30),
 		odds = { BooBoo = 45, Zomboy = 35, Mumbles = 15, CountFangula = 4.5, Howlz = 0.5 },
 		mutation = 1,
 	},
 	{
 		id = "MegaMonster",
-		name = "Mega Monster Crate",
+		name = "Mega Monster Egg",
 		robux = 149,
 		productId = 0,
 		color = Color3.fromRGB(160, 110, 240),
@@ -3042,7 +3315,7 @@ Luck.CRATES = {
 	},
 	{
 		id = "LegendaryMonster",
-		name = "Legendary Monster Crate",
+		name = "Legendary Monster Egg",
 		robux = 399,
 		productId = 0,
 		color = Color3.fromRGB(255, 200, 60),
@@ -3100,10 +3373,10 @@ Luck.WHEEL = {
 	{ label = "Coins", minutes = 3, weight = 34, color = Color3.fromRGB(110, 235, 140) },
 	{ label = "Big Coins", minutes = 10, weight = 22, color = Color3.fromRGB(60, 200, 110) },
 	{ label = "Golden Freek", golden = true, weight = 14, color = Color3.fromRGB(255, 220, 90) },
-	{ label = "Monster Crate", crate = "Monster", weight = 12, color = Color3.fromRGB(120, 200, 120) },
+	{ label = "Monster Egg", crate = "Monster", weight = 12, color = Color3.fromRGB(255, 140, 30) },
 	{ label = "Huge Coins", minutes = 30, weight = 10, color = Color3.fromRGB(40, 160, 90) },
 	{ label = "Rainbow Freek", rainbow = true, weight = 4, color = Color3.fromRGB(255, 120, 255) },
-	{ label = "Mega Crate", crate = "MegaMonster", weight = 3, color = Color3.fromRGB(160, 110, 240) },
+	{ label = "Mega Egg", crate = "MegaMonster", weight = 3, color = Color3.fromRGB(160, 110, 240) },
 	{ label = "JACKPOT", crate = "LegendaryMonster", weight = 1, color = Color3.fromRGB(255, 200, 60) },
 }
 Luck.MIN_COIN_PRIZE = 200 -- coin prizes are never less than this
@@ -3144,9 +3417,9 @@ Luck.EVENTS = {
 		fireRate = 2,
 	},
 	CrateLuck = {
-		name = "Crate Luck",
+		name = "Egg Luck",
 		icon = "📦",
-		description = "Legendary and better Monsters are 2x as likely from Monster Crates!",
+		description = "Legendary and better Monsters are 2x as likely from Monster Eggs!",
 		color = Color3.fromRGB(110, 200, 255),
 		crateLuck = 2,
 	},
@@ -3167,7 +3440,7 @@ return Luck
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">Mutations</string>
           <string name="Source"><![CDATA[-- Mutations multiply a Freek's income. They only enter the game from the cannons (chance
@@ -3232,7 +3505,7 @@ return Mutations
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
@@ -3262,7 +3535,7 @@ return Rarities
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">Remotes</string>
           <string name="Source"><![CDATA[-- One place that names every remote. The server creates them; clients wait for them.
@@ -3321,7 +3594,7 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">Seasons</string>
           <string name="Source"><![CDATA[-- Limited events for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred
@@ -3458,7 +3731,7 @@ return Seasons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">WeaponModel</string>
           <string name="Source"><![CDATA[-- Builds the Tool for a weapon from its part list in Weapons.luau.
@@ -3544,7 +3817,7 @@ return WeaponModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">Weapons</string>
           <string name="Source"><![CDATA[-- Weapons. Everyone has the STARTER weapon; the rest unlock at a number of rebirths
@@ -3835,15 +4108,15 @@ return Weapons
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="21">
+  <Item class="ServerScriptService" referent="22">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="22">
+    <Item class="Folder" referent="23">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="24">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -4083,7 +4356,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="25">
         <Properties>
           <string name="Name">Barn</string>
           <string name="Source"><![CDATA[-- Each player's yard is a big red barn: plank floor, red walls with white trim, a gambrel
@@ -4433,7 +4706,7 @@ return Barn
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">CannonService</string>
           <string name="Source"><![CDATA[-- Runs the Freek cannons (see shared/Drops.luau): builds the glass bubble over the map,
@@ -4905,7 +5178,7 @@ return CannonService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">Carried</string>
           <string name="Source"><![CDATA[-- Which Freeks are being carried off by a thief right now. Kept in memory only: if the
@@ -4945,7 +5218,7 @@ return Carried
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -5217,7 +5490,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">Decor</string>
           <string name="Source"><![CDATA[-- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
@@ -5595,7 +5868,7 @@ return Decor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Discovery Book: the first player in the whole game to get each species has their
@@ -5743,7 +6016,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the Freeks in their yard, plus offline earnings
@@ -5824,7 +6097,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="31">
+      <Item class="ModuleScript" referent="32">
         <Properties>
           <string name="Name">Environment</string>
           <string name="Source"><![CDATA[-- Lighting, sky, terrain and the scenery around the yards and conveyor.
@@ -5973,7 +6246,7 @@ return Environment
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="32">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">FreekTag</string>
           <string name="Source"><![CDATA[-- The floating tag over a Freek, in the chunky cartoon style: rarity on top (in its colour),
@@ -6049,7 +6322,7 @@ return FreekTag
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">HalloweenDecor</string>
           <string name="Source"><![CDATA[-- Halloween props: ghosts, bats, cobwebs, tombstones, dead trees, a witch's cauldron,
@@ -6509,7 +6782,7 @@ return HalloweenDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">LuckService</string>
           <string name="Source"><![CDATA[-- Monster Crates, the daily Lucky Wheel and Lucky Hour events (rules and odds in
@@ -6520,13 +6793,16 @@ return HalloweenDecor
 -- purchase (receipts are remembered in the player's save) and only tells Roblox the
 -- purchase went through after the save succeeds, so nobody pays without getting it.
 
+local CollectionService = game:GetService("CollectionService")
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 local PolicyService = game:GetService("PolicyService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local EggModel = require(ReplicatedStorage.Shared.EggModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
@@ -6650,17 +6926,17 @@ local function buyCrate(player: Player, data, crateId: any)
 		return
 	end
 	if player:GetAttribute("CratesRestricted") then
-		return notify(player, "Monster Crates aren't available where you live.", "error")
+		return notify(player, "Monster Eggs aren't available where you live.", "error")
 	end
 	if not hasRoom(player, data) then
 		return notify(player, "You have too many Freeks! Sell or fuse some first.", "error")
 	end
 	if crate.productId == 0 then
 		if RunService:IsStudio() and Luck.STUDIO_FREE_CRATES then
-			notify(player, "Studio test: opening " .. crate.name .. " for free.", "success")
+			notify(player, "Studio test: hatching a " .. crate.name .. " for free.", "success")
 			return openCrate(player, data, crate)
 		end
-		return notify(player, "Monster Crates are coming soon!", "error")
+		return notify(player, "Monster Eggs are coming soon!", "error")
 	end
 	MarketplaceService:PromptProductPurchase(player, crate.productId)
 end
@@ -6694,7 +6970,7 @@ local function processReceipt(receipt)
 			data.crates[crate.id] = (data.crates[crate.id] or 0) + 1
 			notify(
 				player,
-				"Your barn is full, so your " .. crate.name .. " was saved. Open it from the 🍀 Luck tab!",
+				"Your barn is full, so your " .. crate.name .. " was saved. Hatch it from the 🍀 Luck tab!",
 				"success"
 			)
 		end
@@ -6778,7 +7054,133 @@ local function checkPolicy(player: Player)
 	player:SetAttribute("CratesRestricted", not cratesAllowed(player))
 end
 
+-- The Egg Stand by the spawn: the three Monster Eggs on glowing pedestals, each with its
+-- odds floating above it (like the egg stands in pet games). Hold E to hatch one.
+local STAND_X = 128
+local OUTLINE = Color3.fromRGB(20, 22, 48)
+
+local function outlinedLabel(parent: Instance, text: string, color: Color3, top: number, height: number, font)
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Position = UDim2.fromScale(0, top)
+	label.Size = UDim2.fromScale(1, height)
+	label.TextScaled = true
+	label.Font = font
+	label.Text = text
+	label.TextColor3 = color
+	label.Parent = parent
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = OUTLINE
+	stroke.Thickness = 2.5
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
+	stroke.Parent = label
+	return label
+end
+
+local function buildEggStand()
+	local folder = Instance.new("Folder")
+	folder.Name = "EggStand"
+	folder.Parent = Workspace
+	for i, crate in Luck.CRATES do
+		local z = (i - 2) * 13
+		local base = CFrame.lookAt(Vector3.new(STAND_X, 0, z), Vector3.new(STAND_X + 10, 0, z)) -- faces the spawn
+		local pedestal = Instance.new("Part")
+		pedestal.Name = "EggPedestal"
+		pedestal.Anchored = true
+		pedestal.Shape = Enum.PartType.Cylinder
+		pedestal.Size = Vector3.new(1.2, 7, 7)
+		pedestal.CFrame = base * CFrame.new(0, 0.6, 0) * CFrame.Angles(0, 0, math.rad(90))
+		pedestal.Color = Color3.fromRGB(45, 35, 65)
+		pedestal.Material = Enum.Material.Slate
+		pedestal.Parent = folder
+		local rim = pedestal:Clone()
+		rim.Name = "EggRim"
+		rim.Size = Vector3.new(0.3, 7.6, 7.6)
+		rim.CFrame = base * CFrame.new(0, 0.85, 0) * CFrame.Angles(0, 0, math.rad(90))
+		rim.Color = crate.color
+		rim.Material = Enum.Material.Neon
+		rim.Parent = folder
+
+		local egg, height = EggModel.build(crate.id)
+		local rest = base * CFrame.new(0, 1.2, 0)
+		egg:PivotTo(rest)
+		egg:SetAttribute("Rest", rest) -- clients spin and bob it around here
+		CollectionService:AddTag(egg, "DisplayEgg")
+		egg.Parent = folder
+
+		-- The odds float above the egg.
+		local odds = Luck.oddsList(crate)
+		local gui = Instance.new("BillboardGui")
+		gui.Size = UDim2.fromOffset(230, 46 + #odds * 20)
+		gui.StudsOffsetWorldSpace = Vector3.new(0, height + 3.2, 0)
+		gui.MaxDistance = 80
+		gui.LightInfluence = 0
+		local total = 46 + #odds * 20
+		outlinedLabel(gui, string.upper(crate.name), crate.color, 0, 26 / total, Enum.Font.LuckiestGuy)
+		outlinedLabel(
+			gui,
+			"R$ " .. crate.robux,
+			Color3.fromRGB(110, 240, 120),
+			26 / total,
+			20 / total,
+			Enum.Font.LuckiestGuy
+		)
+		for k, entry in odds do
+			local species = Freeks.byId[entry.species]
+			local percent = if entry.percent < 1
+				then string.format("%.1f", entry.percent)
+				else string.format("%.0f", entry.percent)
+			outlinedLabel(
+				gui,
+				species.name .. "  " .. percent .. "%",
+				Rarities.info[species.rarity].color,
+				(46 + (k - 1) * 20) / total,
+				19 / total,
+				Enum.Font.FredokaOne
+			)
+		end
+		gui.Parent = egg.PrimaryPart
+
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "EggPrompt"
+		prompt.ActionText = "Hatch (R$ " .. crate.robux .. ")"
+		prompt.ObjectText = crate.name
+		prompt.HoldDuration = 0.3
+		prompt.MaxActivationDistance = 10
+		prompt.RequiresLineOfSight = false
+		prompt:SetAttribute("EggId", crate.id)
+		prompt.Parent = egg.PrimaryPart
+	end
+
+	-- A big sign over the stand.
+	local signPart = Instance.new("Part")
+	signPart.Name = "EggSign"
+	signPart.Anchored = true
+	signPart.Transparency = 1
+	signPart.CanCollide = false
+	signPart.Size = Vector3.one
+	signPart.CFrame = CFrame.new(STAND_X, 17, 0)
+	signPart.Parent = folder
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromScale(26, 5)
+	gui.MaxDistance = 300
+	gui.LightInfluence = 0
+	local label =
+		outlinedLabel(gui, "🥚 MONSTER EGGS 🥚", Color3.fromRGB(255, 160, 40), 0, 1, Enum.Font.LuckiestGuy)
+	label:FindFirstChildOfClass("UIStroke").Thickness = 4
+	gui.Parent = signPart
+end
+
 function LuckService.init()
+	buildEggStand()
+	ProximityPromptService.PromptTriggered:Connect(function(prompt, player)
+		local eggId = prompt.Name == "EggPrompt" and prompt:GetAttribute("EggId")
+		local data = DataService.get(player)
+		if eggId and data then
+			buyCrate(player, data, eggId)
+			DataService.changed(player)
+		end
+	end)
 	ActionService.register("BuyCrate", buyCrate)
 	ActionService.register("OpenCrate", openOwnedCrate)
 	ActionService.register("SpinWheel", spin)
@@ -6794,7 +7196,7 @@ return LuckService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="35">
+      <Item class="Script" referent="36">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -6855,7 +7257,7 @@ print("[Fuse a Freek] Server started")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -6947,7 +7349,7 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the map and gives every player a barn (see Barn.luau) with Freek pads and Fusion
@@ -7727,7 +8129,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">RebirthService</string>
           <string name="Source"><![CDATA[-- Rebirth: pay Config.rebirthCost to start over with a permanent income bonus.
@@ -7823,7 +8225,7 @@ return RebirthService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">Recipes</string>
           <string name="Source"><![CDATA[-- Decides what two Freeks fuse into. Server-only so players can't read the Secret recipes
@@ -7874,7 +8276,7 @@ return Recipes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -7987,8 +8389,9 @@ THEMES.Halloween = {
 			Decor.hayBale(props, ground)
 			Decor.pumpkin(props, ground * CFrame.new(0, 2.4, 0), 0.8)
 		end
-		for _, z in { -9, 9 } do
-			Decor.pumpkin(props, CFrame.new(132, 0, z) * CFrame.Angles(0, math.pi / 2, 0), 1.2)
+		-- Jack-o'-lanterns flanking the Monster Egg stand.
+		for _, z in { -21, 21 } do
+			Decor.pumpkin(props, CFrame.new(128, 0, z) * CFrame.Angles(0, math.pi / 2, 0), 1.4)
 		end
 		-- Leaf piles scattered along the tree line.
 		for x = -190, 190, 38 do
@@ -8168,7 +8571,7 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Stealing Freeks from other players' yards.
@@ -8599,7 +9002,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
@@ -8883,7 +9286,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- Weapons: giving them out, buying them, and what happens when they hit.
@@ -9212,19 +9615,19 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="44">
+  <Item class="StarterPlayer" referent="45">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="45">
+    <Item class="StarterPlayerScripts" referent="46">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="46">
+      <Item class="Folder" referent="47">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="47">
+        <Item class="ModuleScript" referent="48">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -9298,7 +9701,7 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="48">
+        <Item class="ModuleScript" referent="49">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, event chip, menu tabs, leaderboard,
@@ -9917,7 +10320,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="49">
+        <Item class="LocalScript" referent="50">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -10485,7 +10888,7 @@ function renderers.Book()
 		if species.price then
 			credit = "Starter Freek"
 		elseif species.exclusive and not discovery then
-			credit = "Only from Monster Crates (🍀 Luck tab)"
+			credit = "Only from Monster Eggs (🍀 Luck tab)"
 		elseif discovery then
 			credit = "First found by\n" .. discovery.name
 		elseif not Seasons.available(species) then
@@ -10946,7 +11349,7 @@ local function freekPrize(box: Frame, freek, rarity: string, isNew: boolean, clo
 	prizeCard(box, if isNew then "NEW FREEK!" else "You got...", freek, color, subtitle, close)
 end
 
--- A crate that shakes harder and harder, flashes, then shows what was inside.
+-- The egg wobbles harder and harder, cracks with a flash, then shows what hatched.
 local function revealCrate(result, done)
 	local crate = Luck.crateById[result.crate]
 	local shade, box = overlay()
@@ -10954,39 +11357,45 @@ local function revealCrate(result, done)
 		shade:Destroy()
 		done()
 	end
-	local crateBox = UI.new("TextLabel", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(170, 170),
-		BackgroundColor3 = crate.color,
-		Text = "?",
-		TextSize = 90,
+	local egg = UI.eggViewport(crate.id, 240)
+	egg.AnchorPoint = Vector2.new(0.5, 0.5)
+	egg.Position = UDim2.fromScale(0.5, 0.5)
+	egg.Size = UDim2.fromOffset(240, 240)
+	egg.ZIndex = 52
+	egg.Parent = box
+	local title = UI.label("Hatching " .. crate.name .. "...", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.5, 130),
+		Size = UDim2.fromOffset(420, 40),
 		FontFace = UI.fonts.heavy,
-		TextColor3 = Color3.new(1, 1, 1),
-		ZIndex = 52,
+		TextSize = 30,
+		TextColor3 = crate.color,
+		ZIndex = 53,
 		Parent = box,
-	}, { UI.corner(22), UI.stroke(Color3.new(1, 1, 1), 4) })
+	})
 	local insideColor = Rarities.info[result.rarity].color
 	task.spawn(function()
-		for i = 1, 14 do
-			local strength = 4 + i * 1.6
-			crateBox.Rotation = if i % 2 == 0 then strength else -strength
-			crateBox.Size = UDim2.fromOffset(170 + i * 4, 170 + i * 4)
-			-- Glow in the colour of what's inside for the last few shakes.
-			if i > 9 then
-				crateBox.BackgroundColor3 = crate.color:Lerp(insideColor, (i - 9) / 5)
+		for i = 1, 16 do
+			local strength = 3 + i * 1.4
+			egg.Rotation = if i % 2 == 0 then strength else -strength
+			local grow = 240 + i * 6
+			egg.Size = UDim2.fromOffset(grow, grow)
+			-- Glow in the colour of what's inside for the last few wobbles.
+			if i > 10 then
+				egg.ImageColor3 = Color3.new(1, 1, 1):Lerp(insideColor, (i - 10) / 8)
 			end
-			task.wait(0.11)
+			task.wait(if i > 12 then 0.08 else 0.12)
 		end
 		local flash = UI.new("Frame", {
 			Size = UDim2.fromScale(1, 1),
-			BackgroundColor3 = Color3.new(1, 1, 1),
+			BackgroundColor3 = insideColor:Lerp(Color3.new(1, 1, 1), 0.6),
 			ZIndex = 60,
 			Parent = shade,
 		})
-		TweenService:Create(flash, TweenInfo.new(0.5), { BackgroundTransparency = 1 }):Play()
-		task.delay(0.5, flash.Destroy, flash)
-		crateBox:Destroy()
+		TweenService:Create(flash, TweenInfo.new(0.6), { BackgroundTransparency = 1 }):Play()
+		task.delay(0.6, flash.Destroy, flash)
+		egg:Destroy()
+		title:Destroy()
 		freekPrize(box, result.freek, result.rarity, result.isNew, close)
 	end)
 end
@@ -11075,7 +11484,7 @@ local function revealWheel(result, done)
 				if slice.crate == "Diamond" then "JACKPOT!" else "You won!",
 				nil,
 				slice.color,
-				"A " .. Luck.crateById[result.crate].name .. "!\nOpen it from the 🍀 Luck tab.",
+				"A " .. Luck.crateById[result.crate].name .. "!\nHatch it from the 🍀 Luck tab.",
 				close
 			)
 		else
@@ -11113,7 +11522,7 @@ end
 
 function renderers.Luck()
 	heading(
-		"Monster Crates hold Freeks you can't get anywhere else. Every chance is shown. Spin the wheel free every day!",
+		"Monster Eggs hatch Freeks you can't get anywhere else. Every chance is shown. Spin the wheel free every day!",
 		1
 	)
 
@@ -11153,7 +11562,6 @@ function renderers.Luck()
 	grid.Parent = body
 	for i, crate in Luck.CRATES do
 		local odds = Luck.oddsList(crate)
-		local best = odds[#odds].species
 		local lines = { { crate.name, crate.color, 24 } }
 		for _, entry in odds do
 			local species = Freeks.byId[entry.species]
@@ -11187,13 +11595,12 @@ function renderers.Luck()
 		if owned > 0 then
 			table.insert(
 				buttons,
-				UI.button("Open yours (" .. owned .. ")", colors.pink, function()
+				UI.button("Hatch yours (" .. owned .. ")", colors.pink, function()
 					send("OpenCrate", crate.id)
 				end, { Size = UDim2.new(1, 0, 0, 36) })
 			)
 		end
-		-- Show off the rarest Monster inside.
-		local card = UI.card({ species = best, lines = lines, buttons = buttons, border = crate.color })
+		local card = UI.card({ egg = crate.id, lines = lines, buttons = buttons, border = crate.color })
 		card.LayoutOrder = i
 		card.Parent = grid
 	end
@@ -11596,6 +12003,20 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
+-- The Monster Eggs on the egg stand turn slowly and bob up and down.
+RunService.RenderStepped:Connect(function()
+	local t = os.clock()
+	for i, egg in CollectionService:GetTagged("DisplayEgg") do
+		local rest = egg:GetAttribute("Rest")
+		if egg:IsA("Model") and egg.PrimaryPart and typeof(rest) == "CFrame" then
+			local phase = i * 1.7
+			egg:PivotTo(
+				rest * CFrame.new(0, 0.35 + math.sin(t * 2 + phase) * 0.35, 0) * CFrame.Angles(0, t * 0.8 + phase, 0)
+			)
+		end
+	end
+end)
+
 task.spawn(function()
 	discoveries = Remotes.get("GetDiscoveries"):InvokeServer() or {}
 	render()
@@ -11611,7 +12032,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="50">
+        <Item class="ModuleScript" referent="51">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).
@@ -11622,6 +12043,7 @@ render()
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
+local EggModel = require(ReplicatedStorage.Shared.EggModel)
 
 local UI = {}
 
@@ -11805,6 +12227,28 @@ function UI.viewport(speciesId: string, mutations: { string }?, silhouette: bool
 	return frame
 end
 
+-- A little 3D picture of a Monster Egg.
+function UI.eggViewport(eggId: string, size: number?)
+	local frame = UI.new("ViewportFrame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, size or 100),
+		Ambient = Color3.fromRGB(180, 170, 190),
+		LightColor = Color3.fromRGB(255, 240, 220),
+		LightDirection = Vector3.new(-1, -1, 1),
+	})
+	local model, height = EggModel.build(eggId)
+	model:PivotTo(CFrame.new())
+	model.Parent = frame
+	local camera = Instance.new("Camera")
+	camera.FieldOfView = 40
+	local distance = height * 1.9
+	camera.CFrame =
+		CFrame.lookAt(Vector3.new(distance * 0.2, height * 0.6, -distance), Vector3.new(0, height * 0.45, 0))
+	camera.Parent = frame
+	frame.CurrentCamera = camera
+	return frame
+end
+
 -- A card for grids: picture, lines of text, and buttons.
 -- opts = { species, mutations?, silhouette?, lines = { {text, color?} }, buttons = { button instances } }
 function UI.card(opts)
@@ -11840,7 +12284,9 @@ function UI.card(opts)
 		child.Parent = card
 	end
 
-	if opts.species then
+	if opts.egg then
+		add(UI.eggViewport(opts.egg))
+	elseif opts.species then
 		add(UI.viewport(opts.species, opts.mutations, opts.silhouette))
 	end
 	for _, line in opts.lines or {} do
