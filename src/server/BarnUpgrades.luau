@@ -340,6 +340,9 @@ local function build(plot, level: number, model: Model, champions: { string })
 		eachNamed(barnFolder, WALL_NAMES, function(p)
 			paint(p, wallColor, Enum.Material.Foil)
 		end)
+		eachNamed(barnFolder, { Batten = true }, function(p)
+			paint(p, wallColor:Lerp(Color3.new(0, 0, 0), 0.2), Enum.Material.Foil)
+		end)
 	end
 	if roofFolder then
 		if storey > 0 then
@@ -356,6 +359,9 @@ local function build(plot, level: number, model: Model, champions: { string })
 		if level >= 5 then
 			eachNamed(roofFolder, { RoofSlope = true }, function(p)
 				paint(p, roofColor, roofMaterial)
+			end)
+			eachNamed(roofFolder, { RoofShingle = true }, function(p)
+				paint(p, roofColor:Lerp(Color3.new(0, 0, 0), 0.2), roofMaterial)
 			end)
 			eachNamed(roofFolder, { RidgeCap = true }, function(p)
 				paint(p, if level >= 8 then GOLD else Color3.fromRGB(230, 165, 35), Enum.Material.Foil)

@@ -65,9 +65,15 @@ function Drops.cannonCFrame(index: number): CFrame
 	return CFrame.lookAt(position, Vector3.new(0, 10, 0))
 end
 
+-- How big the cannons are, and where one sits: just inside the bubble, its back against it.
+Drops.CANNON_SCALE = 2
+function Drops.cannonBase(index: number): CFrame
+	return Drops.cannonCFrame(index) * CFrame.new(0, 0, -12 * Drops.CANNON_SCALE)
+end
+
 -- Where a fired Freek leaves the barrel.
 function Drops.muzzle(index: number): Vector3
-	return (Drops.cannonCFrame(index) * CFrame.new(0, 0, -12)).Position
+	return (Drops.cannonBase(index) * CFrame.new(0, 0, -16.5 * Drops.CANNON_SCALE)).Position
 end
 
 local function clampToArea(position: Vector3): Vector3
