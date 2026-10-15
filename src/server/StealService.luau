@@ -13,6 +13,10 @@
 --
 -- The Freek stays in the owner's save until the moment it's delivered, so a crash mid-steal
 -- can never lose or duplicate it.
+--
+-- Freeks bought off the belt use the same carrying (see carryHome): they ride on the buyer's
+-- head until the buyer walks into their own yard, then take the first free pad. They're
+-- already in the buyer's save, can't be snatched, and don't slow the buyer down.
 
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
@@ -25,7 +29,6 @@ local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
-local ActionService = require(script.Parent.ActionService)
 local Carried = require(script.Parent.Carried)
 local DataService = require(script.Parent.DataService)
 local DiscoveryService = require(script.Parent.DiscoveryService)
@@ -78,24 +81,28 @@ local function pickUp(carrier: Player, carry): boolean
 		end
 	end
 
-	local prompt = Instance.new("ProximityPrompt")
-	prompt.Name = "SnatchPrompt"
-	prompt.ActionText = "Snatch"
-	prompt.ObjectText = carry.name
-	prompt.HoldDuration = Config.SNATCH_HOLD_SECONDS
-	prompt.MaxActivationDistance = 10
-	prompt.RequiresLineOfSight = false
-	prompt:SetAttribute("CarrierUserId", carrier.UserId)
-	prompt.Parent = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+	if not carry.bought then
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "SnatchPrompt"
+		prompt.ActionText = "Snatch"
+		prompt.ObjectText = carry.name
+		prompt.HoldDuration = Config.SNATCH_HOLD_SECONDS
+		prompt.MaxActivationDistance = 10
+		prompt.RequiresLineOfSight = false
+		prompt:SetAttribute("CarrierUserId", carrier.UserId)
+		prompt.Parent = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+	end
 
 	model.Name = "CarriedFreek"
 	model.Parent = character
 
 	carry.model = model
 	carry.normalSpeed = humanoid.WalkSpeed
-	-- Rarer Freeks are heavier: the carrier slows down more.
-	local rarity = FreekUtil.species(carry).rarity
-	humanoid.WalkSpeed = math.min(carry.normalSpeed, Rarities.info[rarity].carrySpeed)
+	if not carry.bought then
+		-- Rarer Freeks are heavier: the thief slows down more.
+		local rarity = FreekUtil.species(carry).rarity
+		humanoid.WalkSpeed = math.min(carry.normalSpeed, Rarities.info[rarity].carrySpeed)
+	end
 
 	carries[carrier] = carry
 	Carried.set(carry.owner, carry.uid, carrier)
@@ -118,6 +125,10 @@ end
 
 -- The Freek goes back to its owner's yard (or backpack, if its pad was filled meanwhile).
 local function sendBack(carrier: Player, carry, ownerMessage: string?, carrierMessage: string?)
+	if carry.bought then
+		-- The buyer is the owner: one message is enough.
+		ownerMessage, carrierMessage = "You dropped " .. carry.name .. ", so it went straight to your yard.", nil
+	end
 	putDown(carrier, carry)
 	Carried.set(carry.owner, carry.uid, nil)
 	local ownerData = DataService.get(carry.owner)
@@ -129,7 +140,9 @@ local function sendBack(carrier: Player, carry, ownerMessage: string?, carrierMe
 				taken = true
 			end
 		end
-		freek.slot = if taken or carry.slot > FreekUtil.totalSlots(ownerData)
+		freek.slot = if taken
+				or not carry.slot
+				or carry.slot > FreekUtil.totalSlots(ownerData)
 			then FreekUtil.freeSlot(ownerData)
 			else carry.slot
 		DataService.changed(carry.owner)
@@ -143,6 +156,23 @@ local function sendBack(carrier: Player, carry, ownerMessage: string?, carrierMe
 end
 
 local function deliver(carrier: Player, carry)
+	if carry.bought then
+		-- Already the buyer's: just find it a pad (or the backpack, if the yard filled up).
+		putDown(carrier, carry)
+		Carried.set(carrier, carry.uid, nil)
+		local data = DataService.get(carrier)
+		local freek = data and data.freeks[carry.uid]
+		if freek and not freek.slot then
+			freek.slot = FreekUtil.freeSlot(data)
+			DataService.changed(carrier)
+			if freek.slot then
+				notify(carrier, carry.name .. " is home in your yard!", "success")
+			else
+				notify(carrier, "Your yard is full, so " .. carry.name .. " went in your backpack.", "error")
+			end
+		end
+		return
+	end
 	local ownerData = DataService.get(carry.owner)
 	local carrierData = DataService.get(carrier)
 	local freek = ownerData and ownerData.freeks[carry.uid]
@@ -265,11 +295,36 @@ local function onPromptTriggered(prompt: ProximityPrompt, player: Player)
 		steal(prompt, player)
 	elseif prompt.Name == "SnatchPrompt" then
 		snatch(prompt, player)
+	elseif prompt.Name == "LockPrompt" then
+		-- Gates can only be locked from the padlock inside the owner's own yard.
+		local plot = PlotService.getPlot(player)
+		if not plot or plot.index ~= prompt:GetAttribute("PlotIndex") then
+			return notify(player, "That's not your gate!", "error")
+		end
+		local problem = PlotService.lockGate(player)
+		if problem then
+			notify(player, problem, "error")
+		else
+			notify(player, "Gate locked for " .. GamePasses.gateLockSeconds(player) .. " seconds!", "success")
+		end
 	end
 end
 
 function StealService.isCarrying(player: Player): boolean
 	return carries[player] ~= nil
+end
+
+-- Puts a Freek the player just bought (already in their save, with no slot) on their head
+-- to walk home. Returns false if they have no character, so the caller can place it now.
+function StealService.carryHome(player: Player, uid: string, freek): boolean
+	return pickUp(player, {
+		owner = player,
+		uid = uid,
+		name = FreekUtil.displayName(freek),
+		species = freek.species,
+		mutations = freek.mutations,
+		bought = true,
+	})
 end
 
 -- Called by WeaponService when a "drop" weapon hits someone carrying a Freek: it goes back
@@ -320,15 +375,6 @@ end
 
 function StealService.init()
 	ProximityPromptService.PromptTriggered:Connect(onPromptTriggered)
-
-	ActionService.register("LockGate", function(player: Player)
-		local problem = PlotService.lockGate(player)
-		if problem then
-			notify(player, problem, "error")
-		else
-			notify(player, "Gate locked for " .. GamePasses.gateLockSeconds(player) .. " seconds!", "success")
-		end
-	end)
 
 	Players.PlayerRemoving:Connect(function(player)
 		local carry = carries[player]

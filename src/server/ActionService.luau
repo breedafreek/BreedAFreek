@@ -101,7 +101,7 @@ function handlers.Sell(player: Player, data, uid: any)
 		return
 	end
 	if Carried.is(player, uid) then
-		return notify(player, "Someone is stealing that Freek! Catch them!", "error")
+		return notify(player, "That Freek is being carried right now!", "error")
 	end
 	local value = FreekUtil.sellValue(freek)
 	data.freeks[uid] = nil

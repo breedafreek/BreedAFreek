@@ -461,18 +461,16 @@ function Hud.vipChatTag()
 end
 
 --------------------------------------------------------------------------------
--- Gate button
+-- Gate status (locking happens at the padlock inside your yard)
 --------------------------------------------------------------------------------
 
-function Hud.gateButton(screen: ScreenGui, onLock: () -> ())
-	local button = UI.new("TextButton", {
+function Hud.gateStatus(screen: ScreenGui)
+	local button = UI.new("Frame", {
 		Name = "Gate",
-		Text = "",
-		AutoButtonColor = false,
 		AnchorPoint = Vector2.new(0.5, 1),
 		-- Sits above Roblox's tool hotbar, which takes the bottom-centre of the screen.
 		Position = UDim2.new(0.5, 0, 1, -96),
-		Size = UDim2.fromOffset(250, 52),
+		Size = UDim2.fromOffset(300, 52),
 		BackgroundColor3 = colors.panel,
 		BackgroundTransparency = UI.GLASS_TRANSPARENCY,
 		Parent = screen,
@@ -485,9 +483,6 @@ function Hud.gateButton(screen: ScreenGui, onLock: () -> ())
 		FontFace = UI.fonts.heavy,
 		Parent = button,
 	})
-	hoverGrow(button)
-	button.Activated:Connect(onLock)
-
 	task.spawn(function()
 		while true do
 			local left = (player:GetAttribute("GateLockedUntil") or 0) - Workspace:GetServerTimeNow()
@@ -499,7 +494,7 @@ function Hud.gateButton(screen: ScreenGui, onLock: () -> ())
 			else
 				-- Pulses red while open so the owner notices.
 				local pulse = (math.sin(os.clock() * 6) + 1) / 2
-				label.Text = "🔓  Gate open · Lock it!"
+				label.Text = "🔓  Gate open · Lock it at your gate!"
 				label.TextColor3 = colors.text
 				ring.Color = colors.red
 				button.BackgroundColor3 = colors.red:Lerp(Color3.fromRGB(120, 25, 35), pulse)

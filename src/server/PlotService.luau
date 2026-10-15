@@ -426,6 +426,62 @@ local function buildPlot(index: number)
 	})
 	local _, gateLabel = billboard(gateGuiPart, UDim2.fromScale(12, 2.5), Vector3.zero, 120)
 
+	-- The padlock post just inside the gate: the only place the owner can lock it from.
+	local lockSpot = origin * CFrame.new(GATE_WIDTH / 2 + 1.5, 1, -half + 4)
+	local metal = Color3.fromRGB(55, 55, 65)
+	part({
+		Name = "LockPost",
+		Size = Vector3.new(0.8, 3.4, 0.8),
+		CFrame = lockSpot * CFrame.new(0, 1.7, 0),
+		Color = metal,
+		Material = Enum.Material.Metal,
+		Parent = folder,
+	})
+	local lockBody = part({
+		Name = "Padlock",
+		Size = Vector3.new(1.6, 1.3, 0.6),
+		CFrame = lockSpot * CFrame.new(0, 4.05, 0),
+		Color = Color3.fromRGB(235, 185, 60),
+		Material = Enum.Material.Metal,
+		Parent = folder,
+	})
+	for _, x in { -0.5, 0.5 } do
+		part({
+			Name = "Shackle",
+			Size = Vector3.new(0.22, 0.8, 0.22),
+			CFrame = lockSpot * CFrame.new(x, 5.1, 0),
+			Color = Color3.fromRGB(200, 200, 210),
+			Material = Enum.Material.Metal,
+			Parent = folder,
+		})
+	end
+	part({
+		Name = "Shackle",
+		Size = Vector3.new(1.22, 0.22, 0.22),
+		CFrame = lockSpot * CFrame.new(0, 5.5, 0),
+		Color = Color3.fromRGB(200, 200, 210),
+		Material = Enum.Material.Metal,
+		Parent = folder,
+	})
+	local lockLight = part({
+		Name = "LockLight",
+		Size = Vector3.new(0.5, 0.5, 0.7),
+		CFrame = lockSpot * CFrame.new(0, 3.95, 0),
+		Color = Color3.fromRGB(255, 70, 70),
+		Material = Enum.Material.Neon,
+		CanCollide = false,
+		Parent = folder,
+	})
+	local lockPrompt = Instance.new("ProximityPrompt")
+	lockPrompt.Name = "LockPrompt"
+	lockPrompt.ActionText = "Lock Gate"
+	lockPrompt.ObjectText = "Gate"
+	lockPrompt.HoldDuration = 0.4
+	lockPrompt.MaxActivationDistance = 8
+	lockPrompt.RequiresLineOfSight = false
+	lockPrompt:SetAttribute("PlotIndex", index)
+	lockPrompt.Parent = lockBody
+
 	-- Scenery: trees and bushes in the front corners, flower beds along the front fence,
 	-- lamps by the gate.
 	for _, side in { -1, 1 } do
@@ -456,6 +512,8 @@ local function buildPlot(index: number)
 		gate = gate,
 		gateTop = gateTop,
 		gateLabel = gateLabel,
+		lockLight = lockLight,
+		lockPrompt = lockPrompt,
 		lockedUntil = math.huge,
 		owner = nil,
 	}
@@ -603,6 +661,8 @@ local function updateGate(plot)
 	plot.gate.CanCollide = locked
 	plot.gateTop.CanCollide = locked
 	plot.gate.Transparency = if locked then 0.4 else 1
+	plot.lockLight.Color = if locked then Color3.fromRGB(80, 255, 110) else Color3.fromRGB(255, 70, 70)
+	plot.lockPrompt.ActionText = if locked then "Locked " .. Format.time(left) else "Lock Gate"
 	if not plot.owner then
 		plot.gateLabel.Text = ""
 	elseif locked then

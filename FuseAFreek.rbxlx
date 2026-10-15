@@ -1910,7 +1910,7 @@ function handlers.Sell(player: Player, data, uid: any)
 		return
 	end
 	if Carried.is(player, uid) then
-		return notify(player, "Someone is stealing that Freek! Catch them!", "error")
+		return notify(player, "That Freek is being carried right now!", "error")
 	end
 	local value = FreekUtil.sellValue(freek)
 	data.freeks[uid] = nil
@@ -2110,9 +2110,9 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
 local ActionService = require(script.Parent.ActionService)
-local DataService = require(script.Parent.DataService)
 local Decor = require(script.Parent.Decor)
 local PlotService = require(script.Parent.PlotService)
+local StealService = require(script.Parent.StealService)
 
 local ConveyorService = {}
 
@@ -2397,24 +2397,29 @@ local function spawnFreek(lane: number)
 	end
 end
 
-local function buy(player: Player, id: string)
-	local item = items[id]
-	local data = DataService.get(player)
+local function buy(player: Player, data, id: any)
+	local item = typeof(id) == "string" and items[id]
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
-	if not item or not data or not root then
+	if not item or not root then
 		return
 	end
+	-- Checked against where the server says the Freek is (the client moves the models).
+	-- A little extra range covers lag.
 	local now = Workspace:GetServerTimeNow()
 	local where = Belt.cframeAt(item.lane, item.spawnTime, now).Position
-	if (root.Position - where).Magnitude > Belt.BUY_DISTANCE or Belt.isGone(item.spawnTime, now) then
+	local flat = Vector3.new(root.Position.X - where.X, 0, root.Position.Z - where.Z)
+	if flat.Magnitude > Belt.BUY_DISTANCE + 4 or Belt.isGone(item.spawnTime, now) then
 		return
 	end
 	if not PlotService.getPlot(player) then
 		return
 	end
-	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) then
-		return notify(player, "You have too many Freeks! Sell some first.", "error")
+	if StealService.isCarrying(player) then
+		return notify(player, "Your hands are full! Take that Freek home first.", "error")
+	end
+	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) or not FreekUtil.freeSlot(data) then
+		return notify(player, "Your yard is full! Buy more slots or sell a Freek.", "error")
 	end
 	if data.money < item.price then
 		return notify(player, "Not enough money! It costs " .. Format.money(item.price) .. ".", "error")
@@ -2423,21 +2428,26 @@ local function buy(player: Player, id: string)
 	items[id] = nil
 	item.model:Destroy()
 	data.money -= item.price
-	local name = FreekUtil.displayName({ species = item.species.id, mutations = item.mutations })
-	ActionService.giveFreek(player, data, item.species.id, item.mutations)
-	DataService.changed(player)
-	notify(player, "You bought " .. name .. "! It's heading to your yard.", "success")
+	local uid = ActionService.giveFreek(player, data, item.species.id, item.mutations)
+	local freek = data.freeks[uid]
+	local name = FreekUtil.displayName(freek)
+	-- It goes in the buyer's hands; walking into their yard puts it on a pad.
+	local slot = freek.slot
+	freek.slot = nil
+	if StealService.carryHome(player, uid, freek) then
+		notify(player, "You bought " .. name .. "! Carry it back to your yard.", "success")
+	else
+		freek.slot = slot
+		notify(player, "You bought " .. name .. "! It's in your yard.", "success")
+	end
 end
 
 function ConveyorService.init()
 	buildBelt()
 
-	game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt, player)
-		local id = prompt.Name == "BuyPrompt" and prompt:GetAttribute("ItemId")
-		if typeof(id) == "string" then
-			buy(player, id)
-		end
-	end)
+	-- Buy prompts are handled on the client (the server never moves belt models, so Roblox's
+	-- own prompt range check would reject them); the client sends a BuyBelt action instead.
+	ActionService.register("BuyBelt", buy)
 
 	-- Each lane has its own house; they take turns so a Freek appears every half interval.
 	for lane in Belt.LANES do
@@ -4475,6 +4485,62 @@ local function buildPlot(index: number)
 	})
 	local _, gateLabel = billboard(gateGuiPart, UDim2.fromScale(12, 2.5), Vector3.zero, 120)
 
+	-- The padlock post just inside the gate: the only place the owner can lock it from.
+	local lockSpot = origin * CFrame.new(GATE_WIDTH / 2 + 1.5, 1, -half + 4)
+	local metal = Color3.fromRGB(55, 55, 65)
+	part({
+		Name = "LockPost",
+		Size = Vector3.new(0.8, 3.4, 0.8),
+		CFrame = lockSpot * CFrame.new(0, 1.7, 0),
+		Color = metal,
+		Material = Enum.Material.Metal,
+		Parent = folder,
+	})
+	local lockBody = part({
+		Name = "Padlock",
+		Size = Vector3.new(1.6, 1.3, 0.6),
+		CFrame = lockSpot * CFrame.new(0, 4.05, 0),
+		Color = Color3.fromRGB(235, 185, 60),
+		Material = Enum.Material.Metal,
+		Parent = folder,
+	})
+	for _, x in { -0.5, 0.5 } do
+		part({
+			Name = "Shackle",
+			Size = Vector3.new(0.22, 0.8, 0.22),
+			CFrame = lockSpot * CFrame.new(x, 5.1, 0),
+			Color = Color3.fromRGB(200, 200, 210),
+			Material = Enum.Material.Metal,
+			Parent = folder,
+		})
+	end
+	part({
+		Name = "Shackle",
+		Size = Vector3.new(1.22, 0.22, 0.22),
+		CFrame = lockSpot * CFrame.new(0, 5.5, 0),
+		Color = Color3.fromRGB(200, 200, 210),
+		Material = Enum.Material.Metal,
+		Parent = folder,
+	})
+	local lockLight = part({
+		Name = "LockLight",
+		Size = Vector3.new(0.5, 0.5, 0.7),
+		CFrame = lockSpot * CFrame.new(0, 3.95, 0),
+		Color = Color3.fromRGB(255, 70, 70),
+		Material = Enum.Material.Neon,
+		CanCollide = false,
+		Parent = folder,
+	})
+	local lockPrompt = Instance.new("ProximityPrompt")
+	lockPrompt.Name = "LockPrompt"
+	lockPrompt.ActionText = "Lock Gate"
+	lockPrompt.ObjectText = "Gate"
+	lockPrompt.HoldDuration = 0.4
+	lockPrompt.MaxActivationDistance = 8
+	lockPrompt.RequiresLineOfSight = false
+	lockPrompt:SetAttribute("PlotIndex", index)
+	lockPrompt.Parent = lockBody
+
 	-- Scenery: trees and bushes in the front corners, flower beds along the front fence,
 	-- lamps by the gate.
 	for _, side in { -1, 1 } do
@@ -4505,6 +4571,8 @@ local function buildPlot(index: number)
 		gate = gate,
 		gateTop = gateTop,
 		gateLabel = gateLabel,
+		lockLight = lockLight,
+		lockPrompt = lockPrompt,
 		lockedUntil = math.huge,
 		owner = nil,
 	}
@@ -4652,6 +4720,8 @@ local function updateGate(plot)
 	plot.gate.CanCollide = locked
 	plot.gateTop.CanCollide = locked
 	plot.gate.Transparency = if locked then 0.4 else 1
+	plot.lockLight.Color = if locked then Color3.fromRGB(80, 255, 110) else Color3.fromRGB(255, 70, 70)
+	plot.lockPrompt.ActionText = if locked then "Locked " .. Format.time(left) else "Lock Gate"
 	if not plot.owner then
 		plot.gateLabel.Text = ""
 	elseif locked then
@@ -5323,6 +5393,10 @@ return SeasonalService
 --
 -- The Freek stays in the owner's save until the moment it's delivered, so a crash mid-steal
 -- can never lose or duplicate it.
+--
+-- Freeks bought off the belt use the same carrying (see carryHome): they ride on the buyer's
+-- head until the buyer walks into their own yard, then take the first free pad. They're
+-- already in the buyer's save, can't be snatched, and don't slow the buyer down.
 
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
@@ -5335,7 +5409,6 @@ local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
-local ActionService = require(script.Parent.ActionService)
 local Carried = require(script.Parent.Carried)
 local DataService = require(script.Parent.DataService)
 local DiscoveryService = require(script.Parent.DiscoveryService)
@@ -5388,24 +5461,28 @@ local function pickUp(carrier: Player, carry): boolean
 		end
 	end
 
-	local prompt = Instance.new("ProximityPrompt")
-	prompt.Name = "SnatchPrompt"
-	prompt.ActionText = "Snatch"
-	prompt.ObjectText = carry.name
-	prompt.HoldDuration = Config.SNATCH_HOLD_SECONDS
-	prompt.MaxActivationDistance = 10
-	prompt.RequiresLineOfSight = false
-	prompt:SetAttribute("CarrierUserId", carrier.UserId)
-	prompt.Parent = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+	if not carry.bought then
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "SnatchPrompt"
+		prompt.ActionText = "Snatch"
+		prompt.ObjectText = carry.name
+		prompt.HoldDuration = Config.SNATCH_HOLD_SECONDS
+		prompt.MaxActivationDistance = 10
+		prompt.RequiresLineOfSight = false
+		prompt:SetAttribute("CarrierUserId", carrier.UserId)
+		prompt.Parent = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+	end
 
 	model.Name = "CarriedFreek"
 	model.Parent = character
 
 	carry.model = model
 	carry.normalSpeed = humanoid.WalkSpeed
-	-- Rarer Freeks are heavier: the carrier slows down more.
-	local rarity = FreekUtil.species(carry).rarity
-	humanoid.WalkSpeed = math.min(carry.normalSpeed, Rarities.info[rarity].carrySpeed)
+	if not carry.bought then
+		-- Rarer Freeks are heavier: the thief slows down more.
+		local rarity = FreekUtil.species(carry).rarity
+		humanoid.WalkSpeed = math.min(carry.normalSpeed, Rarities.info[rarity].carrySpeed)
+	end
 
 	carries[carrier] = carry
 	Carried.set(carry.owner, carry.uid, carrier)
@@ -5428,6 +5505,10 @@ end
 
 -- The Freek goes back to its owner's yard (or backpack, if its pad was filled meanwhile).
 local function sendBack(carrier: Player, carry, ownerMessage: string?, carrierMessage: string?)
+	if carry.bought then
+		-- The buyer is the owner: one message is enough.
+		ownerMessage, carrierMessage = "You dropped " .. carry.name .. ", so it went straight to your yard.", nil
+	end
 	putDown(carrier, carry)
 	Carried.set(carry.owner, carry.uid, nil)
 	local ownerData = DataService.get(carry.owner)
@@ -5439,7 +5520,9 @@ local function sendBack(carrier: Player, carry, ownerMessage: string?, carrierMe
 				taken = true
 			end
 		end
-		freek.slot = if taken or carry.slot > FreekUtil.totalSlots(ownerData)
+		freek.slot = if taken
+				or not carry.slot
+				or carry.slot > FreekUtil.totalSlots(ownerData)
 			then FreekUtil.freeSlot(ownerData)
 			else carry.slot
 		DataService.changed(carry.owner)
@@ -5453,6 +5536,23 @@ local function sendBack(carrier: Player, carry, ownerMessage: string?, carrierMe
 end
 
 local function deliver(carrier: Player, carry)
+	if carry.bought then
+		-- Already the buyer's: just find it a pad (or the backpack, if the yard filled up).
+		putDown(carrier, carry)
+		Carried.set(carrier, carry.uid, nil)
+		local data = DataService.get(carrier)
+		local freek = data and data.freeks[carry.uid]
+		if freek and not freek.slot then
+			freek.slot = FreekUtil.freeSlot(data)
+			DataService.changed(carrier)
+			if freek.slot then
+				notify(carrier, carry.name .. " is home in your yard!", "success")
+			else
+				notify(carrier, "Your yard is full, so " .. carry.name .. " went in your backpack.", "error")
+			end
+		end
+		return
+	end
 	local ownerData = DataService.get(carry.owner)
 	local carrierData = DataService.get(carrier)
 	local freek = ownerData and ownerData.freeks[carry.uid]
@@ -5575,11 +5675,36 @@ local function onPromptTriggered(prompt: ProximityPrompt, player: Player)
 		steal(prompt, player)
 	elseif prompt.Name == "SnatchPrompt" then
 		snatch(prompt, player)
+	elseif prompt.Name == "LockPrompt" then
+		-- Gates can only be locked from the padlock inside the owner's own yard.
+		local plot = PlotService.getPlot(player)
+		if not plot or plot.index ~= prompt:GetAttribute("PlotIndex") then
+			return notify(player, "That's not your gate!", "error")
+		end
+		local problem = PlotService.lockGate(player)
+		if problem then
+			notify(player, problem, "error")
+		else
+			notify(player, "Gate locked for " .. GamePasses.gateLockSeconds(player) .. " seconds!", "success")
+		end
 	end
 end
 
 function StealService.isCarrying(player: Player): boolean
 	return carries[player] ~= nil
+end
+
+-- Puts a Freek the player just bought (already in their save, with no slot) on their head
+-- to walk home. Returns false if they have no character, so the caller can place it now.
+function StealService.carryHome(player: Player, uid: string, freek): boolean
+	return pickUp(player, {
+		owner = player,
+		uid = uid,
+		name = FreekUtil.displayName(freek),
+		species = freek.species,
+		mutations = freek.mutations,
+		bought = true,
+	})
 end
 
 -- Called by WeaponService when a "drop" weapon hits someone carrying a Freek: it goes back
@@ -5630,15 +5755,6 @@ end
 
 function StealService.init()
 	ProximityPromptService.PromptTriggered:Connect(onPromptTriggered)
-
-	ActionService.register("LockGate", function(player: Player)
-		local problem = PlotService.lockGate(player)
-		if problem then
-			notify(player, problem, "error")
-		else
-			notify(player, "Gate locked for " .. GamePasses.gateLockSeconds(player) .. " seconds!", "success")
-		end
-	end)
 
 	Players.PlayerRemoving:Connect(function(player)
 		local carry = carries[player]
@@ -6828,18 +6944,16 @@ function Hud.vipChatTag()
 end
 
 --------------------------------------------------------------------------------
--- Gate button
+-- Gate status (locking happens at the padlock inside your yard)
 --------------------------------------------------------------------------------
 
-function Hud.gateButton(screen: ScreenGui, onLock: () -> ())
-	local button = UI.new("TextButton", {
+function Hud.gateStatus(screen: ScreenGui)
+	local button = UI.new("Frame", {
 		Name = "Gate",
-		Text = "",
-		AutoButtonColor = false,
 		AnchorPoint = Vector2.new(0.5, 1),
 		-- Sits above Roblox's tool hotbar, which takes the bottom-centre of the screen.
 		Position = UDim2.new(0.5, 0, 1, -96),
-		Size = UDim2.fromOffset(250, 52),
+		Size = UDim2.fromOffset(300, 52),
 		BackgroundColor3 = colors.panel,
 		BackgroundTransparency = UI.GLASS_TRANSPARENCY,
 		Parent = screen,
@@ -6852,9 +6966,6 @@ function Hud.gateButton(screen: ScreenGui, onLock: () -> ())
 		FontFace = UI.fonts.heavy,
 		Parent = button,
 	})
-	hoverGrow(button)
-	button.Activated:Connect(onLock)
-
 	task.spawn(function()
 		while true do
 			local left = (player:GetAttribute("GateLockedUntil") or 0) - Workspace:GetServerTimeNow()
@@ -6866,7 +6977,7 @@ function Hud.gateButton(screen: ScreenGui, onLock: () -> ())
 			else
 				-- Pulses red while open so the owner notices.
 				local pulse = (math.sin(os.clock() * 6) + 1) / 2
-				label.Text = "🔓  Gate open · Lock it!"
+				label.Text = "🔓  Gate open · Lock it at your gate!"
 				label.TextColor3 = colors.text
 				ring.Color = colors.red
 				button.BackgroundColor3 = colors.red:Lerp(Color3.fromRGB(120, 25, 35), pulse)
@@ -6955,6 +7066,7 @@ return Hud
 local CollectionService = game:GetService("CollectionService")
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -7923,12 +8035,10 @@ task.spawn(function()
 	end
 end)
 
-Hud.gateButton(screen, function()
-	send("LockGate")
-end)
+Hud.gateStatus(screen)
 
--- Nobody needs a Steal prompt on their own Freeks, or a Snatch prompt on the Freek
--- they're carrying.
+-- Nobody needs a Steal prompt on their own Freeks, a Snatch prompt on the Freek they're
+-- carrying, or the padlock on someone else's gate.
 local function hideOwnPrompt(instance: Instance)
 	if not instance:IsA("ProximityPrompt") then
 		return
@@ -7938,12 +8048,27 @@ local function hideOwnPrompt(instance: Instance)
 		or (instance.Name == "SnatchPrompt" and instance:GetAttribute("CarrierUserId") == player.UserId)
 	then
 		instance.Enabled = false
+	elseif instance.Name == "LockPrompt" then
+		instance.Enabled = instance:GetAttribute("PlotIndex") == player:GetAttribute("Plot")
 	end
 end
 for _, descendant in Workspace:GetDescendants() do
 	hideOwnPrompt(descendant)
 end
 Workspace.DescendantAdded:Connect(hideOwnPrompt)
+player:GetAttributeChangedSignal("Plot"):Connect(function()
+	for _, descendant in Workspace:GetDescendants() do
+		hideOwnPrompt(descendant)
+	end
+end)
+
+-- Belt Freeks only move on clients, so the server can't use Roblox's own prompt range
+-- check for them; buying goes through an action the server checks itself.
+ProximityPromptService.PromptTriggered:Connect(function(prompt)
+	if prompt.Name == "BuyPrompt" then
+		send("BuyBelt", prompt:GetAttribute("ItemId"))
+	end
+end)
 
 -- Weapons: when an equipped weapon is used, tell the server where we're aiming.
 local mouse = player:GetMouse()

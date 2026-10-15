@@ -24,9 +24,9 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
 local ActionService = require(script.Parent.ActionService)
-local DataService = require(script.Parent.DataService)
 local Decor = require(script.Parent.Decor)
 local PlotService = require(script.Parent.PlotService)
+local StealService = require(script.Parent.StealService)
 
 local ConveyorService = {}
 
@@ -311,24 +311,29 @@ local function spawnFreek(lane: number)
 	end
 end
 
-local function buy(player: Player, id: string)
-	local item = items[id]
-	local data = DataService.get(player)
+local function buy(player: Player, data, id: any)
+	local item = typeof(id) == "string" and items[id]
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
-	if not item or not data or not root then
+	if not item or not root then
 		return
 	end
+	-- Checked against where the server says the Freek is (the client moves the models).
+	-- A little extra range covers lag.
 	local now = Workspace:GetServerTimeNow()
 	local where = Belt.cframeAt(item.lane, item.spawnTime, now).Position
-	if (root.Position - where).Magnitude > Belt.BUY_DISTANCE or Belt.isGone(item.spawnTime, now) then
+	local flat = Vector3.new(root.Position.X - where.X, 0, root.Position.Z - where.Z)
+	if flat.Magnitude > Belt.BUY_DISTANCE + 4 or Belt.isGone(item.spawnTime, now) then
 		return
 	end
 	if not PlotService.getPlot(player) then
 		return
 	end
-	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) then
-		return notify(player, "You have too many Freeks! Sell some first.", "error")
+	if StealService.isCarrying(player) then
+		return notify(player, "Your hands are full! Take that Freek home first.", "error")
+	end
+	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) or not FreekUtil.freeSlot(data) then
+		return notify(player, "Your yard is full! Buy more slots or sell a Freek.", "error")
 	end
 	if data.money < item.price then
 		return notify(player, "Not enough money! It costs " .. Format.money(item.price) .. ".", "error")
@@ -337,21 +342,26 @@ local function buy(player: Player, id: string)
 	items[id] = nil
 	item.model:Destroy()
 	data.money -= item.price
-	local name = FreekUtil.displayName({ species = item.species.id, mutations = item.mutations })
-	ActionService.giveFreek(player, data, item.species.id, item.mutations)
-	DataService.changed(player)
-	notify(player, "You bought " .. name .. "! It's heading to your yard.", "success")
+	local uid = ActionService.giveFreek(player, data, item.species.id, item.mutations)
+	local freek = data.freeks[uid]
+	local name = FreekUtil.displayName(freek)
+	-- It goes in the buyer's hands; walking into their yard puts it on a pad.
+	local slot = freek.slot
+	freek.slot = nil
+	if StealService.carryHome(player, uid, freek) then
+		notify(player, "You bought " .. name .. "! Carry it back to your yard.", "success")
+	else
+		freek.slot = slot
+		notify(player, "You bought " .. name .. "! It's in your yard.", "success")
+	end
 end
 
 function ConveyorService.init()
 	buildBelt()
 
-	game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt, player)
-		local id = prompt.Name == "BuyPrompt" and prompt:GetAttribute("ItemId")
-		if typeof(id) == "string" then
-			buy(player, id)
-		end
-	end)
+	-- Buy prompts are handled on the client (the server never moves belt models, so Roblox's
+	-- own prompt range check would reject them); the client sends a BuyBelt action instead.
+	ActionService.register("BuyBelt", buy)
 
 	-- Each lane has its own house; they take turns so a Freek appears every half interval.
 	for lane in Belt.LANES do

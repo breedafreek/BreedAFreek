@@ -4,6 +4,7 @@
 local CollectionService = game:GetService("CollectionService")
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -972,12 +973,10 @@ task.spawn(function()
 	end
 end)
 
-Hud.gateButton(screen, function()
-	send("LockGate")
-end)
+Hud.gateStatus(screen)
 
--- Nobody needs a Steal prompt on their own Freeks, or a Snatch prompt on the Freek
--- they're carrying.
+-- Nobody needs a Steal prompt on their own Freeks, a Snatch prompt on the Freek they're
+-- carrying, or the padlock on someone else's gate.
 local function hideOwnPrompt(instance: Instance)
 	if not instance:IsA("ProximityPrompt") then
 		return
@@ -987,12 +986,27 @@ local function hideOwnPrompt(instance: Instance)
 		or (instance.Name == "SnatchPrompt" and instance:GetAttribute("CarrierUserId") == player.UserId)
 	then
 		instance.Enabled = false
+	elseif instance.Name == "LockPrompt" then
+		instance.Enabled = instance:GetAttribute("PlotIndex") == player:GetAttribute("Plot")
 	end
 end
 for _, descendant in Workspace:GetDescendants() do
 	hideOwnPrompt(descendant)
 end
 Workspace.DescendantAdded:Connect(hideOwnPrompt)
+player:GetAttributeChangedSignal("Plot"):Connect(function()
+	for _, descendant in Workspace:GetDescendants() do
+		hideOwnPrompt(descendant)
+	end
+end)
+
+-- Belt Freeks only move on clients, so the server can't use Roblox's own prompt range
+-- check for them; buying goes through an action the server checks itself.
+ProximityPromptService.PromptTriggered:Connect(function(prompt)
+	if prompt.Name == "BuyPrompt" then
+		send("BuyBelt", prompt:GetAttribute("ItemId"))
+	end
+end)
 
 -- Weapons: when an equipped weapon is used, tell the server where we're aiming.
 local mouse = player:GetMouse()
