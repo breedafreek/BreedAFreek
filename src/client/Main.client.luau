@@ -21,6 +21,7 @@ local Rarities = require(Shared.Rarities)
 local Remotes = require(Shared.Remotes)
 local Seasons = require(Shared.Seasons)
 local Weapons = require(Shared.Weapons)
+local Ambient = require(script.Parent.Ambient)
 local Hud = require(script.Parent.Hud)
 local UI = require(script.Parent.UI)
 
@@ -1036,6 +1037,8 @@ RunService.RenderStepped:Connect(function()
 		end
 	end
 end)
+
+Ambient.start()
 
 -- Rainbow Freeks cycle through colors.
 RunService.RenderStepped:Connect(function()

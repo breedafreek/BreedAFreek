@@ -13,6 +13,7 @@ local Belt = require(ReplicatedStorage.Shared.Belt)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
 local Decor = require(script.Parent.Decor)
+local HalloweenDecor = require(script.Parent.HalloweenDecor)
 local PlotService = require(script.Parent.PlotService)
 
 local SeasonalService = {}
@@ -39,15 +40,27 @@ THEMES.Halloween = {
 	grass = Color3.fromRGB(150, 165, 75),
 	lawn = Color3.fromRGB(150, 170, 80),
 	bulb = Color3.fromRGB(255, 140, 40),
+	-- Spooky twilight: sun on the horizon, purple haze, extra glow on lights and pumpkins.
 	lighting = {
-		ClockTime = 16.9,
-		atmosphere = {
-			Density = 0.34,
-			Color = Color3.fromRGB(255, 205, 165),
-			Decay = Color3.fromRGB(130, 80, 100),
-			Haze = 1.6,
+		Lighting = {
+			ClockTime = 18.1,
+			Brightness = 1.8,
+			Ambient = Color3.fromRGB(80, 60, 100),
+			OutdoorAmbient = Color3.fromRGB(135, 110, 160),
 		},
-		color = { TintColor = Color3.fromRGB(255, 232, 210), Saturation = 0.2 },
+		Atmosphere = {
+			Density = 0.36,
+			Color = Color3.fromRGB(190, 130, 190),
+			Decay = Color3.fromRGB(70, 35, 90),
+			Haze = 2.2,
+			Glare = 0.4,
+		},
+		ColorCorrectionEffect = {
+			TintColor = Color3.fromRGB(255, 228, 240),
+			Saturation = 0.25,
+			Contrast = 0.12,
+		},
+		BloomEffect = { Intensity = 0.9 },
 	},
 	build = function(props: Folder)
 		-- Every yard: jack-o'-lanterns flanking the gate, one inside by the pens, and a
@@ -90,6 +103,71 @@ THEMES.Halloween = {
 				Decor.leafPile(props, CFrame.new(x, 0, z), x + z)
 			end
 		end
+
+		-- Every yard's gate arch: cobwebs in the top corners and string lights along the beam.
+		local half = 31.5
+		for _, origin in PlotService.origins() do
+			HalloweenDecor.cobweb(props, origin * CFrame.new(-6.8, 10.8, -half - 0.8), 3)
+			HalloweenDecor.cobweb(props, origin * CFrame.new(6.8, 10.8, -half - 0.8) * CFrame.Angles(0, math.pi, 0), 3)
+			HalloweenDecor.stringLights(
+				props,
+				(origin * CFrame.new(-7.6, 10.7, -half - 0.9)).Position,
+				(origin * CFrame.new(7.6, 10.7, -half - 0.9)).Position,
+				10,
+				0.8
+			)
+		end
+
+		-- String lights between the street lamps along both walkways, and low fog.
+		for x = Belt.START_X + 10, Belt.START_X + Belt.LENGTH - 45, 35 do
+			for _, z in { -28, 28 } do
+				HalloweenDecor.stringLights(props, Vector3.new(x, 7.6, z), Vector3.new(x + 35, 7.6, z), 14, 1.8)
+			end
+		end
+		for x = Belt.START_X, Belt.START_X + Belt.LENGTH, 40 do
+			for _, z in { -20, 20 } do
+				HalloweenDecor.fog(props, Vector3.new(x, 0.5, z))
+			end
+		end
+
+		-- Witch hats on both Freek Houses.
+		HalloweenDecor.witchHat(props, CFrame.new(houseX + 2, 14.6, Belt.LANES[1]), 0.9, Color3.fromRGB(70, 30, 110))
+		HalloweenDecor.witchHat(props, CFrame.new(houseX + 2, 14.6, Belt.LANES[2]), 0.9, Color3.fromRGB(40, 25, 60))
+
+		-- A graveyard past the spawn, with dead trees, fog and a bubbling cauldron.
+		for row = 0, 1 do
+			for col = 0, 4 do
+				local ground = CFrame.new(172 + row * 9, 0, -16 + col * 8) * CFrame.Angles(0, -math.pi / 2, 0)
+				HalloweenDecor.tombstone(props, ground, row * 10 + col)
+			end
+		end
+		HalloweenDecor.deadTree(props, CFrame.new(190, 0, -22), 1.2, 1)
+		HalloweenDecor.deadTree(props, CFrame.new(188, 0, 21), 1, 2)
+		HalloweenDecor.deadTree(props, CFrame.new(-150, 0, -24), 1.1, 3)
+		HalloweenDecor.deadTree(props, CFrame.new(-150, 0, 26), 1.2, 4)
+		for _, spot in { Vector3.new(176, 0.5, -10), Vector3.new(180, 0.5, 8), Vector3.new(170, 0.5, 18) } do
+			HalloweenDecor.fog(props, spot)
+		end
+		HalloweenDecor.cauldron(props, CFrame.new(160, 0, 0))
+
+		-- Ghosts drifting around; bats circling the Freek Houses, the graveyard and the title.
+		local houses = Vector3.new(houseX, 0, 0)
+		HalloweenDecor.ghost(props, houses, 22, 16, 0.25, 0)
+		HalloweenDecor.ghost(props, houses, 26, 20, -0.2, 2)
+		HalloweenDecor.ghost(props, Vector3.new(178, 0, 0), 14, 9, 0.3, 1)
+		HalloweenDecor.ghost(props, Vector3.new(178, 0, 0), 18, 12, -0.22, 4)
+		for i, x in { -70, 0, 70 } do
+			HalloweenDecor.ghost(props, Vector3.new(x, 0, 0), 16, 14, if i % 2 == 0 then 0.18 else -0.18, i)
+		end
+		for i = 1, 6 do
+			HalloweenDecor.bat(props, houses, 12 + i * 2, 20 + i % 3 * 2, 0.6 + i * 0.05, i)
+		end
+		for i = 1, 4 do
+			HalloweenDecor.bat(props, Vector3.new(178, 0, 0), 10 + i * 2, 14 + i, -0.7, i * 1.5)
+		end
+		for i = 1, 4 do
+			HalloweenDecor.bat(props, Vector3.zero, 22 + i * 3, 26 + i, 0.5, i * 1.6)
+		end
 	end,
 }
 
@@ -116,35 +194,34 @@ local function setLamps(color: Color3?)
 end
 
 local function captureDefaults()
-	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
-	local color = Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
-	defaults = {
-		ClockTime = Lighting.ClockTime,
-		atmosphere = atmosphere and {
-			Density = atmosphere.Density,
-			Color = atmosphere.Color,
-			Decay = atmosphere.Decay,
-			Haze = atmosphere.Haze,
-		},
-		color = color and { TintColor = color.TintColor, Saturation = color.Saturation },
-		grass = Workspace.Terrain:GetMaterialColor(Enum.Material.Grass),
-	}
+	defaults = { grass = Workspace.Terrain:GetMaterialColor(Enum.Material.Grass) }
 end
 
+-- Applies a theme's lighting ({ ClassName = { Property = value } }, where "Lighting" is the
+-- Lighting service itself) and remembers the old values so clearTheme can put them back.
+local saved = {}
 local function applyLighting(settings)
-	Lighting.ClockTime = settings.ClockTime
-	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
-	if atmosphere and settings.atmosphere then
-		for key, value in settings.atmosphere do
-			atmosphere[key] = value
+	for className, props in settings or {} do
+		local target = if className == "Lighting" then Lighting else Lighting:FindFirstChildOfClass(className)
+		if target then
+			saved[target] = saved[target] or {}
+			for key, value in props do
+				if saved[target][key] == nil then
+					saved[target][key] = target[key]
+				end
+				target[key] = value
+			end
 		end
 	end
-	local color = Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
-	if color and settings.color then
-		for key, value in settings.color do
-			color[key] = value
+end
+
+local function restoreLighting()
+	for target, props in saved do
+		for key, value in props do
+			target[key] = value
 		end
 	end
+	table.clear(saved)
 end
 
 local function clearTheme()
@@ -155,7 +232,7 @@ local function clearTheme()
 	recolour(Decor.TAGS.leaves, nil)
 	recolour(Decor.TAGS.lawn, nil)
 	setLamps(nil)
-	applyLighting(defaults)
+	restoreLighting()
 	Workspace.Terrain:SetMaterialColor(Enum.Material.Grass, defaults.grass)
 	current = nil
 end
