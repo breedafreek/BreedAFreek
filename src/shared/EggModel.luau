@@ -255,6 +255,15 @@ function BUILDERS.LegendaryMonster(model: Model)
 	effect(gem, "Sparkles", rgb(255, 230, 140))
 end
 
+-- For effects that sit on the egg (like the hatch cracks): a spot on the surface relative to
+-- the egg's pivot, and the egg's colour.
+EggModel.surface = onEgg
+EggModel.COLORS = {
+	Monster = rgb(255, 140, 30),
+	MegaMonster = rgb(130, 70, 200),
+	LegendaryMonster = rgb(35, 28, 48),
+}
+
 function EggModel.build(eggId: string): (Model, number)
 	local model = Instance.new("Model")
 	model.Name = eggId .. "Egg"

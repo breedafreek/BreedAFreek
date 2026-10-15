@@ -60,6 +60,7 @@ local Remotes = require(Shared.Remotes)
 local Seasons = require(Shared.Seasons)
 local Weapons = require(Shared.Weapons)
 local Ambient = require(script.Parent.Ambient)
+local Hatch = require(script.Parent.Hatch)
 local Hud = require(script.Parent.Hud)
 local UI = require(script.Parent.UI)
 
@@ -1182,7 +1183,26 @@ local function nextReveal()
 	end
 	if result.kind == "wheel" then
 		revealWheel(result, done)
-	else
+		return
+	end
+	-- Eggs hatch out in the world in front of the player; the prize card waits at the side
+	-- so the Freek stays in view.
+	if currentWindow then
+		open(currentWindow)
+	end
+	local hatched = Hatch.play(result, screen, function(cleanup)
+		local shade, box = overlay()
+		shade.BackgroundTransparency = 1
+		box.AnchorPoint = Vector2.new(1, 0.5)
+		box.Position = UDim2.new(1, -24, 0.55, 0)
+		box.Size = UDim2.fromOffset(300, 410)
+		freekPrize(box, result.freek, result.rarity, result.isNew, function()
+			shade:Destroy()
+			cleanup()
+			done()
+		end)
+	end)
+	if not hatched then
 		revealCrate(result, done)
 	end
 end
