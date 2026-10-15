@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+print("[Fuse a Freek] Client starting")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Belt = require(Shared.Belt)
 local Breeding = require(Shared.Breeding)
@@ -1075,7 +1076,9 @@ task.spawn(function()
 	discoveries = Remotes.get("GetDiscoveries"):InvokeServer() or {}
 	render()
 end)
+print("[Fuse a Freek] Client UI built, loading your data...")
 state = Remotes.get("GetState"):InvokeServer()
+print("[Fuse a Freek] Client ready")
 if state then
 	setRebirthBoost(state.rebirths or 0)
 end
