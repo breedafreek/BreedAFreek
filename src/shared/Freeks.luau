@@ -75,6 +75,9 @@ local function pointyEar(add, x: number, y: number, z: number, width: number, he
 			pos = { x + side * width / 4, y, z },
 			rot = { 0, side * -90, 0 },
 			color = color,
+			rig = "ear",
+			side = if x < 0 then -1 else 1,
+			pivot = { x, y - height / 2, z },
 		})
 	end
 end
@@ -270,6 +273,8 @@ local function human(o)
 				rot = { 0, 0, 90 + side * 6 },
 				color = o.sleeves or o.skin,
 				swing = swing,
+				rig = "arm",
+				side = side,
 			})
 			add({
 				shape = "Ball",
@@ -277,6 +282,8 @@ local function human(o)
 				pos = { side * (shoulderX + 0.08), 1.72, 0 },
 				color = o.skin,
 				swing = swing,
+				rig = "arm",
+				side = side,
 			})
 		end
 	end
@@ -320,6 +327,7 @@ local function human(o)
 	end
 
 	local effects = {}
+	local before = #parts
 	if o.extra then
 		o.extra({
 			add = add,
@@ -336,6 +344,19 @@ local function human(o)
 			eyeY = eyeY,
 			effects = effects,
 		})
+	end
+	-- Anything the extras put on an arm (biceps, claws, a dumbbell, a book) moves with it.
+	if not o.armsForward then
+		for i = before + 1, #parts do
+			local spec = parts[i]
+			local x, y = spec.pos[1], spec.pos[2]
+			if not spec.swing and not spec.rig and y < torsoTop and math.abs(x) >= shoulderX - armD * 0.5 then
+				local side = if x < 0 then -1 else 1
+				spec.swing = { hinge = { side * shoulderX, 3.2, 0 }, phase = if side < 0 then 0.5 else 0, amount = 0.8 }
+				spec.rig = "arm"
+				spec.side = side
+			end
+		end
 	end
 	return { parts = parts, effects = effects }
 end
@@ -389,6 +410,8 @@ Freeks.list = {
 					pos = { side * 0.8, 4.1, -1.1 },
 					rot = { -25, side * 90, side * 25 },
 					color = deep,
+					rig = "ear",
+					pivot = { side * 0.55, 4.45, -1.1 },
 				})
 				add({
 					shape = "Wedge",
@@ -397,11 +420,19 @@ Freeks.list = {
 					rot = { -25, side * 90, side * 25 },
 					color = rgb(255, 120, 150),
 					detail = true,
+					rig = "ear",
+					pivot = { side * 0.55, 4.45, -1.1 },
 				})
 			end
 			-- Curly tail.
 			for k, p in { { 0, 2.3, 1.95 }, { 0.18, 2.48, 2.08 }, { 0.05, 2.68, 2.16 }, { -0.14, 2.55, 2.22 } } do
-				add({ shape = "Ball", size = 0.32 - k * 0.02, pos = p, color = deep })
+				add({
+					shape = "Ball",
+					size = 0.32 - k * 0.02,
+					pos = p,
+					color = deep,
+					swing = { hinge = { 0, 2.3, 1.85 }, axis = "Y", amount = 0.7 },
+				})
 			end
 			return { parts = list }
 		end)(),
@@ -452,6 +483,8 @@ Freeks.list = {
 					pos = { side * 1.22, 3.45, -0.85 },
 					rot = { 0, 0, side * 14 },
 					color = dark,
+					rig = "ear",
+					pivot = { side * 1.05, 4.2, -0.85 },
 				})
 			end
 			-- Collar and tag.
@@ -461,6 +494,7 @@ Freeks.list = {
 				pos = { 0, 2.75, -0.7 },
 				rot = { 0, 0, 90 },
 				color = rgb(225, 40, 55),
+				onHead = false,
 			})
 			add({
 				shape = "Cylinder",
@@ -469,6 +503,7 @@ Freeks.list = {
 				rot = { 0, 90, 0 },
 				color = rgb(255, 205, 60),
 				material = "Foil",
+				onHead = false,
 			})
 			-- Wagging tail with a cream tip.
 			local wag = { hinge = { 0, 2.5, 1.9 }, axis = "Y", amount = 1.5 }
@@ -640,6 +675,7 @@ Freeks.list = {
 						1.75 + math.cos(a) * radius * 0.4 + (if i < 3 then i * 0.35 else 0.9),
 					},
 					color = if i % 3 == 0 then spot else lime,
+					swing = { hinge = { 0, 1.3, 1.5 }, axis = "Y", amount = 0.5 },
 				})
 			end
 			return { parts = list }
@@ -1014,8 +1050,15 @@ Freeks.list = {
 				pos = { 0, 2.9, 3.05 },
 				rot = { 0, -90, -30 },
 				color = dark,
+				swing = { hinge = { 0, 3.1, 2.75 }, axis = "Y", amount = 0.7 },
 			})
-			add({ shape = "Ellipsoid", size = { 0.35, 0.5, 0.35 }, pos = { 0, 2.55, 3.4 }, color = rgb(80, 80, 100) })
+			add({
+				shape = "Ellipsoid",
+				size = { 0.35, 0.5, 0.35 },
+				pos = { 0, 2.55, 3.4 },
+				color = rgb(80, 80, 100),
+				swing = { hinge = { 0, 3.1, 2.75 }, axis = "Y", amount = 0.7 },
+			})
 			return { parts = list, effects = { { type = "Glow", part = tip, color = rgb(190, 110, 255) } } }
 		end)(),
 	},
@@ -1725,6 +1768,7 @@ Freeks.list = {
 						size = 0.75 - i * 0.08,
 						pos = { 0, 1.9 + i * 0.3, h.torsoD / 2 + 0.4 + i * 0.25 },
 						color = if i == 3 then light else fur,
+						swing = { hinge = { 0, 1.9, h.torsoD / 2 + 0.2 }, axis = "Y", amount = 0.8 },
 					})
 				end
 				h.add({
@@ -1804,6 +1848,8 @@ Freeks.list = {
 					pos = { side * 1.9, 2.4, -0.1 },
 					color = purple,
 					swing = { hinge = { side * 1.6, 2.6, -0.1 }, phase = if side < 0 then 0.5 else 0, amount = 0.6 },
+					rig = "arm",
+					side = side,
 				})
 			end
 			return {

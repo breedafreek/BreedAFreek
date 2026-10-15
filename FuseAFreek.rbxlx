@@ -648,6 +648,418 @@ return Format
       </Item>
       <Item class="ModuleScript" referent="9">
         <Properties>
+          <string name="Name">FreekAnimator</string>
+          <string name="Source"><![CDATA[-- Brings Freek models to life: idle animations for Freeks standing in barns and on the
+-- reveal stage, and walk cycles for Freeks roaming the map.
+--
+-- Idle, a Freek breathes, blinks, looks around (turning and tilting its head), wags its
+-- tail, twitches its ears, flutters its wings, waves now and then, and every so often does
+-- a happy hop. Walking, it steps with its own gait (see WALKS): legs and arms swing, the
+-- body bobs, rocks and squashes on each footfall, the head nods, ears bounce and the tail
+-- sways. Everything is worked out from the time alone, so the same Freek at the same
+-- moment always strikes the same pose, and a renderer can draw any frame.
+--
+-- FreekModel tags the parts that move: SwingHinge (legs, arms, tails, wings), OnHead,
+-- Eye/EyeWhite, and Rig = "ear" | "arm".
+--
+-- Usage:
+--   local rig = FreekAnimator.rig(model)          -- once per model
+--   FreekAnimator.pose(rig, groundCFrame, t)       -- every frame, idle
+--   FreekAnimator.pose(rig, groundCFrame, t, true) -- every frame, walking
+
+local Workspace = game:GetService("Workspace")
+
+local FreekAnimator = {}
+
+-- How each kind of Freek walks: steps per second (speed, radians), how high it bobs, how
+-- much it rocks side to side (roll) and turns from side to side (yaw), and how far its legs
+-- swing (degrees); plus how much it leans forward, nods its head and squashes on each step.
+-- Set per species with `walk` in Freeks.luau.
+FreekAnimator.WALKS = {
+	waddle = { speed = 9, bob = 0.25, roll = 7, yaw = 0, legs = 30, lean = 3, nod = 5, squash = 0.05 },
+	trot = { speed = 12, bob = 0.35, roll = 3, yaw = 0, legs = 35, lean = 5, nod = 7, squash = 0.04 },
+	prowl = { speed = 8, bob = 0.08, roll = 2, yaw = 4, legs = 28, lean = 2, nod = 3, squash = 0.02 },
+	slither = { speed = 9, bob = 0, roll = 0, yaw = 10, legs = 40, lean = 0, nod = 2, squash = 0.02 },
+	stomp = { speed = 6, bob = 0.35, roll = 4, yaw = 0, legs = 25, lean = 4, nod = 6, squash = 0.07 },
+	flap = { speed = 9, bob = 0.5, roll = 8, yaw = 0, legs = 30, lean = 6, nod = 6, squash = 0.04 },
+	bounce = { speed = 7, bob = 1, roll = 6, yaw = 0, legs = 30, lean = 0, nod = 4, squash = 0.12, hop = true },
+	strut = { speed = 10, bob = 0.25, roll = 2, yaw = 5, legs = 35, lean = -2, nod = 6, squash = 0.03 },
+	catwalk = { speed = 9, bob = 0.15, roll = 0, yaw = 9, legs = 30, lean = -3, nod = 3, squash = 0.02 },
+	shamble = { speed = 5, bob = 0.15, roll = 9, yaw = 3, legs = 22, lean = 9, nod = 10, squash = 0.03 },
+	float = { speed = 3, bob = 0.7, roll = 4, yaw = 0, legs = 30, lean = 4, nod = 3, squash = 0, float = true },
+}
+
+local TAU = math.pi * 2
+
+local function axisRotation(axis: string, angle: number): CFrame
+	if axis == "Y" then
+		return CFrame.Angles(0, angle, 0)
+	elseif axis == "Z" then
+		return CFrame.Angles(0, 0, angle)
+	end
+	return CFrame.Angles(angle, 0, 0)
+end
+
+-- A repeatable pseudo-random number in [0, 1) for a whole number n and a Freek's seed.
+local function hash(n: number, seed: number): number
+	local x = math.sin(n * 127.1 + seed * 311.7) * 43758.5453
+	return x - math.floor(x)
+end
+
+local function smooth(x: number): number
+	x = math.clamp(x, 0, 1)
+	return x * x * (3 - 2 * x)
+end
+
+-- A short event that happens every `period` seconds (shifted by `shift`) and lasts
+-- `length`: returns how far through it we are (0..1), or nil between events.
+local function event(t: number, period: number, length: number, shift: number): number?
+	local into = (t + shift) % period
+	if into < length then
+		return into / length
+	end
+	return nil
+end
+
+export type Rig = {
+	model: Model,
+	walk: any,
+	seed: number,
+	parts: { BasePart },
+	rest: { CFrame },
+	sizes: { Vector3 },
+	moves: { any },
+	neck: CFrame?,
+	eyes: { any },
+	body: BasePart?,
+	bodyIndex: number,
+	hasHead: boolean,
+	blinking: boolean,
+	squashed: boolean,
+}
+
+-- Collects what moves on a model. Returns nil for a model with no parts.
+function FreekAnimator.rig(model: Model, seed: number?): Rig?
+	if not model.PrimaryPart then
+		return nil
+	end
+	local pivot = model:GetPivot()
+	local rig = {
+		model = model,
+		walk = FreekAnimator.WALKS[model:GetAttribute("Walk")] or FreekAnimator.WALKS.waddle,
+		seed = 0,
+		parts = {},
+		rest = {},
+		sizes = {},
+		moves = {},
+		eyes = {},
+		body = model.PrimaryPart,
+		bodyIndex = 1,
+		hasHead = false,
+		blinking = false,
+		squashed = false,
+	}
+	local head = model:FindFirstChild("Head")
+	if head and head:IsA("BasePart") then
+		-- The head turns about the bottom of the neck, a little behind its centre.
+		local radius = math.max(head.Size.X, head.Size.Y, head.Size.Z) / 2
+		local center = pivot:PointToObjectSpace(head.CFrame.Position)
+		rig.neck = CFrame.new(center + Vector3.new(0, -radius * 0.8, radius * 0.25))
+		rig.hasHead = true
+	end
+	local eyeIndex = {}
+	for _, part in model:GetDescendants() do
+		if not part:IsA("BasePart") then
+			continue
+		end
+		table.insert(rig.parts, part)
+		local i = #rig.parts
+		rig.rest[i] = pivot:ToObjectSpace(part.CFrame)
+		rig.sizes[i] = part.Size
+		if part == rig.body then
+			rig.bodyIndex = i
+		end
+		local move = {}
+		local hinge = part:GetAttribute("SwingHinge")
+		if typeof(hinge) == "Vector3" then
+			local axis = part:GetAttribute("SwingAxis") or "X"
+			move.hinge = CFrame.new(hinge)
+			move.phase = (part:GetAttribute("SwingPhase") or 0) * TAU
+			move.axis = axis
+			move.amount = part:GetAttribute("SwingAmount") or 1
+			move.kind = if axis == "Y" then "tail" elseif axis == "Z" then "wing" else "leg"
+		end
+		local role = part:GetAttribute("Rig")
+		if role == "arm" then
+			move.kind = "arm"
+			move.side = part:GetAttribute("RigSide") or 1
+		elseif role == "ear" then
+			local point = part:GetAttribute("RigPivot")
+			move.ear = CFrame.new(if typeof(point) == "Vector3" then point else rig.rest[i].Position)
+			move.side = part:GetAttribute("RigSide") or 1
+		end
+		move.onHead = rig.hasHead and part:GetAttribute("OnHead") == true
+		local eye = part:GetAttribute("Eye")
+		if eye then
+			local group = eyeIndex[eye]
+			if not group then
+				group = { members = {} }
+				eyeIndex[eye] = group
+				table.insert(rig.eyes, group)
+			end
+			table.insert(group.members, i)
+			if part:GetAttribute("EyeWhite") then
+				group.white = i
+			end
+		end
+		rig.moves[i] = move
+	end
+	for _, group in rig.eyes do
+		local white = group.white or group.members[1]
+		local rest, size = rig.rest[white], rig.sizes[white]
+		-- Eyes close toward a line a little below their middle, like lids coming down.
+		group.center = rest.Position - Vector3.new(0, size.Y * 0.12, 0)
+	end
+	rig.seed = seed or (model:GetAttribute("Seed") or (pivot.Position.X * 0.37 + pivot.Position.Z * 0.61))
+	rig.seed = (rig.seed % 97) / 97
+	return rig :: any
+end
+
+-- How open the eyes are (1 open, 0 shut) at time t.
+local function eyesOpen(t: number, seed: number): number
+	local period = 2.6 + seed * 2.4
+	local cycle = math.floor((t + seed * 10) / period)
+	local into = (t + seed * 10) % period
+	local open = 1
+	local blink = 0.16
+	if into < blink then
+		open = 1 - math.sin(into / blink * math.pi)
+	elseif hash(cycle, seed) < 0.3 and into > 0.24 and into < 0.24 + blink then
+		-- Sometimes a quick double blink.
+		open = 1 - math.sin((into - 0.24) / blink * math.pi)
+	end
+	return open
+end
+
+-- Where the head is looking at time t: yaw, pitch, roll (radians). It glances somewhere,
+-- holds it, then glances somewhere else; now and then it tilts its head, curious.
+local function headLook(t: number, seed: number): (number, number, number)
+	local hold = 2.2 + seed * 1.3
+	local shifted = t + seed * 7
+	local index = math.floor(shifted / hold)
+	local into = shifted % hold
+	local function target(n: number)
+		local yaw = (hash(n, seed) - 0.5) * math.rad(46)
+		local pitch = (hash(n + 0.5, seed) - 0.4) * math.rad(18)
+		local roll = if hash(n + 0.25, seed) < 0.3 then (hash(n + 0.75, seed) - 0.5) * math.rad(36) else 0
+		if hash(n + 0.9, seed) < 0.25 then
+			yaw, pitch = 0, -math.rad(4) -- looking straight at you
+		end
+		return yaw, pitch, roll
+	end
+	local y0, p0, r0 = target(index - 1)
+	local y1, p1, r1 = target(index)
+	local a = smooth(into / 0.45)
+	return y0 + (y1 - y0) * a, p0 + (p1 - p0) * a, r0 + (r1 - r0) * a
+end
+
+-- Works out the pose for time t and moves the model there, standing at `ground`.
+function FreekAnimator.pose(rig: Rig, ground: CFrame, t: number, walking: boolean?)
+	local walk = rig.walk
+	local seed = rig.seed
+	t += seed * 31
+
+	-- The whole body: bob, rock, lean, hop, and squash (sy up, sx out to the sides).
+	local root = CFrame.identity
+	local sy = 0
+	local stepAngle = 0
+	local yaw, pitch, roll = 0, 0, 0 -- the head
+	local earAngle = 0
+	local tailAngle, tailSpeed = 0, 0
+	local wingAngle = 0
+	local armWave = 0 -- 0..1, how far the waving arm is raised
+	local hopping = false
+
+	if walking then
+		stepAngle = t * walk.speed
+		local step = math.sin(stepAngle)
+		local footfall = math.abs(math.cos(stepAngle)) -- 1 as a foot lands
+		local lift = math.abs(step) * walk.bob
+		root = CFrame.new(0, lift, 0)
+			* CFrame.Angles(math.rad(-walk.lean), math.rad(step * walk.yaw), math.rad(step * walk.roll))
+		if walk.float then
+			root = CFrame.new(0, 0.6 + math.sin(t * 2) * 0.35, 0)
+				* CFrame.Angles(math.rad(-walk.lean), 0, math.rad(math.sin(t * 1.5) * walk.roll))
+		end
+		sy = -footfall ^ 6 * walk.squash + (if walk.hop then math.abs(step) * walk.squash * 0.6 else 0)
+		pitch = math.sin(stepAngle * 2) * math.rad(walk.nod)
+		yaw = math.sin(t * 0.7 + seed * 5) * math.rad(10)
+		earAngle = math.sin(stepAngle * 2 + 0.6) * math.rad(10)
+		tailAngle, tailSpeed = math.rad(18), walk.speed
+	else
+		-- Breathing: a slow swell of the chest.
+		local breath = math.sin(t * 2.2)
+		sy = breath * 0.022
+		-- A gentle sway from foot to foot.
+		root = CFrame.Angles(0, math.sin(t * 0.5) * math.rad(4), math.sin(t * 1.1) * math.rad(1.5))
+		if walk.float then
+			root = CFrame.new(0, 0.6 + math.sin(t * 1.6) * 0.35, 0) * root
+		end
+
+		yaw, pitch, roll = headLook(t, seed)
+
+		-- A happy hop every so often: crouch, spring up with a little spin, land and squash.
+		local hop = event(t, 9 + seed * 5, 1.1, seed * 13)
+		if hop then
+			hopping = true
+			if hop < 0.2 then
+				sy = -smooth(hop / 0.2) * 0.12
+			elseif hop < 0.75 then
+				local air = (hop - 0.2) / 0.55
+				root = CFrame.new(0, math.sin(air * math.pi) * 1.4, 0) * root
+				sy = 0.1 * math.sin(air * math.pi)
+				pitch -= math.rad(10)
+			else
+				local land = (hop - 0.75) / 0.25
+				sy = -math.sin(land * math.pi) * 0.1
+			end
+		end
+
+		-- Tail: always wagging a little, sometimes really going for it.
+		local excited = event(t, 6 + seed * 4, 2.2, seed * 3)
+		tailAngle = math.rad(10 + (if excited then math.sin(excited * math.pi) * 22 else 0))
+		tailSpeed = if excited then 11 else 3
+
+		-- Ears: a quick double flick now and then.
+		local twitch = event(t, 4.5 + seed * 3, 0.45, seed * 17)
+		if twitch then
+			earAngle = math.sin(twitch * TAU * 2) * math.rad(18) * (1 - twitch)
+		else
+			earAngle = math.sin(t * 1.3) * math.rad(2)
+		end
+
+		-- Wings and flippers: a flutter now and then (and on every hop).
+		local flutter = event(t, 7 + seed * 3, 0.9, seed * 23)
+		if flutter or hopping then
+			wingAngle = math.abs(math.sin(t * 22)) * math.rad(30)
+		else
+			wingAngle = (math.sin(t * 2.2) + 1) * math.rad(2)
+		end
+
+		-- A wave hello.
+		local wave = event(t, 11 + seed * 6, 2.4, seed * 41)
+		if wave then
+			armWave = smooth(wave / 0.2) * smooth((1 - wave) / 0.2)
+		end
+		if hopping then
+			armWave = math.max(armWave, 0.95) -- arms up: yay!
+		end
+	end
+
+	local headTurn = rig.neck and (rig.neck * CFrame.fromOrientation(pitch, yaw, roll) * rig.neck:Inverse())
+	local legSwing = math.rad(walk.legs)
+	local base = ground * root
+	local sx = -sy * 0.5
+	local waveSide = if seed < 0.5 then 1 else -1
+
+	local cframes = table.create(#rig.parts)
+	for i = 1, #rig.parts do
+		local local_ = rig.rest[i]
+		local move = rig.moves[i]
+		if move.hinge then
+			local angle = 0
+			if move.kind == "tail" then
+				angle = math.sin(t * tailSpeed + move.phase) * tailAngle * move.amount
+				if walking then
+					angle += math.sin(stepAngle + move.phase) * legSwing * move.amount
+				end
+			elseif move.kind == "wing" then
+				if walking then
+					angle = math.sin(stepAngle + move.phase) * legSwing * move.amount
+				else
+					angle = wingAngle * move.amount
+				end
+			elseif walking then
+				angle = math.sin(stepAngle + move.phase) * legSwing * move.amount
+			elseif move.kind == "arm" then
+				angle = math.sin(t * 1.2 + move.side) * math.rad(3)
+			end
+			local swing = move.hinge * axisRotation(move.axis, angle) * move.hinge:Inverse()
+			local_ = swing * local_
+			if move.kind == "arm" and armWave > 0 and (move.side == waveSide or hopping) then
+				-- Raise the arm out to the side and wave the hand back and forth.
+				local raise = armWave * math.rad(150) + math.sin(t * 12) * math.rad(18) * armWave
+				local shoulder = move.hinge
+				local_ = shoulder * CFrame.Angles(0, 0, move.side * raise) * shoulder:Inverse() * local_
+			end
+		end
+		if move.ear then
+			local_ = move.ear * CFrame.Angles(0, 0, -move.side * earAngle) * move.ear:Inverse() * local_
+		end
+		if move.onHead and headTurn then
+			local_ = headTurn * local_
+		end
+		if sy ~= 0 then
+			-- Squash and stretch about the feet: everything moves with the body's swell.
+			local p = local_.Position
+			local_ = local_ + Vector3.new(p.X * sx, p.Y * sy, p.Z * sx * 0.5)
+		end
+		cframes[i] = base * local_
+	end
+
+	-- Eyes squash shut to blink.
+	local open = if walking then eyesOpen(t * 1.2, seed) else eyesOpen(t, seed)
+	if open < 0.999 or rig.blinking then
+		rig.blinking = open < 0.999
+		local k = math.max(open, 0.08)
+		for _, group in rig.eyes do
+			for _, i in group.members do
+				local part = rig.parts[i]
+				local size = rig.sizes[i]
+				part.Size = Vector3.new(size.X, size.Y * k, size.Z)
+				-- Move it toward the closing line, in the head's frame.
+				local rest = rig.rest[i]
+				local offset = rest.Position - group.center
+				local shut = CFrame.new(group.center + Vector3.new(offset.X, offset.Y * k, offset.Z)) * rest.Rotation
+				local swung = shut
+				if rig.moves[i].onHead and headTurn then
+					swung = headTurn * swung
+				end
+				if sy ~= 0 then
+					local p = swung.Position
+					swung = swung + Vector3.new(p.X * sx, p.Y * sy, p.Z * sx * 0.5)
+				end
+				cframes[i] = base * swung
+			end
+		end
+	end
+
+	-- The body swells as it breathes.
+	if rig.body and sy ~= 0 then
+		local size = rig.sizes[rig.bodyIndex]
+		rig.body.Size = Vector3.new(size.X * (1 + sx), size.Y * (1 + sy), size.Z * (1 + sx * 0.5))
+		rig.squashed = true
+	elseif rig.body and rig.squashed then
+		rig.body.Size = rig.sizes[rig.bodyIndex]
+		rig.squashed = false
+	end
+
+	local ok = pcall(function()
+		Workspace:BulkMoveTo(rig.parts, cframes, Enum.BulkMoveMode.FireCFrameChanged)
+	end)
+	if not ok then
+		for i, part in rig.parts do
+			part.CFrame = cframes[i]
+		end
+	end
+end
+
+return FreekAnimator
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="10">
+        <Properties>
           <string name="Name">FreekModel</string>
           <string name="Source"><![CDATA[-- Builds the 3D model for a Freek out of plain parts.
 -- The model's pivot sits at its feet and its face points along -Z (the model's front),
@@ -665,7 +1077,13 @@ return Format
 --     detail = true (optional: keeps its color when mutated, e.g. eyes),
 --     shine = false (optional: no sparkle highlights on a dark detail ball),
 --     swing = { hinge = {x, y, z}, phase = 0..1, axis = "X" | "Y" | "Z", amount = 1 }
---       (optional: the part swings around the hinge while the Freek walks, e.g. legs) }
+--       (optional: the part swings around the hinge while the Freek walks, e.g. legs;
+--       axis "Y" swings are tails and wag when idle, axis "Z" swings are wings or flippers),
+--     rig = "ear" | "arm" (optional: an ear that twitches, or an arm that waves, when idle),
+--     side = -1 | 1, pivot = { x, y, z } (for rig parts: which side, and where it bends),
+--     onHead = false (optional: stays put when the head turns, e.g. a collar) }
+-- A part named "Head" turns to look around, with everything on it; eyes (white detail
+-- balls with an iris and pupil in front) blink. See FreekAnimator.
 -- A species' walk = "waddle" | "trot" | ... picks how it moves (see the client).
 -- The first part is the main body. Effects:
 --   { type = "Sparkles" | "Fire" | "Smoke" | "Glow", part = index (default 1), color = Color3,
@@ -724,6 +1142,7 @@ local function vector(value): Vector3
 end
 
 local polish
+local tagRig
 
 local function addEffect(part: BasePart, effect)
 	local kind = effect.type
@@ -789,6 +1208,7 @@ function polish(model: Model, specs, parts)
 				if k == 2 then
 					dot.Transparency = 0.15
 				end
+				dot:SetAttribute("Rig", part:GetAttribute("Rig"))
 				local swing = part:GetAttribute("SwingHinge")
 				if swing then
 					dot:SetAttribute("SwingHinge", swing)
@@ -821,6 +1241,91 @@ function polish(model: Model, specs, parts)
 			mesh.MeshType = Enum.MeshType.Sphere
 			mesh.Parent = sheen
 			sheen.Parent = model
+		end
+	end
+end
+
+-- Marks what moves when the Freek is idle (see FreekAnimator): everything on its head gets
+-- OnHead, and each eye (a white detail ball or ellipsoid with the parts in front of it)
+-- gets an Eye number, with EyeWhite on the white. Round eye parts become sphere-meshed
+-- blocks, which look the same but can squash shut to blink.
+local function sphereBlock(part: BasePart)
+	if part:IsA("Part") and part.Shape == Enum.PartType.Ball then
+		part.Shape = Enum.PartType.Block
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Parent = part
+	end
+end
+
+function tagRig(model: Model, specs, parts)
+	local body = parts[1]
+	local head = model:FindFirstChild("Head")
+	local headCenter, headRadius
+	if head and head:IsA("BasePart") then
+		headCenter = head.CFrame.Position
+		headRadius = math.max(head.Size.X, head.Size.Y, head.Size.Z) / 2
+		for _, part in model:GetChildren() do
+			if part:IsA("BasePart") and part ~= body and not part:GetAttribute("SwingHinge") then
+				local offset = part.CFrame.Position - headCenter
+				if
+					offset.Magnitude <= headRadius * 1.55
+					and offset.Y >= -headRadius * 0.92
+					and offset.Z <= headRadius
+					and part:GetAttribute("Rig") ~= "arm"
+					and part:GetAttribute("NotOnHead") ~= true
+				then
+					part:SetAttribute("OnHead", true)
+				end
+			end
+		end
+	end
+
+	-- Eyes: big white detail balls on the head (or on the upper body of a head-less Freek).
+	local all = model:GetChildren()
+	local eyes = 0
+	for i, spec in specs do
+		local part = parts[i]
+		local shape = spec.shape or "Block"
+		local size = part.Size
+		local color = part.Color
+		local whiteish = math.min(color.R, color.G, color.B) > 0.9
+		local placed = if headCenter
+			then part:GetAttribute("OnHead") == true
+			else part.CFrame.Position.Y > body.CFrame.Position.Y
+		if
+			spec.detail
+			and whiteish
+			and (shape == "Ball" or shape == "Ellipsoid")
+			and math.min(size.X, size.Y) >= 0.25
+			and math.max(size.X, size.Y) <= 2.4
+			and (spec.transparency or 0) < 0.5
+			and placed
+			and not part:GetAttribute("Eye")
+		then
+			eyes += 1
+			local center = part.CFrame.Position
+			local half = size / 2
+			part:SetAttribute("Eye", eyes)
+			part:SetAttribute("EyeWhite", true)
+			sphereBlock(part)
+			for _, other in all do
+				if other:IsA("BasePart") and other ~= part and other ~= body and other ~= head then
+					local offset = other.CFrame.Position - center
+					local big = math.max(other.Size.X, other.Size.Y)
+					if
+						math.abs(offset.X) <= half.X
+						and math.abs(offset.Y) <= half.Y
+						and offset.Z <= 0.05
+						and offset.Z >= -half.Z - 0.5
+						and big <= math.max(size.X, size.Y) * 1.02
+						and not other:GetAttribute("Eye")
+					then
+						other:SetAttribute("Eye", eyes)
+						sphereBlock(other)
+					end
+				end
+			end
 		end
 	end
 end
@@ -868,6 +1373,16 @@ local function buildFromParts(species, mutationId: string?): (Model, number)
 			part:SetAttribute("SwingAxis", spec.swing.axis or "X")
 			part:SetAttribute("SwingAmount", spec.swing.amount or 1)
 		end
+		if spec.onHead == false then
+			part:SetAttribute("NotOnHead", true)
+		end
+		if spec.rig then
+			part:SetAttribute("Rig", spec.rig)
+			part:SetAttribute("RigSide", spec.side or (if spec.pos[1] < 0 then -1 else 1))
+			if spec.pivot then
+				part:SetAttribute("RigPivot", vector(spec.pivot))
+			end
+		end
 
 		if not spec.detail then
 			if mutationId == "Golden" then
@@ -890,6 +1405,7 @@ local function buildFromParts(species, mutationId: string?): (Model, number)
 	body.PivotOffset = body.CFrame:Inverse()
 	model.PrimaryPart = body
 	polish(model, look.parts, parts)
+	tagRig(model, look.parts, parts)
 
 	for _, effect in look.effects or {} do
 		addEffect(parts[effect.part or 1], effect)
@@ -1057,9 +1573,15 @@ function buildHybrid(species, mutationId: string?): (Model, number)
 			local offset = (part.CFrame.Position - otherCenter) * scale
 			part.Size *= scale
 			part.CFrame = CFrame.new(body.CFrame.Position + offset) * part.CFrame.Rotation
-			local hinge = part:GetAttribute("SwingHinge")
-			if typeof(hinge) == "Vector3" then
-				part:SetAttribute("SwingHinge", body.CFrame.Position + (hinge - otherCenter) * scale)
+			local eye = part:GetAttribute("Eye")
+			if eye then
+				part:SetAttribute("Eye", eye + 100) -- keep the parents' eye numbers apart
+			end
+			for _, name in { "SwingHinge", "RigPivot" } do
+				local point = part:GetAttribute(name)
+				if typeof(point) == "Vector3" then
+					part:SetAttribute(name, body.CFrame.Position + (point - otherCenter) * scale)
+				end
 			end
 		end
 	end
@@ -1114,7 +1636,7 @@ return FreekModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="10">
+      <Item class="ModuleScript" referent="11">
         <Properties>
           <string name="Name">FreekUtil</string>
           <string name="Source"><![CDATA[-- Helpers shared by server and client for reading a saved Freek record:
@@ -1225,7 +1747,7 @@ return FreekUtil
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="11">
+      <Item class="ModuleScript" referent="12">
         <Properties>
           <string name="Name">Freeks</string>
           <string name="Source"><![CDATA[-- Every Freek species in the game.
@@ -1305,6 +1827,9 @@ local function pointyEar(add, x: number, y: number, z: number, width: number, he
 			pos = { x + side * width / 4, y, z },
 			rot = { 0, side * -90, 0 },
 			color = color,
+			rig = "ear",
+			side = if x < 0 then -1 else 1,
+			pivot = { x, y - height / 2, z },
 		})
 	end
 end
@@ -1500,6 +2025,8 @@ local function human(o)
 				rot = { 0, 0, 90 + side * 6 },
 				color = o.sleeves or o.skin,
 				swing = swing,
+				rig = "arm",
+				side = side,
 			})
 			add({
 				shape = "Ball",
@@ -1507,6 +2034,8 @@ local function human(o)
 				pos = { side * (shoulderX + 0.08), 1.72, 0 },
 				color = o.skin,
 				swing = swing,
+				rig = "arm",
+				side = side,
 			})
 		end
 	end
@@ -1550,6 +2079,7 @@ local function human(o)
 	end
 
 	local effects = {}
+	local before = #parts
 	if o.extra then
 		o.extra({
 			add = add,
@@ -1566,6 +2096,19 @@ local function human(o)
 			eyeY = eyeY,
 			effects = effects,
 		})
+	end
+	-- Anything the extras put on an arm (biceps, claws, a dumbbell, a book) moves with it.
+	if not o.armsForward then
+		for i = before + 1, #parts do
+			local spec = parts[i]
+			local x, y = spec.pos[1], spec.pos[2]
+			if not spec.swing and not spec.rig and y < torsoTop and math.abs(x) >= shoulderX - armD * 0.5 then
+				local side = if x < 0 then -1 else 1
+				spec.swing = { hinge = { side * shoulderX, 3.2, 0 }, phase = if side < 0 then 0.5 else 0, amount = 0.8 }
+				spec.rig = "arm"
+				spec.side = side
+			end
+		end
 	end
 	return { parts = parts, effects = effects }
 end
@@ -1619,6 +2162,8 @@ Freeks.list = {
 					pos = { side * 0.8, 4.1, -1.1 },
 					rot = { -25, side * 90, side * 25 },
 					color = deep,
+					rig = "ear",
+					pivot = { side * 0.55, 4.45, -1.1 },
 				})
 				add({
 					shape = "Wedge",
@@ -1627,11 +2172,19 @@ Freeks.list = {
 					rot = { -25, side * 90, side * 25 },
 					color = rgb(255, 120, 150),
 					detail = true,
+					rig = "ear",
+					pivot = { side * 0.55, 4.45, -1.1 },
 				})
 			end
 			-- Curly tail.
 			for k, p in { { 0, 2.3, 1.95 }, { 0.18, 2.48, 2.08 }, { 0.05, 2.68, 2.16 }, { -0.14, 2.55, 2.22 } } do
-				add({ shape = "Ball", size = 0.32 - k * 0.02, pos = p, color = deep })
+				add({
+					shape = "Ball",
+					size = 0.32 - k * 0.02,
+					pos = p,
+					color = deep,
+					swing = { hinge = { 0, 2.3, 1.85 }, axis = "Y", amount = 0.7 },
+				})
 			end
 			return { parts = list }
 		end)(),
@@ -1682,6 +2235,8 @@ Freeks.list = {
 					pos = { side * 1.22, 3.45, -0.85 },
 					rot = { 0, 0, side * 14 },
 					color = dark,
+					rig = "ear",
+					pivot = { side * 1.05, 4.2, -0.85 },
 				})
 			end
 			-- Collar and tag.
@@ -1691,6 +2246,7 @@ Freeks.list = {
 				pos = { 0, 2.75, -0.7 },
 				rot = { 0, 0, 90 },
 				color = rgb(225, 40, 55),
+				onHead = false,
 			})
 			add({
 				shape = "Cylinder",
@@ -1699,6 +2255,7 @@ Freeks.list = {
 				rot = { 0, 90, 0 },
 				color = rgb(255, 205, 60),
 				material = "Foil",
+				onHead = false,
 			})
 			-- Wagging tail with a cream tip.
 			local wag = { hinge = { 0, 2.5, 1.9 }, axis = "Y", amount = 1.5 }
@@ -1870,6 +2427,7 @@ Freeks.list = {
 						1.75 + math.cos(a) * radius * 0.4 + (if i < 3 then i * 0.35 else 0.9),
 					},
 					color = if i % 3 == 0 then spot else lime,
+					swing = { hinge = { 0, 1.3, 1.5 }, axis = "Y", amount = 0.5 },
 				})
 			end
 			return { parts = list }
@@ -2244,8 +2802,15 @@ Freeks.list = {
 				pos = { 0, 2.9, 3.05 },
 				rot = { 0, -90, -30 },
 				color = dark,
+				swing = { hinge = { 0, 3.1, 2.75 }, axis = "Y", amount = 0.7 },
 			})
-			add({ shape = "Ellipsoid", size = { 0.35, 0.5, 0.35 }, pos = { 0, 2.55, 3.4 }, color = rgb(80, 80, 100) })
+			add({
+				shape = "Ellipsoid",
+				size = { 0.35, 0.5, 0.35 },
+				pos = { 0, 2.55, 3.4 },
+				color = rgb(80, 80, 100),
+				swing = { hinge = { 0, 3.1, 2.75 }, axis = "Y", amount = 0.7 },
+			})
 			return { parts = list, effects = { { type = "Glow", part = tip, color = rgb(190, 110, 255) } } }
 		end)(),
 	},
@@ -2955,6 +3520,7 @@ Freeks.list = {
 						size = 0.75 - i * 0.08,
 						pos = { 0, 1.9 + i * 0.3, h.torsoD / 2 + 0.4 + i * 0.25 },
 						color = if i == 3 then light else fur,
+						swing = { hinge = { 0, 1.9, h.torsoD / 2 + 0.2 }, axis = "Y", amount = 0.8 },
 					})
 				end
 				h.add({
@@ -3034,6 +3600,8 @@ Freeks.list = {
 					pos = { side * 1.9, 2.4, -0.1 },
 					color = purple,
 					swing = { hinge = { side * 1.6, 2.6, -0.1 }, phase = if side < 0 then 0.5 else 0, amount = 0.6 },
+					rig = "arm",
+					side = side,
 				})
 			end
 			return {
@@ -3084,7 +3652,7 @@ return Freeks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">GamePasses</string>
           <string name="Source"><![CDATA[-- Game passes: one-time Robux purchases with permanent perks.
@@ -3236,7 +3804,7 @@ return GamePasses
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">GateTiers</string>
           <string name="Source"><![CDATA[-- The frame around each barn's doors upgrades with rebirths: Iron, then Bronze, Silver,
@@ -3316,7 +3884,7 @@ return GateTiers
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">Hybrids</string>
           <string name="Source"><![CDATA[-- Hybrids: what you get when two different Freeks fuse.
@@ -3500,7 +4068,7 @@ return Hybrids
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">Luck</string>
           <string name="Source"><![CDATA[-- Luck: Monster Eggs, the daily Lucky Wheel and Lucky Hour events. Shared so the client
@@ -3668,7 +4236,7 @@ return Luck
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">Mutations</string>
           <string name="Source"><![CDATA[-- Mutations multiply a Freek's income. They only enter the game from the cannons (chance
@@ -3733,7 +4301,7 @@ return Mutations
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
@@ -3763,7 +4331,7 @@ return Rarities
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">Remotes</string>
           <string name="Source"><![CDATA[-- One place that names every remote. The server creates them; clients wait for them.
@@ -3822,7 +4390,7 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">Seasons</string>
           <string name="Source"><![CDATA[-- Limited events for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred
@@ -3959,7 +4527,7 @@ return Seasons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">WeaponModel</string>
           <string name="Source"><![CDATA[-- Builds the Tool for a weapon from its part list in Weapons.luau.
@@ -4045,7 +4613,7 @@ return WeaponModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">Weapons</string>
           <string name="Source"><![CDATA[-- Weapons. Everyone has the STARTER weapon; the rest unlock at a number of rebirths
@@ -4336,15 +4904,15 @@ return Weapons
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="22">
+  <Item class="ServerScriptService" referent="23">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="23">
+    <Item class="Folder" referent="24">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="25">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -4584,7 +5152,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">Barn</string>
           <string name="Source"><![CDATA[-- Each player's yard is a big red barn: plank floor, red walls with white trim, a gambrel
@@ -4934,7 +5502,7 @@ return Barn
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">BarnUpgrades</string>
           <string name="Source"><![CDATA[-- The barn gets cooler with every rebirth. Each level keeps everything from the levels
@@ -6251,7 +6819,7 @@ return BarnUpgrades
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">CannonService</string>
           <string name="Source"><![CDATA[-- Runs the Freek cannons (see shared/Drops.luau): builds the glass bubble over the map,
@@ -6723,7 +7291,7 @@ return CannonService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">Carried</string>
           <string name="Source"><![CDATA[-- Which Freeks are being carried off by a thief right now. Kept in memory only: if the
@@ -6763,7 +7331,7 @@ return Carried
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -7035,7 +7603,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">Decor</string>
           <string name="Source"><![CDATA[-- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
@@ -7413,7 +7981,7 @@ return Decor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="31">
+      <Item class="ModuleScript" referent="32">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Discovery Book: the first player in the whole game to get each species has their
@@ -7561,7 +8129,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="32">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the Freeks in their yard, plus offline earnings
@@ -7642,7 +8210,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">Environment</string>
           <string name="Source"><![CDATA[-- Lighting, sky, terrain and the scenery around the yards and conveyor.
@@ -7791,7 +8359,7 @@ return Environment
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">FreekTag</string>
           <string name="Source"><![CDATA[-- The floating tag over a Freek, in the chunky cartoon style: rarity on top (in its colour),
@@ -7867,7 +8435,7 @@ return FreekTag
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">HalloweenDecor</string>
           <string name="Source"><![CDATA[-- Halloween props: ghosts, bats, cobwebs, tombstones, dead trees, a witch's cauldron,
@@ -8327,7 +8895,7 @@ return HalloweenDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">LuckService</string>
           <string name="Source"><![CDATA[-- Monster Crates, the daily Lucky Wheel and Lucky Hour events (rules and odds in
@@ -8741,7 +9309,7 @@ return LuckService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="37">
+      <Item class="Script" referent="38">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -8802,7 +9370,7 @@ print("[Fuse a Freek] Server started")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -8894,7 +9462,7 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the map and gives every player a barn (see Barn.luau) with Freek pads and Fusion
@@ -9772,7 +10340,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">RebirthService</string>
           <string name="Source"><![CDATA[-- Rebirth: pay Config.rebirthCost to start over with a permanent income bonus.
@@ -9868,7 +10436,7 @@ return RebirthService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">Recipes</string>
           <string name="Source"><![CDATA[-- Decides what two Freeks fuse into. Server-only so players can't read the Secret recipes
@@ -9919,7 +10487,7 @@ return Recipes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -10214,7 +10782,7 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Stealing Freeks from other players' yards.
@@ -10645,7 +11213,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="44">
+      <Item class="ModuleScript" referent="45">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
@@ -10929,7 +11497,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="45">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- Weapons: giving them out, buying them, and what happens when they hit.
@@ -11258,19 +11826,19 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="46">
+  <Item class="StarterPlayer" referent="47">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="47">
+    <Item class="StarterPlayerScripts" referent="48">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="48">
+      <Item class="Folder" referent="49">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="49">
+        <Item class="ModuleScript" referent="50">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -11344,7 +11912,7 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="50">
+        <Item class="ModuleScript" referent="51">
           <Properties>
             <string name="Name">BarnFX</string>
             <string name="Source"><![CDATA[-- Moving bits of the rebirth barn upgrades (BarnUpgrades.luau on the server), animated
@@ -11492,7 +12060,7 @@ return BarnFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="51">
+        <Item class="ModuleScript" referent="52">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, event chip, menu tabs, leaderboard,
@@ -12111,7 +12679,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="52">
+        <Item class="ModuleScript" referent="53">
           <Properties>
             <string name="Name">ItemPictures</string>
             <string name="Source"><![CDATA[-- 3D pictures for shop items (barn slots, weapons, game passes), built from parts like
@@ -12421,7 +12989,7 @@ return ItemPictures
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="53">
+        <Item class="LocalScript" referent="54">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -12475,6 +13043,7 @@ local Breeding = require(Shared.Breeding)
 local Config = require(Shared.Config)
 local GateTiers = require(Shared.GateTiers)
 local Format = require(Shared.Format)
+local FreekAnimator = require(ReplicatedStorage.Shared.FreekAnimator)
 local FreekModel = require(Shared.FreekModel)
 local FreekUtil = require(Shared.FreekUtil)
 local Freeks = require(Shared.Freeks)
@@ -13875,23 +14444,6 @@ local function puff(position: Vector3, size: number, color: Color3)
 	end
 end
 
--- How each kind of Freek walks: steps per second (speed, radians), how high it bobs, how
--- much it rocks side to side (roll) and turns from side to side (yaw), and how far its legs
--- swing (degrees). Set per species with `walk` in Freeks.luau.
-local WALKS = {
-	waddle = { speed = 9, bob = 0.25, roll = 7, yaw = 0, legs = 30 },
-	trot = { speed = 12, bob = 0.35, roll = 3, yaw = 0, legs = 35 },
-	prowl = { speed = 8, bob = 0.08, roll = 2, yaw = 4, legs = 28 },
-	slither = { speed = 9, bob = 0, roll = 0, yaw = 10, legs = 40 },
-	stomp = { speed = 6, bob = 0.35, roll = 4, yaw = 0, legs = 25 },
-	flap = { speed = 9, bob = 0.5, roll = 8, yaw = 0, legs = 30 },
-	bounce = { speed = 7, bob = 1, roll = 6, yaw = 0, legs = 30 },
-	strut = { speed = 10, bob = 0.25, roll = 2, yaw = 5, legs = 35 },
-	catwalk = { speed = 9, bob = 0.15, roll = 0, yaw = 9, legs = 30 },
-	shamble = { speed = 5, bob = 0.15, roll = 9, yaw = 3, legs = 22 },
-	float = { speed = 3, bob = 0.7, roll = 4, yaw = 0, legs = 30 },
-}
-
 -- What Freeks stand on: the ground itself (terrain, the town square floor and the
 -- walkways), never lamps, trees, players or other Freeks.
 local groundParams = RaycastParams.new()
@@ -13911,35 +14463,6 @@ local function groundAt(position: Vector3): number?
 	return hit and hit.Position.Y
 end
 
--- The parts of a Freek that swing as it walks, with where they rest relative to the model.
-local function swingParts(model: Model)
-	local pivot = model:GetPivot()
-	local list = {}
-	for _, part in model:GetDescendants() do
-		local hinge = part:IsA("BasePart") and part:GetAttribute("SwingHinge")
-		if typeof(hinge) == "Vector3" then
-			table.insert(list, {
-				part = part,
-				rest = pivot:ToObjectSpace(part.CFrame),
-				hinge = hinge,
-				phase = part:GetAttribute("SwingPhase") or 0,
-				axis = part:GetAttribute("SwingAxis") or "X",
-				amount = part:GetAttribute("SwingAmount") or 1,
-			})
-		end
-	end
-	return list
-end
-
-local function axisRotation(axis: string, angle: number): CFrame
-	if axis == "Y" then
-		return CFrame.Angles(0, angle, 0)
-	elseif axis == "Z" then
-		return CFrame.Angles(0, 0, angle)
-	end
-	return CFrame.Angles(angle, 0, 0)
-end
-
 RunService.RenderStepped:Connect(function()
 	local now = Workspace:GetServerTimeNow()
 	for _, model in dropFolder:GetChildren() do
@@ -13955,14 +14478,12 @@ RunService.RenderStepped:Connect(function()
 			end
 			path = Drops.plan(seed, cannon, launch)
 			path.landed = now >= path.land
-			path.swing = swingParts(model)
-			path.walk = WALKS[model:GetAttribute("Walk")] or WALKS.waddle
-			path.offset = (seed % 100) / 10
+			path.rig = FreekAnimator.rig(model, seed)
 			paths[model] = path
 		end
 		local cframe, doing, moving = Drops.cframeAt(path, now)
-		local stepAngle = 0
-		if doing == "wandering" or doing == "leaving" then
+		local onFoot = doing == "wandering" or doing == "leaving"
+		if onFoot then
 			-- Stand on whatever the ground really is right there.
 			local groundY = groundAt(cframe.Position)
 			if groundY then
@@ -13972,34 +14493,12 @@ RunService.RenderStepped:Connect(function()
 				path.landed = true
 				puff(cframe.Position + Vector3.new(0, 1, 0), 3, Color3.fromRGB(225, 210, 180))
 			end
-			local walk = path.walk
-			local t = now + path.offset
-			if moving then
-				stepAngle = t * walk.speed
-				local step = math.sin(stepAngle)
-				cframe *= CFrame.new(0, math.abs(step) * walk.bob, 0) * CFrame.Angles(
-					0,
-					math.rad(step * walk.yaw),
-					math.rad(step * walk.roll)
-				)
-			else
-				-- Standing still: just breathing.
-				cframe *= CFrame.new(0, (math.sin(t * 2) + 1) * 0.04, 0)
-			end
 		end
-		model:PivotTo(cframe)
-
-		-- Legs, arms, wings and tails swing around their hinges while walking.
-		local legs = math.rad(path.walk.legs)
-		for _, swing in path.swing do
-			local angle = if stepAngle ~= 0
-				then math.sin(stepAngle + swing.phase * math.pi * 2) * legs * swing.amount
-				else 0
-			swing.part.CFrame = cframe
-				* CFrame.new(swing.hinge)
-				* axisRotation(swing.axis, angle)
-				* CFrame.new(-swing.hinge)
-				* swing.rest
+		if onFoot and path.rig then
+			-- Walking with its own gait, or idling (blinking, looking around) when it stops.
+			FreekAnimator.pose(path.rig, cframe, now, moving)
+		else
+			model:PivotTo(cframe)
 		end
 
 		local prompt = model:FindFirstChild("GrabPrompt", true)
@@ -14028,9 +14527,11 @@ for index = 1, Drops.CANNON_COUNT do
 	end)
 end
 
--- Yard Freeks gently bob and sway so yards feel alive. Only nearby ones are animated.
--- They always move relative to the "Ground" the server set, so they can't drift upward.
+-- Yard Freeks are alive: they breathe, blink, look around, wag, twitch their ears, wave
+-- and hop (see FreekAnimator). Only nearby ones are animated. They always move relative to
+-- the "Ground" the server set, so they can't drift.
 local plotsFolder = Workspace:WaitForChild("Plots")
+local yardRigs = setmetatable({}, { __mode = "k" })
 RunService.RenderStepped:Connect(function()
 	local camera = Workspace.CurrentCamera
 	local eye = camera and camera.CFrame.Position or Vector3.zero
@@ -14041,10 +14542,16 @@ RunService.RenderStepped:Connect(function()
 			for _, model in freeks:GetChildren() do
 				local ground = model:IsA("Model") and model.PrimaryPart and model:GetAttribute("Ground")
 				if typeof(ground) == "CFrame" and (ground.Position - eye).Magnitude < 140 then
-					local phase = ground.Position.X * 0.37 + ground.Position.Z * 0.61
-					local bob = math.sin(t * 2.2 + phase) * 0.15 + 0.15
-					local sway = math.sin(t * 1.3 + phase) * math.rad(5)
-					model:PivotTo(ground * CFrame.new(0, bob, 0) * CFrame.Angles(0, sway, 0))
+					local rig = yardRigs[model]
+					if rig == nil then
+						-- Rig it from where it rests, so the pose is always relative to the ground.
+						model:PivotTo(ground)
+						rig = FreekAnimator.rig(model) or false
+						yardRigs[model] = rig
+					end
+					if rig then
+						FreekAnimator.pose(rig, ground, t)
+					end
 				end
 			end
 		end
@@ -14091,7 +14598,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="54">
+        <Item class="ModuleScript" referent="55">
           <Properties>
             <string name="Name">PackReveal</string>
             <string name="Source"><![CDATA[-- Monster Egg opening, done like a card-pack reveal in the big sports games, in 3D.
@@ -14108,6 +14615,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local EggModel = require(ReplicatedStorage.Shared.EggModel)
+local FreekAnimator = require(ReplicatedStorage.Shared.FreekAnimator)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local Freeks = require(ReplicatedStorage.Shared.Freeks)
@@ -15398,6 +15906,8 @@ function PackReveal.play(result, done: () -> ())
 	camTime = 6
 	moveCamera(Vector3.new(-4, 5.5, -14.5), Vector3.new(0, 6.2, 1))
 	local showTime = 0
+	freek:PivotTo(freekRest)
+	local rig = FreekAnimator.rig(freek, 3)
 	while not closed do
 		animate(0.2, function(_, t)
 			local time = showTime + t
@@ -15406,7 +15916,10 @@ function PackReveal.play(result, done: () -> ())
 					* CFrame.new(CARD_HOME + Vector3.new(0, 5 + math.sin(time * 2.2) * 0.25, 6))
 					* CFrame.Angles(0, math.pi + math.sin(time * 0.9) * 0.12, 0)
 			)
-			freek:PivotTo(freekRest * CFrame.new(0, math.abs(math.sin(time * 3)) * 0.4, 0))
+			-- It shows off: blinking, looking around, wagging and hopping.
+			if rig then
+				FreekAnimator.pose(rig, freekRest, time + 8)
+			end
 			if state.rainbow then
 				setRim(rainbow(os.clock()))
 			end
@@ -15430,7 +15943,7 @@ return PackReveal
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="55">
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).

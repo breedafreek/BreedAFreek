@@ -14,7 +14,13 @@
 --     detail = true (optional: keeps its color when mutated, e.g. eyes),
 --     shine = false (optional: no sparkle highlights on a dark detail ball),
 --     swing = { hinge = {x, y, z}, phase = 0..1, axis = "X" | "Y" | "Z", amount = 1 }
---       (optional: the part swings around the hinge while the Freek walks, e.g. legs) }
+--       (optional: the part swings around the hinge while the Freek walks, e.g. legs;
+--       axis "Y" swings are tails and wag when idle, axis "Z" swings are wings or flippers),
+--     rig = "ear" | "arm" (optional: an ear that twitches, or an arm that waves, when idle),
+--     side = -1 | 1, pivot = { x, y, z } (for rig parts: which side, and where it bends),
+--     onHead = false (optional: stays put when the head turns, e.g. a collar) }
+-- A part named "Head" turns to look around, with everything on it; eyes (white detail
+-- balls with an iris and pupil in front) blink. See FreekAnimator.
 -- A species' walk = "waddle" | "trot" | ... picks how it moves (see the client).
 -- The first part is the main body. Effects:
 --   { type = "Sparkles" | "Fire" | "Smoke" | "Glow", part = index (default 1), color = Color3,
@@ -73,6 +79,7 @@ local function vector(value): Vector3
 end
 
 local polish
+local tagRig
 
 local function addEffect(part: BasePart, effect)
 	local kind = effect.type
@@ -138,6 +145,7 @@ function polish(model: Model, specs, parts)
 				if k == 2 then
 					dot.Transparency = 0.15
 				end
+				dot:SetAttribute("Rig", part:GetAttribute("Rig"))
 				local swing = part:GetAttribute("SwingHinge")
 				if swing then
 					dot:SetAttribute("SwingHinge", swing)
@@ -170,6 +178,91 @@ function polish(model: Model, specs, parts)
 			mesh.MeshType = Enum.MeshType.Sphere
 			mesh.Parent = sheen
 			sheen.Parent = model
+		end
+	end
+end
+
+-- Marks what moves when the Freek is idle (see FreekAnimator): everything on its head gets
+-- OnHead, and each eye (a white detail ball or ellipsoid with the parts in front of it)
+-- gets an Eye number, with EyeWhite on the white. Round eye parts become sphere-meshed
+-- blocks, which look the same but can squash shut to blink.
+local function sphereBlock(part: BasePart)
+	if part:IsA("Part") and part.Shape == Enum.PartType.Ball then
+		part.Shape = Enum.PartType.Block
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Parent = part
+	end
+end
+
+function tagRig(model: Model, specs, parts)
+	local body = parts[1]
+	local head = model:FindFirstChild("Head")
+	local headCenter, headRadius
+	if head and head:IsA("BasePart") then
+		headCenter = head.CFrame.Position
+		headRadius = math.max(head.Size.X, head.Size.Y, head.Size.Z) / 2
+		for _, part in model:GetChildren() do
+			if part:IsA("BasePart") and part ~= body and not part:GetAttribute("SwingHinge") then
+				local offset = part.CFrame.Position - headCenter
+				if
+					offset.Magnitude <= headRadius * 1.55
+					and offset.Y >= -headRadius * 0.92
+					and offset.Z <= headRadius
+					and part:GetAttribute("Rig") ~= "arm"
+					and part:GetAttribute("NotOnHead") ~= true
+				then
+					part:SetAttribute("OnHead", true)
+				end
+			end
+		end
+	end
+
+	-- Eyes: big white detail balls on the head (or on the upper body of a head-less Freek).
+	local all = model:GetChildren()
+	local eyes = 0
+	for i, spec in specs do
+		local part = parts[i]
+		local shape = spec.shape or "Block"
+		local size = part.Size
+		local color = part.Color
+		local whiteish = math.min(color.R, color.G, color.B) > 0.9
+		local placed = if headCenter
+			then part:GetAttribute("OnHead") == true
+			else part.CFrame.Position.Y > body.CFrame.Position.Y
+		if
+			spec.detail
+			and whiteish
+			and (shape == "Ball" or shape == "Ellipsoid")
+			and math.min(size.X, size.Y) >= 0.25
+			and math.max(size.X, size.Y) <= 2.4
+			and (spec.transparency or 0) < 0.5
+			and placed
+			and not part:GetAttribute("Eye")
+		then
+			eyes += 1
+			local center = part.CFrame.Position
+			local half = size / 2
+			part:SetAttribute("Eye", eyes)
+			part:SetAttribute("EyeWhite", true)
+			sphereBlock(part)
+			for _, other in all do
+				if other:IsA("BasePart") and other ~= part and other ~= body and other ~= head then
+					local offset = other.CFrame.Position - center
+					local big = math.max(other.Size.X, other.Size.Y)
+					if
+						math.abs(offset.X) <= half.X
+						and math.abs(offset.Y) <= half.Y
+						and offset.Z <= 0.05
+						and offset.Z >= -half.Z - 0.5
+						and big <= math.max(size.X, size.Y) * 1.02
+						and not other:GetAttribute("Eye")
+					then
+						other:SetAttribute("Eye", eyes)
+						sphereBlock(other)
+					end
+				end
+			end
 		end
 	end
 end
@@ -217,6 +310,16 @@ local function buildFromParts(species, mutationId: string?): (Model, number)
 			part:SetAttribute("SwingAxis", spec.swing.axis or "X")
 			part:SetAttribute("SwingAmount", spec.swing.amount or 1)
 		end
+		if spec.onHead == false then
+			part:SetAttribute("NotOnHead", true)
+		end
+		if spec.rig then
+			part:SetAttribute("Rig", spec.rig)
+			part:SetAttribute("RigSide", spec.side or (if spec.pos[1] < 0 then -1 else 1))
+			if spec.pivot then
+				part:SetAttribute("RigPivot", vector(spec.pivot))
+			end
+		end
 
 		if not spec.detail then
 			if mutationId == "Golden" then
@@ -239,6 +342,7 @@ local function buildFromParts(species, mutationId: string?): (Model, number)
 	body.PivotOffset = body.CFrame:Inverse()
 	model.PrimaryPart = body
 	polish(model, look.parts, parts)
+	tagRig(model, look.parts, parts)
 
 	for _, effect in look.effects or {} do
 		addEffect(parts[effect.part or 1], effect)
@@ -406,9 +510,15 @@ function buildHybrid(species, mutationId: string?): (Model, number)
 			local offset = (part.CFrame.Position - otherCenter) * scale
 			part.Size *= scale
 			part.CFrame = CFrame.new(body.CFrame.Position + offset) * part.CFrame.Rotation
-			local hinge = part:GetAttribute("SwingHinge")
-			if typeof(hinge) == "Vector3" then
-				part:SetAttribute("SwingHinge", body.CFrame.Position + (hinge - otherCenter) * scale)
+			local eye = part:GetAttribute("Eye")
+			if eye then
+				part:SetAttribute("Eye", eye + 100) -- keep the parents' eye numbers apart
+			end
+			for _, name in { "SwingHinge", "RigPivot" } do
+				local point = part:GetAttribute(name)
+				if typeof(point) == "Vector3" then
+					part:SetAttribute(name, body.CFrame.Position + (point - otherCenter) * scale)
+				end
 			end
 		end
 	end

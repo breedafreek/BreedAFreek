@@ -12,6 +12,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local EggModel = require(ReplicatedStorage.Shared.EggModel)
+local FreekAnimator = require(ReplicatedStorage.Shared.FreekAnimator)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local Freeks = require(ReplicatedStorage.Shared.Freeks)
@@ -1302,6 +1303,8 @@ function PackReveal.play(result, done: () -> ())
 	camTime = 6
 	moveCamera(Vector3.new(-4, 5.5, -14.5), Vector3.new(0, 6.2, 1))
 	local showTime = 0
+	freek:PivotTo(freekRest)
+	local rig = FreekAnimator.rig(freek, 3)
 	while not closed do
 		animate(0.2, function(_, t)
 			local time = showTime + t
@@ -1310,7 +1313,10 @@ function PackReveal.play(result, done: () -> ())
 					* CFrame.new(CARD_HOME + Vector3.new(0, 5 + math.sin(time * 2.2) * 0.25, 6))
 					* CFrame.Angles(0, math.pi + math.sin(time * 0.9) * 0.12, 0)
 			)
-			freek:PivotTo(freekRest * CFrame.new(0, math.abs(math.sin(time * 3)) * 0.4, 0))
+			-- It shows off: blinking, looking around, wagging and hopping.
+			if rig then
+				FreekAnimator.pose(rig, freekRest, time + 8)
+			end
 			if state.rainbow then
 				setRim(rainbow(os.clock()))
 			end
