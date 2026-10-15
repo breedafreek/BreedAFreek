@@ -39,7 +39,7 @@ rojo build -o FuseAFreek.rbxlx  # or build a place file
 - **Decide what two Freeks fuse into:** every pair already has a result, picked automatically. To hand-pick one, add it to `OVERRIDES` in `src/server/Recipes.luau`. It's server-only so players can't read the combos. The rules themselves (rarity, mutation odds) live in `src/shared/Breeding.luau` (the code still calls fusing "breeding" internally).
 - **Rarities:** Common, Uncommon, Rare, Legendary, Mystic, Ultra, Secret (`src/shared/Rarities.luau`).
 - **Seasonal Freeks:** add `season = "Halloween"` to a Freek (or `Thanksgiving`, `Christmas`, `NewYears`, `Easter`, `America`). It can only be fused or bought during that event, but players keep it forever. Event dates are in `src/shared/Seasons.luau`; Thanksgiving and Easter are worked out for each year automatically.
-- **Money, slots and limits:** edit `src/shared/Config.luau`.
+- **Money, slots and limits:** edit `src/shared/Config.luau`. **Before launch, set `TEST_MONEY = nil`** (it currently gives every player 1,000,000 coins for testing).
 - **Designing a Freek:** give it `look = { parts = {...}, effects = {...} }` in `Freeks.luau`. The format is described at the top of `src/shared/FreekModel.luau`.
 - **Previewing Freeks without Studio:** `tools/snapshot/snapshot.sh out/ Blobby KingGoob:Golden` runs the real model code and saves a front and back picture of each Freek. Set it up once with `cd tools/snapshot && cargo build --release && npm install`. It needs Rust, Node and Chromium.
 - **Real 3D models:** put a Model named after the species id (e.g. `Blobby`) in a `ReplicatedStorage.FreekModels` folder. Set its pivot at its feet and face it toward -Z. It replaces the placeholder automatically.

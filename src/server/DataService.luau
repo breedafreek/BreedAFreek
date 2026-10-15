@@ -45,6 +45,9 @@ local function reconcile(data)
 			data[key] = value
 		end
 	end
+	if Config.TEST_MONEY and data.money < Config.TEST_MONEY then
+		data.money = Config.TEST_MONEY
+	end
 	-- Old saves stored a single mutation.
 	for _, freek in data.freeks do
 		if freek.mutation then
@@ -173,7 +176,7 @@ local function onPlayerAdded(player: Player)
 	if not data then
 		if RunService:IsStudio() then
 			warn("Using a temporary save (not saved). Reason:", reason)
-			data = defaultData()
+			data = reconcile(defaultData())
 			noSave[player] = true
 		elseif reason == "locked" then
 			player:Kick("Your Freeks are still saving from your last server. Please rejoin in a minute!")

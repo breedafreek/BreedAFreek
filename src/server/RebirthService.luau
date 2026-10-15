@@ -51,7 +51,7 @@ local function rebirth(player: Player, data)
 	data.freeks = kept
 	data.breeding = nil
 	data.breeding2 = nil
-	data.money = Config.START_MONEY
+	data.money = Config.TEST_MONEY or Config.START_MONEY
 	data.slots = Config.START_SLOTS
 	data.rebirths += 1
 	for _, freek in data.freeks do

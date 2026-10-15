@@ -2,6 +2,9 @@
 
 local Config = {
 	START_MONEY = 50,
+	-- TESTING ONLY: every player is topped up to this many coins when they join (and after
+	-- a rebirth). Set to nil before the game launches!
+	TEST_MONEY = 1_000_000,
 	START_SLOTS = 4, -- yard slots a new player gets
 	MAX_SLOTS = 12, -- most yard slots you can buy with coins
 	PASS_SLOTS = 3, -- extra slots from the three Extra Yard Slot game passes (15 pads per yard)
