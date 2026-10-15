@@ -6,8 +6,8 @@
 -- Coordinates are the plot's: origin on the ground at the plot's centre, the doors on
 -- the -Z side facing the town square, the floor's top at y = 1.
 --
--- The roof doesn't collide (so the camera can see in, and the client fades it while you're
--- inside); an invisible ceiling on top of the walls stops anyone jumping in.
+-- The roof is solid, so the camera stays under it while you're inside; an invisible
+-- ceiling on top of the walls also stops anyone getting in from above.
 
 local Decor = require(script.Parent.Decor)
 
@@ -212,7 +212,6 @@ function Barn.build(folder: Instance, decor: Instance, origin: CFrame, index: nu
 			CFrame = origin * CFrame.new(middle.X, middle.Y, 0) * CFrame.Angles(0, 0, angle),
 			Color = ROOF,
 			Material = Enum.Material.Slate,
-			CanCollide = false,
 			Parent = roof,
 		})
 		-- White trim along the roof edge at both gable ends.
@@ -222,7 +221,6 @@ function Barn.build(folder: Instance, decor: Instance, origin: CFrame, index: nu
 				Size = Vector3.new(length + 0.6, 0.7, 0.4),
 				CFrame = origin * CFrame.new(middle.X, middle.Y - 0.2, z) * CFrame.Angles(0, 0, angle),
 				Color = WHITE,
-				CanCollide = false,
 				Parent = roof,
 			})
 		end
@@ -233,7 +231,6 @@ function Barn.build(folder: Instance, decor: Instance, origin: CFrame, index: nu
 		CFrame = origin * CFrame.new(0, top + 15.9, 0),
 		Color = Color3.fromRGB(50, 40, 44),
 		Material = Enum.Material.Slate,
-		CanCollide = false,
 		Parent = roof,
 	})
 	-- Gable ends: a rectangle plus four wedges filling the gambrel shape.
@@ -244,7 +241,6 @@ function Barn.build(folder: Instance, decor: Instance, origin: CFrame, index: nu
 			CFrame = origin * CFrame.new(0, top + 5, z),
 			Color = RED,
 			Material = Enum.Material.WoodPlanks,
-			CanCollide = false,
 			Parent = roof,
 		})
 		for _, piece in
@@ -261,7 +257,6 @@ function Barn.build(folder: Instance, decor: Instance, origin: CFrame, index: nu
 				CFrame = origin * CFrame.new(piece[2]) * CFrame.Angles(0, piece[3], 0),
 				Color = RED,
 				Material = Enum.Material.WoodPlanks,
-				CanCollide = false,
 				Parent = roof,
 			})
 		end

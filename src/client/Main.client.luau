@@ -1192,41 +1192,6 @@ for index = 1, Drops.CANNON_COUNT do
 	end)
 end
 
--- Fade the roof of whichever barn you're standing in, so you can see inside.
-local plotsFolderForRoofs = Workspace:WaitForChild("Plots")
-task.spawn(function()
-	local faded = nil
-	while true do
-		task.wait(0.2)
-		local character = player.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart")
-		local inside = nil
-		if root then
-			for _, plot in plotsFolderForRoofs:GetChildren() do
-				local origin, size = plot:GetAttribute("Origin"), plot:GetAttribute("Size")
-				if typeof(origin) == "CFrame" and size then
-					local offset = origin:PointToObjectSpace(root.Position)
-					if math.abs(offset.X) < size / 2 and math.abs(offset.Z) < size / 2 and offset.Y < 20 then
-						inside = plot:FindFirstChild("Roof")
-					end
-				end
-			end
-		end
-		if inside ~= faded then
-			for _, roof in { faded, inside } do
-				if roof then
-					for _, piece in roof:GetChildren() do
-						if piece:IsA("BasePart") then
-							piece.LocalTransparencyModifier = if roof == inside then 0.85 else 0
-						end
-					end
-				end
-			end
-			faded = inside
-		end
-	end
-end)
-
 -- Yard Freeks gently bob and sway so yards feel alive. Only nearby ones are animated.
 -- They always move relative to the "Ground" the server set, so they can't drift upward.
 local plotsFolder = Workspace:WaitForChild("Plots")
