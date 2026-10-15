@@ -43,7 +43,10 @@ local function offerView(player: Player, uids)
 	for _, uid in uids do
 		local freek = data and data.freeks[uid]
 		if freek then
-			table.insert(list, { uid = uid, species = freek.species, mutations = freek.mutations })
+			table.insert(
+				list,
+				{ uid = uid, species = freek.species, mutations = freek.mutations, income = freek.income }
+			)
 		end
 	end
 	return list

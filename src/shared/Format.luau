@@ -3,6 +3,11 @@ local Format = {}
 local SUFFIXES = { "", "K", "M", "B", "T", "Qa", "Qi", "Sx" }
 
 function Format.money(n: number): string
+	if n < 100 and n ~= math.floor(n) then
+		-- Small fused incomes like $2.2/s.
+		local text = string.format("%.1f", math.floor(n * 10) / 10):gsub("%.0$", "")
+		return "$" .. text
+	end
 	n = math.floor(n)
 	if n < 1000 then
 		return "$" .. n

@@ -42,10 +42,16 @@ local function snapshot(data)
 	}
 end
 
--- Adds a Freek, puts it in the yard if there's room, and records the discovery.
-local function giveFreek(player: Player, data, species: string, mutations: { string }?)
+-- Adds a Freek, puts it in the yard if there's room, and records the discovery. income is
+-- only given for fused Freeks (others earn their species' income).
+local function giveFreek(player: Player, data, species: string, mutations: { string }?, income: number?)
 	local uid = HttpService:GenerateGUID(false)
-	data.freeks[uid] = { species = species, mutations = Mutations.pack(mutations), slot = FreekUtil.freeSlot(data) }
+	data.freeks[uid] = {
+		species = species,
+		mutations = Mutations.pack(mutations),
+		income = income,
+		slot = FreekUtil.freeSlot(data),
+	}
 	local isNew = not data.discovered[species]
 	data.discovered[species] = true
 	task.spawn(DiscoveryService.claim, player, species)
@@ -135,10 +141,7 @@ function handlers.StartBreed(player: Player, data, uidA: any, uidB: any, penInde
 		return
 	end
 	if Carried.is(player, uidA) or Carried.is(player, uidB) then
-		return notify(player, "Someone is stealing that Freek! Catch them!", "error")
-	end
-	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) then
-		return notify(player, "No room for the new Freek! Sell one first.", "error")
+		return notify(player, "That Freek is being carried right now!", "error")
 	end
 	a.slot, b.slot = nil, nil
 	a.breeding, b.breeding = true, true
@@ -167,13 +170,11 @@ function handlers.ClaimBreed(player: Player, data, penIndex: any)
 	if not a or not b then
 		return
 	end
-	a.breeding, b.breeding = nil, nil
-
-	local species, mutations = Recipes.roll(a, b, rng)
-	-- Parents go back into the yard first so they keep earning.
-	a.slot = FreekUtil.freeSlot(data)
-	b.slot = FreekUtil.freeSlot(data)
-	local _, isNew = giveFreek(player, data, species, mutations)
+	-- Both parents are used up and become the fused Freek.
+	local species, mutations, income = Recipes.roll(a, b, rng)
+	data.freeks[breeding.a] = nil
+	data.freeks[breeding.b] = nil
+	local _, isNew = giveFreek(player, data, species, mutations, income)
 
 	local name = FreekUtil.displayName({ species = species, mutations = mutations })
 	if isNew then

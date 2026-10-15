@@ -45,7 +45,7 @@ local function rebirth(player: Player, data)
 	for uid, freek in data.freeks do
 		local species = FreekUtil.species(freek)
 		if species and species.season then
-			kept[uid] = { species = freek.species, mutations = freek.mutations }
+			kept[uid] = { species = freek.species, mutations = freek.mutations, income = freek.income }
 		end
 	end
 	data.freeks = kept

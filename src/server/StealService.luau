@@ -55,29 +55,46 @@ local function rootPart(player: Player): BasePart?
 	return character:FindFirstChild("HumanoidRootPart") :: BasePart?
 end
 
--- Puts the Freek on the carrier's head, slows them down, and adds a Snatch prompt for
+-- How far the arms swing forward to hold a Freek (R15 characters).
+local HOLD_ANGLE = math.rad(60)
+
+-- Puts the Freek in the carrier's arms, slows them down, and adds a Snatch prompt for
 -- everyone else. Returns false if the carrier has no character to carry it.
 local function pickUp(carrier: Player, carry): boolean
 	local character = carrier.Character
-	local head = character and character:FindFirstChild("Head")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not head or not humanoid or humanoid.Health <= 0 then
+	if not root or not humanoid or humanoid.Health <= 0 then
 		return false
 	end
 	local model = FreekModel.build(carry.species, carry.mutations)
 	pcall(function()
 		model:ScaleTo(0.6)
 	end)
-	model:PivotTo(head.CFrame * CFrame.new(0, 1, 0))
+	-- Held out in front at the hands, facing the same way as the carrier.
+	model:PivotTo(root.CFrame * CFrame.new(0, 0.4, -1.8))
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Anchored = false
 			descendant.CanCollide = false
 			descendant.Massless = true
 			local weld = Instance.new("WeldConstraint")
-			weld.Part0 = head
+			weld.Part0 = root
 			weld.Part1 = descendant
 			weld.Parent = descendant
+		end
+	end
+
+	-- Arms out to hold it. Changing the shoulder joints' C0 (not Transform) keeps the pose
+	-- under the walk animation, and putDown puts them back.
+	carry.shoulders = {}
+	for _, name in { "RightUpperArm.RightShoulder", "LeftUpperArm.LeftShoulder" } do
+		local armName, jointName = string.match(name, "^(.-)%.(.*)$")
+		local arm = character:FindFirstChild(armName)
+		local joint = arm and arm:FindFirstChild(jointName)
+		if joint and joint:IsA("Motor6D") then
+			table.insert(carry.shoulders, { joint = joint, c0 = joint.C0 })
+			joint.C0 = joint.C0 * CFrame.Angles(HOLD_ANGLE, 0, 0)
 		end
 	end
 
@@ -116,6 +133,12 @@ local function putDown(carrier: Player, carry)
 		carry.model:Destroy()
 		carry.model = nil
 	end
+	for _, shoulder in carry.shoulders or {} do
+		if shoulder.joint.Parent then
+			shoulder.joint.C0 = shoulder.c0
+		end
+	end
+	carry.shoulders = nil
 	local character = carrier.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if humanoid and carry.normalSpeed then
@@ -189,6 +212,7 @@ local function deliver(carrier: Player, carry)
 	carrierData.freeks[carry.uid] = {
 		species = freek.species,
 		mutations = freek.mutations,
+		income = freek.income,
 		slot = FreekUtil.freeSlot(carrierData),
 	}
 	carrierData.discovered[freek.species] = true

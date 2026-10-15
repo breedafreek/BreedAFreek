@@ -175,10 +175,16 @@ local MUTATION_EFFECTS = {
 	Shadow = { type = "Smoke", color = Color3.fromRGB(60, 30, 90), size = 1.5 },
 }
 
+local buildHybrid
+
 local function buildSingle(speciesId: string, mutationId: string?): (Model, number)
 	local species = Freeks.byId[speciesId] or Freeks.list[1]
 	local look = species.look
 	local s = look.size or 3
+
+	if look.hybrid then
+		return buildHybrid(species, mutationId)
+	end
 
 	local custom = ReplicatedStorage:FindFirstChild("FreekModels")
 	custom = custom and custom:FindFirstChild(species.id)
@@ -290,6 +296,50 @@ local function buildSingle(speciesId: string, mutationId: string?): (Model, numb
 	end
 
 	return model, s * 1.6
+end
+
+-- A hybrid: one body with the colours of both parents blended, the first parent's lower
+-- half (legs, feet, snout, mouth) and the second parent's upper half (eyes, ears, antennae).
+function buildHybrid(species, mutationId: string?): (Model, number)
+	local model, height = buildSingle(species.look.hybrid.a, mutationId)
+	local other, otherHeight = buildSingle(species.look.hybrid.b, mutationId)
+	model.Name = species.name
+	local body, otherBody = model.PrimaryPart, other.PrimaryPart
+	if not body or not otherBody then
+		other:Destroy()
+		return model, height
+	end
+
+	-- Scale the second parent so the bodies match, and centre it on the first one's body.
+	local scale = body.Size.Magnitude / otherBody.Size.Magnitude
+	local otherCenter = otherBody.Position
+	for _, part in other:GetDescendants() do
+		if part:IsA("BasePart") then
+			local offset = (part.Position - otherCenter) * scale
+			part.Size *= scale
+			part.CFrame = CFrame.new(body.Position + offset) * part.CFrame.Rotation
+		end
+	end
+
+	local center = body.Position
+	local function fromSecond(part: BasePart): boolean
+		return part.Position.Y > center.Y
+	end
+	for _, part in model:GetDescendants() do
+		if part:IsA("BasePart") and part ~= body and fromSecond(part) then
+			part:Destroy()
+		end
+	end
+	for _, part in other:GetDescendants() do
+		if part:IsA("BasePart") and part ~= otherBody and fromSecond(part) then
+			part.Parent = model
+		end
+	end
+	if not mutationId then
+		body.Color = body.Color:Lerp(otherBody.Color, 0.5)
+	end
+	other:Destroy()
+	return model, math.max(height, otherHeight * scale)
 end
 
 -- Returns the model and roughly how tall it is (for placing name tags). mutations is a

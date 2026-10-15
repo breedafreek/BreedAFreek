@@ -449,7 +449,7 @@ function renderers.Fuse()
 		end
 	end
 
-	heading("You get the rarity of the rarer Freek. Some Ultra pairs make a Secret!", 1)
+	heading("Both Freeks fuse into one hybrid that earns more than both. Some Ultra pairs make a Secret!", 1)
 
 	local selected = {}
 	for _, uid in breedSelection do
@@ -468,9 +468,16 @@ function renderers.Fuse()
 			.. Format.time(FreekUtil.breedTime(a, b))
 			.. ")"
 
-		-- What this pair will make. Which Ultra pairs make a Secret stays a surprise.
+		-- What this pair will make: its name once you've made it before, otherwise ???.
+		-- Which Ultra pairs make a Secret stays a surprise.
 		local rarity, bothUltra = Breeding.babyRarity(a, b)
-		local parts = { "Result: " .. rarity .. (if bothUltra then " (or a Secret?!)" else "") }
+		local resultId = Breeding.babySpecies(a, b)
+		local result = Freeks.byId[resultId]
+		local resultName = if state.discovered[resultId] and result then result.name else "???"
+		local parts = {
+			"Makes: " .. resultName .. " (" .. rarity .. (if bothUltra then ", or a Secret?!" else "") .. ")",
+			Format.money(Breeding.babyIncome(a, b)) .. "/s",
+		}
 		local odds = Breeding.mutationOdds(a, b)
 		for _, option in odds do
 			table.insert(parts, math.round(option.chance * 100) .. "% " .. option.id)
@@ -560,6 +567,40 @@ function renderers.Book()
 		})
 		card.LayoutOrder = species.order
 		card.Parent = grid
+	end
+
+	-- Hybrids this player has made, with whoever made each one first.
+	local hybrids = {}
+	for id in state.discovered do
+		local species = Freeks.byId[id]
+		if species and species.hybrid then
+			table.insert(hybrids, species)
+		end
+	end
+	table.sort(hybrids, function(a, b)
+		return a.name < b.name
+	end)
+	heading(string.format("Hybrids you've made: %d (every pair makes its own!)", #hybrids), 3)
+	local hybridGrid = UI.grid(150, 220)
+	hybridGrid.LayoutOrder = 4
+	hybridGrid.Parent = body
+	for i, species in hybrids do
+		local discovery = discoveries[species.id]
+		local card = UI.card({
+			species = species.id,
+			border = colors.green,
+			lines = {
+				{ species.name, colors.text, 22 },
+				{ species.rarity .. " hybrid", Rarities.info[species.rarity].color, 16 },
+				{
+					if discovery then "First made by\n" .. discovery.name else "",
+					colors.orange,
+					34,
+				},
+			},
+		})
+		card.LayoutOrder = i
+		card.Parent = hybridGrid
 	end
 end
 

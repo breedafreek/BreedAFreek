@@ -8,7 +8,8 @@
 -- look     how the placeholder model is built: shape "Ball" or "Block", size in studs,
 --          eyes 1-3, antennae 0-3
 --
--- How new species are bred lives in ServerScriptService (Recipes) so players can't read it.
+-- Fusing two different Freeks makes a hybrid (see Hybrids.luau); the only hand-made results
+-- are the Ultra pairs that make Secrets, in ServerScriptService (Recipes).
 
 local Freeks = {}
 
@@ -259,10 +260,27 @@ Freeks.list = {
 	},
 }
 
-Freeks.byId = {}
+local base = {}
 for i, species in Freeks.list do
 	species.order = i
-	Freeks.byId[species.id] = species
+	base[species.id] = species
 end
+
+-- Freeks.byId[id] also answers for hybrid ids ("Blobby+Oinkle"), built on first use.
+local Hybrids = require(script.Parent.Hybrids)
+local hybridCache = {}
+Freeks.byId = setmetatable(table.clone(base), {
+	__index = function(_, id)
+		if type(id) ~= "string" or not Hybrids.isHybrid(id) then
+			return nil
+		end
+		if hybridCache[id] == nil then
+			hybridCache[id] = Hybrids.info(id, function(baseId)
+				return base[baseId]
+			end) or false
+		end
+		return hybridCache[id] or nil
+	end,
+})
 
 return Freeks

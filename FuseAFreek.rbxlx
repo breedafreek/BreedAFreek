@@ -79,22 +79,30 @@ return Belt
       <Item class="ModuleScript" referent="5">
         <Properties>
           <string name="Name">Breeding</string>
-          <string name="Source"><![CDATA[-- The breeding rules. Shared so the Breed window can show what a pair will make.
+          <string name="Source"><![CDATA[-- The fusing rules (the code calls it breeding). Shared so the Fuse window can show what a
+-- pair will make.
 --
---   * Any two Freeks can breed.
---   * The baby's rarity is the rarer parent's rarity; breeding never raises it.
---   * Which species you get is fixed per pair (see server/Recipes), so every combination
---     has its own result to discover. Mutations are what make two babies different.
+--   * Any two Freeks can fuse. Both are used up and become one new Freek.
+--   * Two different species make a hybrid of the two (see Hybrids.luau), so every
+--     combination has its own result to discover. Mutations are what make two fused
+--     Freeks of the same kind different.
+--   * The result's rarity is the rarer parent's rarity; fusing never raises it.
+--   * It earns both parents' income added together, times HYBRID_BONUS.
 --   * The one way to get a Secret: certain pairs of Ultras (listed in server/Recipes).
 --   * Mutations are only inherited, each one rolled on its own: if both parents have it the
 --     baby always gets it, if only one parent has it it's a 50% chance. A baby can end up
 --     with several.
 
+local FreekUtil = require(script.Parent.FreekUtil)
 local Freeks = require(script.Parent.Freeks)
+local Hybrids = require(script.Parent.Hybrids)
 local Mutations = require(script.Parent.Mutations)
 local Rarities = require(script.Parent.Rarities)
 
 local Breeding = {}
+
+-- A fused Freek earns both parents' income (before mutations) times this.
+Breeding.HYBRID_BONUS = 1.1
 
 -- Chance of passing on a mutation that only one parent has.
 Breeding.SINGLE_PARENT_MUTATION_CHANCE = 0.5
@@ -107,6 +115,17 @@ function Breeding.babyRarity(parentA, parentB): (string, boolean)
 	local rarity = Rarities.order[math.max(rankA, rankB)]
 	local bothUltra = rankA == Rarities.rank.Ultra and rankB == Rarities.rank.Ultra
 	return rarity, bothUltra
+end
+
+-- What the pair fuses into, unless it's an Ultra pair with a Secret recipe (server only).
+function Breeding.babySpecies(parentA, parentB): string
+	return Hybrids.combine(parentA.species, parentB.species)
+end
+
+-- The fused Freek's income before mutations, rounded to a tenth.
+function Breeding.babyIncome(parentA, parentB): number
+	local total = (FreekUtil.baseIncome(parentA) + FreekUtil.baseIncome(parentB)) * Breeding.HYBRID_BONUS
+	return math.round(total * 10) / 10
 end
 
 -- Every mutation the baby could get, rarest first: { { id, chance } }. Each is rolled
@@ -198,6 +217,11 @@ return Config
 local SUFFIXES = { "", "K", "M", "B", "T", "Qa", "Qi", "Sx" }
 
 function Format.money(n: number): string
+	if n < 100 and n ~= math.floor(n) then
+		-- Small fused incomes like $2.2/s.
+		local text = string.format("%.1f", math.floor(n * 10) / 10):gsub("%.0$", "")
+		return "$" .. text
+	end
 	n = math.floor(n)
 	if n < 1000 then
 		return "$" .. n
@@ -409,10 +433,16 @@ local MUTATION_EFFECTS = {
 	Shadow = { type = "Smoke", color = Color3.fromRGB(60, 30, 90), size = 1.5 },
 }
 
+local buildHybrid
+
 local function buildSingle(speciesId: string, mutationId: string?): (Model, number)
 	local species = Freeks.byId[speciesId] or Freeks.list[1]
 	local look = species.look
 	local s = look.size or 3
+
+	if look.hybrid then
+		return buildHybrid(species, mutationId)
+	end
 
 	local custom = ReplicatedStorage:FindFirstChild("FreekModels")
 	custom = custom and custom:FindFirstChild(species.id)
@@ -526,6 +556,50 @@ local function buildSingle(speciesId: string, mutationId: string?): (Model, numb
 	return model, s * 1.6
 end
 
+-- A hybrid: one body with the colours of both parents blended, the first parent's lower
+-- half (legs, feet, snout, mouth) and the second parent's upper half (eyes, ears, antennae).
+function buildHybrid(species, mutationId: string?): (Model, number)
+	local model, height = buildSingle(species.look.hybrid.a, mutationId)
+	local other, otherHeight = buildSingle(species.look.hybrid.b, mutationId)
+	model.Name = species.name
+	local body, otherBody = model.PrimaryPart, other.PrimaryPart
+	if not body or not otherBody then
+		other:Destroy()
+		return model, height
+	end
+
+	-- Scale the second parent so the bodies match, and centre it on the first one's body.
+	local scale = body.Size.Magnitude / otherBody.Size.Magnitude
+	local otherCenter = otherBody.Position
+	for _, part in other:GetDescendants() do
+		if part:IsA("BasePart") then
+			local offset = (part.Position - otherCenter) * scale
+			part.Size *= scale
+			part.CFrame = CFrame.new(body.Position + offset) * part.CFrame.Rotation
+		end
+	end
+
+	local center = body.Position
+	local function fromSecond(part: BasePart): boolean
+		return part.Position.Y > center.Y
+	end
+	for _, part in model:GetDescendants() do
+		if part:IsA("BasePart") and part ~= body and fromSecond(part) then
+			part:Destroy()
+		end
+	end
+	for _, part in other:GetDescendants() do
+		if part:IsA("BasePart") and part ~= otherBody and fromSecond(part) then
+			part.Parent = model
+		end
+	end
+	if not mutationId then
+		body.Color = body.Color:Lerp(otherBody.Color, 0.5)
+	end
+	other:Destroy()
+	return model, math.max(height, otherHeight * scale)
+end
+
 -- Returns the model and roughly how tall it is (for placing name tags). mutations is a
 -- list of mutation ids (a single id also works).
 function FreekModel.build(speciesId: string, mutations): (Model, number)
@@ -551,7 +625,9 @@ return FreekModel
         <Properties>
           <string name="Name">FreekUtil</string>
           <string name="Source"><![CDATA[-- Helpers shared by server and client for reading a saved Freek record:
---   { species = "Blobby", mutations = { "Golden" }?, slot = 3?, breeding = true? }
+--   { species = "Blobby", mutations = { "Golden" }?, income = 2.2?, slot = 3?, breeding = true? }
+-- species can be a hybrid id ("Blobby+Oinkle"). income is set on fused Freeks; others earn
+-- their species' income.
 
 local Config = require(script.Parent.Config)
 local Freeks = require(script.Parent.Freeks)
@@ -565,12 +641,17 @@ function FreekUtil.species(freek)
 	return Freeks.byId[freek.species]
 end
 
-function FreekUtil.income(freek): number
-	local species = Freeks.byId[freek.species]
-	if not species then
-		return 0
+-- Money per second before mutations.
+function FreekUtil.baseIncome(freek): number
+	if freek.income then
+		return freek.income
 	end
-	return species.income * Mutations.mult(freek.mutations)
+	local species = Freeks.byId[freek.species]
+	return if species then species.income else 0
+end
+
+function FreekUtil.income(freek): number
+	return FreekUtil.baseIncome(freek) * Mutations.mult(freek.mutations)
 end
 
 function FreekUtil.sellValue(freek): number
@@ -664,7 +745,8 @@ return FreekUtil
 -- look     how the placeholder model is built: shape "Ball" or "Block", size in studs,
 --          eyes 1-3, antennae 0-3
 --
--- How new species are bred lives in ServerScriptService (Recipes) so players can't read it.
+-- Fusing two different Freeks makes a hybrid (see Hybrids.luau); the only hand-made results
+-- are the Ultra pairs that make Secrets, in ServerScriptService (Recipes).
 
 local Freeks = {}
 
@@ -915,11 +997,28 @@ Freeks.list = {
 	},
 }
 
-Freeks.byId = {}
+local base = {}
 for i, species in Freeks.list do
 	species.order = i
-	Freeks.byId[species.id] = species
+	base[species.id] = species
 end
+
+-- Freeks.byId[id] also answers for hybrid ids ("Blobby+Oinkle"), built on first use.
+local Hybrids = require(script.Parent.Hybrids)
+local hybridCache = {}
+Freeks.byId = setmetatable(table.clone(base), {
+	__index = function(_, id)
+		if type(id) ~= "string" or not Hybrids.isHybrid(id) then
+			return nil
+		end
+		if hybridCache[id] == nil then
+			hybridCache[id] = Hybrids.info(id, function(baseId)
+				return base[baseId]
+			end) or false
+		end
+		return hybridCache[id] or nil
+	end,
+})
 
 return Freeks
 ]]></string>
@@ -1135,6 +1234,188 @@ return GateTiers
       </Item>
       <Item class="ModuleScript" referent="13">
         <Properties>
+          <string name="Name">Hybrids</string>
+          <string name="Source"><![CDATA[-- Hybrids: what you get when two different Freeks fuse.
+--
+-- A hybrid is identified by the base species that went into it, e.g. "Blobby+Oinkle".
+-- Fusing a hybrid again adds its species to the mix ("Blobby+Oinkle+Snorp"); when one
+-- species is in there more than once it gets a count ("Blobby*2+Oinkle"). Counts are kept
+-- in lowest terms, so the same mix always has the same id however it was made, and
+-- fusing two of the same species just makes that species again.
+--
+-- Everything else about a hybrid comes from its id, so nothing needs to be listed by hand:
+--   name    the two main species' names mashed together (Blobby + Oinkle = "Bloinkle")
+--   rarity  the rarest species in it (fusing never raises rarity)
+--   look    built by FreekModel from the two main species: left side from one, right side
+--           from the other, body colours blended
+-- Each hybrid Freek also stores its own income (see Breeding.babyIncome).
+--
+-- Freeks.byId[id] works for hybrid ids too (Freeks.luau asks this module).
+
+local Rarities = require(script.Parent.Rarities)
+
+local Hybrids = {}
+
+function Hybrids.isHybrid(id: string): boolean
+	return string.find(id, "+", 1, true) ~= nil
+end
+
+-- { [baseId] = count } for any species or hybrid id.
+function Hybrids.counts(id: string): { [string]: number }
+	local counts = {}
+	for piece in string.gmatch(id, "[^+]+") do
+		local base, n = string.match(piece, "^(.-)%*(%d+)$")
+		base = base or piece
+		counts[base] = (counts[base] or 0) + (tonumber(n) or 1)
+	end
+	return counts
+end
+
+local function gcd(a: number, b: number): number
+	while b ~= 0 do
+		a, b = b, a % b
+	end
+	return a
+end
+
+-- The id for a mix of species (a plain species id if there's only one).
+function Hybrids.key(counts: { [string]: number }): string
+	local ids = {}
+	local divisor = 0
+	for id, n in counts do
+		table.insert(ids, id)
+		divisor = gcd(divisor, n)
+	end
+	table.sort(ids)
+	local pieces = {}
+	for _, id in ids do
+		local n = counts[id] // divisor
+		table.insert(pieces, if n > 1 then id .. "*" .. n else id)
+	end
+	return table.concat(pieces, "+")
+end
+
+-- What two species (or hybrids) fuse into.
+function Hybrids.combine(a: string, b: string): string
+	local counts = Hybrids.counts(a)
+	for id, n in Hybrids.counts(b) do
+		counts[id] = (counts[id] or 0) + n
+	end
+	return Hybrids.key(counts)
+end
+
+-- The species in a hybrid, most-used first (ties alphabetical).
+function Hybrids.ranked(id: string): { string }
+	local counts = Hybrids.counts(id)
+	local list = {}
+	for base in counts do
+		table.insert(list, base)
+	end
+	table.sort(list, function(a, b)
+		if counts[a] ~= counts[b] then
+			return counts[a] > counts[b]
+		end
+		return a < b
+	end)
+	return list
+end
+
+-- Name mashing ------------------------------------------------------------------------
+
+local VOWELS = "aeiouyAEIOUY"
+
+local function letters(name: string): string
+	return (string.gsub(name, "[^%a]", ""))
+end
+
+-- The start of a name up to its first vowels: "Blobby" -> "Blo", "Snorp" -> "Sno".
+local function front(name: string): string
+	local word = letters(name)
+	local _, finish = string.find(word, "^[^" .. VOWELS .. "]*[" .. VOWELS .. "]+")
+	return if finish then string.sub(word, 1, finish) else word
+end
+
+-- The rest of a name after its first vowel: "Oinkle" -> "inkle", "Snorp" -> "rp".
+local function back(name: string): string
+	local word = letters(name)
+	local _, finish = string.find(word, "^[^" .. VOWELS .. "]*[" .. VOWELS .. "]")
+	local rest = if finish then string.sub(word, finish + 1) else word
+	if #rest < 2 then
+		rest = string.sub(word, -3)
+	end
+	return string.lower(rest)
+end
+
+-- Mashes two names, trying both orders and keeping the one that sounds most like a name.
+local function mash(nameA: string, nameB: string): string
+	local wordA, wordB = letters(nameA), letters(nameB)
+	local average = (#wordA + #wordB) / 2
+	local candidates = {}
+	for _, pair in { { wordA, wordB }, { wordB, wordA } } do
+		local start = front(pair[1])
+		local penalty = if #start < 3 then 2 else 0 -- weak start, like "Oi"
+		table.insert(candidates, { start .. back(pair[2]), penalty })
+		-- Fallbacks for when the parents' names look alike: plain halves, then a short mix.
+		local first = string.sub(pair[1], 1, math.ceil(#pair[1] / 2))
+		local second = string.lower(string.sub(pair[2], math.ceil(#pair[2] / 2) + 1))
+		table.insert(candidates, { first .. second, 3 })
+		table.insert(candidates, { string.sub(pair[1], 1, 2) .. string.lower(string.sub(pair[2], -3)), 6 })
+	end
+	local best, bestScore = nil, math.huge
+	for _, entry in candidates do
+		local candidate, score = entry[1], entry[2]
+		score += math.abs(#candidate - average)
+		if #candidate < 5 then
+			score += 3 -- too short
+		end
+		local lower = string.lower(candidate)
+		if lower == string.lower(wordA) or lower == string.lower(wordB) then
+			score += 100 -- just one of the parents' names again
+		end
+		if score < bestScore or (score == bestScore and candidate < best) then
+			best, bestScore = candidate, score
+		end
+	end
+	return string.upper(string.sub(best, 1, 1)) .. string.sub(best, 2)
+end
+
+-- Builds the species-like info for a hybrid id. get(baseId) returns a base species.
+function Hybrids.info(id: string, get)
+	local ranked = Hybrids.ranked(id)
+	if #ranked < 2 then
+		return nil
+	end
+	local rank = 1
+	for _, base in ranked do
+		local species = get(base)
+		if not species then
+			return nil
+		end
+		rank = math.max(rank, Rarities.rank[species.rarity])
+	end
+	local a, b = get(ranked[1]), get(ranked[2])
+	local name = mash(a.name, b.name)
+	if ranked[3] then
+		name ..= "-" .. front(get(ranked[3]).name)
+	end
+	return {
+		id = id,
+		name = name,
+		rarity = Rarities.order[rank],
+		income = a.income + b.income, -- only a guide: each hybrid Freek stores its own
+		hybrid = true,
+		parts = ranked,
+		look = { hybrid = { a = a.id, b = b.id } },
+		order = math.huge,
+	}
+end
+
+return Hybrids
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="14">
+        <Properties>
           <string name="Name">Mutations</string>
           <string name="Source"><![CDATA[-- Mutations multiply a Freek's income. They only enter the game on the conveyor belt
 -- (chance is per belt Freek, times Belt.MUTATION_FACTOR); after that they're passed on by
@@ -1198,7 +1479,7 @@ return Mutations
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
@@ -1228,7 +1509,7 @@ return Rarities
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">Remotes</string>
           <string name="Source"><![CDATA[-- One place that names every remote. The server creates them; clients wait for them.
@@ -1285,7 +1566,7 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">Seasons</string>
           <string name="Source"><![CDATA[-- Limited events for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred
@@ -1422,7 +1703,7 @@ return Seasons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">WeaponModel</string>
           <string name="Source"><![CDATA[-- Builds the Tool for a weapon from its part list in Weapons.luau.
@@ -1508,7 +1789,7 @@ return WeaponModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">Weapons</string>
           <string name="Source"><![CDATA[-- Weapons. Everyone has the STARTER weapon; the rest unlock at a number of rebirths
@@ -1799,15 +2080,15 @@ return Weapons
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="19">
+  <Item class="ServerScriptService" referent="20">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="20">
+    <Item class="Folder" referent="21">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -1854,10 +2135,16 @@ local function snapshot(data)
 	}
 end
 
--- Adds a Freek, puts it in the yard if there's room, and records the discovery.
-local function giveFreek(player: Player, data, species: string, mutations: { string }?)
+-- Adds a Freek, puts it in the yard if there's room, and records the discovery. income is
+-- only given for fused Freeks (others earn their species' income).
+local function giveFreek(player: Player, data, species: string, mutations: { string }?, income: number?)
 	local uid = HttpService:GenerateGUID(false)
-	data.freeks[uid] = { species = species, mutations = Mutations.pack(mutations), slot = FreekUtil.freeSlot(data) }
+	data.freeks[uid] = {
+		species = species,
+		mutations = Mutations.pack(mutations),
+		income = income,
+		slot = FreekUtil.freeSlot(data),
+	}
 	local isNew = not data.discovered[species]
 	data.discovered[species] = true
 	task.spawn(DiscoveryService.claim, player, species)
@@ -1947,10 +2234,7 @@ function handlers.StartBreed(player: Player, data, uidA: any, uidB: any, penInde
 		return
 	end
 	if Carried.is(player, uidA) or Carried.is(player, uidB) then
-		return notify(player, "Someone is stealing that Freek! Catch them!", "error")
-	end
-	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) then
-		return notify(player, "No room for the new Freek! Sell one first.", "error")
+		return notify(player, "That Freek is being carried right now!", "error")
 	end
 	a.slot, b.slot = nil, nil
 	a.breeding, b.breeding = true, true
@@ -1979,13 +2263,11 @@ function handlers.ClaimBreed(player: Player, data, penIndex: any)
 	if not a or not b then
 		return
 	end
-	a.breeding, b.breeding = nil, nil
-
-	local species, mutations = Recipes.roll(a, b, rng)
-	-- Parents go back into the yard first so they keep earning.
-	a.slot = FreekUtil.freeSlot(data)
-	b.slot = FreekUtil.freeSlot(data)
-	local _, isNew = giveFreek(player, data, species, mutations)
+	-- Both parents are used up and become the fused Freek.
+	local species, mutations, income = Recipes.roll(a, b, rng)
+	data.freeks[breeding.a] = nil
+	data.freeks[breeding.b] = nil
+	local _, isNew = giveFreek(player, data, species, mutations, income)
 
 	local name = FreekUtil.displayName({ species = species, mutations = mutations })
 	if isNew then
@@ -2044,7 +2326,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="22">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">Carried</string>
           <string name="Source"><![CDATA[-- Which Freeks are being carried off by a thief right now. Kept in memory only: if the
@@ -2084,7 +2366,7 @@ return Carried
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="24">
         <Properties>
           <string name="Name">ConveyorService</string>
           <string name="Source"><![CDATA[-- Runs the conveyor: two lanes down the middle of the map, each fed by its own Freek House.
@@ -2481,7 +2763,7 @@ return ConveyorService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="25">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -2723,7 +3005,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">Decor</string>
           <string name="Source"><![CDATA[-- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
@@ -3101,7 +3383,7 @@ return Decor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Discovery Book: the first player in the whole game to get each species has their
@@ -3130,6 +3412,18 @@ end)
 
 local discoveryUpdate = Remotes.get("DiscoveryUpdate")
 local notify = Remotes.get("Notify")
+
+-- DataStore keys can be at most 50 characters; long hybrid ids are hashed to fit.
+local function storeKey(speciesId: string): string
+	if #speciesId <= 50 then
+		return speciesId
+	end
+	local hash = 5381
+	for i = 1, #speciesId do
+		hash = (hash * 33 + string.byte(speciesId, i)) % 4294967296
+	end
+	return string.format("H%08x%d", hash, #speciesId)
+end
 
 local function announce(speciesId: string, discovery)
 	local isNew = cache[speciesId] == nil
@@ -3171,7 +3465,7 @@ function DiscoveryService.claim(player: Player, speciesId: string)
 	if store then
 		local ok, result = pcall(function()
 			local existing = nil
-			store:UpdateAsync(speciesId, function(old)
+			store:UpdateAsync(storeKey(speciesId), function(old)
 				existing = old
 				if old then
 					return nil
@@ -3237,7 +3531,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the Freeks in their yard, plus offline earnings
@@ -3318,7 +3612,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">Environment</string>
           <string name="Source"><![CDATA[-- Lighting, sky, terrain and the scenery around the yards and conveyor.
@@ -3448,7 +3742,7 @@ return Environment
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">HalloweenDecor</string>
           <string name="Source"><![CDATA[-- Halloween props: ghosts, bats, cobwebs, tombstones, dead trees, a witch's cauldron,
@@ -3908,7 +4202,7 @@ return HalloweenDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="30">
+      <Item class="Script" referent="31">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -3968,7 +4262,7 @@ print("[Fuse a Freek] Server started")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="31">
+      <Item class="ModuleScript" referent="32">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -4060,7 +4354,7 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="32">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the map and gives every player a fenced yard. Other players can walk in to look
@@ -4894,7 +5188,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">RebirthService</string>
           <string name="Source"><![CDATA[-- Rebirth: pay Config.rebirthCost to start over with a permanent income bonus.
@@ -4944,7 +5238,7 @@ local function rebirth(player: Player, data)
 	for uid, freek in data.freeks do
 		local species = FreekUtil.species(freek)
 		if species and species.season then
-			kept[uid] = { species = freek.species, mutations = freek.mutations }
+			kept[uid] = { species = freek.species, mutations = freek.mutations, income = freek.income }
 		end
 	end
 	data.freeks = kept
@@ -4990,21 +5284,15 @@ return RebirthService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">Recipes</string>
-          <string name="Source"><![CDATA[-- Decides which species a pair of parents makes. Server-only so players can't read the
--- results out of the game and have to discover them.
+          <string name="Source"><![CDATA[-- Decides what two Freeks fuse into. Server-only so players can't read the Secret recipes
+-- out of the game.
 --
--- Every pair has a result: a species of the baby's rarity (see shared/Breeding) picked by
--- the pair itself, so the same two species always make the same baby. Limited Freeks are
--- only picked while their event is running.
---
--- SECRETS lists the Ultra pairs that make a Secret, the only way to get one. Any other two
--- Ultras just make an Ultra.
---
--- OVERRIDES pins a specific result for any other pair if you want a hand-made recipe; it
--- must be the same rarity as the rarer parent.
+-- Normally the result is the hybrid of the two (shared/Hybrids, via Breeding.babySpecies),
+-- so every pair already has its own result. The only hand-made results are the Ultra
+-- pairs in SECRETS: those make a Secret instead, the only way to get one.
 
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Breeding = require(Shared.Breeding)
@@ -5014,80 +5302,40 @@ local Seasons = require(Shared.Seasons)
 -- ["UltraA|UltraB"] = "SecretFreek" (names in either order).
 local SECRETS = {}
 
-local OVERRIDES = {
-	-- ["Blobby|Snorp"] = "Oinkle",
-}
-
 local Recipes = {}
 
 local function pairKey(a: string, b: string): string
 	return if a < b then a .. "|" .. b else b .. "|" .. a
 end
-Recipes.pairKey = pairKey
 
 -- Accept keys written in either order.
-local function sortKeys(map)
-	local sorted = {}
-	for key, value in map do
-		local a, b = string.match(key, "^(.-)|(.*)$")
-		sorted[pairKey(a, b)] = value
-	end
-	return sorted
+local sorted = {}
+for key, value in SECRETS do
+	local a, b = string.match(key, "^(.-)|(.*)$")
+	sorted[pairKey(a, b)] = value
 end
-SECRETS = sortKeys(SECRETS)
-OVERRIDES = sortKeys(OVERRIDES)
+SECRETS = sorted
 
--- A stable number for a pair (same pair, same number, every server).
-local function pairHash(key: string): number
-	local hash = 5381
-	for i = 1, #key do
-		hash = (hash * 33 + string.byte(key, i)) % 2147483647
-	end
-	return hash
-end
-
-local function speciesOfRarity(rarity: string)
-	local list = {}
-	for _, species in Freeks.list do
-		if species.rarity == rarity and Seasons.available(species) then
-			table.insert(list, species.id)
-		end
-	end
-	return list
-end
-
--- Returns the baby's species and mutations (a list, or nil) for two parent records.
-function Recipes.roll(parentA, parentB, rng: Random): (string, { string }?)
-	local key = pairKey(parentA.species, parentB.species)
-	local rarity, bothUltra = Breeding.babyRarity(parentA, parentB)
+-- Returns the fused Freek's species, mutations (a list, or nil) and income (before
+-- mutations) for two parent records.
+function Recipes.roll(parentA, parentB, rng: Random): (string, { string }?, number)
 	local mutations = Breeding.rollMutations(parentA, parentB, rng)
+	local income = Breeding.babyIncome(parentA, parentB)
 
-	local secret = bothUltra and SECRETS[key]
+	local _, bothUltra = Breeding.babyRarity(parentA, parentB)
+	local secret = bothUltra and SECRETS[pairKey(parentA.species, parentB.species)]
 	if secret and Freeks.byId[secret] and Seasons.available(Freeks.byId[secret]) then
-		return secret, mutations
+		return secret, mutations, math.max(income, Freeks.byId[secret].income)
 	end
 
-	local species = OVERRIDES[key]
-	if not species or not Freeks.byId[species] or not Seasons.available(Freeks.byId[species]) then
-		local options = speciesOfRarity(rarity)
-		if #options == 0 then
-			-- No species of that rarity exists yet: copy the rarer parent.
-			local rarer = if Freeks.byId[parentA.species].rarity == rarity then parentA else parentB
-			species = rarer.species
-		else
-			table.sort(options)
-			species = options[pairHash(key) % #options + 1]
-		end
-	end
-
-	return species, mutations
+	return Breeding.babySpecies(parentA, parentB), mutations, income
 end
 
 return Recipes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -5381,7 +5629,7 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Stealing Freeks from other players' yards.
@@ -5441,29 +5689,46 @@ local function rootPart(player: Player): BasePart?
 	return character:FindFirstChild("HumanoidRootPart") :: BasePart?
 end
 
--- Puts the Freek on the carrier's head, slows them down, and adds a Snatch prompt for
+-- How far the arms swing forward to hold a Freek (R15 characters).
+local HOLD_ANGLE = math.rad(60)
+
+-- Puts the Freek in the carrier's arms, slows them down, and adds a Snatch prompt for
 -- everyone else. Returns false if the carrier has no character to carry it.
 local function pickUp(carrier: Player, carry): boolean
 	local character = carrier.Character
-	local head = character and character:FindFirstChild("Head")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not head or not humanoid or humanoid.Health <= 0 then
+	if not root or not humanoid or humanoid.Health <= 0 then
 		return false
 	end
 	local model = FreekModel.build(carry.species, carry.mutations)
 	pcall(function()
 		model:ScaleTo(0.6)
 	end)
-	model:PivotTo(head.CFrame * CFrame.new(0, 1, 0))
+	-- Held out in front at the hands, facing the same way as the carrier.
+	model:PivotTo(root.CFrame * CFrame.new(0, 0.4, -1.8))
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Anchored = false
 			descendant.CanCollide = false
 			descendant.Massless = true
 			local weld = Instance.new("WeldConstraint")
-			weld.Part0 = head
+			weld.Part0 = root
 			weld.Part1 = descendant
 			weld.Parent = descendant
+		end
+	end
+
+	-- Arms out to hold it. Changing the shoulder joints' C0 (not Transform) keeps the pose
+	-- under the walk animation, and putDown puts them back.
+	carry.shoulders = {}
+	for _, name in { "RightUpperArm.RightShoulder", "LeftUpperArm.LeftShoulder" } do
+		local armName, jointName = string.match(name, "^(.-)%.(.*)$")
+		local arm = character:FindFirstChild(armName)
+		local joint = arm and arm:FindFirstChild(jointName)
+		if joint and joint:IsA("Motor6D") then
+			table.insert(carry.shoulders, { joint = joint, c0 = joint.C0 })
+			joint.C0 = joint.C0 * CFrame.Angles(HOLD_ANGLE, 0, 0)
 		end
 	end
 
@@ -5502,6 +5767,12 @@ local function putDown(carrier: Player, carry)
 		carry.model:Destroy()
 		carry.model = nil
 	end
+	for _, shoulder in carry.shoulders or {} do
+		if shoulder.joint.Parent then
+			shoulder.joint.C0 = shoulder.c0
+		end
+	end
+	carry.shoulders = nil
 	local character = carrier.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if humanoid and carry.normalSpeed then
@@ -5575,6 +5846,7 @@ local function deliver(carrier: Player, carry)
 	carrierData.freeks[carry.uid] = {
 		species = freek.species,
 		mutations = freek.mutations,
+		income = freek.income,
 		slot = FreekUtil.freeSlot(carrierData),
 	}
 	carrierData.discovered[freek.species] = true
@@ -5788,7 +6060,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
@@ -5836,7 +6108,10 @@ local function offerView(player: Player, uids)
 	for _, uid in uids do
 		local freek = data and data.freeks[uid]
 		if freek then
-			table.insert(list, { uid = uid, species = freek.species, mutations = freek.mutations })
+			table.insert(
+				list,
+				{ uid = uid, species = freek.species, mutations = freek.mutations, income = freek.income }
+			)
 		end
 	end
 	return list
@@ -6069,7 +6344,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- Weapons: giving them out, buying them, and what happens when they hit.
@@ -6398,19 +6673,19 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="39">
+  <Item class="StarterPlayer" referent="40">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="40">
+    <Item class="StarterPlayerScripts" referent="41">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="41">
+      <Item class="Folder" referent="42">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="42">
+        <Item class="ModuleScript" referent="43">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -6484,7 +6759,7 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="43">
+        <Item class="ModuleScript" referent="44">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, event chip, menu tabs, leaderboard,
@@ -7063,7 +7338,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="44">
+        <Item class="LocalScript" referent="45">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -7517,7 +7792,7 @@ function renderers.Fuse()
 		end
 	end
 
-	heading("You get the rarity of the rarer Freek. Some Ultra pairs make a Secret!", 1)
+	heading("Both Freeks fuse into one hybrid that earns more than both. Some Ultra pairs make a Secret!", 1)
 
 	local selected = {}
 	for _, uid in breedSelection do
@@ -7536,9 +7811,16 @@ function renderers.Fuse()
 			.. Format.time(FreekUtil.breedTime(a, b))
 			.. ")"
 
-		-- What this pair will make. Which Ultra pairs make a Secret stays a surprise.
+		-- What this pair will make: its name once you've made it before, otherwise ???.
+		-- Which Ultra pairs make a Secret stays a surprise.
 		local rarity, bothUltra = Breeding.babyRarity(a, b)
-		local parts = { "Result: " .. rarity .. (if bothUltra then " (or a Secret?!)" else "") }
+		local resultId = Breeding.babySpecies(a, b)
+		local result = Freeks.byId[resultId]
+		local resultName = if state.discovered[resultId] and result then result.name else "???"
+		local parts = {
+			"Makes: " .. resultName .. " (" .. rarity .. (if bothUltra then ", or a Secret?!" else "") .. ")",
+			Format.money(Breeding.babyIncome(a, b)) .. "/s",
+		}
 		local odds = Breeding.mutationOdds(a, b)
 		for _, option in odds do
 			table.insert(parts, math.round(option.chance * 100) .. "% " .. option.id)
@@ -7628,6 +7910,40 @@ function renderers.Book()
 		})
 		card.LayoutOrder = species.order
 		card.Parent = grid
+	end
+
+	-- Hybrids this player has made, with whoever made each one first.
+	local hybrids = {}
+	for id in state.discovered do
+		local species = Freeks.byId[id]
+		if species and species.hybrid then
+			table.insert(hybrids, species)
+		end
+	end
+	table.sort(hybrids, function(a, b)
+		return a.name < b.name
+	end)
+	heading(string.format("Hybrids you've made: %d (every pair makes its own!)", #hybrids), 3)
+	local hybridGrid = UI.grid(150, 220)
+	hybridGrid.LayoutOrder = 4
+	hybridGrid.Parent = body
+	for i, species in hybrids do
+		local discovery = discoveries[species.id]
+		local card = UI.card({
+			species = species.id,
+			border = colors.green,
+			lines = {
+				{ species.name, colors.text, 22 },
+				{ species.rarity .. " hybrid", Rarities.info[species.rarity].color, 16 },
+				{
+					if discovery then "First made by\n" .. discovery.name else "",
+					colors.orange,
+					34,
+				},
+			},
+		})
+		card.LayoutOrder = i
+		card.Parent = hybridGrid
 	end
 end
 
@@ -8201,7 +8517,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="45">
+        <Item class="ModuleScript" referent="46">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).

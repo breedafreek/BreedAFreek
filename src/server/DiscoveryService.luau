@@ -25,6 +25,18 @@ end)
 local discoveryUpdate = Remotes.get("DiscoveryUpdate")
 local notify = Remotes.get("Notify")
 
+-- DataStore keys can be at most 50 characters; long hybrid ids are hashed to fit.
+local function storeKey(speciesId: string): string
+	if #speciesId <= 50 then
+		return speciesId
+	end
+	local hash = 5381
+	for i = 1, #speciesId do
+		hash = (hash * 33 + string.byte(speciesId, i)) % 4294967296
+	end
+	return string.format("H%08x%d", hash, #speciesId)
+end
+
 local function announce(speciesId: string, discovery)
 	local isNew = cache[speciesId] == nil
 	cache[speciesId] = discovery
@@ -65,7 +77,7 @@ function DiscoveryService.claim(player: Player, speciesId: string)
 	if store then
 		local ok, result = pcall(function()
 			local existing = nil
-			store:UpdateAsync(speciesId, function(old)
+			store:UpdateAsync(storeKey(speciesId), function(old)
 				existing = old
 				if old then
 					return nil

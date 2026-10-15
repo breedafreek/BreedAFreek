@@ -1,5 +1,7 @@
 -- Helpers shared by server and client for reading a saved Freek record:
---   { species = "Blobby", mutations = { "Golden" }?, slot = 3?, breeding = true? }
+--   { species = "Blobby", mutations = { "Golden" }?, income = 2.2?, slot = 3?, breeding = true? }
+-- species can be a hybrid id ("Blobby+Oinkle"). income is set on fused Freeks; others earn
+-- their species' income.
 
 local Config = require(script.Parent.Config)
 local Freeks = require(script.Parent.Freeks)
@@ -13,12 +15,17 @@ function FreekUtil.species(freek)
 	return Freeks.byId[freek.species]
 end
 
-function FreekUtil.income(freek): number
-	local species = Freeks.byId[freek.species]
-	if not species then
-		return 0
+-- Money per second before mutations.
+function FreekUtil.baseIncome(freek): number
+	if freek.income then
+		return freek.income
 	end
-	return species.income * Mutations.mult(freek.mutations)
+	local species = Freeks.byId[freek.species]
+	return if species then species.income else 0
+end
+
+function FreekUtil.income(freek): number
+	return FreekUtil.baseIncome(freek) * Mutations.mult(freek.mutations)
 end
 
 function FreekUtil.sellValue(freek): number
