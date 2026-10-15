@@ -14160,7 +14160,7 @@ function PackReveal.play(result, done: () -> ())
 	for k = 1, 8 do
 		local angle = k / 8 * math.pi * 2
 		local lampAt = Vector3.new(math.cos(angle) * RIG_RADIUS, RIG_HEIGHT, math.sin(angle) * RIG_RADIUS)
-		local lamp = newPart(stage, {
+		newPart(stage, {
 			Name = "Lamp",
 			Shape = Enum.PartType.Cylinder,
 			Size = Vector3.new(2.2, 1.8, 1.8),
