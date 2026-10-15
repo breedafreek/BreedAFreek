@@ -1,13 +1,13 @@
 -- Hybrids: what you get when two different Freeks fuse.
 --
--- A hybrid is identified by the base species that went into it, e.g. "Blobby+Oinkle".
--- Fusing a hybrid again adds its species to the mix ("Blobby+Oinkle+Snorp"); when one
--- species is in there more than once it gets a count ("Blobby*2+Oinkle"). Counts are kept
+-- A hybrid is identified by the base species that went into it, e.g. "Nerdle+Oinkle".
+-- Fusing a hybrid again adds its species to the mix ("Flexo+Nerdle+Oinkle"); when one
+-- species is in there more than once it gets a count ("Nerdle*2+Oinkle"). Counts are kept
 -- in lowest terms, so the same mix always has the same id however it was made, and
 -- fusing two of the same species just makes that species again.
 --
 -- Everything else about a hybrid comes from its id, so nothing needs to be listed by hand:
---   name    the two main species' names mashed together (Blobby + Oinkle = "Bloinkle")
+--   name    the two main species' names mashed together (Chuckles + Flexo = "Chuxo")
 --   rarity  the rarest species in it (fusing never raises rarity)
 --   look    built by FreekModel from the two main species: left side from one, right side
 --           from the other, body colours blended
@@ -91,14 +91,14 @@ local function letters(name: string): string
 	return (string.gsub(name, "[^%a]", ""))
 end
 
--- The start of a name up to its first vowels: "Blobby" -> "Blo", "Snorp" -> "Sno".
+-- The start of a name up to its first vowels: "Chuckles" -> "Chu", "Glamora" -> "Gla".
 local function front(name: string): string
 	local word = letters(name)
 	local _, finish = string.find(word, "^[^" .. VOWELS .. "]*[" .. VOWELS .. "]+")
 	return if finish then string.sub(word, 1, finish) else word
 end
 
--- The rest of a name after its first vowel: "Oinkle" -> "inkle", "Snorp" -> "rp".
+-- The rest of a name after its first vowel: "Oinkle" -> "inkle", "Flexo" -> "xo".
 local function back(name: string): string
 	local word = letters(name)
 	local _, finish = string.find(word, "^[^" .. VOWELS .. "]*[" .. VOWELS .. "]")

@@ -1,6 +1,6 @@
 -- Helpers shared by server and client for reading a saved Freek record:
---   { species = "Blobby", mutations = { "Golden" }?, income = 2.2?, slot = 3?, breeding = true? }
--- species can be a hybrid id ("Blobby+Oinkle"). income is set on fused Freeks; others earn
+--   { species = "Nerdle", mutations = { "Golden" }?, income = 2.2?, slot = 3?, breeding = true? }
+-- species can be a hybrid id ("Nerdle+Oinkle"). income is set on fused Freeks; others earn
 -- their species' income.
 
 local Config = require(script.Parent.Config)

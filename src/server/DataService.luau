@@ -10,6 +10,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
 
 local STORE_NAME = "FuseAFreek_Players_v1"
@@ -53,6 +55,25 @@ local function reconcile(data)
 		if freek.mutation then
 			freek.mutations = Mutations.pack(freek.mutation)
 			freek.mutation = nil
+		end
+	end
+	-- Freeks whose species no longer exists (removed from Freeks.luau) are dropped, along
+	-- with any Fusion Den using them.
+	for uid, freek in data.freeks do
+		if not Freeks.byId[freek.species] then
+			data.freeks[uid] = nil
+		end
+	end
+	for _, key in FreekUtil.PEN_KEYS do
+		local pen = data[key]
+		if pen and not (data.freeks[pen.a] and data.freeks[pen.b]) then
+			for _, uid in { pen.a, pen.b } do
+				local freek = data.freeks[uid]
+				if freek then
+					freek.breeding = nil
+				end
+			end
+			data[key] = nil
 		end
 	end
 	return data
