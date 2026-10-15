@@ -1712,9 +1712,19 @@ Freeks.list = {
 	},
 }
 
+-- Every Freek belongs to a series (shown first when a Monster Egg hatches).
+Freeks.SERIES = {
+	Animal = { name = "Animal Series", icon = "🐾", color = Color3.fromRGB(90, 220, 110) },
+	Human = { name = "Human Series", icon = "🧑", color = Color3.fromRGB(80, 170, 255) },
+	Monster = { name = "Monster Series", icon = "🎃", color = Color3.fromRGB(255, 130, 40) },
+	Hybrid = { name = "Hybrid", icon = "🧪", color = Color3.fromRGB(255, 95, 200) },
+}
+local HUMAN_LINE = { Chuckles = true, Nerdle = true, Flexo = true, Glamora = true }
+
 local base = {}
 for i, species in Freeks.list do
 	species.order = i
+	species.series = if species.exclusive then "Monster" elseif HUMAN_LINE[species.id] then "Human" else "Animal"
 	base[species.id] = species
 end
 

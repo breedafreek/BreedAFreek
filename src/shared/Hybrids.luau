@@ -167,6 +167,7 @@ function Hybrids.info(id: string, get)
 		rarity = Rarities.order[rank],
 		income = a.income + b.income, -- only a guide: each hybrid Freek stores its own
 		hybrid = true,
+		series = "Hybrid",
 		walk = a.walk,
 		parts = ranked,
 		look = { hybrid = { a = a.id, b = b.id } },

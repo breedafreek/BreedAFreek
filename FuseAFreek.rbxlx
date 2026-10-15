@@ -2863,9 +2863,19 @@ Freeks.list = {
 	},
 }
 
+-- Every Freek belongs to a series (shown first when a Monster Egg hatches).
+Freeks.SERIES = {
+	Animal = { name = "Animal Series", icon = "🐾", color = Color3.fromRGB(90, 220, 110) },
+	Human = { name = "Human Series", icon = "🧑", color = Color3.fromRGB(80, 170, 255) },
+	Monster = { name = "Monster Series", icon = "🎃", color = Color3.fromRGB(255, 130, 40) },
+	Hybrid = { name = "Hybrid", icon = "🧪", color = Color3.fromRGB(255, 95, 200) },
+}
+local HUMAN_LINE = { Chuckles = true, Nerdle = true, Flexo = true, Glamora = true }
+
 local base = {}
 for i, species in Freeks.list do
 	species.order = i
+	species.series = if species.exclusive then "Monster" elseif HUMAN_LINE[species.id] then "Human" else "Animal"
 	base[species.id] = species
 end
 
@@ -3294,6 +3304,7 @@ function Hybrids.info(id: string, get)
 		rarity = Rarities.order[rank],
 		income = a.income + b.income, -- only a guide: each hybrid Freek stores its own
 		hybrid = true,
+		series = "Hybrid",
 		walk = a.walk,
 		parts = ranked,
 		look = { hybrid = { a = a.id, b = b.id } },
@@ -11299,658 +11310,6 @@ return BarnFX
         </Item>
         <Item class="ModuleScript" referent="51">
           <Properties>
-            <string name="Name">Hatch</string>
-            <string name="Source"><![CDATA[-- The egg hatch show. The egg pops out of the player and lands on the ground in front of
--- them, wobbles harder and harder, cracks and bursts, and the Freek inside jumps out.
--- The rarer the Freek, the bigger the show:
---   Common/Uncommon  a poof and a shockwave
---   Rare             + the egg glows in the rarity colour, more shockwaves
---   Legendary        + light beams, confetti, camera shake, the camera circles the Freek
---   Mystic           + the sky goes dark, the egg floats up, lightning strikes
---   Ultra/Secret     + rainbow everything, orbiting stars, more lightning
--- Only the hatching player sees it (it's all built on the client).
-
-local Lighting = game:GetService("Lighting")
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
-local Workspace = game:GetService("Workspace")
-
-local Shared = ReplicatedStorage:WaitForChild("Shared")
-local EggModel = require(Shared.EggModel)
-local FreekModel = require(Shared.FreekModel)
-local FreekUtil = require(Shared.FreekUtil)
-local Rarities = require(Shared.Rarities)
-local UI = require(script.Parent.UI)
-
-local Hatch = {}
-
-local BANNERS = {
-	Common = "COMMON",
-	Uncommon = "UNCOMMON!",
-	Rare = "RARE!",
-	Legendary = "LEGENDARY!!",
-	Mystic = "MYSTIC!!!",
-	Ultra = "ULTRA!!!",
-	Secret = "SECRET!!!!",
-}
-
-local function rainbow(t: number, offset: number?): Color3
-	return Color3.fromHSV((t * 0.6 + (offset or 0)) % 1, 0.8, 1)
-end
-
-local function easeOut(a: number): number
-	return 1 - (1 - a) * (1 - a)
-end
-
-local function newPart(parent: Instance, props)
-	local part = Instance.new(props.ClassName or "Part")
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanTouch = false
-	part.CanQuery = false
-	part.CastShadow = false
-	part.TopSurface = Enum.SurfaceType.Smooth
-	part.BottomSurface = Enum.SurfaceType.Smooth
-	part.Material = Enum.Material.SmoothPlastic
-	for key, value in props do
-		if key ~= "ClassName" then
-			part[key] = value
-		end
-	end
-	part.Parent = parent
-	return part
-end
-
--- Where the show happens: the ground about 10 studs in front of the player, facing them.
-local function findStage(origin: CFrame, exclude: { Instance }): (CFrame, number)
-	local flat = Vector3.new(origin.LookVector.X, 0, origin.LookVector.Z)
-	flat = if flat.Magnitude > 0.01 then flat.Unit else Vector3.new(0, 0, -1)
-	local spot = origin.Position + flat * 10
-	local groundY = origin.Position.Y
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = exclude
-	local ok, hit = pcall(function()
-		return Workspace:Raycast(spot + Vector3.new(0, 8, 0), Vector3.new(0, -40, 0), params)
-	end)
-	if ok and hit then
-		groundY = hit.Position.Y
-	end
-	local position = Vector3.new(spot.X, groundY, spot.Z)
-	local facing = Vector3.new(origin.Position.X, groundY, origin.Position.Z)
-	return CFrame.lookAt(position, facing), groundY
-end
-
--- result = { crate, rarity, freek = { species, mutations }, isNew }
--- showPrize(cleanup) is called once the Freek is out; call cleanup() when the prize card
--- closes. origin is where the player stands (defaults to their character).
--- Returns false if there's nowhere to put on the show (no character).
-function Hatch.play(result, gui: ScreenGui, showPrize: (cleanup: () -> ()) -> (), origin: CFrame?): boolean
-	local player = Players.LocalPlayer
-	local character = player and player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	if not origin then
-		if not (root and root:IsA("BasePart")) then
-			return false
-		end
-		origin = root.CFrame * CFrame.new(0, -3, 0)
-	end
-	local start = origin :: CFrame
-
-	local rarity = result.rarity
-	local tier = Rarities.rank[rarity] or 1
-	local color = Rarities.info[rarity] and Rarities.info[rarity].color or Color3.new(1, 1, 1)
-	local eggColor = EggModel.COLORS[result.crate] or Color3.fromRGB(255, 140, 30)
-
-	local folder = Instance.new("Folder")
-	folder.Name = "HatchShow"
-	folder.Parent = Workspace
-	local stage, groundY = findStage(start, { folder, character :: Instance })
-	local ground = stage.Position
-
-	-- Everything that moves on its own (particles, beams, camera shake) runs in `updaters`,
-	-- called every frame with (now, dt). An updater returns false to stop.
-	local updaters = {}
-	local clock = os.clock()
-	local function step(): number
-		local now = os.clock()
-		local dt = math.min(now - clock, 0.1)
-		clock = now
-		for i = #updaters, 1, -1 do
-			if updaters[i](now, dt) == false then
-				table.remove(updaters, i)
-			end
-		end
-		return dt
-	end
-	-- Runs fn(alpha, t) every frame for `duration` seconds.
-	local function animate(duration: number, fn: (number, number) -> ())
-		local began = os.clock()
-		while true do
-			local t = os.clock() - began
-			local alpha = math.min(t / duration, 1)
-			fn(alpha, t)
-			step()
-			if alpha >= 1 then
-				break
-			end
-			task.wait()
-		end
-	end
-
-	-- Camera: behind and above the player, looking at the landing spot. Shakes on demand.
-	local camera = Workspace.CurrentCamera
-	local oldCameraType = camera.CameraType
-	local fromCamera = camera.CFrame
-	local toward = (start.Position - ground) * Vector3.new(1, 0, 1)
-	toward = if toward.Magnitude > 0.01 then toward.Unit else Vector3.new(0, 0, 1)
-	local side = toward:Cross(Vector3.yAxis)
-	local function cameraAt(angle: number, distance: number, height: number, focusHeight: number?): CFrame
-		local direction = CFrame.fromAxisAngle(Vector3.yAxis, angle):VectorToWorldSpace(toward)
-		local position = ground + direction * distance + side * (distance * 0.15) + Vector3.new(0, height, 0)
-		return CFrame.lookAt(position, ground + Vector3.new(0, focusHeight or 2.5, 0))
-	end
-	local cameraBase = cameraAt(0, 16, 6.5)
-	local cameraFrom = fromCamera
-	local cameraBlend = 0
-	local shake = 0
-	camera.CameraType = Enum.CameraType.Scriptable
-	table.insert(updaters, function(_, dt)
-		cameraBlend = math.min(cameraBlend + dt / 0.5, 1)
-		local cf = cameraFrom:Lerp(cameraBase, easeOut(cameraBlend))
-		if shake > 0.01 then
-			local r = Random.new()
-			cf *= CFrame.new(r:NextNumber(-1, 1) * shake, r:NextNumber(-1, 1) * shake, 0) * CFrame.Angles(
-				0,
-				0,
-				r:NextNumber(-1, 1) * shake * 0.03
-			)
-			shake *= math.exp(-dt * 5)
-		end
-		camera.CFrame = cf
-		return true
-	end)
-
-	-- Stop the player walking off mid-show.
-	local controls: any = nil
-	pcall(function()
-		local module = require(player.PlayerScripts:WaitForChild("PlayerModule", 1) :: any)
-		controls = module:GetControls()
-		controls:Disable()
-	end)
-
-	-- Particles: parts that fly, spin, fall, grow and fade, then vanish.
-	local particles = {}
-	local function particle(part: BasePart, velocity: Vector3, life: number, opts)
-		table.insert(particles, {
-			part = part,
-			velocity = velocity,
-			life = life,
-			age = 0,
-			gravity = opts.gravity or 0,
-			spin = opts.spin or Vector3.zero,
-			grow = opts.grow,
-			fade = opts.fade,
-			size = part.Size,
-		})
-	end
-	table.insert(updaters, function(_, dt)
-		for i = #particles, 1, -1 do
-			local p = particles[i]
-			p.age += dt
-			if p.age >= p.life then
-				p.part:Destroy()
-				table.remove(particles, i)
-			else
-				local a = p.age / p.life
-				p.velocity -= Vector3.new(0, p.gravity * dt, 0)
-				local cf = p.part.CFrame + p.velocity * dt
-				p.part.CFrame = cf * CFrame.Angles(p.spin.X * dt, p.spin.Y * dt, p.spin.Z * dt)
-				if p.grow then
-					p.part.Size = p.size * (1 + p.grow * easeOut(a))
-				end
-				if p.fade then
-					p.part.Transparency = math.max(p.part.Transparency, a * a)
-				end
-			end
-		end
-		return true
-	end)
-
-	local random = Random.new()
-	local function puff(position: Vector3, count: number, size: number, tint: Color3?)
-		for _ = 1, count do
-			local direction = Vector3.new(random:NextNumber(-1, 1), random:NextNumber(0, 0.6), random:NextNumber(-1, 1))
-			local ball = newPart(folder, {
-				Name = "Puff",
-				Shape = Enum.PartType.Ball,
-				Size = Vector3.one * size * random:NextNumber(0.7, 1.2),
-				CFrame = CFrame.new(position + direction),
-				Color = tint or Color3.new(1, 1, 1),
-				Transparency = 0.15,
-			})
-			particle(ball, direction * random:NextNumber(4, 8), 0.6, { grow = 1.2, fade = true })
-		end
-	end
-	local function ring(delay: number, ringColor: Color3, radius: number)
-		task.delay(delay, function()
-			local count = 28
-			for k = 1, count do
-				local angle = k / count * math.pi * 2
-				local direction = Vector3.new(math.cos(angle), 0, math.sin(angle))
-				local part = newPart(folder, {
-					Name = "Shockwave",
-					Size = Vector3.new(0.35, 0.45, 0.5),
-					CFrame = CFrame.lookAt(
-						ground + Vector3.new(0, 0.3, 0) + direction,
-						ground + Vector3.new(0, 0.3, 0) + direction * 2
-					) * CFrame.Angles(0, math.rad(90), 0),
-					Color = ringColor,
-					Material = Enum.Material.Neon,
-				})
-				particle(part, direction * radius / 0.7, 0.7, { grow = radius * 0.22, fade = true })
-			end
-		end)
-	end
-	local function confetti(position: Vector3, count: number)
-		for i = 1, count do
-			local piece = newPart(folder, {
-				Name = "Confetti",
-				Size = Vector3.new(0.5, 0.08, 0.3),
-				CFrame = CFrame.new(position) * CFrame.Angles(random:NextNumber(0, 6), random:NextNumber(0, 6), 0),
-				Color = if tier >= 6 then rainbow(0, i / count) else Color3.fromHSV(random:NextNumber(), 0.75, 1),
-				Material = Enum.Material.Neon,
-			})
-			local velocity =
-				Vector3.new(random:NextNumber(-1, 1) * 14, random:NextNumber(14, 26), random:NextNumber(-1, 1) * 14)
-			particle(piece, velocity, 2.4, { gravity = 30, spin = Vector3.new(8, 5, 3), fade = true })
-		end
-	end
-	local function flash(flashColor: Color3, duration: number)
-		local frame = UI.new("Frame", {
-			Size = UDim2.fromScale(1, 1),
-			BackgroundColor3 = flashColor,
-			BackgroundTransparency = 0.1,
-			ZIndex = 70,
-			Parent = gui,
-		})
-		TweenService:Create(frame, TweenInfo.new(duration), { BackgroundTransparency = 1 }):Play()
-		task.delay(duration, frame.Destroy, frame)
-	end
-	local function lightning(target: Vector3)
-		local from = target + Vector3.new(random:NextNumber(-8, 8), 45, random:NextNumber(-8, 8))
-		local boltColor = if tier >= 6 then rainbow(os.clock()) else Color3.fromRGB(220, 200, 255)
-		local points = { from }
-		for k = 1, 6 do
-			local p = from:Lerp(target, k / 7)
-			table.insert(points, p + Vector3.new(random:NextNumber(-2, 2), 0, random:NextNumber(-2, 2)))
-		end
-		table.insert(points, target)
-		for k = 1, #points - 1 do
-			local a, b = points[k], points[k + 1]
-			local bolt = newPart(folder, {
-				Name = "Lightning",
-				Size = Vector3.new(0.45, 0.45, (b - a).Magnitude + 0.3),
-				CFrame = CFrame.lookAt((a + b) / 2, b),
-				Color = boltColor,
-				Material = Enum.Material.Neon,
-			})
-			particle(bolt, Vector3.zero, 0.25, { fade = true })
-		end
-		flash(Color3.fromRGB(235, 225, 255), 0.25)
-		shake = math.max(shake, 0.6)
-	end
-
-	-- 1. The egg pops out of the player and arcs onto the ground, then bounces.
-	local egg = EggModel.build(result.crate)
-	for _, part in egg:GetDescendants() do
-		if part:IsA("BasePart") then
-			part.CanQuery = false
-		end
-	end
-	egg.Parent = folder
-	local throwFrom = start.Position + Vector3.new(0, 4, 0)
-	local spinTurns = 1
-	animate(0.8, function(a)
-		local position = throwFrom:Lerp(ground, a) + Vector3.new(0, math.sin(a * math.pi) * 7, 0)
-		egg:PivotTo(stage.Rotation + position)
-		egg:PivotTo(egg:GetPivot() * CFrame.Angles(-(1 - a) * math.pi * 2 * spinTurns, 0, 0))
-	end)
-	puff(ground, 8, 1.2)
-	shake = 0.35
-	animate(0.45, function(a)
-		local hop = math.abs(math.sin(a * math.pi * 2)) * (1 - a) * 1.2
-		egg:PivotTo(stage + Vector3.new(0, hop, 0))
-	end)
-
-	-- 2. Suspense: the egg wobbles harder and harder and starts to crack. Rarer Freeks
-	-- make it glow, call down light beams, darken the sky and bring lightning.
-	local suspense = 1 + tier * 0.5
-	local glow = nil
-	if tier >= 3 then
-		glow = Instance.new("PointLight")
-		glow.Color = color
-		glow.Range = 16
-		glow.Brightness = 0
-		glow.Parent = egg.PrimaryPart
-	end
-	local beams = {}
-	if tier >= 4 then
-		local count = tier * 2 - 4
-		for i = 1, count do
-			local beam = newPart(folder, {
-				Name = "Beam",
-				Size = Vector3.new(0.7, 0.1, 0.7),
-				Color = color,
-				Material = Enum.Material.Neon,
-				Transparency = 0.35,
-			})
-			table.insert(beams, { part = beam, angle = i / count * math.pi * 2 })
-		end
-	end
-	local beamHeight = 0
-	local beamFade = 0
-	if #beams > 0 then
-		table.insert(updaters, function(now)
-			for i, beam in beams do
-				if beam.part.Parent then
-					local angle = beam.angle + now * 1.6
-					local radius = 4 + math.sin(now * 3 + i) * 0.6
-					local tilt = CFrame.Angles(math.rad(12), 0, 0)
-					beam.part.Size = Vector3.new(0.7, beamHeight, 0.7)
-					beam.part.Transparency = 0.35 + 0.65 * beamFade
-					beam.part.CFrame = CFrame.new(
-						ground + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
-					) * CFrame.Angles(0, -angle, 0) * tilt * CFrame.new(0, beamHeight / 2, 0)
-					if tier >= 6 then
-						beam.part.Color = rainbow(now, i / #beams)
-					end
-				end
-			end
-			return true
-		end)
-	end
-	local darkness = nil
-	if tier >= 5 then
-		darkness = Instance.new("ColorCorrectionEffect")
-		darkness.Name = "HatchDark"
-		darkness.Parent = Lighting
-		TweenService:Create(darkness, TweenInfo.new(suspense * 0.5), {
-			Brightness = -0.25,
-			Contrast = 0.15,
-			TintColor = color:Lerp(Color3.new(1, 1, 1), 0.55),
-		}):Play()
-	end
-	local stars = {}
-	if tier >= 6 then
-		for i = 1, 6 do
-			table.insert(
-				stars,
-				newPart(folder, {
-					Name = "Star",
-					Shape = Enum.PartType.Ball,
-					Size = Vector3.one * 0.6,
-					Material = Enum.Material.Neon,
-					Color = rainbow(0, i / 6),
-				})
-			)
-		end
-	end
-	local cracks = 0
-	local function addCracks(count: number)
-		local pivot = egg:GetPivot()
-		for _ = 1, count do
-			cracks += 1
-			local angle = (cracks * 2.4) % (math.pi * 2) - math.pi
-			local y = random:NextNumber(-1, 1.1)
-			for k = 0, 2 do
-				newPart(egg, {
-					Name = "Crack",
-					Size = Vector3.new(0.12, 0.55, 0.1),
-					CFrame = pivot
-						* EggModel.surface(angle + (if k % 2 == 0 then 0.05 else -0.05), y - k * 0.45, 0.03)
-						* CFrame.Angles(0, 0, math.rad(if k % 2 == 0 then 35 else -35)),
-					Color = if tier >= 3 then color else Color3.fromRGB(255, 245, 210),
-					Material = Enum.Material.Neon,
-				})
-			end
-		end
-	end
-	local strikes = if tier >= 6 then { 0.3, 0.5, 0.68, 0.84 } elseif tier >= 5 then { 0.4, 0.65, 0.88 } else {}
-	local crackAt = { 0.45, 0.65, 0.82 }
-	local phase = 0
-	local lift = if tier >= 5 then 3 else 0
-	animate(suspense, function(a, t)
-		local strength = a * a
-		phase += (6 + 16 * a) * (1 / 60)
-		local rock = math.sin(phase * math.pi) * (0.06 + 0.3 * strength)
-		local height = lift * easeOut(math.min(a / 0.4, 1))
-		local spin = if lift > 0 then t * (1 + a * 6) else 0
-		local hop = if tier >= 4 and a > 0.5 then math.max(math.sin(phase * math.pi * 0.5), 0) * 0.4 * a else 0
-		egg:PivotTo(stage * CFrame.new(0, height + hop, 0) * CFrame.Angles(0, spin, rock))
-		cameraBase = cameraAt(0, 16 - 5 * easeOut(a), 6.5 - 2 * easeOut(a) + height * 0.5, 2.5 + height)
-		if glow then
-			glow.Brightness = 1 + 4 * strength * (tier - 2)
-		end
-		beamHeight = 60 * easeOut(math.min(a / 0.3, 1))
-		for i, star in stars do
-			local angle = t * 4 + i / #stars * math.pi * 2
-			star.CFrame = CFrame.new(
-				ground + Vector3.new(math.cos(angle) * 3.2, 2 + height + math.sin(t * 5 + i), math.sin(angle) * 3.2)
-			)
-			star.Color = rainbow(t, i / #stars)
-		end
-		if crackAt[1] and a >= crackAt[1] then
-			table.remove(crackAt, 1)
-			addCracks(if tier >= 4 then 2 else 1)
-			shake = math.max(shake, 0.1 + tier * 0.03)
-		end
-		if strikes[1] and a >= strikes[1] then
-			table.remove(strikes, 1)
-			lightning(egg:GetPivot().Position + Vector3.new(0, 2, 0))
-		end
-	end)
-
-	-- 3. Burst! Shell pieces fly, shockwaves roll out, confetti for the good stuff.
-	local burstAt = egg:GetPivot().Position + Vector3.new(0, 2, 0)
-	egg:Destroy()
-	for _, star in stars do
-		star:Destroy()
-	end
-	flash(color:Lerp(Color3.new(1, 1, 1), 0.6), 0.5 + tier * 0.08)
-	shake = 0.3 + tier * 0.15
-	for i = 1, 14 do
-		local direction = CFrame.fromAxisAngle(Vector3.yAxis, i / 14 * math.pi * 2):VectorToWorldSpace(Vector3.xAxis)
-		local shard = newPart(folder, {
-			ClassName = "WedgePart",
-			Name = "Shell",
-			Size = Vector3.new(0.15, random:NextNumber(0.6, 1.1), random:NextNumber(0.6, 1)),
-			CFrame = CFrame.new(burstAt + direction)
-				* CFrame.Angles(random:NextNumber(0, 6), random:NextNumber(0, 6), 0),
-			Color = eggColor,
-		})
-		particle(shard, direction * random:NextNumber(10, 16) + Vector3.new(0, random:NextNumber(10, 18), 0), 1.4, {
-			gravity = 40,
-			spin = Vector3.new(9, 6, 4),
-			fade = true,
-		})
-	end
-	puff(burstAt, 10 + tier * 2, 1.4, if tier >= 3 then color:Lerp(Color3.new(1, 1, 1), 0.5) else nil)
-	for k = 1, math.clamp(tier - 1, 1, 4) do
-		ring((k - 1) * 0.15, if tier >= 6 then rainbow(os.clock(), k / 4) else color, 10 + tier * 3)
-	end
-	if tier >= 4 then
-		confetti(burstAt, 20 * (tier - 3))
-	end
-
-	-- The rarity banner on screen.
-	local banner = UI.label(BANNERS[rarity] or rarity, {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.15),
-		Size = UDim2.fromOffset(620, 70 + tier * 8),
-		FontFace = UI.fonts.heavy,
-		TextColor3 = if tier >= 6 then Color3.new(1, 1, 1) else color,
-		ZIndex = 72,
-		Parent = gui,
-	})
-	local bannerStroke = banner:FindFirstChildOfClass("UIStroke")
-	if bannerStroke then
-		bannerStroke.Thickness = 4
-	end
-	local bannerScale = UI.new("UIScale", { Scale = 0.2, Parent = banner })
-	TweenService
-		:Create(bannerScale, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
-		:Play()
-	local bannerGradient = nil
-	if tier >= 6 then
-		local keys = {}
-		for k = 0, 6 do
-			table.insert(keys, ColorSequenceKeypoint.new(k / 6, Color3.fromHSV(k / 6, 0.8, 1)))
-		end
-		bannerGradient = UI.new("UIGradient", { Color = ColorSequence.new(keys), Parent = banner })
-	end
-	if tier >= 5 then
-		table.insert(updaters, function(now)
-			if not banner.Parent then
-				return false
-			end
-			banner.Rotation = math.sin(now * 6) * 4
-			if bannerGradient then
-				bannerGradient.Offset = Vector2.new(math.sin(now * 2) * 0.5, 0)
-			end
-			return true
-		end)
-	end
-	local newLabel = nil
-	if result.isNew then
-		newLabel = UI.label("NEW FREEK!", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, 0, 0.15, 60 + tier * 4),
-			Size = UDim2.fromOffset(300, 36),
-			FontFace = UI.fonts.heavy,
-			TextColor3 = Color3.fromRGB(255, 215, 60),
-			ZIndex = 72,
-			Parent = gui,
-		})
-	end
-
-	-- 4. The Freek jumps out and lands where the egg was, facing the camera.
-	local freek, freekHeight = FreekModel.build(result.freek.species, result.freek.mutations)
-	for _, part in freek:GetDescendants() do
-		if part:IsA("BasePart") then
-			part.Anchored = true
-			part.CanCollide = false
-			part.CanQuery = false
-		end
-	end
-	freek.Parent = folder
-	cameraBase = cameraAt(0, 11, 4.5)
-	local face = CFrame.lookAt(ground, Vector3.new(cameraBase.Position.X, groundY, cameraBase.Position.Z))
-	local function setScale(scale: number)
-		pcall(function()
-			freek:ScaleTo(scale)
-		end)
-	end
-	local airY = burstAt.Y - 2 - groundY
-	animate(0.55, function(a)
-		local y = airY * (1 - a) + math.sin(a * math.pi) * 3
-		setScale(0.2 + 0.8 * math.min(a / 0.6, 1))
-		freek:PivotTo(face * CFrame.new(0, y, 0) * CFrame.Angles(0, (1 - a) * math.pi * 2, 0))
-	end)
-	setScale(1)
-	puff(ground, 6, 0.9)
-
-	local tag = UI.new("BillboardGui", {
-		Size = UDim2.fromOffset(260, 60),
-		StudsOffsetWorldSpace = Vector3.new(0, 1, 0),
-		AlwaysOnTop = true,
-		LightInfluence = 0,
-		Parent = freek.PrimaryPart,
-	})
-	if freek.PrimaryPart then
-		tag.StudsOffsetWorldSpace = Vector3.new(0, groundY + freekHeight + 1.2 - freek.PrimaryPart.Position.Y, 0)
-	end
-	UI.label(rarity, {
-		Size = UDim2.new(1, 0, 0.4, 0),
-		FontFace = UI.fonts.heavy,
-		TextColor3 = color,
-		Parent = tag,
-	})
-	UI.label(FreekUtil.displayName(result.freek), {
-		Position = UDim2.fromScale(0, 0.4),
-		Size = UDim2.new(1, 0, 0.6, 0),
-		FontFace = UI.fonts.heavy,
-		TextColor3 = Color3.new(1, 1, 1),
-		Parent = tag,
-	})
-
-	-- 5. Show it off: happy hops, and for Legendary+ the camera circles round.
-	local showcase = 1.4 + tier * 0.3
-	local orbit = if tier >= 4 then math.rad(25 + tier * 8) else 0
-	local closeDistance = math.max(8, freekHeight * 1.9)
-	local closeHeight = freekHeight * 0.5 + 1.5
-	local closeFocus = freekHeight * 0.6 + 0.5
-	animate(showcase, function(a, t)
-		local e = easeOut(math.min(a * 1.6, 1))
-		beamFade = math.min(a * 2.5, 1)
-		cameraBase = cameraAt(
-			orbit * math.sin(a * math.pi * 0.5),
-			11 + (closeDistance - 11) * e,
-			4.5 + (closeHeight - 4.5) * e,
-			2.5 + (closeFocus - 2.5) * e
-		)
-		-- Keep facing the camera as it circles round.
-		local look = Vector3.new(cameraBase.Position.X, groundY, cameraBase.Position.Z)
-		local hop = math.abs(math.sin(t * math.pi * 2.2)) * 0.8 * (1 - a)
-		freek:PivotTo(CFrame.lookAt(ground, look) * CFrame.new(0, hop, 0))
-	end)
-
-	local cleaned = false
-	local function cleanup()
-		if cleaned then
-			return
-		end
-		cleaned = true
-		table.clear(updaters)
-		folder:Destroy()
-		banner:Destroy()
-		if newLabel then
-			newLabel:Destroy()
-		end
-		if darkness then
-			local fade = TweenService:Create(darkness, TweenInfo.new(0.6), {
-				Brightness = 0,
-				Contrast = 0,
-				TintColor = Color3.new(1, 1, 1),
-			})
-			fade:Play()
-			task.delay(0.6, darkness.Destroy, darkness)
-		end
-		camera.CameraType = if oldCameraType == Enum.CameraType.Scriptable
-			then Enum.CameraType.Custom
-			else oldCameraType
-		if controls then
-			controls:Enable()
-		end
-	end
-	-- Keep beams and particles going behind the prize card.
-	task.spawn(function()
-		while not cleaned do
-			step()
-			task.wait()
-		end
-	end)
-	showPrize(cleanup)
-	return true
-end
-
-return Hatch
-]]></string>
-          </Properties>
-        </Item>
-        <Item class="ModuleScript" referent="52">
-          <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, event chip, menu tabs, leaderboard,
 -- gate button and pop-up notifications. Windows (Shop, Freeks, ...) live in Main.
@@ -12568,7 +11927,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="53">
+        <Item class="ModuleScript" referent="52">
           <Properties>
             <string name="Name">ItemPictures</string>
             <string name="Source"><![CDATA[-- 3D pictures for shop items (barn slots, weapons, game passes), built from parts like
@@ -12878,7 +12237,7 @@ return ItemPictures
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="54">
+        <Item class="LocalScript" referent="53">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -12944,8 +12303,8 @@ local Seasons = require(Shared.Seasons)
 local Weapons = require(Shared.Weapons)
 local Ambient = require(script.Parent.Ambient)
 local BarnFX = require(script.Parent.BarnFX)
-local Hatch = require(script.Parent.Hatch)
 local Hud = require(script.Parent.Hud)
+local PackReveal = require(script.Parent.PackReveal)
 local UI = require(script.Parent.UI)
 
 local player = Players.LocalPlayer
@@ -13911,57 +13270,6 @@ local function freekPrize(box: Frame, freek, rarity: string, isNew: boolean, clo
 	prizeCard(box, if isNew then "NEW FREEK!" else "You got...", freek, color, subtitle, close)
 end
 
--- The egg wobbles harder and harder, cracks with a flash, then shows what hatched.
-local function revealCrate(result, done)
-	local crate = Luck.crateById[result.crate]
-	local shade, box = overlay()
-	local function close()
-		shade:Destroy()
-		done()
-	end
-	local egg = UI.eggViewport(crate.id, 240)
-	egg.AnchorPoint = Vector2.new(0.5, 0.5)
-	egg.Position = UDim2.fromScale(0.5, 0.5)
-	egg.Size = UDim2.fromOffset(240, 240)
-	egg.ZIndex = 52
-	egg.Parent = box
-	local title = UI.label("Hatching " .. crate.name .. "...", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0.5, 130),
-		Size = UDim2.fromOffset(420, 40),
-		FontFace = UI.fonts.heavy,
-		TextSize = 30,
-		TextColor3 = crate.color,
-		ZIndex = 53,
-		Parent = box,
-	})
-	local insideColor = Rarities.info[result.rarity].color
-	task.spawn(function()
-		for i = 1, 16 do
-			local strength = 3 + i * 1.4
-			egg.Rotation = if i % 2 == 0 then strength else -strength
-			local grow = 240 + i * 6
-			egg.Size = UDim2.fromOffset(grow, grow)
-			-- Glow in the colour of what's inside for the last few wobbles.
-			if i > 10 then
-				egg.ImageColor3 = Color3.new(1, 1, 1):Lerp(insideColor, (i - 10) / 8)
-			end
-			task.wait(if i > 12 then 0.08 else 0.12)
-		end
-		local flash = UI.new("Frame", {
-			Size = UDim2.fromScale(1, 1),
-			BackgroundColor3 = insideColor:Lerp(Color3.new(1, 1, 1), 0.6),
-			ZIndex = 60,
-			Parent = shade,
-		})
-		TweenService:Create(flash, TweenInfo.new(0.6), { BackgroundTransparency = 1 }):Play()
-		task.delay(0.6, flash.Destroy, flash)
-		egg:Destroy()
-		title:Destroy()
-		freekPrize(box, result.freek, result.rarity, result.isNew, close)
-	end)
-end
-
 -- The Lucky Wheel spins and lands on the prize the server rolled.
 local function buildWheel(parent: Instance, radius: number)
 	local wheel = UI.new("Frame", {
@@ -14071,26 +13379,11 @@ local function nextReveal()
 		revealWheel(result, done)
 		return
 	end
-	-- Eggs hatch out in the world in front of the player; the prize card waits at the side
-	-- so the Freek stays in view.
+	-- Eggs open with the full card-pack reveal.
 	if currentWindow then
 		open(currentWindow)
 	end
-	local hatched = Hatch.play(result, screen, function(cleanup)
-		local shade, box = overlay()
-		shade.BackgroundTransparency = 1
-		box.AnchorPoint = Vector2.new(1, 0.5)
-		box.Position = UDim2.new(1, -24, 0.55, 0)
-		box.Size = UDim2.fromOffset(300, 410)
-		freekPrize(box, result.freek, result.rarity, result.isNew, function()
-			shade:Destroy()
-			cleanup()
-			done()
-		end)
-	end)
-	if not hatched then
-		revealCrate(result, done)
-	end
+	PackReveal.play(result, done)
 end
 Remotes.get("LuckResult").OnClientEvent:Connect(function(result)
 	table.insert(revealQueue, result)
@@ -14611,6 +13904,597 @@ if state then
 	setRebirthBoost(state.rebirths or 0)
 end
 render()
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="54">
+          <Properties>
+            <string name="Name">PackReveal</string>
+            <string name="Source"><![CDATA[-- Monster Egg opening, done like a card-pack reveal in the big sports games: the screen
+-- goes dark, the egg drops in and shakes, bursts into a face-down card, and then the
+-- clues slam in one at a time (first the Freek's SERIES, then its RARITY, with the lights
+-- turning that colour) before the card flips to show the Freek's picture and name.
+-- The rarer the Freek, the longer the suspense and the bigger the lights.
+-- Tapping the screen speeds it up.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Freeks = require(ReplicatedStorage.Shared.Freeks)
+local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local Rarities = require(ReplicatedStorage.Shared.Rarities)
+local UI = require(script.Parent.UI)
+
+local PackReveal = {}
+
+local RARITY_WORDS = {
+	Common = "COMMON",
+	Uncommon = "UNCOMMON",
+	Rare = "RARE!",
+	Legendary = "LEGENDARY!",
+	Mystic = "MYSTIC!!",
+	Ultra = "ULTRA!!!",
+	Secret = "SECRET!!!",
+}
+
+local CARD_W, CARD_H = 290, 400
+
+local function easeOut(a: number): number
+	return 1 - (1 - a) ^ 3
+end
+
+local function rainbow(t: number, offset: number?): Color3
+	return Color3.fromHSV((t * 0.5 + (offset or 0)) % 1, 0.75, 1)
+end
+
+-- result = { crate, rarity, isNew, freek = { species, mutations } }
+function PackReveal.play(result, done: () -> ())
+	local player = Players.LocalPlayer
+	local species = Freeks.byId[result.freek.species]
+	local rarity = result.rarity
+	local tier = Rarities.rank[rarity] or 1
+	local rarityColor = Rarities.info[rarity] and Rarities.info[rarity].color or Color3.new(1, 1, 1)
+	local series = Freeks.SERIES[species and species.series or "Animal"] or Freeks.SERIES.Animal
+	local random = Random.new()
+
+	local gui = UI.new("ScreenGui", {
+		Name = "PackReveal",
+		IgnoreGuiInset = true,
+		ResetOnSpawn = false,
+		DisplayOrder = 50,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Parent = player:WaitForChild("PlayerGui"),
+	})
+	-- Everything sits in `stage` so the whole picture can shake.
+	local stage = UI.new("TextButton", {
+		Name = "Stage",
+		Text = "",
+		AutoButtonColor = false,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1.06, 1.06),
+		BackgroundColor3 = Color3.fromRGB(10, 8, 26),
+		BackgroundTransparency = 1,
+		Parent = gui,
+	})
+	local backdrop = UI.new("UIGradient", {
+		Color = ColorSequence.new(Color3.fromRGB(70, 60, 120), Color3.fromRGB(10, 8, 26)),
+		Rotation = 90,
+		Parent = stage,
+	})
+
+	-- Tapping speeds everything up (for people who've seen it before).
+	local speed = 1
+	stage.Activated:Connect(function()
+		speed = 4
+	end)
+
+	-- Light rays spinning round the middle of the screen.
+	local rays = {}
+	for i = 1, 8 do
+		local ray = UI.new("Frame", {
+			Name = "Ray",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.48),
+			Size = UDim2.new(0, 70, 2, 0),
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Rotation = i * 22.5,
+			ZIndex = 2,
+			Parent = stage,
+		}, {
+			UI.new("UIGradient", {
+				Transparency = NumberSequence.new({
+					NumberSequenceKeypoint.new(0, 1),
+					NumberSequenceKeypoint.new(0.42, 0.55),
+					NumberSequenceKeypoint.new(0.5, 0.35),
+					NumberSequenceKeypoint.new(0.58, 0.55),
+					NumberSequenceKeypoint.new(1, 1),
+				}),
+				Rotation = 90,
+			}),
+		})
+		table.insert(rays, ray)
+	end
+	-- A glow behind the egg/card and a spotlight pool on the floor.
+	local glow = UI.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.48),
+		Size = UDim2.fromOffset(460, 460),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 1,
+		ZIndex = 3,
+		Parent = stage,
+	}, {
+		UI.corner(230),
+		UI.new("UIGradient", {
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(0.5, 0.3),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+		}),
+	})
+	local pool = UI.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.86),
+		Size = UDim2.fromOffset(520, 90),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 1,
+		ZIndex = 2,
+		Parent = stage,
+	}, { UI.corner(45) })
+
+	local state = {
+		rayColor = Color3.new(1, 1, 1),
+		rayAlpha = 0, -- 0 = invisible, 1 = full
+		raySpeed = 8, -- degrees per second
+		rainbow = false,
+		shake = 0,
+	}
+
+	-- Runs fn(alpha, t) every frame for `duration` seconds (shorter when sped up), and
+	-- keeps the rays spinning and the stage shaking.
+	local clock = os.clock()
+	local spin = 0
+	local function animate(duration: number, fn: ((number, number) -> ())?)
+		local elapsed = 0
+		while true do
+			local now = os.clock()
+			local dt = math.min(now - clock, 0.1)
+			clock = now
+			elapsed += dt * speed
+			local alpha = math.min(elapsed / duration, 1)
+			if fn then
+				fn(alpha, elapsed)
+			end
+			spin += state.raySpeed * dt
+			for i, ray in rays do
+				ray.Rotation = i * 22.5 + spin
+				ray.BackgroundColor3 = if state.rainbow then rainbow(now, i / #rays) else state.rayColor
+				ray.BackgroundTransparency = 1 - state.rayAlpha
+			end
+			glow.BackgroundColor3 = if state.rainbow then rainbow(now) else state.rayColor
+			glow.BackgroundTransparency = 1 - state.rayAlpha * 0.9
+			pool.BackgroundColor3 = glow.BackgroundColor3
+			pool.BackgroundTransparency = 1 - state.rayAlpha * 0.35
+			if state.shake > 0.5 then
+				stage.Position =
+					UDim2.new(0.5, random:NextNumber(-1, 1) * state.shake, 0.5, random:NextNumber(-1, 1) * state.shake)
+				state.shake *= math.exp(-dt * 9)
+			else
+				stage.Position = UDim2.fromScale(0.5, 0.5)
+			end
+			if alpha >= 1 then
+				break
+			end
+			task.wait()
+		end
+	end
+
+	local function flash(color: Color3, duration: number)
+		local frame = UI.new("Frame", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundColor3 = color,
+			BackgroundTransparency = 0,
+			ZIndex = 40,
+			Parent = gui,
+		})
+		task.spawn(function()
+			local began = os.clock()
+			while os.clock() - began < duration do
+				frame.BackgroundTransparency = (os.clock() - began) / duration
+				task.wait()
+			end
+			frame:Destroy()
+		end)
+	end
+
+	-- Sparks flying out from the middle of the screen.
+	local function burst(color: Color3, count: number, confetti: boolean?)
+		local sparks = {}
+		for k = 1, count do
+			local angle = random:NextNumber(0, math.pi * 2)
+			local spark = UI.new("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.48),
+				Size = if confetti then UDim2.fromOffset(12, 7) else UDim2.fromOffset(10, 10),
+				BackgroundColor3 = if confetti
+					then Color3.fromHSV(random:NextNumber(), 0.7, 1)
+					elseif k % 3 == 0 then Color3.new(1, 1, 1)
+					else color,
+				Rotation = random:NextNumber(0, 360),
+				ZIndex = 30,
+				Parent = stage,
+			}, if confetti then {} else { UI.corner(5) })
+			table.insert(sparks, {
+				frame = spark,
+				velocity = Vector2.new(math.cos(angle), math.sin(angle)) * random:NextNumber(300, 750),
+			})
+		end
+		task.spawn(function()
+			local began, last = os.clock(), os.clock()
+			while os.clock() - began < 1.3 do
+				local now = os.clock()
+				local dt = now - last
+				last = now
+				local a = (now - began) / 1.3
+				for _, s in sparks do
+					s.velocity = s.velocity * (1 - dt * 2) + Vector2.new(0, (if confetti then 500 else 120) * dt)
+					local p = s.frame.Position
+					s.frame.Position =
+						UDim2.new(p.X.Scale, p.X.Offset + s.velocity.X * dt, p.Y.Scale, p.Y.Offset + s.velocity.Y * dt)
+					s.frame.BackgroundTransparency = a * a
+					s.frame.Rotation += 300 * dt
+				end
+				task.wait()
+			end
+			for _, s in sparks do
+				s.frame:Destroy()
+			end
+		end)
+	end
+
+	-- A big clue: a small caption ("SERIES") over huge outlined words that slam in.
+	local captionLabel = UI.label("", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.14),
+		Size = UDim2.fromOffset(500, 34),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = Color3.fromRGB(230, 230, 255),
+		TextTransparency = 1,
+		ZIndex = 20,
+		Parent = stage,
+	})
+	captionLabel:FindFirstChildOfClass("UIStroke").Transparency = 1
+	local clueLabel = UI.label("", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.24),
+		Size = UDim2.fromOffset(900, 100),
+		FontFace = UI.fonts.heavy,
+		TextTransparency = 1,
+		ZIndex = 20,
+		Parent = stage,
+	})
+	clueLabel:FindFirstChildOfClass("UIStroke").Thickness = 5
+	local clueScale = UI.new("UIScale", { Parent = clueLabel })
+	local clueGradient = UI.new("UIGradient", { Enabled = false, Parent = clueLabel })
+
+	local function slam(caption: string, text: string, color: Color3)
+		captionLabel.Text = caption
+		clueLabel.Text = text
+		clueLabel.TextColor3 = color
+		captionLabel.TextTransparency = 0
+		captionLabel:FindFirstChildOfClass("UIStroke").Transparency = 0
+		animate(0.2, function(a)
+			clueScale.Scale = 2.6 - 1.6 * easeOut(a)
+			clueLabel.TextTransparency = 1 - a
+			clueLabel:FindFirstChildOfClass("UIStroke").Transparency = 1 - a
+		end)
+		state.shake = 16 + tier * 2
+	end
+
+	local function hideClue()
+		animate(0.15, function(a)
+			clueLabel.TextTransparency = a
+			captionLabel.TextTransparency = a
+			clueLabel:FindFirstChildOfClass("UIStroke").Transparency = a
+			captionLabel:FindFirstChildOfClass("UIStroke").Transparency = a
+		end)
+	end
+
+	-- 1. Lights down, the egg drops in.
+	animate(0.45, function(a)
+		stage.BackgroundTransparency = 1 - a * 0.97
+		state.rayAlpha = a * 0.35
+	end)
+	local egg = UI.eggViewport(result.crate, 320)
+	egg.AnchorPoint = Vector2.new(0.5, 0.5)
+	egg.Size = UDim2.fromOffset(320, 320)
+	egg.ZIndex = 10
+	egg.Parent = stage
+	animate(0.55, function(a)
+		-- Falls, then a little bounce.
+		local y = if a < 0.7 then -0.3 + 0.78 * (a / 0.7) ^ 2 else 0.48 - math.sin((a - 0.7) / 0.3 * math.pi) * 0.04
+		egg.Position = UDim2.fromScale(0.5, y)
+	end)
+	state.shake = 10
+
+	-- 2. The egg shakes harder and harder (longer for rarer Freeks).
+	local shakeTime = 1 + tier * 0.15
+	animate(shakeTime, function(a, t)
+		egg.Rotation = math.sin(t * (14 + a * 22)) * (4 + 16 * a * a)
+		local grow = 320 + 50 * a
+		egg.Size = UDim2.fromOffset(grow, grow)
+		state.rayAlpha = 0.35 + 0.4 * a
+		state.raySpeed = 8 + 40 * a
+	end)
+
+	-- 3. Burst: a face-down card spins out of the light.
+	flash(Color3.new(1, 1, 1), 0.45)
+	burst(Color3.fromRGB(255, 245, 200), 26)
+	egg:Destroy()
+	state.raySpeed = 12
+
+	local card = UI.new("Frame", {
+		Name = "Card",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.56),
+		Size = UDim2.fromOffset(CARD_W, CARD_H),
+		BackgroundColor3 = Color3.fromRGB(28, 30, 70),
+		ZIndex = 10,
+		Parent = stage,
+	}, { UI.corner(18), UI.gradient() })
+	local cardStroke = UI.stroke(Color3.fromRGB(255, 205, 70), 5)
+	cardStroke.Parent = card
+	local cardScale = UI.new("UIScale", { Parent = card })
+
+	-- The back: the game's emblem.
+	local back = UI.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 11,
+		Parent = card,
+	})
+	UI.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(170, 170),
+		BackgroundColor3 = Color3.fromRGB(62, 128, 245),
+		Rotation = 45,
+		ZIndex = 11,
+		Parent = back,
+	}, { UI.corner(24), UI.stroke(Color3.fromRGB(255, 205, 70), 4), UI.gradient() })
+	UI.label("F", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(120, 120),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = Color3.fromRGB(255, 220, 80),
+		ZIndex = 12,
+		Parent = back,
+	})
+	UI.label("FUSE A FREEK", {
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -14),
+		Size = UDim2.new(1, -30, 0, 26),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = Color3.new(1, 1, 1),
+		ZIndex = 12,
+		Parent = back,
+	})
+
+	animate(0.5, function(a)
+		local e = easeOut(a)
+		cardScale.Scale = 0.2 + 0.8 * e
+		card.Rotation = (1 - e) * -200
+	end)
+	card.Rotation = 0
+
+	-- The card floats gently while the clues come in.
+	local function floatCard(t: number)
+		card.Position = UDim2.new(0.5, 0, 0.56, math.sin(t * 2.2) * 6)
+	end
+
+	-- 4. Clue one: the series.
+	state.rayColor = series.color
+	backdrop.Color = ColorSequence.new(series.color:Lerp(Color3.new(0, 0, 0), 0.55), Color3.fromRGB(10, 8, 26))
+	slam("SERIES", series.icon .. " " .. string.upper(series.name), series.color)
+	cardStroke.Color = series.color
+	animate(1.3 + tier * 0.1, function(_, t)
+		floatCard(t)
+	end)
+	hideClue()
+
+	-- 5. Clue two: the rarity, with the lights turning its colour. The rarer it is, the
+	-- longer the build-up and the wilder the lights.
+	state.rayColor = Color3.new(1, 1, 1)
+	state.raySpeed = 20 + tier * 12
+	animate(0.35 + tier * 0.12, function(a, t)
+		floatCard(t)
+		-- Card glows brighter and brighter before the rarity lands.
+		cardStroke.Thickness = 5 + 6 * a
+		state.rayAlpha = 0.6 + 0.4 * a
+	end)
+	state.rayColor = rarityColor
+	state.rainbow = tier >= 6
+	backdrop.Color = ColorSequence.new(rarityColor:Lerp(Color3.new(0, 0, 0), 0.5), Color3.fromRGB(10, 8, 26))
+	if tier >= 3 then
+		flash(rarityColor:Lerp(Color3.new(1, 1, 1), 0.5), 0.35)
+	end
+	if state.rainbow then
+		local keys = {}
+		for k = 0, 6 do
+			table.insert(keys, ColorSequenceKeypoint.new(k / 6, Color3.fromHSV(k / 6, 0.75, 1)))
+		end
+		clueGradient.Color = ColorSequence.new(keys)
+		clueGradient.Enabled = true
+	end
+	slam(
+		"RARITY",
+		RARITY_WORDS[rarity] or string.upper(rarity),
+		if state.rainbow then Color3.new(1, 1, 1) else rarityColor
+	)
+	cardStroke.Color = rarityColor
+	if tier >= 4 then
+		burst(rarityColor, 30 + tier * 6, true)
+	end
+	local lightning = tier >= 5
+	local nextStrike = 0.3
+	animate(1.2 + tier * 0.25, function(_, t)
+		floatCard(t)
+		cardStroke.Thickness = 8 + math.sin(t * 8) * 3
+		if state.rainbow then
+			cardStroke.Color = rainbow(os.clock())
+			clueGradient.Offset = Vector2.new(math.sin(t * 2) * 0.5, 0)
+		end
+		if lightning and t >= nextStrike then
+			nextStrike += 0.55
+			flash(Color3.fromRGB(220, 200, 255), 0.18)
+			state.shake = 14
+		end
+	end)
+	hideClue()
+	clueGradient.Enabled = false
+
+	-- 6. The flip: the card turns over to show the Freek.
+	animate(0.22, function(a, t)
+		floatCard(t)
+		card.Size = UDim2.fromOffset(CARD_W * (1 - a), CARD_H)
+	end)
+	back:Destroy()
+	card.BackgroundColor3 = rarityColor:Lerp(Color3.new(0, 0, 0), 0.15)
+	local front = UI.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 11,
+		Parent = card,
+	}, {
+		UI.new("UIPadding", {
+			PaddingTop = UDim.new(0, 10),
+			PaddingLeft = UDim.new(0, 10),
+			PaddingRight = UDim.new(0, 10),
+		}),
+		UI.new("UIListLayout", {
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 4),
+		}),
+	})
+	local chip = UI.label(series.icon .. " " .. string.upper(series.name), {
+		Size = UDim2.new(1, 0, 0, 22),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = series.color:Lerp(Color3.new(1, 1, 1), 0.35),
+		LayoutOrder = 1,
+		ZIndex = 12,
+		Parent = front,
+	})
+	chip.Name = "Series"
+	local picture = UI.viewport(result.freek.species, result.freek.mutations)
+	picture.Size = UDim2.new(1, 0, 0, CARD_H - 110)
+	local pictureCamera = picture:FindFirstChildOfClass("Camera")
+	if pictureCamera then
+		pictureCamera.FieldOfView = 29 -- zoom in so the Freek fills the card
+	end
+	picture.BackgroundTransparency = 0.6
+	picture.BackgroundColor3 = Color3.fromRGB(20, 22, 48)
+	picture.LayoutOrder = 2
+	picture.ZIndex = 12
+	UI.corner(12).Parent = picture
+	picture.Parent = front
+	UI.label(string.upper(rarity), {
+		Size = UDim2.new(1, 0, 0, 30),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = Color3.new(1, 1, 1),
+		LayoutOrder = 3,
+		ZIndex = 12,
+		Parent = front,
+	})
+	animate(0.22, function(a, t)
+		floatCard(t)
+		card.Size = UDim2.fromOffset(CARD_W * easeOut(a), CARD_H)
+	end)
+	card.Size = UDim2.fromOffset(CARD_W, CARD_H)
+	flash(Color3.new(1, 1, 1), 0.4)
+	burst(rarityColor, 34)
+	state.shake = 20
+
+	-- 7. The name slams in under the card, with NEW! if it's new to them.
+	local nameLabel = UI.label(string.upper(FreekUtil.displayName(result.freek)), {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.9),
+		Size = UDim2.fromOffset(800, 64),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = Color3.new(1, 1, 1),
+		ZIndex = 20,
+		Parent = stage,
+	})
+	nameLabel:FindFirstChildOfClass("UIStroke").Thickness = 4
+	local nameScale = UI.new("UIScale", { Parent = nameLabel })
+	animate(0.2, function(a)
+		nameScale.Scale = 2.2 - 1.2 * easeOut(a)
+	end)
+	state.shake = 12
+	if result.isNew then
+		local stamp = UI.label("NEW!", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(0.5, CARD_W / 2 - 10, 0.56, -CARD_H / 2),
+			Size = UDim2.fromOffset(120, 50),
+			FontFace = UI.fonts.heavy,
+			TextColor3 = Color3.new(1, 1, 1),
+			BackgroundColor3 = UI.colors.red,
+			BackgroundTransparency = 0,
+			Rotation = 14,
+			ZIndex = 22,
+			Parent = stage,
+		})
+		UI.corner(12).Parent = stamp
+		UI.stroke(nil, 3).Parent = stamp
+		local stampScale = UI.new("UIScale", { Parent = stamp })
+		animate(0.18, function(a)
+			stampScale.Scale = 2 - easeOut(a)
+		end)
+	end
+	UI.label("It's in your barn!", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.9, 42),
+		Size = UDim2.fromOffset(400, 26),
+		TextColor3 = Color3.fromRGB(220, 232, 255),
+		ZIndex = 20,
+		Parent = stage,
+	})
+
+	-- 8. Wait for them to tap Awesome!
+	local closed = false
+	UI.button("AWESOME!", UI.colors.green, function()
+		closed = true
+	end, {
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -90, 1, -70),
+		Size = UDim2.fromOffset(220, 60),
+		ZIndex = 25,
+		Parent = stage,
+	})
+	speed = 1
+	while not closed do
+		animate(0.2, function(_, t)
+			floatCard(t)
+			if state.rainbow then
+				cardStroke.Color = rainbow(os.clock())
+			end
+		end)
+	end
+	animate(0.3, function(a)
+		stage.BackgroundTransparency = 0.03 + 0.97 * a
+		state.rayAlpha = (1 - a) * 0.6
+		cardScale.Scale = 1 - a * 0.6
+	end)
+	gui:Destroy()
+	done()
+end
+
+return PackReveal
 ]]></string>
           </Properties>
         </Item>

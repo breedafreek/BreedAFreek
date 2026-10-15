@@ -61,8 +61,8 @@ local Seasons = require(Shared.Seasons)
 local Weapons = require(Shared.Weapons)
 local Ambient = require(script.Parent.Ambient)
 local BarnFX = require(script.Parent.BarnFX)
-local Hatch = require(script.Parent.Hatch)
 local Hud = require(script.Parent.Hud)
+local PackReveal = require(script.Parent.PackReveal)
 local UI = require(script.Parent.UI)
 
 local player = Players.LocalPlayer
@@ -1028,57 +1028,6 @@ local function freekPrize(box: Frame, freek, rarity: string, isNew: boolean, clo
 	prizeCard(box, if isNew then "NEW FREEK!" else "You got...", freek, color, subtitle, close)
 end
 
--- The egg wobbles harder and harder, cracks with a flash, then shows what hatched.
-local function revealCrate(result, done)
-	local crate = Luck.crateById[result.crate]
-	local shade, box = overlay()
-	local function close()
-		shade:Destroy()
-		done()
-	end
-	local egg = UI.eggViewport(crate.id, 240)
-	egg.AnchorPoint = Vector2.new(0.5, 0.5)
-	egg.Position = UDim2.fromScale(0.5, 0.5)
-	egg.Size = UDim2.fromOffset(240, 240)
-	egg.ZIndex = 52
-	egg.Parent = box
-	local title = UI.label("Hatching " .. crate.name .. "...", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0.5, 130),
-		Size = UDim2.fromOffset(420, 40),
-		FontFace = UI.fonts.heavy,
-		TextSize = 30,
-		TextColor3 = crate.color,
-		ZIndex = 53,
-		Parent = box,
-	})
-	local insideColor = Rarities.info[result.rarity].color
-	task.spawn(function()
-		for i = 1, 16 do
-			local strength = 3 + i * 1.4
-			egg.Rotation = if i % 2 == 0 then strength else -strength
-			local grow = 240 + i * 6
-			egg.Size = UDim2.fromOffset(grow, grow)
-			-- Glow in the colour of what's inside for the last few wobbles.
-			if i > 10 then
-				egg.ImageColor3 = Color3.new(1, 1, 1):Lerp(insideColor, (i - 10) / 8)
-			end
-			task.wait(if i > 12 then 0.08 else 0.12)
-		end
-		local flash = UI.new("Frame", {
-			Size = UDim2.fromScale(1, 1),
-			BackgroundColor3 = insideColor:Lerp(Color3.new(1, 1, 1), 0.6),
-			ZIndex = 60,
-			Parent = shade,
-		})
-		TweenService:Create(flash, TweenInfo.new(0.6), { BackgroundTransparency = 1 }):Play()
-		task.delay(0.6, flash.Destroy, flash)
-		egg:Destroy()
-		title:Destroy()
-		freekPrize(box, result.freek, result.rarity, result.isNew, close)
-	end)
-end
-
 -- The Lucky Wheel spins and lands on the prize the server rolled.
 local function buildWheel(parent: Instance, radius: number)
 	local wheel = UI.new("Frame", {
@@ -1188,26 +1137,11 @@ local function nextReveal()
 		revealWheel(result, done)
 		return
 	end
-	-- Eggs hatch out in the world in front of the player; the prize card waits at the side
-	-- so the Freek stays in view.
+	-- Eggs open with the full card-pack reveal.
 	if currentWindow then
 		open(currentWindow)
 	end
-	local hatched = Hatch.play(result, screen, function(cleanup)
-		local shade, box = overlay()
-		shade.BackgroundTransparency = 1
-		box.AnchorPoint = Vector2.new(1, 0.5)
-		box.Position = UDim2.new(1, -24, 0.55, 0)
-		box.Size = UDim2.fromOffset(300, 410)
-		freekPrize(box, result.freek, result.rarity, result.isNew, function()
-			shade:Destroy()
-			cleanup()
-			done()
-		end)
-	end)
-	if not hatched then
-		revealCrate(result, done)
-	end
+	PackReveal.play(result, done)
 end
 Remotes.get("LuckResult").OnClientEvent:Connect(function(result)
 	table.insert(revealQueue, result)
