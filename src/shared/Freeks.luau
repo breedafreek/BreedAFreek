@@ -21,6 +21,80 @@ local function rgb(r, g, b)
 	return Color3.fromRGB(r, g, b)
 end
 
+-- Helpers for the Animal line: each animal is a list of parts like Oinkle's, built with
+-- these so eyes, legs and pointy ears line up without hand-maths.
+local function newParts()
+	local list = {}
+	local function add(spec)
+		table.insert(list, spec)
+		return #list
+	end
+	return list, add
+end
+
+-- A point on the front (-Z) of a ball centred at c with radius r, offset (x, y) from c.
+local function onBall(c, r: number, x: number, y: number, out: number?)
+	return { c[1] + x, c[2] + y, c[3] - math.sqrt(math.max(r * r - x * x - y * y, 0.01)) - (out or 0) }
+end
+
+-- Googly eyes on the front of a ball (head).
+local function googly(add, c, r: number, spread: number, height: number, size: number, iris: Color3?)
+	for _, side in { -1, 1 } do
+		local p = onBall(c, r, side * spread, height, -size * 0.25)
+		add({ shape = "Ball", size = size, pos = p, color = rgb(255, 255, 255), detail = true })
+		if iris then
+			add({
+				shape = "Ball",
+				size = size * 0.7,
+				pos = { p[1], p[2], p[3] - size * 0.2 },
+				color = iris,
+				detail = true,
+			})
+		end
+		add({
+			shape = "Ball",
+			size = size * 0.45,
+			pos = { p[1], p[2], p[3] - size * 0.36 },
+			color = rgb(20, 20, 25),
+			detail = true,
+		})
+	end
+end
+
+-- Straight legs standing on the ground, centred at each (x, z).
+local function legs(add, spots, height: number, width: number, color: Color3, paw: Color3?)
+	for _, spot in spots do
+		add({
+			shape = "Cylinder",
+			size = { height, width, width },
+			pos = { spot[1], height / 2, spot[2] },
+			rot = { 0, 0, 90 },
+			color = color,
+		})
+		if paw then
+			add({
+				shape = "Ball",
+				size = width + 0.15,
+				pos = { spot[1], (width + 0.15) / 2, spot[2] - 0.08 },
+				color = paw,
+			})
+		end
+	end
+end
+
+-- A pointy ear (a triangle seen from the front), made of two wedges back to back.
+local function pointyEar(add, x: number, y: number, z: number, width: number, height: number, color: Color3)
+	for _, side in { -1, 1 } do
+		add({
+			shape = "Wedge",
+			size = { 0.25, height, width / 2 },
+			pos = { x + side * width / 4, y, z },
+			rot = { 0, side * -90, 0 },
+			color = color,
+		})
+	end
+end
+
 local function human(o)
 	local parts = {}
 	local function add(spec)
@@ -244,6 +318,483 @@ Freeks.list = {
 				{ shape = "Ball", size = 0.3, pos = { -0.14, 2.5, 2.02 }, color = Color3.fromRGB(240, 145, 170) },
 			},
 		},
+	},
+
+	-- The Animal line (Oinkle is the pig)
+	{
+		id = "Woofles",
+		name = "Woofles",
+		rarity = "Common",
+		income = 3,
+		look = (function()
+			local list, add = newParts()
+			local tan, dark, light = rgb(225, 175, 110), rgb(140, 95, 55), rgb(250, 232, 205)
+			add({ name = "Body", shape = "Ball", size = 3, pos = { 0, 2, 0.3 }, color = tan })
+			legs(add, { { -0.75, -0.45 }, { 0.75, -0.45 }, { -0.75, 1.1 }, { 0.75, 1.1 } }, 1.1, 0.6, tan, light)
+			local head = { 0, 3.55, -1 }
+			add({ name = "Head", shape = "Ball", size = 2.3, pos = head, color = tan })
+			add({ shape = "Ball", size = 1.15, pos = { 0, 3.15, -2.05 }, color = light })
+			add({ shape = "Ball", size = 0.45, pos = { 0, 3.42, -2.62 }, color = rgb(25, 20, 20), detail = true })
+			add({
+				shape = "Block",
+				size = { 0.34, 0.55, 0.1 },
+				pos = { 0.12, 2.68, -2.42 },
+				rot = { 15, 0, 0 },
+				color = rgb(255, 110, 140),
+				detail = true,
+			})
+			googly(add, head, 1.15, 0.45, 0.32, 0.5)
+			for _, side in { -1, 1 } do
+				add({
+					shape = "Block",
+					size = { 0.25, 1.4, 0.8 },
+					pos = { side * 1.15, 3.35, -0.9 },
+					rot = { 0, 0, side * 12 },
+					color = dark,
+				})
+			end
+			add({ shape = "Ball", size = 1.3, pos = { 0.85, 2.7, 0.9 }, color = dark })
+			add({
+				shape = "Cylinder",
+				size = { 1.1, 0.32, 0.32 },
+				pos = { 0, 2.8, 1.95 },
+				rot = { 0, -90, 55 },
+				color = tan,
+			})
+			add({
+				shape = "Cylinder",
+				size = { 0.3, 2, 2 },
+				pos = { 0, 2.75, -0.75 },
+				rot = { 0, 0, 90 },
+				color = rgb(220, 40, 50),
+			})
+			add({ shape = "Ball", size = 0.38, pos = { 0, 2.45, -1.72 }, color = rgb(255, 205, 60), material = "Foil" })
+			return { parts = list }
+		end)(),
+	},
+	{
+		id = "Whiskerz",
+		name = "Whiskerz",
+		rarity = "Uncommon",
+		income = 14,
+		look = (function()
+			local list, add = newParts()
+			local orange, stripe, light = rgb(255, 165, 70), rgb(215, 105, 30), rgb(255, 232, 205)
+			add({ name = "Body", shape = "Ball", size = 2.8, pos = { 0, 1.8, 0.3 }, color = orange })
+			legs(add, { { -0.6, -0.4 }, { 0.6, -0.4 }, { -0.6, 1 }, { 0.6, 1 } }, 0.95, 0.5, orange, light)
+			local head = { 0, 3.3, -0.9 }
+			add({ name = "Head", shape = "Ball", size = 2.3, pos = head, color = orange })
+			for _, side in { -1, 1 } do
+				pointyEar(add, side * 0.68, 4.45, -0.75, 0.85, 0.95, orange)
+				pointyEar(add, side * 0.68, 4.4, -0.9, 0.45, 0.55, rgb(255, 160, 180))
+			end
+			for _, side in { -1, 1 } do
+				local p = onBall(head, 1.15, side * 0.43, 0.25, -0.12)
+				add({ shape = "Ball", size = 0.6, pos = p, color = rgb(255, 255, 255), detail = true })
+				add({
+					shape = "Ball",
+					size = 0.45,
+					pos = { p[1], p[2], p[3] - 0.13 },
+					color = rgb(120, 220, 90),
+					detail = true,
+				})
+				add({
+					shape = "Block",
+					size = { 0.08, 0.34, 0.05 },
+					pos = { p[1], p[2], p[3] - 0.3 },
+					color = rgb(20, 20, 25),
+					detail = true,
+				})
+				for i, tilt in { -12, 0, 12 } do
+					add({
+						shape = "Block",
+						size = { 0.95, 0.04, 0.04 },
+						pos = { side * 0.85, 2.95 + (i - 2) * 0.12, -1.95 },
+						rot = { 0, 0, side * tilt },
+						color = rgb(255, 255, 255),
+						detail = true,
+					})
+				end
+			end
+			add({
+				shape = "Ball",
+				size = 0.28,
+				pos = onBall(head, 1.15, 0, -0.1, 0.05),
+				color = rgb(255, 120, 150),
+				detail = true,
+			})
+			add({
+				shape = "Block",
+				size = { 0.4, 0.07, 0.07 },
+				pos = onBall(head, 1.15, 0, -0.4, -0.02),
+				color = rgb(110, 40, 60),
+				detail = true,
+			})
+			-- Tabby marks on the forehead.
+			for _, x in { -0.25, 0, 0.25 } do
+				add({
+					shape = "Block",
+					size = { 0.1, 0.38, 0.06 },
+					pos = onBall(head, 1.15, x, 0.72, 0.01),
+					rot = { -35, 0, 0 },
+					color = stripe,
+					detail = true,
+				})
+			end
+			local tail = {
+				{ 0, 1.9, 1.6 },
+				{ 0, 2.3, 1.95 },
+				{ 0, 2.8, 2.15 },
+				{ 0, 3.3, 2.15 },
+				{ 0, 3.7, 1.95 },
+				{ 0, 3.9, 1.65 },
+			}
+			for _, p in tail do
+				add({ shape = "Ball", size = 0.45, pos = p, color = orange })
+			end
+			return { parts = list }
+		end)(),
+	},
+	{
+		id = "Lizzle",
+		name = "Lizzle",
+		rarity = "Uncommon",
+		income = 18,
+		look = (function()
+			local list, add = newParts()
+			local lime, spot, belly = rgb(130, 225, 80), rgb(60, 160, 60), rgb(235, 240, 150)
+			add({ name = "Body", shape = "Ball", size = 2.1, pos = { 0, 1.25, 0.3 }, color = lime })
+			add({ shape = "Ball", size = 1.6, pos = { 0, 1.05, -0.2 }, color = belly })
+			for _, leg in { { -1, -0.3 }, { 1, -0.3 }, { -1, 0.9 }, { 1, 0.9 } } do
+				add({
+					shape = "Cylinder",
+					size = { 1, 0.4, 0.4 },
+					pos = { leg[1] * 0.95, 0.65, leg[2] },
+					rot = { 0, 0, leg[1] * -35 },
+					color = lime,
+				})
+				add({ shape = "Ball", size = 0.5, pos = { leg[1] * 1.35, 0.25, leg[2] - 0.1 }, color = lime })
+			end
+			local head = { 0, 1.75, -1.25 }
+			add({ name = "Head", shape = "Ball", size = 1.7, pos = head, color = lime })
+			for _, side in { -1, 1 } do
+				local p = { side * 0.62, 2.35, -1.35 }
+				add({ shape = "Ball", size = 0.85, pos = p, color = lime })
+				add({
+					shape = "Ball",
+					size = 0.6,
+					pos = { p[1], p[2] + 0.05, p[3] - 0.25 },
+					color = rgb(255, 255, 255),
+					detail = true,
+				})
+				add({
+					shape = "Ball",
+					size = 0.3,
+					pos = { p[1], p[2] + 0.05, p[3] - 0.48 },
+					color = rgb(20, 20, 25),
+					detail = true,
+				})
+			end
+			add({
+				shape = "Block",
+				size = { 0.16, 0.06, 1.1 },
+				pos = { 0, 1.45, -2.45 },
+				color = rgb(255, 90, 130),
+				detail = true,
+			})
+			add({ shape = "Ball", size = 0.3, pos = { 0, 1.45, -3.0 }, color = rgb(255, 90, 130), detail = true })
+			for _, p in { { -0.45, 2.25, 0.4 }, { 0.5, 2.15, 0.1 }, { 0.1, 2.3, 0.75 } } do
+				add({ shape = "Ball", size = 0.4, pos = p, color = spot })
+			end
+			-- A tail that curls up into a spiral.
+			for i = 0, 11 do
+				local a = i * 0.55
+				local radius = 0.9 - i * 0.06
+				add({
+					shape = "Ball",
+					size = 0.55 - i * 0.03,
+					pos = {
+						0,
+						1.3 + math.sin(a) * radius + i * 0.05,
+						1.7 + math.cos(a) * radius * 0.4 + (if i < 3 then i * 0.35 else 0.9),
+					},
+					color = if i % 3 == 0 then spot else lime,
+				})
+			end
+			return { parts = list }
+		end)(),
+	},
+	{
+		id = "Hootsworth",
+		name = "Hootsworth",
+		rarity = "Rare",
+		income = 70,
+		look = (function()
+			local list, add = newParts()
+			local brown, dark, cream = rgb(135, 90, 55), rgb(95, 60, 35), rgb(240, 220, 185)
+			local body = { 0, 2.1, 0 }
+			add({ name = "Body", shape = "Ball", size = 3.2, pos = body, color = brown })
+			add({ shape = "Ball", size = 2.3, pos = { 0, 1.75, -0.6 }, color = cream })
+			-- Big round eyes in pale face discs.
+			for _, side in { -1, 1 } do
+				local p = onBall(body, 1.6, side * 0.55, 0.75, 0)
+				add({ shape = "Cylinder", size = { 0.15, 1.45, 1.45 }, pos = p, rot = { 0, 90, 0 }, color = cream })
+				add({
+					shape = "Ball",
+					size = 0.95,
+					pos = { p[1], p[2], p[3] - 0.12 },
+					color = rgb(255, 255, 255),
+					detail = true,
+				})
+				add({
+					shape = "Ball",
+					size = 0.65,
+					pos = { p[1], p[2], p[3] - 0.3 },
+					color = rgb(255, 165, 30),
+					detail = true,
+				})
+				add({
+					shape = "Ball",
+					size = 0.35,
+					pos = { p[1], p[2], p[3] - 0.5 },
+					color = rgb(20, 20, 25),
+					detail = true,
+				})
+				pointyEar(add, side * 0.9, 3.75, -0.2, 0.6, 0.7, dark)
+				add({
+					shape = "Block",
+					size = { 0.35, 1.8, 1.5 },
+					pos = { side * 1.6, 2.05, 0.15 },
+					rot = { 0, 0, side * 10 },
+					color = dark,
+				})
+				for _, toe in { -0.22, 0, 0.22 } do
+					add({
+						shape = "Ball",
+						size = 0.3,
+						pos = { side * 0.55 + toe, 0.15, -0.75 },
+						color = rgb(255, 165, 30),
+					})
+				end
+			end
+			add({
+				shape = "Block",
+				size = { 0.32, 0.32, 0.32 },
+				pos = onBall(body, 1.6, 0, 0.3, 0.12),
+				rot = { 0, 0, 45 },
+				color = rgb(255, 165, 30),
+				detail = true,
+			})
+			-- A monocle and a top hat: very posh.
+			local eye = onBall(body, 1.6, 0.55, 0.75, 0.55)
+			add({
+				shape = "Cylinder",
+				size = { 0.08, 1.05, 1.05 },
+				pos = eye,
+				rot = { 0, 90, 0 },
+				color = rgb(255, 205, 60),
+				material = "Foil",
+				detail = true,
+			})
+			add({
+				shape = "Block",
+				size = { 0.05, 1.1, 0.05 },
+				pos = { eye[1] + 0.35, eye[2] - 0.75, eye[3] + 0.1 },
+				rot = { 0, 0, 20 },
+				color = rgb(255, 205, 60),
+				detail = true,
+			})
+			add({
+				shape = "Cylinder",
+				size = { 0.12, 2.2, 2.2 },
+				pos = { 0, 3.6, 0 },
+				rot = { 0, 0, 90 },
+				color = rgb(25, 25, 30),
+			})
+			add({
+				shape = "Cylinder",
+				size = { 1.3, 1.4, 1.4 },
+				pos = { 0, 4.3, 0 },
+				rot = { 0, 0, 90 },
+				color = rgb(25, 25, 30),
+			})
+			add({
+				shape = "Cylinder",
+				size = { 0.25, 1.45, 1.45 },
+				pos = { 0, 3.85, 0 },
+				rot = { 0, 0, 90 },
+				color = rgb(200, 30, 40),
+			})
+			return { parts = list }
+		end)(),
+	},
+	{
+		id = "Chompers",
+		name = "Chompers",
+		rarity = "Legendary",
+		income = 260,
+		look = (function()
+			local list, add = newParts()
+			local green, belly, dark = rgb(70, 145, 65), rgb(185, 210, 130), rgb(45, 100, 45)
+			add({ name = "Body", shape = "Block", size = { 2.6, 1.5, 4.6 }, pos = { 0, 1.35, 0.4 }, color = green })
+			add({ shape = "Block", size = { 2.4, 0.3, 4.4 }, pos = { 0, 0.62, 0.4 }, color = belly })
+			for _, leg in { { -1, -1.2 }, { 1, -1.2 }, { -1, 1.9 }, { 1, 1.9 } } do
+				add({
+					shape = "Cylinder",
+					size = { 0.9, 0.7, 0.7 },
+					pos = { leg[1] * 1.35, 0.45, leg[2] },
+					rot = { 0, 0, 90 },
+					color = green,
+				})
+				add({
+					shape = "Block",
+					size = { 0.8, 0.3, 1 },
+					pos = { leg[1] * 1.45, 0.15, leg[2] - 0.2 },
+					color = green,
+				})
+			end
+			-- Big jaws, slightly open, full of teeth.
+			add({ shape = "Block", size = { 2.2, 0.9, 2.8 }, pos = { 0, 1.6, -3 }, color = green })
+			add({ shape = "Block", size = { 2, 0.5, 2.6 }, pos = { 0, 0.82, -2.9 }, color = green })
+			add({
+				shape = "Block",
+				size = { 1.9, 0.18, 2.4 },
+				pos = { 0, 1.15, -2.95 },
+				color = rgb(230, 90, 110),
+				detail = true,
+			})
+			for i = 0, 5 do
+				for _, side in { -1, 1 } do
+					add({
+						shape = "Block",
+						size = { 0.18, 0.3, 0.18 },
+						pos = { side * 0.92, 1.05, -1.9 - i * 0.45 },
+						color = rgb(255, 255, 250),
+						detail = true,
+					})
+				end
+			end
+			for _, side in { -1, 1 } do
+				add({ shape = "Ball", size = 0.85, pos = { side * 0.6, 2.15, -2.1 }, color = green })
+				add({ shape = "Ball", size = 0.28, pos = { side * 0.35, 2.0, -4.25 }, color = dark, detail = true })
+			end
+			-- Cool sunglasses.
+			add({
+				shape = "Block",
+				size = { 2.0, 0.42, 0.15 },
+				pos = { 0, 2.3, -2.55 },
+				color = rgb(20, 20, 25),
+				detail = true,
+			})
+			add({
+				shape = "Block",
+				size = { 1.8, 0.1, 0.16 },
+				pos = { 0, 2.45, -2.6 },
+				color = rgb(90, 90, 100),
+				detail = true,
+			})
+			-- Ridges down the back, and a long tail.
+			for z = -1.4, 2.4, 0.6 do
+				for _, side in { -1, 1 } do
+					add({
+						shape = "Block",
+						size = { 0.35, 0.35, 0.35 },
+						pos = { side * 0.5, 2.15, z },
+						rot = { 45, 0, 0 },
+						color = dark,
+					})
+				end
+			end
+			add({ shape = "Block", size = { 1.8, 1.1, 1.7 }, pos = { 0, 1.15, 3.4 }, color = green })
+			add({ shape = "Block", size = { 1.3, 0.8, 1.7 }, pos = { 0, 1.0, 4.95 }, color = green })
+			add({ shape = "Block", size = { 0.8, 0.5, 1.7 }, pos = { 0, 0.85, 6.45 }, color = green })
+			return { parts = list }
+		end)(),
+	},
+	{
+		id = "Stompy",
+		name = "Stompy",
+		rarity = "Mystic",
+		income = 1000,
+		look = (function()
+			local list, add = newParts()
+			local grey, dark, ivory = rgb(150, 150, 165), rgb(115, 115, 130), rgb(240, 232, 205)
+			add({ name = "Body", shape = "Ball", size = 3.8, pos = { 0, 2.65, 0.3 }, color = grey })
+			add({ shape = "Ball", size = 3.3, pos = { 0, 2.5, 1.6 }, color = grey })
+			legs(add, { { -1.1, -0.6 }, { 1.1, -0.6 }, { -1.1, 2 }, { 1.1, 2 } }, 1.5, 1.2, grey)
+			for _, leg in { { -1.1, -0.6 }, { 1.1, -0.6 } } do
+				for _, toe in { -0.3, 0, 0.3 } do
+					add({
+						shape = "Ball",
+						size = 0.3,
+						pos = { leg[1] + toe, 0.15, leg[2] - 0.55 },
+						color = ivory,
+						detail = true,
+					})
+				end
+			end
+			add({ name = "Head", shape = "Block", size = { 2.3, 2.1, 2.4 }, pos = { 0, 2.8, -2.2 }, color = grey })
+			add({ shape = "Block", size = { 1.9, 1.4, 1.3 }, pos = { 0, 2.3, -3.6 }, color = grey })
+			for _, side in { -1, 1 } do
+				add({
+					shape = "Ball",
+					size = 0.55,
+					pos = { side * 0.95, 3.25, -3.3 },
+					color = rgb(255, 255, 255),
+					detail = true,
+				})
+				add({
+					shape = "Ball",
+					size = 0.28,
+					pos = { side * 0.95, 3.25, -3.55 },
+					color = rgb(20, 20, 25),
+					detail = true,
+				})
+				add({
+					shape = "Ball",
+					size = 0.25,
+					pos = { side * 0.4, 2.2, -4.25 },
+					color = rgb(60, 60, 70),
+					detail = true,
+				})
+				pointyEar(add, side * 0.85, 4.15, -1.4, 0.5, 0.7, dark)
+			end
+			-- A big horn (a cone of thin rings) with a glowing tip, and a little one behind it.
+			for k = 0, 7 do
+				local width = 1 - k * 0.11
+				add({
+					shape = "Cylinder",
+					size = { 0.22, width, width },
+					pos = { 0, 3.05 + k * 0.2, -3.75 + k * 0.04 },
+					rot = { 0, 0, 90 },
+					color = ivory,
+				})
+			end
+			local tip = add({
+				shape = "Ball",
+				size = 0.36,
+				pos = { 0, 4.7, -3.43 },
+				color = rgb(190, 110, 255),
+				material = "Neon",
+				detail = true,
+			})
+			add({
+				shape = "Cylinder",
+				size = { 0.45, 0.55, 0.55 },
+				pos = { 0, 3.95, -2.9 },
+				rot = { 0, 0, 90 },
+				color = ivory,
+			})
+			add({ shape = "Ball", size = 0.35, pos = { 0, 4.25, -2.9 }, color = ivory })
+			add({
+				shape = "Cylinder",
+				size = { 0.9, 0.2, 0.2 },
+				pos = { 0, 2.9, 3.25 },
+				rot = { 0, -90, -30 },
+				color = dark,
+			})
+			return { parts = list, effects = { { type = "Glow", part = tip, color = rgb(190, 110, 255) } } }
+		end)(),
 	},
 
 	-- The Human line
