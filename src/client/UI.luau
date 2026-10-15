@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local EggModel = require(ReplicatedStorage.Shared.EggModel)
+local ItemPictures = require(script.Parent.ItemPictures)
 
 local UI = {}
 
@@ -247,7 +248,9 @@ function UI.card(opts)
 		child.Parent = card
 	end
 
-	if opts.egg then
+	if opts.picture then
+		add(ItemPictures.view(opts.picture, opts.pictureHeight))
+	elseif opts.egg then
 		add(UI.eggViewport(opts.egg))
 	elseif opts.species then
 		add(UI.viewport(opts.species, opts.mutations, opts.silhouette))

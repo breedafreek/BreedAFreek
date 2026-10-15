@@ -258,13 +258,14 @@ end
 function renderers.Shop()
 	heading("New Freeks fly out of the cannons! Grab one while it wanders and carry it home.", 1)
 	heading("Barn", 3)
-	local yard = UI.grid(220, 120)
+	local yard = UI.grid(220, 220)
 	yard.LayoutOrder = 4
 	yard.Parent = body
 	local bought = state.boughtSlots or state.slots
 	local maxed = bought >= Config.MAX_SLOTS
 	local price = Config.slotPrice(bought)
 	UI.card({
+		picture = "BarnSlot",
 		lines = {
 			{ "Barn Slots", colors.text, 26 },
 			{
@@ -287,13 +288,14 @@ function renderers.Shop()
 		yard
 
 	heading("Weapons", 5)
-	local weapons = UI.grid(220, 150)
+	local weapons = UI.grid(220, 250)
 	weapons.LayoutOrder = 6
 	weapons.Parent = body
 	for i, weaponId in Weapons.order do
 		local weapon = Weapons.list[weaponId]
 		local owned = weaponId == Weapons.STARTER or (state.rebirths or 0) >= (weapon.rebirth or math.huge)
 		local card = UI.card({
+			picture = weaponId,
 			lines = {
 				{ weapon.name, weapon.color:Lerp(Color3.new(1, 1, 1), 0.3), 24 },
 				{ weapon.description, colors.muted, 44 },
@@ -904,7 +906,7 @@ end
 
 function renderers.Store()
 	heading("Game passes are one-time purchases. Their perks last forever.", 1)
-	local grid = UI.grid(250, 230)
+	local grid = UI.grid(250, 280)
 	grid.LayoutOrder = 2
 	grid.Parent = body
 	for i, key in GamePasses.order do
@@ -920,8 +922,8 @@ function renderers.Store()
 		end
 		local card = UI.card({
 			border = if owned then colors.green else nil,
+			picture = key,
 			lines = {
-				{ pass.icon, colors.text, 40 },
 				{ pass.name, pass.color, 24 },
 				{ pass.description, colors.muted, 50 },
 			},
