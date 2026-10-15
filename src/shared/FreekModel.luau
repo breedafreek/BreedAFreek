@@ -8,10 +8,11 @@
 -- A Model in ReplicatedStorage.FreekModels named after the species id overrides both.
 --
 -- Part list format, in studs, with y = 0 at the ground and the face toward -Z:
---   { shape = "Ball" | "Block" | "Cylinder" | "Wedge", size = { x, y, z } (or one number),
+--   { shape = "Ball" | "Ellipsoid" | "Block" | "Cylinder" | "Wedge", size = { x, y, z } (or one number),
 --     pos = { x, y, z }, rot = { x, y, z } (degrees, optional), color = Color3,
 --     material = "Neon" etc. (optional), transparency = 0-1 (optional),
 --     detail = true (optional: keeps its color when mutated, e.g. eyes),
+--     shine = false (optional: no sparkle highlights on a dark detail ball),
 --     swing = { hinge = {x, y, z}, phase = 0..1, axis = "X" | "Y" | "Z", amount = 1 }
 --       (optional: the part swings around the hinge while the Freek walks, e.g. legs) }
 -- A species' walk = "waddle" | "trot" | ... picks how it moves (see the client).
@@ -71,6 +72,8 @@ local function vector(value): Vector3
 	return Vector3.new(value[1], value[2], value[3])
 end
 
+local polish
+
 local function addEffect(part: BasePart, effect)
 	local kind = effect.type
 	local color = effect.color or Color3.fromRGB(255, 230, 120)
@@ -102,6 +105,75 @@ local function addEffect(part: BasePart, effect)
 	instance.Parent = part
 end
 
+-- The finishing touches every designed Freek gets, in the style of today's popular Roblox
+-- pets: two sparkle highlights on every pupil and nose (small dark balls marked detail),
+-- and a soft glossy sheen on round bodies and heads, like a vinyl toy.
+local function luminance(c: Color3): number
+	return c.R * 0.3 + c.G * 0.59 + c.B * 0.11
+end
+
+function polish(model: Model, specs, parts)
+	for i, spec in specs do
+		local part = parts[i]
+		local shape = spec.shape or "Block"
+		local size = part.Size
+		if
+			spec.detail
+			and shape == "Ball"
+			and spec.shine ~= false
+			and size.X <= 0.9
+			and luminance(part.Color) < 0.16
+		then
+			-- Catchlights sit on the front of the pupil, up and to the side, like light from above.
+			local r = size.X / 2
+			for k, light in { { 0.42, -0.38, 0.42 }, { 0.2, 0.32, -0.25 } } do
+				local dot = newPart({
+					Name = "Sparkle",
+					Shape = Enum.PartType.Ball,
+					Size = Vector3.one * size.X * light[1],
+					Color = Color3.new(1, 1, 1),
+					CFrame = part.CFrame * CFrame.new(light[2] * r, light[3] * r, -r * 0.82),
+					CanQuery = false,
+				})
+				if k == 2 then
+					dot.Transparency = 0.15
+				end
+				local swing = part:GetAttribute("SwingHinge")
+				if swing then
+					dot:SetAttribute("SwingHinge", swing)
+					dot:SetAttribute("SwingPhase", part:GetAttribute("SwingPhase"))
+					dot:SetAttribute("SwingAxis", part:GetAttribute("SwingAxis"))
+					dot:SetAttribute("SwingAmount", part:GetAttribute("SwingAmount"))
+				end
+				dot.Parent = model
+			end
+		elseif
+			(spec.name == "Body" or spec.name == "Head" or i == 1)
+			and (shape == "Ball" or shape == "Ellipsoid")
+			and spec.gloss ~= false
+		then
+			-- A soft sheen high on the front, like light catching a shiny toy.
+			local half = if shape == "Ball" then Vector3.one * math.min(size.X, size.Y, size.Z) / 2 else size / 2
+			local sheen = newPart({
+				Name = "Sheen",
+				Shape = Enum.PartType.Block,
+				Size = Vector3.new(half.X * 0.7, half.Y * 0.38, half.Z * 0.2),
+				Color = Color3.new(1, 1, 1),
+				Transparency = 0.72,
+				CFrame = part.CFrame
+					* CFrame.new(-half.X * 0.32, half.Y * 0.6, -half.Z * 0.62)
+					* CFrame.Angles(math.rad(-35), math.rad(-25), 0),
+				CanQuery = false,
+				CastShadow = false,
+			})
+			local mesh = Instance.new("SpecialMesh")
+			mesh.MeshType = Enum.MeshType.Sphere
+			mesh.Parent = sheen
+			sheen.Parent = model
+		end
+	end
+end
+
 local function buildFromParts(species, mutationId: string?): (Model, number)
 	local look = species.look
 	local model = Instance.new("Model")
@@ -122,6 +194,12 @@ local function buildFromParts(species, mutationId: string?): (Model, number)
 			part.CanCollide = false
 			part.CanTouch = false
 			part.Material = Enum.Material.SmoothPlastic
+		elseif shape == "Ellipsoid" then
+			-- A smooth stretched ball: a block drawn as a sphere filling its size.
+			part = newPart({ Shape = Enum.PartType.Block })
+			local mesh = Instance.new("SpecialMesh")
+			mesh.MeshType = Enum.MeshType.Sphere
+			mesh.Parent = part
 		else
 			part = newPart({ Shape = SHAPES[shape] or Enum.PartType.Block })
 		end
@@ -160,6 +238,7 @@ local function buildFromParts(species, mutationId: string?): (Model, number)
 	local body = parts[1]
 	body.PivotOffset = body.CFrame:Inverse()
 	model.PrimaryPart = body
+	polish(model, look.parts, parts)
 
 	for _, effect in look.effects or {} do
 		addEffect(parts[effect.part or 1], effect)
@@ -321,22 +400,22 @@ function buildHybrid(species, mutationId: string?): (Model, number)
 
 	-- Scale the second parent so the bodies match, and centre it on the first one's body.
 	local scale = body.Size.Magnitude / otherBody.Size.Magnitude
-	local otherCenter = otherBody.Position
+	local otherCenter = otherBody.CFrame.Position
 	for _, part in other:GetDescendants() do
 		if part:IsA("BasePart") then
-			local offset = (part.Position - otherCenter) * scale
+			local offset = (part.CFrame.Position - otherCenter) * scale
 			part.Size *= scale
-			part.CFrame = CFrame.new(body.Position + offset) * part.CFrame.Rotation
+			part.CFrame = CFrame.new(body.CFrame.Position + offset) * part.CFrame.Rotation
 			local hinge = part:GetAttribute("SwingHinge")
 			if typeof(hinge) == "Vector3" then
-				part:SetAttribute("SwingHinge", body.Position + (hinge - otherCenter) * scale)
+				part:SetAttribute("SwingHinge", body.CFrame.Position + (hinge - otherCenter) * scale)
 			end
 		end
 	end
 
-	local center = body.Position
+	local center = body.CFrame.Position
 	local function fromSecond(part: BasePart): boolean
-		return part.Position.Y > center.Y
+		return part.CFrame.Position.Y > center.Y
 	end
 	for _, part in model:GetDescendants() do
 		if part:IsA("BasePart") and part ~= body and fromSecond(part) then
