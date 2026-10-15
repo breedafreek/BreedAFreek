@@ -14159,7 +14159,7 @@ function PackReveal.play(result, done: () -> ())
 	-- A big clue: a small caption ("SERIES") over huge outlined words that slam in.
 	local captionLabel = UI.label("", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.14),
+		Position = UDim2.fromScale(0.5, 0.09),
 		Size = UDim2.fromOffset(500, 34),
 		FontFace = UI.fonts.heavy,
 		TextColor3 = Color3.fromRGB(230, 230, 255),
@@ -14170,7 +14170,7 @@ function PackReveal.play(result, done: () -> ())
 	captionLabel:FindFirstChildOfClass("UIStroke").Transparency = 1
 	local clueLabel = UI.label("", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.24),
+		Position = UDim2.fromScale(0.5, 0.18),
 		Size = UDim2.fromOffset(900, 100),
 		FontFace = UI.fonts.heavy,
 		TextTransparency = 1,
