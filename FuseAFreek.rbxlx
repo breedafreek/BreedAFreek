@@ -14776,32 +14776,46 @@ function PackReveal.play(result, done: () -> ())
 	end
 	-- The back (facing the camera to start with): see buildCardBack.
 	local animateBack = buildCardBack(card, body)
-	-- The front (hidden until the flip): rarity colours, series and rarity.
+	-- The front starts blank (the card spins round as it appears, so nothing on it may give
+	-- the pull away); paintFront() puts the rarity colours and words on just before the flip.
 	local face = newPart(card, {
 		Name = "CardFace",
 		Size = Vector3.new(CARD_SIZE.X - 0.3, CARD_SIZE.Y - 0.3, 0.1),
 		CFrame = CFrame.new(0, 0, CARD_SIZE.Z / 2 + 0.05),
-		Color = rarityColor:Lerp(Color3.new(0, 0, 0), 0.15),
+		Color = Color3.fromRGB(16, 12, 30),
+		Material = Enum.Material.Metal,
 	})
-	faceText(
-		face,
-		Enum.NormalId.Back,
-		series.icon .. " " .. string.upper(series.name),
-		series.color:Lerp(Color3.new(1, 1, 1), 0.4),
-		UDim2.fromScale(0.06, 0.05),
-		UDim2.fromScale(0.88, 0.09),
-		true
-	)
-	faceText(
-		face,
-		Enum.NormalId.Back,
-		string.upper(rarity),
-		Color3.new(1, 1, 1),
-		UDim2.fromScale(0.05, 0.4),
-		UDim2.fromScale(0.9, 0.2),
-		true
-	)
-	faceText(face, Enum.NormalId.Back, "★ ★ ★", GOLD, UDim2.fromScale(0.2, 0.66), UDim2.fromScale(0.6, 0.1), true)
+	local function paintFront()
+		face.Color = rarityColor:Lerp(Color3.new(0, 0, 0), 0.15)
+		face.Material = Enum.Material.SmoothPlastic
+		faceText(
+			face,
+			Enum.NormalId.Back,
+			series.icon .. " " .. string.upper(series.name),
+			series.color:Lerp(Color3.new(1, 1, 1), 0.4),
+			UDim2.fromScale(0.06, 0.05),
+			UDim2.fromScale(0.88, 0.09),
+			true
+		)
+		faceText(
+			face,
+			Enum.NormalId.Back,
+			string.upper(rarity),
+			Color3.new(1, 1, 1),
+			UDim2.fromScale(0.05, 0.4),
+			UDim2.fromScale(0.9, 0.2),
+			true
+		)
+		faceText(
+			face,
+			Enum.NormalId.Back,
+			"★ ★ ★",
+			GOLD,
+			UDim2.fromScale(0.2, 0.66),
+			UDim2.fromScale(0.6, 0.1),
+			true
+		)
+	end
 
 	local cardSpin = 0 -- extra turn on top of the float
 	local cardRise = 0
@@ -14924,6 +14938,56 @@ function PackReveal.play(result, done: () -> ())
 		moveCamera(Vector3.new(math.sin(k * 1.7) * 3, 7.5 - f * 0.8, -19 + f * 5), CARD_HOME)
 	end
 
+	-- Fake-outs: on the way up, the card sometimes settles as if this is it and starts to
+	-- turn over... then jolts back ("WAIT...!") and the climb carries on. Legendary and
+	-- better always get one (Ultra and Secret two); Uncommon and Rare get one half the time.
+	local fakeRungs = {}
+	local fakeRandom = Random.new()
+	if rungs >= 2 and (tier >= 4 or fakeRandom:NextNumber() < 0.5) then
+		fakeRungs[fakeRandom:NextInteger(math.max(1, rungs - 2), rungs - 1)] = true
+	end
+	if tier >= 6 then
+		fakeRungs[fakeRandom:NextInteger(1, math.max(1, rungs - 3))] = true
+	end
+	local function fakeOut(k: number)
+		-- It all goes calm, like the climb is over...
+		state.sweep = 0.25
+		camTime = 0.9
+		moveCamera(Vector3.new(0, 7.3, -14), CARD_HOME)
+		animate(0.45, function(_, t)
+			placeCard(t)
+			pips[k].scale.Scale = 1.15
+		end)
+		-- ...the card starts to turn over...
+		animate(0.65, function(a, t)
+			cardSpin = math.pi * 0.42 * easeInOut(a)
+			placeCard(t)
+		end)
+		-- ...then jolts back, and the climb is on again.
+		flash(Color3.new(1, 1, 1), 0.3)
+		state.shake = 1.3
+		captionLabel.Text = ""
+		clueLabel.Text = "WAIT...!"
+		clueLabel.TextColor3 = Color3.new(1, 1, 1)
+		animate(0.22, function(a, t)
+			cardSpin = math.pi * 0.42 * (1 - easeOut(a))
+			placeCard(t)
+			clueScale.Scale = 2.4 - 1.4 * easeOut(a)
+			clueLabel.TextTransparency = 1 - a
+			clueStroke.Transparency = 1 - a
+		end)
+		cardSpin = 0
+		state.sweep = 2.5
+		animate(0.55, function(_, t)
+			placeCard(t)
+		end)
+		animate(0.1, function(a, t)
+			placeCard(t)
+			clueLabel.TextTransparency = a
+			clueStroke.Transparency = a
+		end)
+	end
+
 	for k = 1, rungs do
 		local name = Rarities.order[k]
 		local color = Rarities.info[name].color
@@ -14974,10 +15038,14 @@ function PackReveal.play(result, done: () -> ())
 				placeCard(t)
 				pips[k].scale.Scale = 1.15 + math.sin(a * math.pi) * 0.08
 			end)
-			animate(0.1, function(a, t)
-				placeCard(t)
-				clueLabel.TextTransparency = a * 0.7
-			end)
+			if fakeRungs[k] then
+				fakeOut(k)
+			else
+				animate(0.1, function(a, t)
+					placeCard(t)
+					clueLabel.TextTransparency = a * 0.7
+				end)
+			end
 		else
 			-- The real rarity lands.
 			state.brightness = 1
@@ -15031,6 +15099,8 @@ function PackReveal.play(result, done: () -> ())
 	end)
 	hideClue()
 	meter:Destroy()
+
+	paintFront()
 
 	----------------------------------------------------------------------------
 	-- 6. The flip: the card turns over in 3D, then the Freek walks out in front of it.
