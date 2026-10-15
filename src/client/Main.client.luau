@@ -10,6 +10,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Belt = require(Shared.Belt)
+local Breeding = require(Shared.Breeding)
 local Config = require(Shared.Config)
 local GateTiers = require(Shared.GateTiers)
 local Format = require(Shared.Format)
@@ -413,7 +414,7 @@ function renderers.Breed()
 		end
 	end
 
-	heading("Pick two Freeks to breed. Some pairs make brand new Freeks!", 1)
+	heading("Babies match the rarer parent's rarity. Two Ultras make a Secret!", 1)
 
 	local selected = {}
 	for _, uid in breedSelection do
@@ -431,16 +432,32 @@ function renderers.Breed()
 			.. " ("
 			.. Format.time(FreekUtil.breedTime(a, b))
 			.. ")"
+
+		-- What this pair will make.
+		local rarity, bothUltra = Breeding.babyRarity(a, b)
+		if bothUltra and Breeding.SECRET_CHANCE >= 1 then
+			rarity = "Secret"
+		end
+		local parts = { "Baby: " .. rarity .. (if bothUltra and Breeding.SECRET_CHANCE < 1 then " or Secret" else "") }
+		local odds = Breeding.mutationOdds(a, b)
+		for _, option in odds do
+			table.insert(parts, math.round(option.chance * 100) .. "% " .. option.id)
+		end
+		if #odds == 0 then
+			table.insert(parts, "no mutation")
+		end
+		local prediction = heading(table.concat(parts, "  •  "), 2)
+		prediction.TextColor3 = Rarities.info[rarity].color
 	end
 	UI.button(label, if ready then colors.pink else colors.gray, function()
 		if #breedSelection == 2 then
 			send("StartBreed", breedSelection[1], breedSelection[2])
 			table.clear(breedSelection)
 		end
-	end, { Size = UDim2.new(1, 0, 0, 46), LayoutOrder = 2, Parent = body })
+	end, { Size = UDim2.new(1, 0, 0, 46), LayoutOrder = 3, Parent = body })
 
 	local grid = UI.grid(140, 190)
-	grid.LayoutOrder = 3
+	grid.LayoutOrder = 4
 	grid.Parent = body
 	for i, item in sortedFreeks() do
 		local uid, freek = item.uid, item.freek

@@ -40,16 +40,17 @@ Belt.SPEED = 6 -- studs per second (so each Freek rides for about 40 seconds)
 Belt.SPAWN_INTERVAL = 4 -- seconds between new Freeks on each lane
 Belt.BUY_DISTANCE = 14 -- how close a player must be to buy
 
--- Chance of each rarity per spawn. Ultra and Secret never appear: breeding only.
+-- Chance of each rarity per spawn. Secrets never appear: two Ultras must be bred.
 Belt.ODDS = {
 	{ rarity = "Common", weight = 70 },
 	{ rarity = "Uncommon", weight = 22 },
 	{ rarity = "Rare", weight = 6.5 },
 	{ rarity = "Legendary", weight = 1.3 },
 	{ rarity = "Mystic", weight = 0.2 },
+	{ rarity = "Ultra", weight = 0.04 },
 }
 
--- Belt Freeks are half as likely to be mutated as bred ones.
+-- Scales each mutation's chance for belt Freeks (the only place mutations come from).
 Belt.MUTATION_FACTOR = 0.5
 
 -- Price of a Freek that has no fixed shop price: this many seconds of its income.
@@ -76,6 +77,68 @@ return Belt
         </Properties>
       </Item>
       <Item class="ModuleScript" referent="5">
+        <Properties>
+          <string name="Name">Breeding</string>
+          <string name="Source"><![CDATA[-- The breeding rules. Shared so the Breed window can show what a pair will make.
+--
+--   * Any two Freeks can breed.
+--   * The baby's rarity is the rarer parent's rarity; breeding never raises it.
+--     The one exception: two Ultras make a Secret (the only way to get one).
+--   * Which species of that rarity you get is fixed per pair (see server/Recipes), so
+--     every combination has its own result to discover.
+--   * Mutations are only inherited: if both parents share one the baby always gets it; if
+--     only one parent has one it's a 50% chance; if they have different ones the baby gets
+--     one of the two at random.
+
+local Freeks = require(script.Parent.Freeks)
+local Rarities = require(script.Parent.Rarities)
+
+local Breeding = {}
+
+-- Chance that two Ultras make a Secret (otherwise the baby is an Ultra).
+Breeding.SECRET_CHANCE = 1
+
+-- Chance of passing on a mutation when only one parent has it.
+Breeding.SINGLE_PARENT_MUTATION_CHANCE = 0.5
+
+-- The rarity the baby will be, plus whether it could be a Secret instead.
+function Breeding.babyRarity(parentA, parentB): (string, boolean)
+	local rankA = Rarities.rank[Freeks.byId[parentA.species].rarity]
+	local rankB = Rarities.rank[Freeks.byId[parentB.species].rarity]
+	local rarity = Rarities.order[math.max(rankA, rankB)]
+	local bothUltra = rankA == Rarities.rank.Ultra and rankB == Rarities.rank.Ultra
+	return rarity, bothUltra
+end
+
+-- Possible mutations for the baby as { { id, chance } }, chances adding up to <= 1.
+function Breeding.mutationOdds(parentA, parentB)
+	local a, b = parentA.mutation, parentB.mutation
+	if a and b and a == b then
+		return { { id = a, chance = 1 } }
+	elseif a and b then
+		return { { id = a, chance = 0.5 }, { id = b, chance = 0.5 } }
+	elseif a or b then
+		return { { id = a or b, chance = Breeding.SINGLE_PARENT_MUTATION_CHANCE } }
+	end
+	return {}
+end
+
+function Breeding.rollMutation(parentA, parentB, rng: Random): string?
+	local roll = rng:NextNumber()
+	for _, option in Breeding.mutationOdds(parentA, parentB) do
+		if roll < option.chance then
+			return option.id
+		end
+		roll -= option.chance
+	end
+	return nil
+end
+
+return Breeding
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="6">
         <Properties>
           <string name="Name">Config</string>
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
@@ -125,7 +188,7 @@ return Config
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="6">
+      <Item class="ModuleScript" referent="7">
         <Properties>
           <string name="Name">Format</string>
           <string name="Source"><![CDATA[local Format = {}
@@ -164,7 +227,7 @@ return Format
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="7">
+      <Item class="ModuleScript" referent="8">
         <Properties>
           <string name="Name">FreekModel</string>
           <string name="Source"><![CDATA[-- Builds the 3D model for a Freek out of plain parts.
@@ -457,7 +520,7 @@ return FreekModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="8">
+      <Item class="ModuleScript" referent="9">
         <Properties>
           <string name="Name">FreekUtil</string>
           <string name="Source"><![CDATA[-- Helpers shared by server and client for reading a saved Freek record:
@@ -560,7 +623,7 @@ return FreekUtil
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="9">
+      <Item class="ModuleScript" referent="10">
         <Properties>
           <string name="Name">Freeks</string>
           <string name="Source"><![CDATA[-- Every Freek species in the game. These are PLACEHOLDERS until the real list arrives.
@@ -834,7 +897,7 @@ return Freeks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="10">
+      <Item class="ModuleScript" referent="11">
         <Properties>
           <string name="Name">GamePasses</string>
           <string name="Source"><![CDATA[-- Game passes: one-time Robux purchases with permanent perks.
@@ -986,7 +1049,7 @@ return GamePasses
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="11">
+      <Item class="ModuleScript" referent="12">
         <Properties>
           <string name="Name">GateTiers</string>
           <string name="Source"><![CDATA[-- Yard gate arches upgrade with rebirths: Iron, then Bronze, Silver and Gold. The gate opening
@@ -1042,15 +1105,14 @@ return GateTiers
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">Mutations</string>
-          <string name="Source"><![CDATA[-- Mutations a bred Freek can roll. Rarest first: breeding checks them in this order.
--- chance is per breed; it is multiplied by INHERIT_BOOST when a parent has that mutation.
+          <string name="Source"><![CDATA[-- Mutations multiply a Freek's income. They only enter the game on the conveyor belt
+-- (chance is per belt Freek, times Belt.MUTATION_FACTOR); after that they're passed on by
+-- breeding (see Breeding.luau). Rarest first.
 
 local Mutations = {}
-
-Mutations.INHERIT_BOOST = 4
 
 Mutations.list = {
 	{ id = "Rainbow", mult = 10, chance = 0.01, color = Color3.fromRGB(255, 120, 255) },
@@ -1072,7 +1134,7 @@ return Mutations
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
@@ -1102,7 +1164,7 @@ return Rarities
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">Remotes</string>
           <string name="Source"><![CDATA[-- One place that names every remote. The server creates them; clients wait for them.
@@ -1159,7 +1221,7 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">Seasons</string>
           <string name="Source"><![CDATA[-- Limited events for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred
@@ -1296,7 +1358,7 @@ return Seasons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">WeaponModel</string>
           <string name="Source"><![CDATA[-- Builds the Tool for a weapon from its part list in Weapons.luau.
@@ -1382,7 +1444,7 @@ return WeaponModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">Weapons</string>
           <string name="Source"><![CDATA[-- Weapons. Everyone has the STARTER weapon; the rest unlock at a number of rebirths
@@ -1673,15 +1735,15 @@ return Weapons
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="18">
+  <Item class="ServerScriptService" referent="19">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="19">
+    <Item class="Folder" referent="20">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -1913,7 +1975,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">Carried</string>
           <string name="Source"><![CDATA[-- Which Freeks are being carried off by a thief right now. Kept in memory only: if the
@@ -1953,15 +2015,15 @@ return Carried
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="22">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">ConveyorService</string>
           <string name="Source"><![CDATA[-- Runs the conveyor: two lanes down the middle of the map, each fed by its own Freek House.
 -- Spawns a random Freek on each lane every few seconds (odds by rarity, see Belt.luau) and
 -- sells them first come, first served.
 --
--- Only Commons and species someone has already discovered by breeding can appear, so the
--- belt never hands out a Discovery Book first. Limited Freeks appear only during their event.
+-- Every species from Common to Ultra can appear (breeding never raises rarity, so the belt
+-- is how players move up). Secrets never appear. Limited Freeks only during their event.
 --
 -- Clients animate the Freeks along the belt themselves (smooth, no network traffic); the
 -- server works out where each one is from its spawn time when checking a purchase.
@@ -1983,7 +2045,6 @@ local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
 local ActionService = require(script.Parent.ActionService)
 local DataService = require(script.Parent.DataService)
-local DiscoveryService = require(script.Parent.DiscoveryService)
 local Decor = require(script.Parent.Decor)
 local PlotService = require(script.Parent.PlotService)
 
@@ -2158,8 +2219,7 @@ end
 local function eligibleByRarity()
 	local groups = {}
 	for _, species in Freeks.list do
-		local allowed = species.price ~= nil or DiscoveryService.isDiscovered(species.id)
-		if allowed and Seasons.available(species) then
+		if Seasons.available(species) then
 			groups[species.rarity] = groups[species.rarity] or {}
 			table.insert(groups[species.rarity], species)
 		end
@@ -2341,7 +2401,7 @@ return ConveyorService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="24">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -2572,7 +2632,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="25">
         <Properties>
           <string name="Name">Decor</string>
           <string name="Source"><![CDATA[-- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
@@ -2950,7 +3010,7 @@ return Decor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Discovery Book: the first player in the whole game to get each species has their
@@ -3084,7 +3144,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the Freeks in their yard, plus offline earnings
@@ -3165,7 +3225,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">Environment</string>
           <string name="Source"><![CDATA[-- Lighting, sky, terrain and the scenery around the yards and conveyor.
@@ -3295,7 +3355,7 @@ return Environment
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">HalloweenDecor</string>
           <string name="Source"><![CDATA[-- Halloween props: ghosts, bats, cobwebs, tombstones, dead trees, a witch's cauldron,
@@ -3755,7 +3815,7 @@ return HalloweenDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="29">
+      <Item class="Script" referent="30">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -3778,7 +3838,7 @@ require(Server.DataService).init()
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -3870,7 +3930,7 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="31">
+      <Item class="ModuleScript" referent="32">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the map and gives every player a fenced yard. Other players can walk in to look
@@ -4645,7 +4705,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="32">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">RebirthService</string>
           <string name="Source"><![CDATA[-- Rebirth: pay Config.rebirthCost to start over with a permanent income bonus.
@@ -4741,83 +4801,83 @@ return RebirthService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">Recipes</string>
-          <string name="Source"><![CDATA[-- Secret breeding recipes. Server-only so players can't read them out of the game.
--- Order of a and b doesn't matter. chance is how often the pair produces the result;
--- otherwise the baby is a copy of one of the parents' species. A recipe for a Seasonal
--- Freek only works while its season is running.
+          <string name="Source"><![CDATA[-- Decides which species a pair of parents makes. Server-only so players can't read the
+-- results out of the game and have to discover them.
+--
+-- Every pair has a result: a species of the baby's rarity (see shared/Breeding) picked by
+-- the pair itself, so the same two species always make the same baby. Two Ultras make a
+-- Secret. Limited Freeks are only picked while their event is running.
+--
+-- OVERRIDES pins a specific result for a pair if you want a hand-made recipe; it must
+-- follow the rarity rule (same rarity as the rarer parent, or Secret for two Ultras).
 
 local Shared = game:GetService("ReplicatedStorage").Shared
+local Breeding = require(Shared.Breeding)
 local Freeks = require(Shared.Freeks)
-local Mutations = require(Shared.Mutations)
 local Seasons = require(Shared.Seasons)
 
-local RECIPES = {
-	{ a = "Blobby", b = "Snorp", result = "Snoblob", chance = 0.5 },
-	{ a = "Wigglet", b = "Grumbo", result = "Wigglump", chance = 0.5 },
-	{ a = "Blobby", b = "Wigglet", result = "Blobwig", chance = 0.5 },
-	{ a = "Grumbo", b = "Snorp", result = "Grumsnorp", chance = 0.5 },
-
-	{ a = "Snoblob", b = "Wigglump", result = "Chonkler", chance = 0.35 },
-	{ a = "Blobwig", b = "Grumsnorp", result = "Zorpdorp", chance = 0.35 },
-
-	{ a = "Chonkler", b = "Zorpdorp", result = "EyeballEarl", chance = 0.25 },
-	{ a = "EyeballEarl", b = "Chonkler", result = "KingGoob", chance = 0.15 },
-	{ a = "KingGoob", b = "Zorpdorp", result = "CosmicSnorp", chance = 0.1 },
-	{ a = "CosmicSnorp", b = "KingGoob", result = "TheFreek", chance = 0.05 },
-
-	-- Seasonal
-	{ a = "Blobby", b = "Grumbo", result = "PumpkinBlob", chance = 0.4 },
+local OVERRIDES = {
+	-- ["Blobby|Snorp"] = "Oinkle",
 }
+
+local Recipes = {}
 
 local function pairKey(a: string, b: string): string
 	return if a < b then a .. "|" .. b else b .. "|" .. a
 end
+Recipes.pairKey = pairKey
 
-local byPair = {}
-for _, recipe in RECIPES do
-	byPair[pairKey(recipe.a, recipe.b)] = recipe
+-- A stable number for a pair (same pair, same number, every server).
+local function pairHash(key: string): number
+	local hash = 5381
+	for i = 1, #key do
+		hash = (hash * 33 + string.byte(key, i)) % 2147483647
+	end
+	return hash
 end
 
-local Recipes = {}
+local function speciesOfRarity(rarity: string)
+	local list = {}
+	for _, species in Freeks.list do
+		if species.rarity == rarity and Seasons.available(species) then
+			table.insert(list, species.id)
+		end
+	end
+	return list
+end
 
 -- Returns the baby's species and mutation (or nil) for two parent records.
--- recipeLuck / mutationLuck optionally multiply the chances (for future luck boosts).
-function Recipes.roll(parentA, parentB, rng: Random, recipeLuck: number?, mutationLuck: number?): (string, string?)
-	local species
-	local recipe = byPair[pairKey(parentA.species, parentB.species)]
-	if
-		recipe
-		and Seasons.available(Freeks.byId[recipe.result])
-		and rng:NextNumber() < recipe.chance * (recipeLuck or 1)
-	then
-		species = recipe.result
-	else
-		species = if rng:NextNumber() < 0.5 then parentA.species else parentB.species
+function Recipes.roll(parentA, parentB, rng: Random): (string, string?)
+	local key = pairKey(parentA.species, parentB.species)
+	local rarity, bothUltra = Breeding.babyRarity(parentA, parentB)
+	if bothUltra and rng:NextNumber() < Breeding.SECRET_CHANCE then
+		rarity = "Secret"
 	end
 
-	local mutation = nil
-	for _, m in Mutations.list do
-		local chance = m.chance * (mutationLuck or 1)
-		if parentA.mutation == m.id or parentB.mutation == m.id then
-			chance *= Mutations.INHERIT_BOOST
-		end
-		if rng:NextNumber() < chance then
-			mutation = m.id
-			break
+	local species = OVERRIDES[key]
+	if not species or not Seasons.available(Freeks.byId[species]) then
+		local options = speciesOfRarity(rarity)
+		if #options == 0 then
+			-- No species of that rarity exists yet: copy the rarer parent.
+			local rarer = if Freeks.byId[parentA.species].rarity == rarity then parentA else parentB
+			species = rarer.species
+		else
+			table.sort(options)
+			species = options[pairHash(key) % #options + 1]
 		end
 	end
 
-	return species, mutation
+	return species, Breeding.rollMutation(parentA, parentB, rng)
 end
 
 return Recipes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -5111,7 +5171,7 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Stealing Freeks from other players' yards.
@@ -5472,7 +5532,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
@@ -5753,7 +5813,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- Weapons: giving them out, buying them, and what happens when they hit.
@@ -6082,19 +6142,19 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="38">
+  <Item class="StarterPlayer" referent="39">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="39">
+    <Item class="StarterPlayerScripts" referent="40">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="40">
+      <Item class="Folder" referent="41">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="41">
+        <Item class="ModuleScript" referent="42">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -6168,7 +6228,7 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="42">
+        <Item class="ModuleScript" referent="43">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, event chip, menu tabs, leaderboard,
@@ -6752,7 +6812,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="43">
+        <Item class="LocalScript" referent="44">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -6767,6 +6827,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Belt = require(Shared.Belt)
+local Breeding = require(Shared.Breeding)
 local Config = require(Shared.Config)
 local GateTiers = require(Shared.GateTiers)
 local Format = require(Shared.Format)
@@ -7170,7 +7231,7 @@ function renderers.Breed()
 		end
 	end
 
-	heading("Pick two Freeks to breed. Some pairs make brand new Freeks!", 1)
+	heading("Babies match the rarer parent's rarity. Two Ultras make a Secret!", 1)
 
 	local selected = {}
 	for _, uid in breedSelection do
@@ -7188,16 +7249,32 @@ function renderers.Breed()
 			.. " ("
 			.. Format.time(FreekUtil.breedTime(a, b))
 			.. ")"
+
+		-- What this pair will make.
+		local rarity, bothUltra = Breeding.babyRarity(a, b)
+		if bothUltra and Breeding.SECRET_CHANCE >= 1 then
+			rarity = "Secret"
+		end
+		local parts = { "Baby: " .. rarity .. (if bothUltra and Breeding.SECRET_CHANCE < 1 then " or Secret" else "") }
+		local odds = Breeding.mutationOdds(a, b)
+		for _, option in odds do
+			table.insert(parts, math.round(option.chance * 100) .. "% " .. option.id)
+		end
+		if #odds == 0 then
+			table.insert(parts, "no mutation")
+		end
+		local prediction = heading(table.concat(parts, "  •  "), 2)
+		prediction.TextColor3 = Rarities.info[rarity].color
 	end
 	UI.button(label, if ready then colors.pink else colors.gray, function()
 		if #breedSelection == 2 then
 			send("StartBreed", breedSelection[1], breedSelection[2])
 			table.clear(breedSelection)
 		end
-	end, { Size = UDim2.new(1, 0, 0, 46), LayoutOrder = 2, Parent = body })
+	end, { Size = UDim2.new(1, 0, 0, 46), LayoutOrder = 3, Parent = body })
 
 	local grid = UI.grid(140, 190)
-	grid.LayoutOrder = 3
+	grid.LayoutOrder = 4
 	grid.Parent = body
 	for i, item in sortedFreeks() do
 		local uid, freek = item.uid, item.freek
@@ -7825,7 +7902,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="44">
+        <Item class="ModuleScript" referent="45">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).

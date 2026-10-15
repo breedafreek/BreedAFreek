@@ -16,16 +16,17 @@ Belt.SPEED = 6 -- studs per second (so each Freek rides for about 40 seconds)
 Belt.SPAWN_INTERVAL = 4 -- seconds between new Freeks on each lane
 Belt.BUY_DISTANCE = 14 -- how close a player must be to buy
 
--- Chance of each rarity per spawn. Ultra and Secret never appear: breeding only.
+-- Chance of each rarity per spawn. Secrets never appear: two Ultras must be bred.
 Belt.ODDS = {
 	{ rarity = "Common", weight = 70 },
 	{ rarity = "Uncommon", weight = 22 },
 	{ rarity = "Rare", weight = 6.5 },
 	{ rarity = "Legendary", weight = 1.3 },
 	{ rarity = "Mystic", weight = 0.2 },
+	{ rarity = "Ultra", weight = 0.04 },
 }
 
--- Belt Freeks are half as likely to be mutated as bred ones.
+-- Scales each mutation's chance for belt Freeks (the only place mutations come from).
 Belt.MUTATION_FACTOR = 0.5
 
 -- Price of a Freek that has no fixed shop price: this many seconds of its income.

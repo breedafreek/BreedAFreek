@@ -1,9 +1,8 @@
--- Mutations a bred Freek can roll. Rarest first: breeding checks them in this order.
--- chance is per breed; it is multiplied by INHERIT_BOOST when a parent has that mutation.
+-- Mutations multiply a Freek's income. They only enter the game on the conveyor belt
+-- (chance is per belt Freek, times Belt.MUTATION_FACTOR); after that they're passed on by
+-- breeding (see Breeding.luau). Rarest first.
 
 local Mutations = {}
-
-Mutations.INHERIT_BOOST = 4
 
 Mutations.list = {
 	{ id = "Rainbow", mult = 10, chance = 0.01, color = Color3.fromRGB(255, 120, 255) },

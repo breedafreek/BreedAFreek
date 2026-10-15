@@ -2,8 +2,8 @@
 -- Spawns a random Freek on each lane every few seconds (odds by rarity, see Belt.luau) and
 -- sells them first come, first served.
 --
--- Only Commons and species someone has already discovered by breeding can appear, so the
--- belt never hands out a Discovery Book first. Limited Freeks appear only during their event.
+-- Every species from Common to Ultra can appear (breeding never raises rarity, so the belt
+-- is how players move up). Secrets never appear. Limited Freeks only during their event.
 --
 -- Clients animate the Freeks along the belt themselves (smooth, no network traffic); the
 -- server works out where each one is from its spawn time when checking a purchase.
@@ -25,7 +25,6 @@ local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
 local ActionService = require(script.Parent.ActionService)
 local DataService = require(script.Parent.DataService)
-local DiscoveryService = require(script.Parent.DiscoveryService)
 local Decor = require(script.Parent.Decor)
 local PlotService = require(script.Parent.PlotService)
 
@@ -200,8 +199,7 @@ end
 local function eligibleByRarity()
 	local groups = {}
 	for _, species in Freeks.list do
-		local allowed = species.price ~= nil or DiscoveryService.isDiscovered(species.id)
-		if allowed and Seasons.available(species) then
+		if Seasons.available(species) then
 			groups[species.rarity] = groups[species.rarity] or {}
 			table.insert(groups[species.rarity], species)
 		end

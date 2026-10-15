@@ -1,70 +1,70 @@
--- Secret breeding recipes. Server-only so players can't read them out of the game.
--- Order of a and b doesn't matter. chance is how often the pair produces the result;
--- otherwise the baby is a copy of one of the parents' species. A recipe for a Seasonal
--- Freek only works while its season is running.
+-- Decides which species a pair of parents makes. Server-only so players can't read the
+-- results out of the game and have to discover them.
+--
+-- Every pair has a result: a species of the baby's rarity (see shared/Breeding) picked by
+-- the pair itself, so the same two species always make the same baby. Two Ultras make a
+-- Secret. Limited Freeks are only picked while their event is running.
+--
+-- OVERRIDES pins a specific result for a pair if you want a hand-made recipe; it must
+-- follow the rarity rule (same rarity as the rarer parent, or Secret for two Ultras).
 
 local Shared = game:GetService("ReplicatedStorage").Shared
+local Breeding = require(Shared.Breeding)
 local Freeks = require(Shared.Freeks)
-local Mutations = require(Shared.Mutations)
 local Seasons = require(Shared.Seasons)
 
-local RECIPES = {
-	{ a = "Blobby", b = "Snorp", result = "Snoblob", chance = 0.5 },
-	{ a = "Wigglet", b = "Grumbo", result = "Wigglump", chance = 0.5 },
-	{ a = "Blobby", b = "Wigglet", result = "Blobwig", chance = 0.5 },
-	{ a = "Grumbo", b = "Snorp", result = "Grumsnorp", chance = 0.5 },
-
-	{ a = "Snoblob", b = "Wigglump", result = "Chonkler", chance = 0.35 },
-	{ a = "Blobwig", b = "Grumsnorp", result = "Zorpdorp", chance = 0.35 },
-
-	{ a = "Chonkler", b = "Zorpdorp", result = "EyeballEarl", chance = 0.25 },
-	{ a = "EyeballEarl", b = "Chonkler", result = "KingGoob", chance = 0.15 },
-	{ a = "KingGoob", b = "Zorpdorp", result = "CosmicSnorp", chance = 0.1 },
-	{ a = "CosmicSnorp", b = "KingGoob", result = "TheFreek", chance = 0.05 },
-
-	-- Seasonal
-	{ a = "Blobby", b = "Grumbo", result = "PumpkinBlob", chance = 0.4 },
+local OVERRIDES = {
+	-- ["Blobby|Snorp"] = "Oinkle",
 }
+
+local Recipes = {}
 
 local function pairKey(a: string, b: string): string
 	return if a < b then a .. "|" .. b else b .. "|" .. a
 end
+Recipes.pairKey = pairKey
 
-local byPair = {}
-for _, recipe in RECIPES do
-	byPair[pairKey(recipe.a, recipe.b)] = recipe
+-- A stable number for a pair (same pair, same number, every server).
+local function pairHash(key: string): number
+	local hash = 5381
+	for i = 1, #key do
+		hash = (hash * 33 + string.byte(key, i)) % 2147483647
+	end
+	return hash
 end
 
-local Recipes = {}
+local function speciesOfRarity(rarity: string)
+	local list = {}
+	for _, species in Freeks.list do
+		if species.rarity == rarity and Seasons.available(species) then
+			table.insert(list, species.id)
+		end
+	end
+	return list
+end
 
 -- Returns the baby's species and mutation (or nil) for two parent records.
--- recipeLuck / mutationLuck optionally multiply the chances (for future luck boosts).
-function Recipes.roll(parentA, parentB, rng: Random, recipeLuck: number?, mutationLuck: number?): (string, string?)
-	local species
-	local recipe = byPair[pairKey(parentA.species, parentB.species)]
-	if
-		recipe
-		and Seasons.available(Freeks.byId[recipe.result])
-		and rng:NextNumber() < recipe.chance * (recipeLuck or 1)
-	then
-		species = recipe.result
-	else
-		species = if rng:NextNumber() < 0.5 then parentA.species else parentB.species
+function Recipes.roll(parentA, parentB, rng: Random): (string, string?)
+	local key = pairKey(parentA.species, parentB.species)
+	local rarity, bothUltra = Breeding.babyRarity(parentA, parentB)
+	if bothUltra and rng:NextNumber() < Breeding.SECRET_CHANCE then
+		rarity = "Secret"
 	end
 
-	local mutation = nil
-	for _, m in Mutations.list do
-		local chance = m.chance * (mutationLuck or 1)
-		if parentA.mutation == m.id or parentB.mutation == m.id then
-			chance *= Mutations.INHERIT_BOOST
-		end
-		if rng:NextNumber() < chance then
-			mutation = m.id
-			break
+	local species = OVERRIDES[key]
+	if not species or not Seasons.available(Freeks.byId[species]) then
+		local options = speciesOfRarity(rarity)
+		if #options == 0 then
+			-- No species of that rarity exists yet: copy the rarer parent.
+			local rarer = if Freeks.byId[parentA.species].rarity == rarity then parentA else parentB
+			species = rarer.species
+		else
+			table.sort(options)
+			species = options[pairHash(key) % #options + 1]
 		end
 	end
 
-	return species, mutation
+	return species, Breeding.rollMutation(parentA, parentB, rng)
 end
 
 return Recipes
