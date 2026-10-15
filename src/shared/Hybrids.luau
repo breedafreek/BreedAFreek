@@ -10,7 +10,8 @@
 --   name    the two main species' names mashed together (Chuckles + Flexo = "Chuxo")
 --   rarity  the rarest species in it (fusing never raises rarity)
 --   look    built by FreekModel from the two main species: the first one's body (legs,
---           arms, tail) wearing the second one's head, body colours blended
+--           arms) wearing the second one's big head with the first one's ears, the
+--           second one's tail, markings in both colours and a glowing fusion collar
 -- Each hybrid Freek also stores its own income (see Breeding.babyIncome).
 --
 -- Freeks.byId[id] works for hybrid ids too (Freeks.luau asks this module).

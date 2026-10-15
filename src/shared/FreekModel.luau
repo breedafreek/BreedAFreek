@@ -341,6 +341,9 @@ local function buildFromParts(species, mutationId: string?): (Model, number)
 		if spec.onHead == false then
 			part:SetAttribute("NotOnHead", true)
 		end
+		if spec.detail then
+			part:SetAttribute("Detail", true)
+		end
 		if spec.rig then
 			part:SetAttribute("Rig", spec.rig)
 			part:SetAttribute("RigSide", spec.side or (if spec.pos[1] < 0 then -1 else 1))
@@ -585,16 +588,26 @@ function buildHybrid(species, mutationId: string?): (Model, number)
 	-- Where the new head goes: in place of the first parent's head, or on top of its body.
 	local target, targetRadius
 	local oldHead = model:FindFirstChild("Head")
+	-- The first parent keeps its ears: they go on the new head, so both parents show.
+	local oldParts, oldCenter, oldRadius = headOf(model)
+	local ears = {}
+	for _, part in oldParts do
+		if part:GetAttribute("Rig") == "ear" then
+			table.insert(ears, part)
+		end
+	end
+	local firstColor = if oldHead and oldHead:IsA("BasePart") then oldHead.Color else body.Color
 	if oldHead and oldHead:IsA("BasePart") then
-		local parts
-		parts, target, targetRadius = headOf(model)
-		for _, part in parts do
-			part:Destroy()
+		target, targetRadius = oldCenter, oldRadius
+		for _, part in oldParts do
+			if part:GetAttribute("Rig") ~= "ear" then
+				part:Destroy()
+			end
 		end
 	else
-		-- Its face and whatever sat on top (ear tufts, a hat) make way for the new head.
-		for _, part in (headOf(model)) do
-			if part ~= body then
+		-- Its face and whatever sat on top (a hat) make way for the new head.
+		for _, part in oldParts do
+			if part ~= body and part:GetAttribute("Rig") ~= "ear" then
 				part:Destroy()
 			end
 		end
@@ -603,8 +616,14 @@ function buildHybrid(species, mutationId: string?): (Model, number)
 		target = body.CFrame.Position + Vector3.new(0, size.Y / 2 + targetRadius * 0.6, 0)
 	end
 
+	-- A big, chibi head (like the popular pet games), its bottom kept where it was.
+	local grown = targetRadius * 1.15
+	target += Vector3.new(0, grown - targetRadius, 0)
+	targetRadius = grown
+
 	-- Move the second parent's head over, resized to fit.
 	local headParts, center, radius, anchor = headOf(other)
+	local headColor = anchor.Color
 	local scale = targetRadius / radius
 	for _, part in headParts do
 		local offset = (part.CFrame.Position - center) * scale
@@ -624,8 +643,163 @@ function buildHybrid(species, mutationId: string?): (Model, number)
 		part.Parent = model
 	end
 	anchor.Name = "Head" -- so it turns and looks around like any head
+
+	-- Swap the new head's ears for the first parent's, moved and resized to fit it.
+	if #ears > 0 then
+		for _, part in headParts do
+			if part:GetAttribute("Rig") == "ear" then
+				part:Destroy()
+			end
+		end
+		local earScale = targetRadius / oldRadius
+		for _, part in ears do
+			part.Size *= earScale
+			part.CFrame = CFrame.new(target + (part.CFrame.Position - oldCenter) * earScale) * part.CFrame.Rotation
+			local pivot = part:GetAttribute("RigPivot")
+			if typeof(pivot) == "Vector3" then
+				part:SetAttribute("RigPivot", target + (pivot - oldCenter) * earScale)
+			end
+			part:SetAttribute("OnHead", true)
+		end
+	end
+
+	-- The second parent's tail (if it has one) replaces the first parent's.
+	local function tailOf(m: Model)
+		local list, hinge = {}, nil
+		for _, part in m:GetChildren() do
+			if part:IsA("BasePart") and part:GetAttribute("SwingAxis") == "Y" and not part:GetAttribute("OnHead") then
+				table.insert(list, part)
+				hinge = hinge or part:GetAttribute("SwingHinge")
+			end
+		end
+		return list, hinge
+	end
+	local newTail, newHinge = tailOf(other)
+	if #newTail > 0 and typeof(newHinge) == "Vector3" then
+		local oldTail, oldHinge = tailOf(model)
+		local half = body.Size / 2
+		local back = if typeof(oldHinge) == "Vector3"
+			then oldHinge
+			else body.CFrame.Position + Vector3.new(0, half.Y * 0.1, half.Z * 0.85)
+		for _, part in oldTail do
+			part:Destroy()
+		end
+		local tailScale = math.clamp(body.Size.Magnitude / otherBody.Size.Magnitude, 0.6, 1.4)
+		for _, part in newTail do
+			part.Size *= tailScale
+			part.CFrame = CFrame.new(back + (part.CFrame.Position - newHinge) * tailScale) * part.CFrame.Rotation
+			part:SetAttribute("SwingHinge", back)
+			part.Parent = model
+		end
+	end
+
+	-- Both parents' colours: the body takes a little of the head's colour, its legs and arms
+	-- a touch more, and it gets patches of the head's colour, like markings.
 	if not mutationId then
-		body.Color = body.Color:Lerp(otherBody.Color, 0.5)
+		body.Color = body.Color:Lerp(headColor, 0.25)
+		for _, part in model:GetChildren() do
+			if
+				part:IsA("BasePart")
+				and part:GetAttribute("SwingAxis") == "X"
+				and not part:GetAttribute("Detail")
+				and not part:GetAttribute("OnHead")
+			then
+				part.Color = part.Color:Lerp(headColor, 0.35)
+			end
+		end
+		local half = body.Size / 2
+		if body:IsA("Part") and body.Shape == Enum.PartType.Ball then
+			half = Vector3.one * math.min(half.X, half.Y, half.Z)
+		end
+		local spot = math.min(half.X, half.Y, half.Z) * 0.75
+		for _, direction in
+			{
+				Vector3.new(0.7, 0.35, -0.55),
+				Vector3.new(-0.75, -0.2, -0.45),
+				Vector3.new(0.9, -0.3, 0.3),
+				Vector3.new(-0.85, 0.45, 0.25),
+				Vector3.new(0.2, 0.75, 0.6),
+				Vector3.new(-0.3, -0.2, 0.9),
+			}
+		do
+			-- A point on the body's surface in that direction, and a flat spot lying on it.
+			local d = direction.Unit
+			local reach = 1 / math.sqrt((d.X / half.X) ^ 2 + (d.Y / half.Y) ^ 2 + (d.Z / half.Z) ^ 2)
+			local point = body.CFrame.Position + d * reach
+			local normal = Vector3.new(d.X / half.X ^ 2, d.Y / half.Y ^ 2, d.Z / half.Z ^ 2).Unit
+			local patch = newPart({
+				Name = "FusionSpot",
+				Shape = Enum.PartType.Block,
+				Size = Vector3.new(spot, spot * 0.8, spot * 0.3),
+				CFrame = CFrame.lookAt(point, point + normal),
+				Color = headColor,
+				CanQuery = false,
+			})
+			local mesh = Instance.new("SpecialMesh")
+			mesh.MeshType = Enum.MeshType.Sphere
+			mesh.Parent = patch
+			patch.Parent = model
+		end
+		-- And a patch of the first parent's colour round one eye, like a mixed-breed pup.
+		local d = Vector3.new(-0.5, 0.35, -0.8).Unit
+		local headR = targetRadius
+		-- Thin and just under the surface, so the eye still sits on top of it.
+		local point = target + d * headR * 0.94
+		local eyePatch = newPart({
+			Name = "FusionSpot",
+			Shape = Enum.PartType.Block,
+			Size = Vector3.new(headR * 0.95, headR * 0.85, headR * 0.14),
+			CFrame = CFrame.lookAt(point, point + d),
+			Color = firstColor,
+			CanQuery = false,
+		})
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Parent = eyePatch
+		eyePatch:SetAttribute("OnHead", true)
+		eyePatch.Parent = model
+	end
+
+	-- The fusion collar where the head meets the body: a chunky two-tone ring with a glowing
+	-- trim and a gem in front, so the join looks made that way.
+	local bodyColor = body.Color
+	local neck = target - Vector3.new(0, targetRadius * 0.82, 0)
+	local ring = targetRadius * 1.45
+	for k, layer in
+		{
+			{ 0.18, ring, bodyColor, Enum.Material.SmoothPlastic },
+			{ -0.18, ring * 0.95, headColor, Enum.Material.SmoothPlastic },
+			{ 0, ring * 1.08, Color3.fromRGB(255, 120, 230), Enum.Material.Neon },
+		}
+	do
+		local collar = newPart({
+			Name = "FusionCollar",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(if k == 3 then targetRadius * 0.12 else targetRadius * 0.3, layer[2], layer[2]),
+			CFrame = CFrame.new(neck + Vector3.new(0, layer[1] * targetRadius * 0.6, 0))
+				* CFrame.Angles(0, 0, math.pi / 2),
+			Color = layer[3],
+			Material = layer[4],
+			CanQuery = false,
+		})
+		collar:SetAttribute("NotOnHead", true)
+		collar.Parent = model
+	end
+	local gem = newPart({
+		Name = "FusionGem",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.one * targetRadius * 0.45,
+		CFrame = CFrame.new(neck + Vector3.new(0, 0, -ring / 2)),
+		Color = Color3.fromRGB(255, 120, 230),
+		Material = Enum.Material.Neon,
+		CanQuery = false,
+	})
+	gem.Parent = model
+	if not mutationId then
+		-- A fusion shimmer in the two parents' colours.
+		local shimmer = Instance.new("Sparkles")
+		shimmer.SparkleColor = bodyColor:Lerp(headColor, 0.5)
+		shimmer.Parent = gem
 	end
 	other:Destroy()
 
