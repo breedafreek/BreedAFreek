@@ -93,7 +93,7 @@ local function offerProblem(player: Player, uids): string?
 		if not freek then
 			return player.DisplayName .. " no longer has one of their Freeks"
 		elseif freek.breeding then
-			return player.DisplayName .. " put an offered Freek in a Fusion Pod"
+			return player.DisplayName .. " put an offered Freek in a Fusion Den"
 		elseif Carried.is(player, uid) then
 			return "one of " .. player.DisplayName .. "'s Freeks is being stolen"
 		end

@@ -9,7 +9,7 @@ local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
-local Belt = require(ReplicatedStorage.Shared.Belt)
+local Drops = require(ReplicatedStorage.Shared.Drops)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
 local Decor = require(script.Parent.Decor)
@@ -29,7 +29,7 @@ local function pick(palette, part: BasePart)
 	return palette[index]
 end
 
-local function facingBelt(position: Vector3): CFrame
+local function facingSquare(position: Vector3): CFrame
 	return CFrame.lookAt(position, Vector3.new(position.X, position.Y, 0))
 end
 
@@ -77,34 +77,34 @@ THEMES.Halloween = {
 		)
 	end,
 	build = function(props: Folder)
-		-- Every yard: jack-o'-lanterns flanking the gate, one inside by the pens, and a
-		-- pile of leaves under each corner tree.
+		-- Every barn: jack-o'-lanterns flanking the doors, one inside by the dens, and a
+		-- pile of leaves under each tree out back.
 		for i, origin in PlotService.origins() do
 			for _, side in { -1, 1 } do
-				Decor.pumpkin(props, origin * CFrame.new(side * 10.5, 0, -33.5), 1) -- outside, on the grass
-				Decor.pumpkin(props, origin * CFrame.new(side * 21, 1, -24.5), 0.8) -- on the lawn
-				Decor.leafPile(props, origin * CFrame.new(side * 27, 1, -21), i * 10 + side)
+				Decor.pumpkin(props, origin * CFrame.new(side * 16, 0.3, -34.5), 1) -- outside the doors
+				Decor.pumpkin(props, origin * CFrame.new(side * 26, 1, -22), 0.8) -- inside
+				Decor.leafPile(props, origin * CFrame.new(side * 24, 0, 39.5), i * 10 + side)
 			end
 		end
-		-- Pumpkins between the lamps along both walkways, facing the conveyor.
-		for x = Belt.START_X + 27.5, Belt.START_X + Belt.LENGTH - 10, 35 do
-			for _, z in { -27.5, 27.5 } do
-				Decor.pumpkin(props, facingBelt(Vector3.new(x, 0.3, z)), 0.9)
+		-- Pumpkins along both walkways, facing the town square.
+		for x = -122.5, 122.5, 35 do
+			for _, z in { -28, 28 } do
+				Decor.pumpkin(props, facingSquare(Vector3.new(x, 0.3, z)), 0.9)
 			end
 		end
-		-- Hay bales topped with pumpkins by the Freek Houses and the spawn.
-		local houseX = Belt.START_X - 9
+		-- Hay bales topped with pumpkins by the Freek House and the spawn.
+		local house = Drops.HOUSE_POSITION
 		for _, spot in
 			{
-				Vector3.new(houseX, 0, -15),
-				Vector3.new(houseX, 0, 15),
-				Vector3.new(houseX + 8, 0, -16),
-				Vector3.new(houseX + 8, 0, 16),
+				house + Vector3.new(3, 0, -14),
+				house + Vector3.new(3, 0, 14),
+				house + Vector3.new(14, 0, -10),
+				house + Vector3.new(14, 0, 10),
 				Vector3.new(150, 0, -7),
 				Vector3.new(150, 0, 7),
 			}
 		do
-			local ground = facingBelt(spot)
+			local ground = facingSquare(spot)
 			Decor.hayBale(props, ground)
 			Decor.pumpkin(props, ground * CFrame.new(0, 2.4, 0), 0.8)
 		end
@@ -118,21 +118,21 @@ THEMES.Halloween = {
 			end
 		end
 
-		-- String lights between the street lamps along both walkways, and low fog.
-		for x = Belt.START_X + 10, Belt.START_X + Belt.LENGTH - 45, 35 do
-			for _, z in { -28, 28 } do
-				HalloweenDecor.stringLights(props, Vector3.new(x, 7.6, z), Vector3.new(x + 35, 7.6, z), 14, 1.8)
+		-- String lights between the street lamps along both walkways, and low fog over the
+		-- town square.
+		for _, x in { -140, -70, 0, 70 } do
+			for _, z in { -28.5, 28.5 } do
+				HalloweenDecor.stringLights(props, Vector3.new(x, 7.6, z), Vector3.new(x + 70, 7.6, z), 24, 3)
 			end
 		end
-		for x = Belt.START_X, Belt.START_X + Belt.LENGTH, 40 do
-			for _, z in { -20, 20 } do
+		for x = Drops.AREA.minX, Drops.AREA.maxX, 40 do
+			for _, z in { -14, 14 } do
 				HalloweenDecor.fog(props, Vector3.new(x, 0.5, z))
 			end
 		end
 
-		-- Witch hats on both Freek Houses.
-		HalloweenDecor.witchHat(props, CFrame.new(houseX + 2, 14.6, Belt.LANES[1]), 0.9, Color3.fromRGB(70, 30, 110))
-		HalloweenDecor.witchHat(props, CFrame.new(houseX + 2, 14.6, Belt.LANES[2]), 0.9, Color3.fromRGB(40, 25, 60))
+		-- A witch hat on the Freek House.
+		HalloweenDecor.witchHat(props, CFrame.new(house + Vector3.new(0, 22.5, 0)), 1.3, Color3.fromRGB(70, 30, 110))
 
 		-- A graveyard past the spawn, with dead trees, fog and a bubbling cauldron.
 		for row = 0, 1 do
@@ -151,7 +151,7 @@ THEMES.Halloween = {
 		HalloweenDecor.cauldron(props, CFrame.new(160, 0, 0))
 
 		-- Ghosts drifting around; bats circling the Freek Houses, the graveyard and the title.
-		local houses = Vector3.new(houseX, 0, 0)
+		local houses = Drops.HOUSE_POSITION
 		HalloweenDecor.ghost(props, houses, 22, 16, 0.25, 0)
 		HalloweenDecor.ghost(props, houses, 26, 20, -0.2, 2)
 		HalloweenDecor.ghost(props, Vector3.new(178, 0, 0), 14, 9, 0.3, 1)

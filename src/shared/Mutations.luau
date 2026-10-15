@@ -1,6 +1,6 @@
--- Mutations multiply a Freek's income. They only enter the game on the conveyor belt
--- (chance is per belt Freek, times Belt.MUTATION_FACTOR); after that they're passed on by
--- breeding (see Breeding.luau). Rarest first.
+-- Mutations multiply a Freek's income. They only enter the game from the cannons (chance
+-- is per cannon Freek, times Drops.MUTATION_FACTOR); after that they're passed on by
+-- fusing (see Breeding.luau). Rarest first.
 --
 -- A Freek can carry several mutations. They're saved as a list ({ "Rainbow", "Golden" }),
 -- or nil for none, and their multipliers stack (Golden + Shadow = x6).

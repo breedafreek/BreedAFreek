@@ -1,8 +1,8 @@
--- Yard gate arches upgrade with rebirths: Iron, then Bronze, Silver and Gold. The gate opening
--- stays the same width; the arch gets taller, chunkier and fancier.
+-- The frame around each barn's doors upgrades with rebirths: Iron, then Bronze, Silver and
+-- Gold. The doorway stays the same size; the frame gets chunkier and fancier.
 --
--- height: post height in studs; postWidth: post thickness; finials: balls on the posts;
--- crest: an arch over the sign; gems: glowing gems and sparkles.
+-- postWidth: post thickness; finials: balls on the posts; crest: an arch over the name
+-- sign; gems: glowing gems and sparkles. (height is no longer used.)
 
 local GateTiers = {}
 

@@ -150,7 +150,7 @@ end
 local function sendBack(carrier: Player, carry, ownerMessage: string?, carrierMessage: string?)
 	if carry.bought then
 		-- The buyer is the owner: one message is enough.
-		ownerMessage, carrierMessage = "You dropped " .. carry.name .. ", so it went straight to your yard.", nil
+		ownerMessage, carrierMessage = "You dropped " .. carry.name .. ", so it went straight to your barn.", nil
 	end
 	putDown(carrier, carry)
 	Carried.set(carry.owner, carry.uid, nil)
@@ -189,9 +189,9 @@ local function deliver(carrier: Player, carry)
 			freek.slot = FreekUtil.freeSlot(data)
 			DataService.changed(carrier)
 			if freek.slot then
-				notify(carrier, carry.name .. " is home in your yard!", "success")
+				notify(carrier, carry.name .. " is home in your barn!", "success")
 			else
-				notify(carrier, "Your yard is full, so " .. carry.name .. " went in your backpack.", "error")
+				notify(carrier, "Your barn is full, so " .. carry.name .. " went in your backpack.", "error")
 			end
 		end
 		return
@@ -276,7 +276,7 @@ local function steal(prompt: ProximityPrompt, thief: Player)
 	freek.slot = nil
 	DataService.changed(owner)
 
-	notify(thief, "You grabbed " .. carry.name .. "! Get it back to your yard!", "success")
+	notify(thief, "You grabbed " .. carry.name .. "! Get it back to your barn!", "success")
 	notify(owner, thief.DisplayName .. " is stealing your " .. carry.name .. "! Bonk them!", "error")
 end
 
@@ -306,7 +306,7 @@ local function snatch(prompt: ProximityPrompt, snatcher: Player)
 		return sendBack(carrier, carry)
 	end
 	notify(carrier, snatcher.DisplayName .. " snatched " .. carry.name .. " from you!", "error")
-	notify(snatcher, "You snatched " .. carry.name .. "! Get it back to your yard!", "success")
+	notify(snatcher, "You snatched " .. carry.name .. "! Get it back to your barn!", "success")
 	notify(
 		carry.owner,
 		snatcher.DisplayName .. " snatched your " .. carry.name .. " from " .. carrier.DisplayName .. "!",

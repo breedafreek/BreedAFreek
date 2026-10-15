@@ -21,63 +21,6 @@
       </Properties>
       <Item class="ModuleScript" referent="4">
         <Properties>
-          <string name="Name">Belt</string>
-          <string name="Source"><![CDATA[-- The conveyor belt in the middle of the map. Shared so the server (which decides what's
--- on it and checks purchases) and clients (which animate it smoothly) agree on where every
--- Freek is: an item's position depends only on when it spawned.
-
-local Rarities = require(script.Parent.Rarities)
-
-local Belt = {}
-
--- Two lanes side by side down the middle of the map, one nearer each row of yards. Each
--- comes out of its own Freek House at the west end and runs east to a drop-off chute.
-Belt.START_X = -118 -- where Freeks appear
-Belt.Y = 1 -- top of the belt surface
-Belt.LANES = { -6, 6 } -- Z position of each lane's centre line
-Belt.LENGTH = 236 -- studs travelled before falling off the far end
-Belt.SPEED = 6 -- studs per second (so each Freek rides for about 40 seconds)
-Belt.SPAWN_INTERVAL = 4 -- seconds between new Freeks on each lane
-Belt.BUY_DISTANCE = 14 -- how close a player must be to buy
-
--- Chance of each rarity per spawn. Secrets never appear: two Ultras must be bred.
-Belt.ODDS = {
-	{ rarity = "Common", weight = 70 },
-	{ rarity = "Uncommon", weight = 22 },
-	{ rarity = "Rare", weight = 6.5 },
-	{ rarity = "Legendary", weight = 1.3 },
-	{ rarity = "Mystic", weight = 0.2 },
-	{ rarity = "Ultra", weight = 0.04 },
-}
-
--- Scales each mutation's chance for belt Freeks (the only place mutations come from).
-Belt.MUTATION_FACTOR = 0.5
-
--- Price of a Freek that has no fixed shop price: this many seconds of its income.
-Belt.PRICE_SECONDS = 50
-
--- Rarities at or above this get announced to the whole server when they spawn.
-Belt.ANNOUNCE_RANK = Rarities.rank.Legendary
-
--- Freeks face the way the belt moves (+X).
-local FACING = CFrame.Angles(0, -math.pi / 2, 0)
-
--- Where an item on `lane` is at time `now`, as a ground CFrame for FreekModel:PivotTo.
-function Belt.cframeAt(lane: number, spawnTime: number, now: number): CFrame
-	local travelled = math.clamp((now - spawnTime) * Belt.SPEED, 0, Belt.LENGTH)
-	return CFrame.new(Belt.START_X + travelled, Belt.Y, Belt.LANES[lane] or 0) * FACING
-end
-
-function Belt.isGone(spawnTime: number, now: number): boolean
-	return (now - spawnTime) * Belt.SPEED >= Belt.LENGTH
-end
-
-return Belt
-]]></string>
-        </Properties>
-      </Item>
-      <Item class="ModuleScript" referent="5">
-        <Properties>
           <string name="Name">Breeding</string>
           <string name="Source"><![CDATA[-- The fusing rules (the code calls it breeding). Shared so the Fuse window can show what a
 -- pair will make.
@@ -156,7 +99,7 @@ return Breeding
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="6">
+      <Item class="ModuleScript" referent="5">
         <Properties>
           <string name="Name">Config</string>
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
@@ -206,6 +149,168 @@ function Config.incomeMultiplier(rebirths: number): number
 end
 
 return Config
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="6">
+        <Properties>
+          <string name="Name">Drops</string>
+          <string name="Source"><![CDATA[-- Freeks arrive by cannon. Eight cannons hang on the glass bubble over the map, and each
+-- fires a Freek every FIRE_INTERVAL seconds (they take turns, so one lands every few
+-- seconds). A Freek flies down, lands somewhere in the town square, wanders around for
+-- WANDER_TIME, then walks into the Freek House and is gone. Hold Grab on it (and pay) to
+-- carry it home.
+--
+-- Where a Freek is at any moment depends only on its seed, cannon and launch time, so the
+-- server (which checks grabs) and every client (which draws it) agree without sending
+-- positions around.
+
+local Rarities = require(script.Parent.Rarities)
+
+local Drops = {}
+
+-- The bubble and its cannons.
+Drops.DOME_RADIUS = 285
+Drops.CANNON_COUNT = 8
+Drops.CANNON_ELEVATION = math.rad(30) -- how high up the bubble the cannons hang
+Drops.FIRE_INTERVAL = 30 -- seconds between shots from each cannon
+
+-- Flight, wandering and leaving.
+Drops.FLIGHT_TIME = 3.2
+Drops.FLIGHT_ARC = 30 -- extra height in the middle of the flight
+Drops.WANDER_TIME = 60
+Drops.WANDER_SPEED = 5
+Drops.EXIT_SPEED = 9
+-- The town square between the two rows of barns, where Freeks land and wander.
+Drops.AREA = { minX = -125, maxX = 125, minZ = -23, maxZ = 23 }
+-- The Freek House at the west end; Freeks nobody grabbed walk in through this door.
+Drops.HOUSE_POSITION = Vector3.new(-152, 0, 0)
+Drops.HOUSE_DOOR = Vector3.new(-143.5, 0, 0)
+
+Drops.GRAB_DISTANCE = 12 -- how close a player must be to grab
+
+-- Chance of each rarity per shot. Secrets never come out of a cannon.
+Drops.ODDS = {
+	{ rarity = "Common", weight = 70 },
+	{ rarity = "Uncommon", weight = 22 },
+	{ rarity = "Rare", weight = 6.5 },
+	{ rarity = "Legendary", weight = 1.3 },
+	{ rarity = "Mystic", weight = 0.2 },
+	{ rarity = "Ultra", weight = 0.04 },
+}
+
+-- Scales each mutation's chance for cannon Freeks (the only place mutations come from).
+Drops.MUTATION_FACTOR = 0.5
+
+-- Price of a Freek that has no fixed shop price: this many seconds of its income.
+Drops.PRICE_SECONDS = 50
+
+-- Rarities at or above this get announced to the whole server when they're fired.
+Drops.ANNOUNCE_RANK = Rarities.rank.Legendary
+
+-- Where cannon `index` hangs on the bubble, pointing at the middle of the town square.
+function Drops.cannonCFrame(index: number): CFrame
+	local angle = (index - 0.5) / Drops.CANNON_COUNT * math.pi * 2
+	local flat = Drops.DOME_RADIUS * math.cos(Drops.CANNON_ELEVATION)
+	local position = Vector3.new(
+		math.cos(angle) * flat,
+		Drops.DOME_RADIUS * math.sin(Drops.CANNON_ELEVATION),
+		math.sin(angle) * flat
+	)
+	return CFrame.lookAt(position, Vector3.new(0, 10, 0))
+end
+
+-- Where a fired Freek leaves the barrel.
+function Drops.muzzle(index: number): Vector3
+	return (Drops.cannonCFrame(index) * CFrame.new(0, 0, -12)).Position
+end
+
+local function clampToArea(position: Vector3): Vector3
+	local area = Drops.AREA
+	return Vector3.new(math.clamp(position.X, area.minX, area.maxX), 0, math.clamp(position.Z, area.minZ, area.maxZ))
+end
+
+-- The whole trip of one Freek: { launch, land, muzzle, legs, wanderEnd, finish }.
+-- legs = { { start, finish, from, to, facing } } covering wandering and the walk home.
+function Drops.plan(seed: number, cannon: number, launch: number)
+	local rng = Random.new(seed)
+	local area = Drops.AREA
+	local landAt = Vector3.new(rng:NextNumber(area.minX, area.maxX), 0, rng:NextNumber(area.minZ, area.maxZ))
+	local legs = {}
+	local t = launch + Drops.FLIGHT_TIME
+	local wanderEnd = t + Drops.WANDER_TIME
+	local position = landAt
+	local facing = (Vector3.new(0, 0, 0) - Drops.muzzle(cannon)) * Vector3.new(1, 0, 1)
+	facing = if facing.Magnitude > 0.01 then facing.Unit else Vector3.new(0, 0, -1)
+
+	while t < wanderEnd do
+		-- Stop and look around, then toddle somewhere nearby.
+		local pause = rng:NextNumber(0.4, 2)
+		table.insert(legs, { start = t, finish = t + pause, from = position, to = position, facing = facing })
+		t += pause
+		local angle = rng:NextNumber(0, math.pi * 2)
+		local distance = rng:NextNumber(6, 22)
+		local target = clampToArea(position + Vector3.new(math.cos(angle), 0, math.sin(angle)) * distance)
+		local length = (target - position).Magnitude
+		if length > 0.5 then
+			facing = (target - position).Unit
+			local duration = length / Drops.WANDER_SPEED
+			table.insert(legs, { start = t, finish = t + duration, from = position, to = target, facing = facing })
+			t += duration
+			position = target
+		end
+	end
+
+	-- Time's up: head into the Freek House.
+	local home = Drops.HOUSE_DOOR
+	local length = (home - position).Magnitude
+	if length > 0.5 then
+		facing = (home - position).Unit
+	end
+	local duration = length / Drops.EXIT_SPEED
+	table.insert(
+		legs,
+		{ start = t, finish = t + duration, from = position, to = home, facing = facing, leaving = true }
+	)
+
+	return {
+		launch = launch,
+		land = launch + Drops.FLIGHT_TIME,
+		landAt = landAt,
+		muzzle = Drops.muzzle(cannon),
+		legs = legs,
+		finish = t + duration,
+	}
+end
+
+-- Where a Freek on `path` is at time `now`, as a ground CFrame for FreekModel:PivotTo,
+-- plus what it's doing: "waiting", "flying", "wandering", "leaving" or "gone".
+function Drops.cframeAt(path, now: number): (CFrame, string, boolean)
+	if now < path.launch then
+		return CFrame.new(path.muzzle), "waiting", false
+	end
+	if now < path.land then
+		local a = (now - path.launch) / Drops.FLIGHT_TIME
+		local position = path.muzzle:Lerp(path.landAt, a) + Vector3.new(0, Drops.FLIGHT_ARC * 4 * a * (1 - a), 0)
+		return CFrame.new(position) * CFrame.Angles(a * math.pi * 4, a * math.pi * 3, 0), "flying", false
+	end
+	if now >= path.finish then
+		return CFrame.new(Drops.HOUSE_DOOR), "gone", false
+	end
+	for _, leg in path.legs do
+		if now < leg.finish then
+			local a = math.clamp((now - leg.start) / math.max(leg.finish - leg.start, 0.001), 0, 1)
+			local position = leg.from:Lerp(leg.to, a)
+			local moving = leg.from ~= leg.to
+			return CFrame.lookAt(position, position + leg.facing),
+				if leg.leaving then "leaving" else "wandering",
+				moving
+		end
+	end
+	return CFrame.new(Drops.HOUSE_DOOR), "gone", false
+end
+
+return Drops
 ]]></string>
         </Properties>
       </Item>
@@ -1083,37 +1188,37 @@ GamePasses.list = {
 	},
 	ExtraSlot1 = {
 		id = 0,
-		name = "Extra Yard Slot 1",
+		name = "Extra Barn Slot 1",
 		icon = "🧱",
 		price = 299,
-		description = "+1 yard slot on top of the 12 you can buy with coins.",
+		description = "+1 barn slot on top of the 12 you can buy with coins.",
 		color = Color3.fromRGB(230, 150, 90),
 		slot = true,
 	},
 	ExtraSlot2 = {
 		id = 0,
-		name = "Extra Yard Slot 2",
+		name = "Extra Barn Slot 2",
 		icon = "🧱",
 		price = 299,
-		description = "+1 yard slot on top of the 12 you can buy with coins.",
+		description = "+1 barn slot on top of the 12 you can buy with coins.",
 		color = Color3.fromRGB(230, 150, 90),
 		slot = true,
 	},
 	ExtraSlot3 = {
 		id = 0,
-		name = "Extra Yard Slot 3",
+		name = "Extra Barn Slot 3",
 		icon = "🧱",
 		price = 299,
-		description = "+1 yard slot on top of the 12 you can buy with coins.",
+		description = "+1 barn slot on top of the 12 you can buy with coins.",
 		color = Color3.fromRGB(230, 150, 90),
 		slot = true,
 	},
 	ExtraPen = {
 		id = 0,
-		name = "Extra Fusion Pod",
+		name = "Extra Fusion Den",
 		icon = "🐣",
 		price = 399,
-		description = "A second Fusion Pod, so you can fuse two pairs at once.",
+		description = "A second Fusion Den, so you can fuse two pairs at once.",
 		color = Color3.fromRGB(255, 130, 190),
 	},
 	VIP = {
@@ -1179,11 +1284,11 @@ return GamePasses
       <Item class="ModuleScript" referent="12">
         <Properties>
           <string name="Name">GateTiers</string>
-          <string name="Source"><![CDATA[-- Yard gate arches upgrade with rebirths: Iron, then Bronze, Silver and Gold. The gate opening
--- stays the same width; the arch gets taller, chunkier and fancier.
+          <string name="Source"><![CDATA[-- The frame around each barn's doors upgrades with rebirths: Iron, then Bronze, Silver and
+-- Gold. The doorway stays the same size; the frame gets chunkier and fancier.
 --
--- height: post height in studs; postWidth: post thickness; finials: balls on the posts;
--- crest: an arch over the sign; gems: glowing gems and sparkles.
+-- postWidth: post thickness; finials: balls on the posts; crest: an arch over the name
+-- sign; gems: glowing gems and sparkles. (height is no longer used.)
 
 local GateTiers = {}
 
@@ -1417,9 +1522,9 @@ return Hybrids
       <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">Mutations</string>
-          <string name="Source"><![CDATA[-- Mutations multiply a Freek's income. They only enter the game on the conveyor belt
--- (chance is per belt Freek, times Belt.MUTATION_FACTOR); after that they're passed on by
--- breeding (see Breeding.luau). Rarest first.
+          <string name="Source"><![CDATA[-- Mutations multiply a Freek's income. They only enter the game from the cannons (chance
+-- is per cannon Freek, times Drops.MUTATION_FACTOR); after that they're passed on by
+-- fusing (see Breeding.luau). Rarest first.
 --
 -- A Freek can carry several mutations. They're saved as a list ({ "Rainbow", "Golden" }),
 -- or nil for none, and their multipliers stack (Golden + Shadow = x6).
@@ -2164,7 +2269,7 @@ local handlers = {}
 
 function handlers.BuySlot(player: Player, data)
 	if data.slots >= Config.MAX_SLOTS then
-		return notify(player, "Your yard is as big as it gets!", "error")
+		return notify(player, "Your barn is as big as it gets!", "error")
 	end
 	local price = Config.slotPrice(data.slots)
 	if data.money < price then
@@ -2172,7 +2277,7 @@ function handlers.BuySlot(player: Player, data)
 	end
 	data.money -= price
 	data.slots += 1
-	notify(player, "Your yard grew! You now have " .. data.slots .. " slots.", "success")
+	notify(player, "Your barn grew! You now have " .. data.slots .. " slots.", "success")
 end
 
 function handlers.Place(player: Player, data, uid: any)
@@ -2182,7 +2287,7 @@ function handlers.Place(player: Player, data, uid: any)
 	end
 	local slot = FreekUtil.freeSlot(data)
 	if not slot then
-		return notify(player, "Your yard is full! Buy more slots or remove a Freek.", "error")
+		return notify(player, "Your barn is full! Buy more slots or remove a Freek.", "error")
 	end
 	freek.slot = slot
 end
@@ -2225,7 +2330,7 @@ function handlers.StartBreed(player: Player, data, uidA: any, uidB: any, penInde
 	if not index then
 		return notify(
 			player,
-			if pens > 1 then "Both your Fusion Pods are busy!" else "Your Fusion Pod is already busy!",
+			if pens > 1 then "Both your Fusion Dens are busy!" else "Your Fusion Den is already busy!",
 			"error"
 		)
 	end
@@ -2328,6 +2433,842 @@ return ActionService
       </Item>
       <Item class="ModuleScript" referent="23">
         <Properties>
+          <string name="Name">Barn</string>
+          <string name="Source"><![CDATA[-- Each player's yard is a big red barn: plank floor, red walls with white trim, a gambrel
+-- roof, and two big doors at the front that always stand slid open. When the owner locks
+-- up, a red barrier fills the doorway. The Freek pads and the Fusion Dens are inside
+-- (PlotService places those).
+--
+-- Coordinates are the plot's: origin on the ground at the plot's centre, the doors on
+-- the -Z side facing the town square, the floor's top at y = 1.
+--
+-- The roof doesn't collide (so the camera can see in, and the client fades it while you're
+-- inside); an invisible ceiling on top of the walls stops anyone jumping in.
+
+local Decor = require(script.Parent.Decor)
+
+local Barn = {}
+
+Barn.SIZE = 64
+Barn.WALL_HEIGHT = 18
+Barn.DOOR_WIDTH = 14
+Barn.DOOR_HEIGHT = 13
+
+local RED = Color3.fromRGB(168, 40, 36)
+local WHITE = Color3.fromRGB(245, 242, 235)
+local ROOF = Color3.fromRGB(72, 58, 62)
+local FLOOR = Color3.fromRGB(150, 108, 72)
+
+local part = Decor.part
+
+local function wedge(props)
+	return part(props, "WedgePart")
+end
+
+-- A sliding door: red planks with a white frame and a white X.
+local function buildDoor(parent: Instance, closed: CFrame, index: number)
+	local model = Instance.new("Model")
+	model.Name = "BarnDoor"
+	local w, h = Barn.DOOR_WIDTH / 2 + 0.2, Barn.DOOR_HEIGHT + 0.2
+	local panel = part({
+		Name = "DoorPanel",
+		Size = Vector3.new(w, h, 0.6),
+		CFrame = closed,
+		Color = RED,
+		Material = Enum.Material.WoodPlanks,
+		CollisionGroup = "Gate" .. index,
+		Parent = model,
+	})
+	model.PrimaryPart = panel
+	local trim = {
+		{ Vector3.new(w, 0.6, 0.8), Vector3.new(0, h / 2 - 0.3, 0) },
+		{ Vector3.new(w, 0.6, 0.8), Vector3.new(0, -h / 2 + 0.3, 0) },
+		{ Vector3.new(0.6, h, 0.8), Vector3.new(w / 2 - 0.3, 0, 0) },
+		{ Vector3.new(0.6, h, 0.8), Vector3.new(-w / 2 + 0.3, 0, 0) },
+	}
+	for _, piece in trim do
+		part({
+			Name = "DoorTrim",
+			Size = piece[1],
+			CFrame = closed * CFrame.new(piece[2]),
+			Color = WHITE,
+			CanCollide = false,
+			Parent = model,
+		})
+	end
+	local length = math.sqrt((w - 1.2) ^ 2 + (h - 1.2) ^ 2)
+	local angle = math.atan2(h - 1.2, w - 1.2)
+	for _, sign in { -1, 1 } do
+		part({
+			Name = "DoorTrim",
+			Size = Vector3.new(length, 0.6, 0.8),
+			CFrame = closed * CFrame.Angles(0, 0, sign * angle),
+			Color = WHITE,
+			CanCollide = false,
+			Parent = model,
+		})
+	end
+	model.Parent = parent
+	return model
+end
+
+-- Builds the barn. Returns { barrier, locked } for Barn.setLocked.
+function Barn.build(folder: Instance, decor: Instance, origin: CFrame, index: number)
+	local half = Barn.SIZE / 2 - 0.5 -- wall centre lines
+	local top = 1 + Barn.WALL_HEIGHT
+	local doorHalf = Barn.DOOR_WIDTH / 2
+	local doorTop = 1 + Barn.DOOR_HEIGHT
+
+	part({
+		Name = "Base",
+		Size = Vector3.new(Barn.SIZE, 1, Barn.SIZE),
+		CFrame = origin * CFrame.new(0, 0.5, 0),
+		Color = FLOOR,
+		Material = Enum.Material.WoodPlanks,
+		Parent = folder,
+	})
+
+	-- Walls, with the doorway in the middle of the front.
+	local side = (Barn.SIZE - Barn.DOOR_WIDTH) / 2
+	local walls = {
+		{ Vector3.new(Barn.SIZE, Barn.WALL_HEIGHT, 1), Vector3.new(0, 1 + Barn.WALL_HEIGHT / 2, half) },
+		{ Vector3.new(1, Barn.WALL_HEIGHT, Barn.SIZE), Vector3.new(-half, 1 + Barn.WALL_HEIGHT / 2, 0) },
+		{ Vector3.new(1, Barn.WALL_HEIGHT, Barn.SIZE), Vector3.new(half, 1 + Barn.WALL_HEIGHT / 2, 0) },
+		{
+			Vector3.new(side, Barn.WALL_HEIGHT, 1),
+			Vector3.new(-(doorHalf + side / 2), 1 + Barn.WALL_HEIGHT / 2, -half),
+		},
+		{ Vector3.new(side, Barn.WALL_HEIGHT, 1), Vector3.new(doorHalf + side / 2, 1 + Barn.WALL_HEIGHT / 2, -half) },
+		{ Vector3.new(Barn.DOOR_WIDTH, top - doorTop, 1), Vector3.new(0, (top + doorTop) / 2, -half) },
+	}
+	for _, wall in walls do
+		part({
+			Name = "Wall",
+			Size = wall[1],
+			CFrame = origin * CFrame.new(wall[2]),
+			Color = RED,
+			Material = Enum.Material.WoodPlanks,
+			Parent = folder,
+		})
+	end
+	part({
+		Name = "Ceiling",
+		Size = Vector3.new(Barn.SIZE - 1, 1.2, Barn.SIZE - 1),
+		CFrame = origin * CFrame.new(0, top + 0.6, 0),
+		Transparency = 1,
+		Parent = folder,
+	})
+
+	-- White corner posts, a white band along the top of the walls, and a stone footing.
+	for _, x in { -1, 1 } do
+		for _, z in { -1, 1 } do
+			part({
+				Name = "CornerTrim",
+				Size = Vector3.new(1.6, Barn.WALL_HEIGHT + 0.4, 1.6),
+				CFrame = origin * CFrame.new(x * (half + 0.1), 1 + Barn.WALL_HEIGHT / 2, z * (half + 0.1)),
+				Color = WHITE,
+				Parent = decor,
+			})
+		end
+	end
+	for _, band in
+		{
+			{ Vector3.new(Barn.SIZE + 0.4, 0.8, 1.4), Vector3.new(0, top - 0.4, -half) },
+			{ Vector3.new(Barn.SIZE + 0.4, 0.8, 1.4), Vector3.new(0, top - 0.4, half) },
+			{ Vector3.new(1.4, 0.8, Barn.SIZE + 0.4), Vector3.new(-half, top - 0.4, 0) },
+			{ Vector3.new(1.4, 0.8, Barn.SIZE + 0.4), Vector3.new(half, top - 0.4, 0) },
+		}
+	do
+		part({ Name = "EaveTrim", Size = band[1], CFrame = origin * CFrame.new(band[2]), Color = WHITE, Parent = decor })
+		part({
+			Name = "Footing",
+			Size = band[1] + Vector3.new(0.4, 0.6, 0.4),
+			CFrame = origin * CFrame.new(band[2].X, 0.7, band[2].Z),
+			Color = Color3.fromRGB(150, 145, 140),
+			Material = Enum.Material.Slate,
+			Parent = decor,
+		})
+	end
+
+	-- Windows on both side walls (inside and out).
+	for _, x in { -1, 1 } do
+		for _, z in { -12, 12 } do
+			for _, face in { 1, -1 } do
+				local spot = origin * CFrame.new(x * (half + face * 0.55), 11, z)
+				part({
+					Name = "WindowFrame",
+					Size = Vector3.new(0.3, 6, 6),
+					CFrame = spot,
+					Color = WHITE,
+					CanCollide = false,
+					Parent = decor,
+				})
+				part({
+					Name = "WindowPane",
+					Size = Vector3.new(0.35, 5, 5),
+					CFrame = spot,
+					Color = Color3.fromRGB(70, 95, 120),
+					Material = Enum.Material.Glass,
+					CanCollide = false,
+					Parent = decor,
+				})
+				for _, bar in { Vector3.new(0.4, 5, 0.4), Vector3.new(0.4, 0.4, 5) } do
+					part({
+						Name = "WindowBar",
+						Size = bar,
+						CFrame = spot,
+						Color = WHITE,
+						CanCollide = false,
+						Parent = decor,
+					})
+				end
+			end
+		end
+	end
+
+	-- Gambrel roof: four slopes along the barn, front to back, plus the gable ends.
+	local roof = Instance.new("Folder")
+	roof.Name = "Roof"
+	roof.Parent = folder
+	local profile = {
+		Vector2.new(-(half + 1.5), top - 0.6),
+		Vector2.new(-23, top + 10.4),
+		Vector2.new(0, top + 15.4),
+		Vector2.new(23, top + 10.4),
+		Vector2.new(half + 1.5, top - 0.6),
+	}
+	for i = 1, #profile - 1 do
+		local a, b = profile[i], profile[i + 1]
+		local middle = (a + b) / 2
+		local length = (b - a).Magnitude
+		local angle = math.atan2(b.Y - a.Y, b.X - a.X)
+		part({
+			Name = "RoofSlope",
+			Size = Vector3.new(length + 0.6, 1, Barn.SIZE + 2),
+			CFrame = origin * CFrame.new(middle.X, middle.Y, 0) * CFrame.Angles(0, 0, angle),
+			Color = ROOF,
+			Material = Enum.Material.Slate,
+			CanCollide = false,
+			Parent = roof,
+		})
+		-- White trim along the roof edge at both gable ends.
+		for _, z in { -(half + 1.05), half + 1.05 } do
+			part({
+				Name = "RoofTrim",
+				Size = Vector3.new(length + 0.6, 0.7, 0.4),
+				CFrame = origin * CFrame.new(middle.X, middle.Y - 0.2, z) * CFrame.Angles(0, 0, angle),
+				Color = WHITE,
+				CanCollide = false,
+				Parent = roof,
+			})
+		end
+	end
+	part({
+		Name = "RidgeCap",
+		Size = Vector3.new(1.4, 1.2, Barn.SIZE + 2.4),
+		CFrame = origin * CFrame.new(0, top + 15.9, 0),
+		Color = Color3.fromRGB(50, 40, 44),
+		Material = Enum.Material.Slate,
+		CanCollide = false,
+		Parent = roof,
+	})
+	-- Gable ends: a rectangle plus four wedges filling the gambrel shape.
+	for _, z in { -half, half } do
+		part({
+			Name = "Gable",
+			Size = Vector3.new(46, 10, 1),
+			CFrame = origin * CFrame.new(0, top + 5, z),
+			Color = RED,
+			Material = Enum.Material.WoodPlanks,
+			CanCollide = false,
+			Parent = roof,
+		})
+		for _, piece in
+			{
+				{ Vector3.new(1, 10, half - 23 + 0.5), Vector3.new(-(23 + half + 0.5) / 2, top + 5, z), math.pi / 2 },
+				{ Vector3.new(1, 10, half - 23 + 0.5), Vector3.new((23 + half + 0.5) / 2, top + 5, z), -math.pi / 2 },
+				{ Vector3.new(1, 5, 23), Vector3.new(-11.5, top + 12.5, z), math.pi / 2 },
+				{ Vector3.new(1, 5, 23), Vector3.new(11.5, top + 12.5, z), -math.pi / 2 },
+			}
+		do
+			wedge({
+				Name = "Gable",
+				Size = piece[1],
+				CFrame = origin * CFrame.new(piece[2]) * CFrame.Angles(0, piece[3], 0),
+				Color = RED,
+				Material = Enum.Material.WoodPlanks,
+				CanCollide = false,
+				Parent = roof,
+			})
+		end
+	end
+
+	-- Hanging lanterns so the inside isn't dark.
+	for _, x in { -14, 14 } do
+		for _, z in { -6, 16 } do
+			part({
+				Name = "LanternChain",
+				Size = Vector3.new(0.2, 2.6, 0.2),
+				CFrame = origin * CFrame.new(x, top - 1.3, z),
+				Color = Color3.fromRGB(60, 60, 60),
+				CanCollide = false,
+				Parent = decor,
+			})
+			local lantern = part({
+				Name = "Lantern",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.one * 1.4,
+				CFrame = origin * CFrame.new(x, top - 3, z),
+				Color = Color3.fromRGB(255, 215, 140),
+				Material = Enum.Material.Neon,
+				CanCollide = false,
+				Parent = decor,
+			})
+			local light = Instance.new("PointLight")
+			light.Color = Color3.fromRGB(255, 210, 150)
+			light.Range = 30
+			light.Brightness = 1.4
+			light.Shadows = false
+			light.Parent = lantern
+		end
+	end
+
+	-- Hay bales in the front corners inside, and outside by the doors.
+	for _, x in { -26, 26 } do
+		Decor.hayBale(decor, origin * CFrame.new(x, 1, -27) * CFrame.Angles(0, math.pi / 2, 0))
+	end
+	for _, x in { -1, 1 } do
+		Decor.lamp(decor, origin * CFrame.new(x * 12, 0.3, -half - 3))
+		Decor.tree(decor, origin * CFrame.new(x * 24, 0, half + 8), 0.9, index * 10 + x)
+	end
+
+	-- The rail the doors slide along, and the doors themselves.
+	part({
+		Name = "DoorRail",
+		Size = Vector3.new(Barn.DOOR_WIDTH * 2 + 4, 0.6, 0.6),
+		CFrame = origin * CFrame.new(0, doorTop + 0.9, -half - 1.1),
+		Color = Color3.fromRGB(45, 45, 52),
+		Material = Enum.Material.Metal,
+		CanCollide = false,
+		Parent = decor,
+	})
+	-- The doors always stand slid open; locking fills the doorway with a red barrier.
+	for _, x in { -1, 1 } do
+		local w = doorHalf + 0.2
+		local closed = origin * CFrame.new(x * w / 2, 1 + (Barn.DOOR_HEIGHT + 0.2) / 2, -half - 0.85)
+		local door = buildDoor(folder, closed * CFrame.new(x * (w + 0.4), 0, 0), index)
+		door.PrimaryPart.CanCollide = false
+	end
+	local barrier = part({
+		Name = "Barrier",
+		Size = Vector3.new(Barn.DOOR_WIDTH, Barn.DOOR_HEIGHT, 0.6),
+		CFrame = origin * CFrame.new(0, 1 + Barn.DOOR_HEIGHT / 2, -half),
+		Color = Color3.fromRGB(255, 50, 50),
+		Material = Enum.Material.ForceField,
+		CollisionGroup = "Gate" .. index,
+		CastShadow = false,
+		Parent = folder,
+	})
+	return { barrier = barrier, locked = nil }
+end
+
+-- Puts the red barrier up (solid to everyone but the owner) or takes it down.
+function Barn.setLocked(barn, locked: boolean)
+	if barn.locked == locked then
+		return
+	end
+	barn.locked = locked
+	barn.barrier.CanCollide = locked
+	barn.barrier.Transparency = if locked then 0.15 else 1
+end
+
+return Barn
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="24">
+        <Properties>
+          <string name="Name">CannonService</string>
+          <string name="Source"><![CDATA[-- Runs the Freek cannons (see shared/Drops.luau): builds the glass bubble over the map,
+-- the eight cannons hanging on it and the Freek House, fires a random Freek from each
+-- cannon in turn, and lets players grab them (first come, first served) while they wander
+-- around the town square.
+--
+-- Every species from Common to Ultra can come out (fusing never raises rarity, so cannons
+-- are how players move up). Secrets never do. Limited Freeks only during their event.
+--
+-- Clients fly and walk the Freeks themselves (smooth, no network traffic); the server works
+-- out where each one is from its seed and launch time when checking a grab.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local Drops = require(ReplicatedStorage.Shared.Drops)
+local Format = require(ReplicatedStorage.Shared.Format)
+local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
+local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local Freeks = require(ReplicatedStorage.Shared.Freeks)
+local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
+local Mutations = require(ReplicatedStorage.Shared.Mutations)
+local Rarities = require(ReplicatedStorage.Shared.Rarities)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Seasons = require(ReplicatedStorage.Shared.Seasons)
+
+local ActionService = require(script.Parent.ActionService)
+local Decor = require(script.Parent.Decor)
+local PlotService = require(script.Parent.PlotService)
+local StealService = require(script.Parent.StealService)
+
+local CannonService = {}
+
+local notifyRemote = Remotes.get("Notify")
+local rng = Random.new()
+local folder: Folder
+local cannons = {} -- [index] = cannon Model
+local items = {} -- [id] = { species, mutations, price, path, model }
+local nextId = 0
+
+local function notify(player: Player, message: string, kind: string?)
+	notifyRemote:FireClient(player, message, kind)
+end
+
+local function part(props): Part
+	local p = Instance.new("Part")
+	p.Anchored = true
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	for key, value in props do
+		p[key] = value
+	end
+	return p
+end
+
+-- The bubble: rings of thin glass panels (thick enough to be seen from inside), shimmering
+-- from blue at the bottom to pink at the top like a soap bubble, held by a fine white frame.
+local function buildDome(model: Model)
+	local radius = Drops.DOME_RADIUS
+	local rings, around = 12, 48
+	local step = (math.pi / 2) / rings
+	local slice = math.pi * 2 / around
+	local frame = Color3.fromRGB(235, 240, 255)
+	local function glass(props)
+		props.CastShadow = false
+		props.CanCollide = false
+		props.CanQuery = false
+		props.CanTouch = false
+		props.Parent = model
+		return part(props)
+	end
+	for ring = 0, rings - 1 do
+		local low, high = ring * step, (ring + 1) * step
+		local middle = (low + high) / 2
+		-- Each panel is a flat chord of the sphere, so neighbours meet edge to edge.
+		local height = 2 * radius * math.sin(step / 2)
+		local width = 2 * radius * math.cos(middle) * math.sin(slice / 2)
+		local tint = Color3.fromRGB(170, 225, 255):Lerp(Color3.fromRGB(240, 190, 255), ring / (rings - 1))
+		for i = 0, around - 1 do
+			local angle = (i + 0.5) * slice
+			local direction =
+				Vector3.new(math.cos(angle) * math.cos(middle), math.sin(middle), math.sin(angle) * math.cos(middle))
+			local center = direction * radius * math.cos(step / 2)
+			glass({
+				Name = "Bubble",
+				Size = Vector3.new(width, height, 0.4),
+				CFrame = CFrame.lookAt(center, center + direction),
+				Color = tint,
+				Material = Enum.Material.Glass,
+				Transparency = 0.9,
+			})
+		end
+		-- A frame ring along the bottom edge of each band.
+		local ringRadius = radius * math.cos(low)
+		for i = 0, around - 1 do
+			local a0, a1 = i * slice, (i + 1) * slice
+			local p0 = Vector3.new(math.cos(a0) * ringRadius, radius * math.sin(low), math.sin(a0) * ringRadius)
+			local p1 = Vector3.new(math.cos(a1) * ringRadius, radius * math.sin(low), math.sin(a1) * ringRadius)
+			glass({
+				Name = "BubbleFrame",
+				Size = Vector3.new(0.35, 0.35, (p1 - p0).Magnitude),
+				CFrame = CFrame.lookAt((p0 + p1) / 2, p1),
+				Color = frame,
+				Material = Enum.Material.SmoothPlastic,
+				Transparency = 0.3,
+			})
+		end
+	end
+	glass({
+		Name = "Bubble",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.4, 2 * radius * math.sin(step / 2) + 0.5, 2 * radius * math.sin(step / 2) + 0.5),
+		CFrame = CFrame.new(0, radius, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		Color = Color3.fromRGB(240, 190, 255),
+		Material = Enum.Material.Glass,
+		Transparency = 0.9,
+	})
+end
+
+-- A big black cannon with gold bands, bolted to the bubble by a bracket.
+local function buildCannon(parent: Instance, index: number): Model
+	local model = Instance.new("Model")
+	model.Name = "Cannon" .. index
+	local aim = Drops.cannonCFrame(index)
+	local metal = Color3.fromRGB(40, 40, 48)
+	local gold = Color3.fromRGB(255, 196, 55)
+	-- Cylinders run along their X axis; turn them to point down the barrel (-Z).
+	local along = CFrame.Angles(0, math.pi / 2, 0)
+	local barrel = part({
+		Name = "Barrel",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(16, 5, 5),
+		CFrame = aim * CFrame.new(0, 0, -4) * along,
+		Color = metal,
+		Material = Enum.Material.Metal,
+		Parent = model,
+	})
+	model.PrimaryPart = barrel
+	part({
+		Name = "Breech",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.one * 6,
+		CFrame = aim * CFrame.new(0, 0, 4),
+		Color = metal,
+		Material = Enum.Material.Metal,
+		Parent = model,
+	})
+	for _, z in { -11.6, -6, 1 } do
+		part({
+			Name = "Band",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(1, if z < -11 then 6.4 else 5.6, if z < -11 then 6.4 else 5.6),
+			CFrame = aim * CFrame.new(0, 0, z) * along,
+			Color = gold,
+			Material = Enum.Material.Foil,
+			Parent = model,
+		})
+	end
+	part({
+		Name = "Muzzle",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.3, 3.6, 3.6),
+		CFrame = aim * CFrame.new(0, 0, -12.2) * along,
+		Color = Color3.fromRGB(10, 10, 12),
+		Material = Enum.Material.SmoothPlastic,
+		Parent = model,
+	})
+	-- Bracket back to the bubble wall.
+	local wall = aim.Position.Unit * Drops.DOME_RADIUS
+	local mount = (aim * CFrame.new(0, 0, 4)).Position
+	local length = (wall - mount).Magnitude
+	part({
+		Name = "Bracket",
+		Size = Vector3.new(2.5, 2.5, length),
+		CFrame = CFrame.lookAt(mount, wall) * CFrame.new(0, 0, -length / 2),
+		Color = gold,
+		Material = Enum.Material.Foil,
+		Parent = model,
+	})
+	part({
+		Name = "Plate",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(1, 9, 9),
+		CFrame = CFrame.lookAt(wall, wall * 2) * along,
+		Color = metal,
+		Material = Enum.Material.Metal,
+		Parent = model,
+	})
+	model.Parent = parent
+	return model
+end
+
+-- The Freek House at the west end, with a glowing doorway Freeks walk into.
+local function buildHouse(model: Model)
+	local base = CFrame.new(Drops.HOUSE_POSITION) * CFrame.Angles(0, -math.pi / 2, 0) -- front faces +X
+	local wall = Color3.fromRGB(150, 80, 220)
+	local roofColor = Color3.fromRGB(90, 40, 150)
+	part({
+		Name = "FreekHouse",
+		Size = Vector3.new(20, 16, 16),
+		CFrame = base * CFrame.new(0, 8, 0),
+		Color = wall,
+		Material = Enum.Material.SmoothPlastic,
+		Parent = model,
+	})
+	for _, side in { -1, 1 } do
+		local roof = Instance.new("WedgePart")
+		roof.Anchored = true
+		roof.Name = "Roof"
+		roof.Size = Vector3.new(18, 6, 10.5)
+		roof.CFrame = base
+			* CFrame.new(side * 5.25, 19, 0)
+			* CFrame.Angles(0, if side > 0 then -math.pi / 2 else math.pi / 2, 0)
+		roof.Color = roofColor
+		roof.Material = Enum.Material.SmoothPlastic
+		roof.Parent = model
+	end
+	part({
+		Name = "Doorway",
+		Size = Vector3.new(9, 9, 0.4),
+		CFrame = base * CFrame.new(0, 4.5, -8.05),
+		Color = Color3.fromRGB(255, 220, 120),
+		Material = Enum.Material.Neon,
+		Parent = model,
+	})
+	for _, x in { -4.9, 4.9 } do
+		part({
+			Name = "DoorFrame",
+			Size = Vector3.new(0.9, 10, 0.9),
+			CFrame = base * CFrame.new(x, 5, -8.2),
+			Color = Color3.new(1, 1, 1),
+			Parent = model,
+		})
+	end
+	part({
+		Name = "DoorFrame",
+		Size = Vector3.new(10.7, 0.9, 0.9),
+		CFrame = base * CFrame.new(0, 9.6, -8.2),
+		Color = Color3.new(1, 1, 1),
+		Parent = model,
+	})
+	for _, x in { -7, 7 } do
+		part({
+			Name = "Window",
+			Size = Vector3.new(3, 3, 0.3),
+			CFrame = base * CFrame.new(x, 10, -8.1),
+			Color = Color3.fromRGB(255, 225, 140),
+			Material = Enum.Material.Neon,
+			Parent = model,
+		})
+	end
+	part({
+		Name = "Chimney",
+		Size = Vector3.new(2.5, 6, 2.5),
+		CFrame = base * CFrame.new(5, 22, 3),
+		Color = Color3.fromRGB(140, 70, 60),
+		Material = Enum.Material.Brick,
+		Parent = model,
+	})
+	Decor.signboard(model, base * CFrame.new(0, 13.4, -8.4), Vector2.new(13, 2.4), "FREEK HOUSE", roofColor)
+end
+
+local function priceOf(species, mutations: { string }?): number
+	local base = species.price or math.floor(species.income * Drops.PRICE_SECONDS)
+	return math.floor(base * Mutations.mult(mutations))
+end
+
+-- Species that can come out of a cannon right now, grouped by rarity.
+local function eligibleByRarity()
+	local groups = {}
+	for _, species in Freeks.list do
+		if Seasons.available(species) and species.rarity ~= "Secret" then
+			groups[species.rarity] = groups[species.rarity] or {}
+			table.insert(groups[species.rarity], species)
+		end
+	end
+	return groups
+end
+
+local function rollRarity(): string
+	local total = 0
+	for _, entry in Drops.ODDS do
+		total += entry.weight
+	end
+	local roll = rng:NextNumber() * total
+	for _, entry in Drops.ODDS do
+		roll -= entry.weight
+		if roll <= 0 then
+			return entry.rarity
+		end
+	end
+	return Drops.ODDS[1].rarity
+end
+
+-- Cannon Freeks get at most one mutation; stacking them is done by fusing.
+local function rollMutations(): { string }?
+	for _, mutation in Mutations.list do
+		if rng:NextNumber() < mutation.chance * Drops.MUTATION_FACTOR then
+			return { mutation.id }
+		end
+	end
+	return nil
+end
+
+local function fire(cannon: number)
+	local groups = eligibleByRarity()
+	local rarity = rollRarity()
+	-- Nothing of that rarity exists yet: fall back down the tiers.
+	while not groups[rarity] and Rarities.rank[rarity] > 1 do
+		rarity = Rarities.order[Rarities.rank[rarity] - 1]
+	end
+	local pool = groups[rarity]
+	if not pool then
+		return
+	end
+	local species = pool[rng:NextInteger(1, #pool)]
+	local mutations = rollMutations()
+	local price = priceOf(species, mutations)
+	-- A moment of warning so every client has the Freek before it leaves the barrel.
+	local launch = Workspace:GetServerTimeNow() + 0.5
+	local seed = rng:NextInteger(1, 2 ^ 30)
+	local path = Drops.plan(seed, cannon, launch)
+
+	nextId += 1
+	local id = tostring(nextId)
+	local model, height = FreekModel.build(species.id, mutations)
+	model.Name = id
+	model:SetAttribute("Seed", seed)
+	model:SetAttribute("Cannon", cannon)
+	model:SetAttribute("Launch", launch)
+	model:PivotTo(CFrame.new(path.muzzle))
+
+	local anchor = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+	local freek = { species = species.id, mutations = mutations }
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromOffset(180, 50)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, height - (anchor.Position.Y - path.muzzle.Y) + 1.2, 0)
+	gui.MaxDistance = 90
+	gui.LightInfluence = 0
+	local name = Instance.new("TextLabel")
+	name.Size = UDim2.fromScale(1, 0.55)
+	name.BackgroundTransparency = 1
+	name.TextScaled = true
+	name.Font = Enum.Font.FredokaOne
+	name.Text = FreekUtil.displayName(freek)
+	name.TextColor3 = if mutations then Mutations.byId[mutations[1]].color else Rarities.info[species.rarity].color
+	name.TextStrokeTransparency = 0.2
+	name.Parent = gui
+	local cost = name:Clone()
+	cost.Size = UDim2.fromScale(1, 0.45)
+	cost.Position = UDim2.fromScale(0, 0.55)
+	cost.Text = Format.money(price) .. "  ·  " .. Format.money(FreekUtil.income(freek)) .. "/s"
+	cost.TextColor3 = Color3.fromRGB(140, 255, 140)
+	cost.Parent = gui
+	gui.Parent = anchor
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "GrabPrompt"
+	prompt.ActionText = "Grab " .. Format.money(price)
+	prompt.ObjectText = FreekUtil.displayName(freek)
+	prompt.HoldDuration = 0.25
+	prompt.MaxActivationDistance = Drops.GRAB_DISTANCE - 2
+	prompt.RequiresLineOfSight = false
+	prompt.Enabled = false -- clients switch it on once it has landed
+	prompt:SetAttribute("ItemId", id)
+	prompt.Parent = anchor
+
+	model.Parent = folder
+	items[id] = { species = species, mutations = mutations, price = price, path = path, model = model }
+	-- Clients play the boom and smoke when this changes.
+	cannons[cannon]:SetAttribute("FiredAt", launch)
+
+	if Rarities.rank[species.rarity] >= Drops.ANNOUNCE_RANK then
+		for _, player in Players:GetPlayers() do
+			notify(
+				player,
+				"A " .. species.rarity .. " " .. FreekUtil.displayName(freek) .. " just got fired!",
+				"discovery"
+			)
+		end
+	end
+end
+
+local function grab(player: Player, data, id: any)
+	local item = typeof(id) == "string" and items[id]
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not item or not root then
+		return
+	end
+	-- Checked against where the Freek is by the server's own maths (clients move the
+	-- models). A little extra range covers lag.
+	local where, doing = Drops.cframeAt(item.path, Workspace:GetServerTimeNow())
+	if doing ~= "wandering" and doing ~= "leaving" then
+		return
+	end
+	local flat = (root.Position - where.Position) * Vector3.new(1, 0, 1)
+	if flat.Magnitude > Drops.GRAB_DISTANCE + 4 then
+		return
+	end
+	if not PlotService.getPlot(player) then
+		return
+	end
+	if StealService.isCarrying(player) then
+		return notify(player, "Your hands are full! Take that Freek home first.", "error")
+	end
+	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) or not FreekUtil.freeSlot(data) then
+		return notify(player, "Your barn is full! Buy more slots or sell a Freek.", "error")
+	end
+	if data.money < item.price then
+		return notify(player, "Not enough money! It costs " .. Format.money(item.price) .. ".", "error")
+	end
+
+	items[id] = nil
+	item.model:Destroy()
+	data.money -= item.price
+	local uid = ActionService.giveFreek(player, data, item.species.id, item.mutations)
+	local freek = data.freeks[uid]
+	local name = FreekUtil.displayName(freek)
+	-- It goes in the player's arms; walking into their barn puts it on a pad.
+	local slot = freek.slot
+	freek.slot = nil
+	if StealService.carryHome(player, uid, freek) then
+		notify(player, "You grabbed " .. name .. "! Carry it back to your barn.", "success")
+	else
+		freek.slot = slot
+		notify(player, "You got " .. name .. "! It's in your barn.", "success")
+	end
+end
+
+function CannonService.init()
+	local world = Instance.new("Model")
+	world.Name = "Cannons"
+	world.Parent = Workspace
+	buildDome(world)
+	for index = 1, Drops.CANNON_COUNT do
+		cannons[index] = buildCannon(world, index)
+	end
+	buildHouse(world)
+
+	folder = Instance.new("Folder")
+	folder.Name = "DropFreeks"
+	folder.Parent = Workspace
+
+	-- Grab prompts are handled on the client (the server never moves these models, so
+	-- Roblox's own prompt range check would reject them); the client sends GrabDrop instead.
+	ActionService.register("GrabDrop", grab)
+
+	-- The cannons take turns, so one fires every FIRE_INTERVAL / CANNON_COUNT seconds and
+	-- each cannon fires every FIRE_INTERVAL.
+	task.spawn(function()
+		local cannon = 0
+		while true do
+			cannon = cannon % Drops.CANNON_COUNT + 1
+			fire(cannon)
+			task.wait(Drops.FIRE_INTERVAL / Drops.CANNON_COUNT)
+		end
+	end)
+
+	-- Freeks nobody grabbed go into the Freek House.
+	task.spawn(function()
+		while true do
+			task.wait(0.5)
+			local now = Workspace:GetServerTimeNow()
+			for id, item in items do
+				if now >= item.path.finish then
+					item.model:Destroy()
+					items[id] = nil
+				end
+			end
+		end
+	end)
+end
+
+return CannonService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="25">
+        <Properties>
           <string name="Name">Carried</string>
           <string name="Source"><![CDATA[-- Which Freeks are being carried off by a thief right now. Kept in memory only: if the
 -- server stops mid-steal, the owner simply keeps the Freek.
@@ -2366,404 +3307,7 @@ return Carried
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
-        <Properties>
-          <string name="Name">ConveyorService</string>
-          <string name="Source"><![CDATA[-- Runs the conveyor: two lanes down the middle of the map, each fed by its own Freek House.
--- Spawns a random Freek on each lane every few seconds (odds by rarity, see Belt.luau) and
--- sells them first come, first served.
---
--- Every species from Common to Ultra can appear (breeding never raises rarity, so the belt
--- is how players move up). Secrets never appear. Limited Freeks only during their event.
---
--- Clients animate the Freeks along the belt themselves (smooth, no network traffic); the
--- server works out where each one is from its spawn time when checking a purchase.
-
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
-
-local Belt = require(ReplicatedStorage.Shared.Belt)
-local Format = require(ReplicatedStorage.Shared.Format)
-local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
-local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
-local Freeks = require(ReplicatedStorage.Shared.Freeks)
-local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
-local Mutations = require(ReplicatedStorage.Shared.Mutations)
-local Rarities = require(ReplicatedStorage.Shared.Rarities)
-local Remotes = require(ReplicatedStorage.Shared.Remotes)
-local Seasons = require(ReplicatedStorage.Shared.Seasons)
-
-local ActionService = require(script.Parent.ActionService)
-local Decor = require(script.Parent.Decor)
-local PlotService = require(script.Parent.PlotService)
-local StealService = require(script.Parent.StealService)
-
-local ConveyorService = {}
-
-local notifyRemote = Remotes.get("Notify")
-local rng = Random.new()
-local folder: Folder
-local items = {} -- [id] = { species, mutations, price, spawnTime, lane, model }
-local nextId = 0
-
-local function notify(player: Player, message: string, kind: string?)
-	notifyRemote:FireClient(player, message, kind)
-end
-
-local function part(props): Part
-	local p = Instance.new("Part")
-	p.Anchored = true
-	p.TopSurface = Enum.SurfaceType.Smooth
-	p.BottomSurface = Enum.SurfaceType.Smooth
-	for key, value in props do
-		p[key] = value
-	end
-	return p
-end
-
--- A little house with a gabled roof and a glowing doorway the lane comes out of.
-local function buildHouse(model: Model, z: number, wallColor: Color3, roofColor: Color3)
-	local x = Belt.START_X - 9
-	part({
-		Name = "FreekHouse",
-		Size = Vector3.new(14, 11, 10),
-		CFrame = CFrame.new(x, 5.5, z),
-		Color = wallColor,
-		Material = Enum.Material.SmoothPlastic,
-		Parent = model,
-	})
-	-- Two wedges meeting at the ridge make the roof.
-	for _, side in { -1, 1 } do
-		local roof = Instance.new("WedgePart")
-		roof.Anchored = true
-		roof.Name = "Roof"
-		roof.Size = Vector3.new(15, 4, 6)
-		roof.CFrame = CFrame.new(x, 13, z + side * 3) * CFrame.Angles(0, if side > 0 then math.pi else 0, 0)
-		roof.Color = roofColor
-		roof.Material = Enum.Material.SmoothPlastic
-		roof.Parent = model
-	end
-	part({
-		Name = "Doorway",
-		Size = Vector3.new(0.4, 6, 7.5),
-		CFrame = CFrame.new(Belt.START_X - 1.9, 4, z),
-		Color = Color3.fromRGB(255, 220, 120),
-		Material = Enum.Material.Neon,
-		Parent = model,
-	})
-	-- Door frame around the glowing doorway, windows on the sides, and a chimney.
-	for _, dz in { -4.1, 4.1 } do
-		part({
-			Name = "DoorFrame",
-			Size = Vector3.new(0.8, 7, 0.8),
-			CFrame = CFrame.new(Belt.START_X - 1.8, 4.5, z + dz),
-			Color = Color3.fromRGB(255, 255, 255),
-			Parent = model,
-		})
-	end
-	part({
-		Name = "DoorFrame",
-		Size = Vector3.new(0.8, 0.8, 9),
-		CFrame = CFrame.new(Belt.START_X - 1.8, 8.3, z),
-		Color = Color3.fromRGB(255, 255, 255),
-		Parent = model,
-	})
-	for _, wx in { -3.5, 2.5 } do
-		for _, side in { -1, 1 } do
-			part({
-				Name = "Window",
-				Size = Vector3.new(2.4, 2.4, 0.3),
-				CFrame = CFrame.new(x + wx, 7, z + side * 5),
-				Color = Color3.fromRGB(255, 225, 140),
-				Material = Enum.Material.Neon,
-				Parent = model,
-			})
-		end
-	end
-	part({
-		Name = "Chimney",
-		Size = Vector3.new(2, 4, 2),
-		CFrame = CFrame.new(x - 3.5, 14.5, z + 2),
-		Color = Color3.fromRGB(140, 70, 60),
-		Material = Enum.Material.Brick,
-		Parent = model,
-	})
-	Decor.signboard(
-		model,
-		CFrame.new(Belt.START_X - 1.6, 10.6, z) * CFrame.Angles(0, -math.pi / 2, 0),
-		Vector2.new(8, 1.6),
-		"FREEK HOUSE",
-		roofColor
-	)
-end
-
-local function buildBelt()
-	local model = Instance.new("Model")
-	model.Name = "Conveyor"
-	model.Parent = Workspace
-
-	local length = Belt.LENGTH + 6
-	local centerX = Belt.START_X + Belt.LENGTH / 2
-	for _, z in Belt.LANES do
-		part({
-			Name = "Belt",
-			Size = Vector3.new(length, 1, 9),
-			CFrame = CFrame.new(centerX, 0.5, z),
-			Color = Color3.fromRGB(55, 55, 65),
-			Material = Enum.Material.DiamondPlate,
-			Parent = model,
-		})
-		for _, side in { -1, 1 } do
-			part({
-				Name = "Rail",
-				Size = Vector3.new(length, 1.4, 0.8),
-				CFrame = CFrame.new(centerX, 1.2, z + side * 4.9),
-				Color = Color3.fromRGB(255, 200, 40),
-				Material = Enum.Material.SmoothPlastic,
-				Parent = model,
-			})
-		end
-		-- Steel frame and legs under the belt, and a glowing strip along each rail.
-		part({
-			Name = "Frame",
-			Size = Vector3.new(length, 0.6, 9.8),
-			CFrame = CFrame.new(centerX, 0.1, z),
-			Color = Color3.fromRGB(70, 75, 85),
-			Material = Enum.Material.Metal,
-			Parent = model,
-		})
-		for _, side in { -1, 1 } do
-			part({
-				Name = "RailGlow",
-				Size = Vector3.new(length, 0.2, 0.25),
-				CFrame = CFrame.new(centerX, 1.95, z + side * 4.9),
-				Color = Color3.fromRGB(255, 240, 160),
-				Material = Enum.Material.Neon,
-				CanCollide = false,
-				Parent = model,
-			})
-		end
-		part({
-			Name = "Chute",
-			Size = Vector3.new(6, 3, 9.5),
-			CFrame = CFrame.new(Belt.START_X + Belt.LENGTH + 5, 1.5, z),
-			Color = Color3.fromRGB(30, 30, 35),
-			Material = Enum.Material.Metal,
-			Parent = model,
-		})
-	end
-	buildHouse(model, Belt.LANES[1], Color3.fromRGB(150, 80, 220), Color3.fromRGB(90, 40, 150))
-	buildHouse(model, Belt.LANES[2], Color3.fromRGB(80, 170, 230), Color3.fromRGB(40, 100, 160))
-
-	folder = Instance.new("Folder")
-	folder.Name = "BeltFreeks"
-	folder.Parent = Workspace
-end
-
-local function priceOf(species, mutations: { string }?): number
-	local base = species.price or math.floor(species.income * Belt.PRICE_SECONDS)
-	return math.floor(base * Mutations.mult(mutations))
-end
-
--- Species that can come out of the machine right now, grouped by rarity.
-local function eligibleByRarity()
-	local groups = {}
-	for _, species in Freeks.list do
-		if Seasons.available(species) then
-			groups[species.rarity] = groups[species.rarity] or {}
-			table.insert(groups[species.rarity], species)
-		end
-	end
-	return groups
-end
-
-local function rollRarity(): string
-	local total = 0
-	for _, entry in Belt.ODDS do
-		total += entry.weight
-	end
-	local roll = rng:NextNumber() * total
-	for _, entry in Belt.ODDS do
-		roll -= entry.weight
-		if roll <= 0 then
-			return entry.rarity
-		end
-	end
-	return Belt.ODDS[1].rarity
-end
-
--- Belt Freeks get at most one mutation; stacking them is done by breeding.
-local function rollMutations(): { string }?
-	for _, mutation in Mutations.list do
-		if rng:NextNumber() < mutation.chance * Belt.MUTATION_FACTOR then
-			return { mutation.id }
-		end
-	end
-	return nil
-end
-
-local function spawnFreek(lane: number)
-	local groups = eligibleByRarity()
-	local rarity = rollRarity()
-	-- Nothing of that rarity discovered yet: fall back down the tiers.
-	while not groups[rarity] and Rarities.rank[rarity] > 1 do
-		rarity = Rarities.order[Rarities.rank[rarity] - 1]
-	end
-	local pool = groups[rarity]
-	if not pool then
-		return
-	end
-	local species = pool[rng:NextInteger(1, #pool)]
-	local mutations = rollMutations()
-	local price = priceOf(species, mutations)
-	local spawnTime = Workspace:GetServerTimeNow()
-
-	nextId += 1
-	local id = tostring(nextId)
-	local model, height = FreekModel.build(species.id, mutations)
-	model.Name = id
-	model:SetAttribute("SpawnTime", spawnTime)
-	model:SetAttribute("Lane", lane)
-	model:PivotTo(Belt.cframeAt(lane, spawnTime, spawnTime))
-
-	local anchor = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
-	local freek = { species = species.id, mutations = mutations }
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromOffset(180, 50)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, height - (anchor.Position.Y - Belt.Y) + 1.2, 0)
-	gui.MaxDistance = 90
-	gui.LightInfluence = 0
-	local name = Instance.new("TextLabel")
-	name.Size = UDim2.fromScale(1, 0.55)
-	name.BackgroundTransparency = 1
-	name.TextScaled = true
-	name.Font = Enum.Font.FredokaOne
-	name.Text = FreekUtil.displayName(freek)
-	name.TextColor3 = if mutations then Mutations.byId[mutations[1]].color else Rarities.info[species.rarity].color
-	name.TextStrokeTransparency = 0.2
-	name.Parent = gui
-	local cost = name:Clone()
-	cost.Size = UDim2.fromScale(1, 0.45)
-	cost.Position = UDim2.fromScale(0, 0.55)
-	cost.Text = Format.money(price) .. "  ·  " .. Format.money(FreekUtil.income(freek)) .. "/s"
-	cost.TextColor3 = Color3.fromRGB(140, 255, 140)
-	cost.Parent = gui
-	gui.Parent = anchor
-
-	local prompt = Instance.new("ProximityPrompt")
-	prompt.Name = "BuyPrompt"
-	prompt.ActionText = "Buy " .. Format.money(price)
-	prompt.ObjectText = FreekUtil.displayName(freek)
-	prompt.HoldDuration = 0.25
-	prompt.MaxActivationDistance = Belt.BUY_DISTANCE - 2
-	prompt.RequiresLineOfSight = false
-	prompt:SetAttribute("ItemId", id)
-	prompt.Parent = anchor
-
-	model.Parent = folder
-	items[id] = {
-		species = species,
-		mutations = mutations,
-		price = price,
-		spawnTime = spawnTime,
-		lane = lane,
-		model = model,
-	}
-
-	if Rarities.rank[species.rarity] >= Belt.ANNOUNCE_RANK then
-		for _, player in Players:GetPlayers() do
-			notify(
-				player,
-				"A " .. species.rarity .. " " .. FreekUtil.displayName(freek) .. " is on the belt!",
-				"discovery"
-			)
-		end
-	end
-end
-
-local function buy(player: Player, data, id: any)
-	local item = typeof(id) == "string" and items[id]
-	local character = player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	if not item or not root then
-		return
-	end
-	-- Checked against where the server says the Freek is (the client moves the models).
-	-- A little extra range covers lag.
-	local now = Workspace:GetServerTimeNow()
-	local where = Belt.cframeAt(item.lane, item.spawnTime, now).Position
-	local flat = Vector3.new(root.Position.X - where.X, 0, root.Position.Z - where.Z)
-	if flat.Magnitude > Belt.BUY_DISTANCE + 4 or Belt.isGone(item.spawnTime, now) then
-		return
-	end
-	if not PlotService.getPlot(player) then
-		return
-	end
-	if StealService.isCarrying(player) then
-		return notify(player, "Your hands are full! Take that Freek home first.", "error")
-	end
-	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) or not FreekUtil.freeSlot(data) then
-		return notify(player, "Your yard is full! Buy more slots or sell a Freek.", "error")
-	end
-	if data.money < item.price then
-		return notify(player, "Not enough money! It costs " .. Format.money(item.price) .. ".", "error")
-	end
-
-	items[id] = nil
-	item.model:Destroy()
-	data.money -= item.price
-	local uid = ActionService.giveFreek(player, data, item.species.id, item.mutations)
-	local freek = data.freeks[uid]
-	local name = FreekUtil.displayName(freek)
-	-- It goes in the buyer's hands; walking into their yard puts it on a pad.
-	local slot = freek.slot
-	freek.slot = nil
-	if StealService.carryHome(player, uid, freek) then
-		notify(player, "You bought " .. name .. "! Carry it back to your yard.", "success")
-	else
-		freek.slot = slot
-		notify(player, "You bought " .. name .. "! It's in your yard.", "success")
-	end
-end
-
-function ConveyorService.init()
-	buildBelt()
-
-	-- Buy prompts are handled on the client (the server never moves belt models, so Roblox's
-	-- own prompt range check would reject them); the client sends a BuyBelt action instead.
-	ActionService.register("BuyBelt", buy)
-
-	-- Each lane has its own house; they take turns so a Freek appears every half interval.
-	for lane in Belt.LANES do
-		task.delay((lane - 1) * Belt.SPAWN_INTERVAL / 2, function()
-			while true do
-				spawnFreek(lane)
-				task.wait(Belt.SPAWN_INTERVAL)
-			end
-		end)
-	end
-
-	-- Freeks nobody bought fall off the end.
-	task.spawn(function()
-		while true do
-			task.wait(0.5)
-			local now = Workspace:GetServerTimeNow()
-			for id, item in items do
-				if Belt.isGone(item.spawnTime, now) then
-					item.model:Destroy()
-					items[id] = nil
-				end
-			end
-		end
-	end)
-end
-
-return ConveyorService
-]]></string>
-        </Properties>
-      </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -3005,7 +3549,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">Decor</string>
           <string name="Source"><![CDATA[-- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
@@ -3383,7 +3927,7 @@ return Decor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Discovery Book: the first player in the whole game to get each species has their
@@ -3531,7 +4075,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the Freeks in their yard, plus offline earnings
@@ -3612,7 +4156,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">Environment</string>
           <string name="Source"><![CDATA[-- Lighting, sky, terrain and the scenery around the yards and conveyor.
@@ -3621,7 +4165,7 @@ local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
-local Belt = require(ReplicatedStorage.Shared.Belt)
+local Drops = require(ReplicatedStorage.Shared.Drops)
 
 local Decor = require(script.Parent.Decor)
 
@@ -3686,28 +4230,30 @@ local function buildScenery()
 	folder.Name = "Scenery"
 	folder.Parent = Workspace
 
-	-- Paved walkways along both sides of the conveyor, where players stand to buy.
-	local beltCenter = Belt.START_X + Belt.LENGTH / 2
+	-- The town square between the barn rows, where cannon Freeks land and wander: grass in
+	-- the middle, a paved walkway in front of each row of barns, and street lamps in the
+	-- gaps between the barns.
+	local length = (Drops.AREA.maxX - Drops.AREA.minX) + 40
+	local centerX = (Drops.AREA.maxX + Drops.AREA.minX) / 2
 	for _, side in { -1, 1 } do
 		Decor.part({
 			Name = "Walkway",
-			Size = Vector3.new(Belt.LENGTH + 40, 0.3, 18),
-			CFrame = CFrame.new(beltCenter, 0.15, side * 20),
+			Size = Vector3.new(length, 0.3, 8),
+			CFrame = CFrame.new(centerX, 0.15, side * 28),
 			Color = Color3.fromRGB(200, 194, 184),
 			Material = Enum.Material.Pavement,
 			Parent = folder,
 		})
 		Decor.part({
 			Name = "Curb",
-			Size = Vector3.new(Belt.LENGTH + 40, 0.5, 0.8),
-			CFrame = CFrame.new(beltCenter, 0.25, side * 29.4),
+			Size = Vector3.new(length, 0.5, 0.8),
+			CFrame = CFrame.new(centerX, 0.25, side * 23.8),
 			Color = Color3.fromRGB(150, 145, 140),
 			Material = Enum.Material.Concrete,
 			Parent = folder,
 		})
-		-- Lamps along the walkway.
-		for x = Belt.START_X + 10, Belt.START_X + Belt.LENGTH - 10, 35 do
-			Decor.lamp(folder, CFrame.new(x, 0.3, side * 28))
+		for _, x in { -140, -70, 0, 70, 140 } do
+			Decor.lamp(folder, CFrame.new(x, 0.3, side * 28.5))
 		end
 	end
 
@@ -3742,7 +4288,7 @@ return Environment
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">HalloweenDecor</string>
           <string name="Source"><![CDATA[-- Halloween props: ghosts, bats, cobwebs, tombstones, dead trees, a witch's cauldron,
@@ -4202,7 +4748,7 @@ return HalloweenDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="31">
+      <Item class="Script" referent="32">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -4234,7 +4780,7 @@ local SERVICES = {
 	"WeaponService",
 	"RebirthService",
 	"PassService",
-	"ConveyorService",
+	"CannonService",
 	"SeasonalService", -- after the map and yards exist
 	"DataService",
 }
@@ -4262,7 +4808,7 @@ print("[Fuse a Freek] Server started")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="32">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -4354,14 +4900,15 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">PlotService</string>
-          <string name="Source"><![CDATA[-- Builds the map and gives every player a fenced yard. Other players can walk in to look
--- (or steal, see StealService) only while the gate is open. The owner locks the gate for
--- GATE_LOCK_SECONDS at a time (longer with the Longer Lock pass) and can always walk through
--- their own gate.
--- The whole yard is rebuilt whenever its owner's data changes.
+          <string name="Source"><![CDATA[-- Builds the map and gives every player a barn (see Barn.luau) with Freek pads and Fusion
+-- Dens inside. Other players can walk in to look (or steal, see StealService) only while
+-- the barn doors are open. The owner locks them from the padlock inside for
+-- GATE_LOCK_SECONDS at a time (longer with the Longer Lock pass) and can always walk
+-- through their own doors.
+-- The Freeks inside are rebuilt whenever the owner's data changes.
 
 local PhysicsService = game:GetService("PhysicsService")
 local Players = game:GetService("Players")
@@ -4378,16 +4925,15 @@ local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
+local Barn = require(script.Parent.Barn)
 local DataService = require(script.Parent.DataService)
 local Decor = require(script.Parent.Decor)
 
-local PLOT_SIZE = 64
-local ROW_SPACING = 70 -- between yard centres along the conveyor
-local ROW_DISTANCE = 64 -- from the conveyor's centre line to each yard's centre
+local PLOT_SIZE = Barn.SIZE
+local ROW_SPACING = 70 -- between barn centres along the town square
+local ROW_DISTANCE = 64 -- from the middle of the town square to each barn's centre
 local PAD_COLUMNS = 5
-local FENCE_HEIGHT = 4 -- what you see
-local WALL_HEIGHT = 45 -- invisible wall above the fence, well above the tallest gate arch, so nobody can jump it
-local GATE_WIDTH = 14
+local GATE_WIDTH = Barn.DOOR_WIDTH
 
 local PlotService = {}
 
@@ -4474,12 +5020,13 @@ local function setSign(plot, text: string)
 	end
 end
 
--- Optional extra decoration for every gate arch (set by SeasonalService during events).
+-- Optional extra decoration for every barn's door frame (set by SeasonalService during events).
 -- Called as decorator(archFolder, info) with info = { origin, half, innerX, beamBottom, front }.
 local archDecorator = nil
 
--- (Re)builds a yard's gate arch for a tier from GateTiers: posts, beam, name sign, and for
--- higher tiers finials, a crest and glowing gems.
+-- (Re)builds the frame around a barn's doors for a tier from GateTiers: posts, a header
+-- beam, the owner's name sign on the gable, and for higher tiers finials, a crest over the
+-- sign and glowing gems.
 local function buildArch(plot, tierIndex: number)
 	local tier = GateTiers.list[tierIndex]
 	if plot.archFolder then
@@ -4491,16 +5038,19 @@ local function buildArch(plot, tierIndex: number)
 	plot.archFolder = arch
 	plot.archTier = tierIndex
 
-	local origin, half = plot.origin, plot.half
+	local origin = plot.origin
+	-- Posts stand in front of the doors (which slide behind them).
+	local half = plot.half + 1.6 + tier.postWidth / 2
 	local w = tier.postWidth
 	local postX = GATE_WIDTH / 2 + w / 2
 	local material = Enum.Material[tier.material]
-	local top = 1 + tier.height -- top of the posts
+	local postHeight = Barn.DOOR_HEIGHT + 1.5
+	local top = 1 + postHeight -- top of the posts
 	for _, side in { -1, 1 } do
 		part({
 			Name = "GatePost",
-			Size = Vector3.new(w, tier.height, w),
-			CFrame = origin * CFrame.new(side * postX, 1 + tier.height / 2, -half),
+			Size = Vector3.new(w, postHeight, w),
+			CFrame = origin * CFrame.new(side * postX, 1 + postHeight / 2, -half),
 			Color = tier.color,
 			Material = material,
 			Parent = arch,
@@ -4537,7 +5087,7 @@ local function buildArch(plot, tierIndex: number)
 				Name = "Gem",
 				Size = Vector3.new(1.1, 1.1, 0.4),
 				CFrame = origin
-					* CFrame.new(side * postX, 1 + tier.height * 0.6, -half - w / 2 - 0.1)
+					* CFrame.new(side * postX, 1 + postHeight * 0.6, -half - w / 2 - 0.1)
 					* CFrame.Angles(0, 0, math.rad(45)),
 				Color = plot.accent,
 				Material = Enum.Material.Neon,
@@ -4558,11 +5108,13 @@ local function buildArch(plot, tierIndex: number)
 		Material = material,
 		Parent = arch,
 	})
-	local signY = beamY + 2.4
+	-- The name sign hangs on the gable, above the doors.
+	local signY = 1 + Barn.WALL_HEIGHT + 4.5
+	local signZ = -plot.half - 0.8
 	local signWidth = 13 + tierIndex * 1.5
 	plot.signLabels = Decor.signboard(
 		arch,
-		origin * CFrame.new(0, signY, -half),
+		origin * CFrame.new(0, signY, signZ),
 		Vector2.new(signWidth, 3),
 		plot.signText,
 		plot.accent
@@ -4574,8 +5126,8 @@ local function buildArch(plot, tierIndex: number)
 		for i = 0, segments - 1 do
 			local a0 = math.pi * i / segments
 			local a1 = math.pi * (i + 1) / segments
-			local p0 = origin * CFrame.new(math.cos(a0) * radius, signY - 1 + math.sin(a0) * radius * 0.45, -half)
-			local p1 = origin * CFrame.new(math.cos(a1) * radius, signY - 1 + math.sin(a1) * radius * 0.45, -half)
+			local p0 = origin * CFrame.new(math.cos(a0) * radius, signY - 1 + math.sin(a0) * radius * 0.45, signZ)
+			local p1 = origin * CFrame.new(math.cos(a1) * radius, signY - 1 + math.sin(a1) * radius * 0.45, signZ)
 			local length = (p1.Position - p0.Position).Magnitude
 			part({
 				Name = "Crest",
@@ -4591,7 +5143,7 @@ local function buildArch(plot, tierIndex: number)
 			Name = "CrestJewel",
 			Shape = Enum.PartType.Ball,
 			Size = Vector3.one * (if tier.gems then 1.8 else 1.2),
-			CFrame = origin * CFrame.new(0, signY - 1 + radius * 0.45, -half),
+			CFrame = origin * CFrame.new(0, signY - 1 + radius * 0.45, signZ),
 			Color = if tier.gems then plot.accent else tier.color,
 			Material = if tier.gems then Enum.Material.Neon else material,
 			CanCollide = false,
@@ -4604,8 +5156,8 @@ local function buildArch(plot, tierIndex: number)
 		end
 	end
 
-	-- Keep the LOCKED/OPEN timer just above the arch.
-	plot.gateGuiPart.CFrame = origin * CFrame.new(0, signY + (if tier.crest then 6 else 4), -half)
+	-- Keep the LOCKED/OPEN timer just above the sign.
+	plot.gateGuiPart.CFrame = origin * CFrame.new(0, signY + (if tier.crest then 6 else 4), signZ)
 
 	if archDecorator then
 		archDecorator(arch, {
@@ -4646,35 +5198,10 @@ local function buildPlot(index: number)
 	decor.Name = "Decor"
 	decor.Parent = folder
 
-	-- Lawn, with a cobblestone path from the gate to the pens and across to the pedestals.
-	Decor.tag(
-		part({
-			Name = "Base",
-			Size = Vector3.new(PLOT_SIZE, 1, PLOT_SIZE),
-			CFrame = origin * CFrame.new(0, 0.5, 0),
-			Color = Color3.fromRGB(105, 185, 85),
-			Material = Enum.Material.Grass,
-			Parent = folder,
-		}),
-		Decor.TAGS.lawn
-	)
-	for _, path in
-		{
-			{ size = Vector3.new(7, 0.2, 12), pos = Vector3.new(0, 1.1, -26) },
-			{ size = Vector3.new(58, 0.2, 3.5), pos = Vector3.new(0, 1.1, -6.2) },
-			{ size = Vector3.new(4, 0.2, 13), pos = Vector3.new(0, 1.1, -13.5) },
-		}
-	do
-		part({
-			Name = "Path",
-			Size = path.size,
-			CFrame = origin * CFrame.new(path.pos),
-			Color = Color3.fromRGB(175, 165, 150),
-			Material = Enum.Material.Cobblestone,
-			CanCollide = false,
-			Parent = decor,
-		})
-	end
+	-- The barn itself: floor, walls, roof and sliding doors.
+	local barn = Barn.build(folder, decor, origin, index)
+	folder:SetAttribute("Origin", origin)
+	folder:SetAttribute("Size", PLOT_SIZE)
 
 	-- Round stone pedestals with a glowing rim. Freeks stand on top (pad.ground).
 	local pads = {}
@@ -4705,12 +5232,13 @@ local function buildPlot(index: number)
 		pads[i] = { ground = spot * CFrame.new(0, 0.6, 0), base = base, rim = rim, lock = lockGui }
 	end
 
-	-- Two hay-floored breeding pens with low fences; the second needs the Extra Breeding Pen pass.
+	-- Two hay-floored Fusion Dens with low plank walls; the second needs the Extra Fusion
+	-- Den pass.
 	local pens = {}
 	for i, x in { -12, 12 } do
 		local penSpot = origin * CFrame.new(x, 1, -14)
 		local floor = part({
-			Name = "FusionPod" .. i,
+			Name = "FusionDen" .. i,
 			Size = Vector3.new(19, 0.4, 9.5),
 			CFrame = penSpot * CFrame.new(0, 0.2, 0),
 			Color = Color3.fromRGB(230, 200, 120),
@@ -4720,65 +5248,40 @@ local function buildPlot(index: number)
 		local corner = function(dx, dz)
 			return (penSpot * CFrame.new(dx, 0, dz)).Position
 		end
-		Decor.picketFence(decor, corner(-9.7, 4.9), corner(9.7, 4.9), 2.2, Color3.fromRGB(150, 100, 65))
-		Decor.picketFence(decor, corner(-9.7, -4.9), corner(-9.7, 4.9), 2.2, Color3.fromRGB(150, 100, 65))
-		Decor.picketFence(decor, corner(9.7, -4.9), corner(9.7, 4.9), 2.2, Color3.fromRGB(150, 100, 65))
+		for _, wall in
+			{
+				{ corner(0, 4.9), Vector3.new(19.4, 3, 0.5) },
+				{ corner(-9.7, 0), Vector3.new(0.5, 3, 9.8) },
+				{ corner(9.7, 0), Vector3.new(0.5, 3, 9.8) },
+			}
+		do
+			part({
+				Name = "DenWall",
+				Size = wall[2],
+				CFrame = CFrame.new(wall[1] + Vector3.new(0, 1.5, 0)) * origin.Rotation,
+				Color = Color3.fromRGB(150, 100, 65),
+				Material = Enum.Material.WoodPlanks,
+				Parent = decor,
+			})
+		end
+		part({
+			Name = "Hay",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.new(4, 4, 4),
+			CFrame = penSpot * CFrame.new(x / math.abs(x) * 7, -0.9, 3),
+			Color = Color3.fromRGB(235, 200, 100),
+			Material = Enum.Material.Sand,
+			CanCollide = false,
+			Parent = decor,
+		})
 		local _, label = billboard(floor, UDim2.fromScale(13, 2.3), Vector3.new(0, 9, 0), 80)
 		pens[i] = { part = floor, label = label }
 	end
 
-	-- White picket fence plus a tall invisible wall, with the gate at the front.
-	local function edge(x: number, z: number): Vector3
-		return (origin * CFrame.new(x, 1, z)).Position
-	end
-	local postX = GATE_WIDTH / 2 + 0.6
-	Decor.picketFence(decor, edge(-half, half), edge(half, half), FENCE_HEIGHT)
-	Decor.picketFence(decor, edge(-half, -half), edge(-half, half), FENCE_HEIGHT)
-	Decor.picketFence(decor, edge(half, -half), edge(half, half), FENCE_HEIGHT)
-	Decor.picketFence(decor, edge(-half, -half), edge(-postX, -half), FENCE_HEIGHT)
-	Decor.picketFence(decor, edge(postX, -half), edge(half, -half), FENCE_HEIGHT)
-	local frontSide = (PLOT_SIZE - GATE_WIDTH) / 2
-	for _, wall in
-		{
-			{ size = Vector3.new(PLOT_SIZE, WALL_HEIGHT, 1), x = 0, z = half },
-			{ size = Vector3.new(1, WALL_HEIGHT, PLOT_SIZE), x = -half, z = 0 },
-			{ size = Vector3.new(1, WALL_HEIGHT, PLOT_SIZE), x = half, z = 0 },
-			{ size = Vector3.new(frontSide, WALL_HEIGHT, 1), x = -(GATE_WIDTH / 2 + frontSide / 2), z = -half },
-			{ size = Vector3.new(frontSide, WALL_HEIGHT, 1), x = GATE_WIDTH / 2 + frontSide / 2, z = -half },
-		}
-	do
-		part({
-			Name = "Wall",
-			Size = wall.size,
-			CFrame = origin * CFrame.new(wall.x, 1 + WALL_HEIGHT / 2, wall.z),
-			Transparency = 1,
-			Parent = folder,
-		})
-	end
-
-	-- The visible force field fills the gate; an invisible part above stops jumping over.
-	local gateHeight = 9.5
-	local gate = part({
-		Name = "Gate",
-		Size = Vector3.new(GATE_WIDTH, gateHeight, 1),
-		CFrame = origin * CFrame.new(0, 1 + gateHeight / 2, -half),
-		Color = Color3.fromRGB(255, 60, 60),
-		Material = Enum.Material.ForceField,
-		CollisionGroup = "Gate" .. index,
-		Parent = folder,
-	})
-	local gateTop = part({
-		Name = "GateTop",
-		Size = Vector3.new(GATE_WIDTH, WALL_HEIGHT - gateHeight, 1),
-		CFrame = origin * CFrame.new(0, 1 + gateHeight + (WALL_HEIGHT - gateHeight) / 2, -half),
-		Transparency = 1,
-		CollisionGroup = "Gate" .. index,
-		Parent = folder,
-	})
 	local gateGuiPart = part({
 		Name = "GateSign",
 		Size = Vector3.new(1, 1, 1),
-		CFrame = origin * CFrame.new(0, 18, -half),
+		CFrame = origin * CFrame.new(0, 30, -half),
 		Transparency = 1,
 		CanCollide = false,
 		Parent = folder,
@@ -4841,15 +5344,6 @@ local function buildPlot(index: number)
 	lockPrompt:SetAttribute("PlotIndex", index)
 	lockPrompt.Parent = lockBody
 
-	-- Scenery: trees and bushes in the front corners, flower beds along the front fence,
-	-- lamps by the gate.
-	for _, side in { -1, 1 } do
-		Decor.tree(decor, origin * CFrame.new(side * 26.5, 1, -26.5), 0.85, index * 10 + side)
-		Decor.bush(decor, origin * CFrame.new(side * 27, 1, -14), 1, index * 20 + side)
-		Decor.flowerBed(decor, origin * CFrame.new(side * 15.5, 1, -29.3), 11, 2.2, index * 30 + side)
-		Decor.lamp(decor, origin * CFrame.new(side * 11.5, 1, -25.5)) -- clear of the gate posts and flower beds
-	end
-
 	local freekFolder = Instance.new("Folder")
 	freekFolder.Name = "Freeks"
 	freekFolder.Parent = folder
@@ -4862,14 +5356,13 @@ local function buildPlot(index: number)
 		pads = pads,
 		pens = pens,
 		signLabels = {},
-		signText = "Empty Yard",
+		signText = "Empty Barn",
 		archTier = 0,
 		archFolder = nil,
 		gateGuiPart = gateGuiPart,
 		half = half,
 		freeks = freekFolder,
-		gate = gate,
-		gateTop = gateTop,
+		barn = barn,
 		gateLabel = gateLabel,
 		lockLight = lockLight,
 		lockPrompt = lockPrompt,
@@ -4884,6 +5377,8 @@ end
 local function placeFreek(plot, freek, ground: CFrame, steal)
 	local model, height = FreekModel.build(freek.species, freek.mutations)
 	model:PivotTo(ground)
+	-- Where it rests: clients bob it around this spot (never around wherever it is now).
+	model:SetAttribute("Ground", ground)
 	model.Parent = plot.freeks
 
 	local species = FreekUtil.species(freek)
@@ -4953,9 +5448,9 @@ local function updatePenLabels(plot, data)
 			local left = breeding.endsAt - os.time()
 			pen.label.Text = if left > 0 then "Fusing... " .. Format.time(left) else "Fusion complete!"
 		elseif usable then
-			pen.label.Text = "Fusion Pod"
+			pen.label.Text = "Fusion Den"
 		else
-			pen.label.Text = "Extra Pod · Store"
+			pen.label.Text = "Extra Den · Store"
 		end
 	end
 end
@@ -4972,7 +5467,7 @@ function PlotService.render(player: Player)
 	if plot.archTier ~= tier then
 		buildArch(plot, tier)
 	end
-	setSign(plot, player.DisplayName .. "'s Yard")
+	setSign(plot, player.DisplayName .. "'s Barn")
 
 	for i, pad in plot.pads do
 		local unlocked = i <= FreekUtil.totalSlots(data)
@@ -5017,9 +5512,7 @@ end
 local function updateGate(plot)
 	local left = plot.lockedUntil - Workspace:GetServerTimeNow()
 	local locked = left > 0
-	plot.gate.CanCollide = locked
-	plot.gateTop.CanCollide = locked
-	plot.gate.Transparency = if locked then 0.4 else 1
+	Barn.setLocked(plot.barn, locked)
 	plot.lockLight.Color = if locked then Color3.fromRGB(80, 255, 110) else Color3.fromRGB(255, 70, 70)
 	plot.lockPrompt.ActionText = if locked then "Locked " .. Format.time(left) else "Lock Gate"
 	if not plot.owner then
@@ -5033,7 +5526,7 @@ local function updateGate(plot)
 	end
 end
 
--- Lets the owner's character pass through their own locked gate.
+-- Lets the owner's character pass through their own locked barn doors.
 local function setCollisionGroup(character: Model, group: string)
 	local function apply(descendant)
 		if descendant:IsA("BasePart") then
@@ -5050,7 +5543,7 @@ local function clearPlot(plot)
 	setGateLock(plot, math.huge) -- empty yards stay shut
 	plot.owner = nil
 	plot.freeks:ClearAllChildren()
-	setSign(plot, "Empty Yard")
+	setSign(plot, "Empty Barn")
 	if plot.archTier ~= 1 then
 		buildArch(plot, 1)
 	end
@@ -5091,7 +5584,7 @@ local function onPlayerAdded(player: Player)
 			return
 		end
 	end
-	Remotes.get("Notify"):FireClient(player, "This server is full of yards! Try another server.", "error")
+	Remotes.get("Notify"):FireClient(player, "This server is full of barns! Try another server.", "error")
 end
 
 -- Every yard's origin (gate faces -Z), for scenery that decorates all yards.
@@ -5122,7 +5615,7 @@ end
 function PlotService.lockGate(player: Player): string?
 	local plot = plotOf[player]
 	if not plot then
-		return "You don't have a yard."
+		return "You don't have a barn."
 	end
 	if PlotService.isGateLocked(plot) then
 		return "Your gate is already locked."
@@ -5188,7 +5681,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">RebirthService</string>
           <string name="Source"><![CDATA[-- Rebirth: pay Config.rebirthCost to start over with a permanent income bonus.
@@ -5284,7 +5777,7 @@ return RebirthService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">Recipes</string>
           <string name="Source"><![CDATA[-- Decides what two Freeks fuse into. Server-only so players can't read the Secret recipes
@@ -5335,7 +5828,7 @@ return Recipes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -5349,7 +5842,7 @@ local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
-local Belt = require(ReplicatedStorage.Shared.Belt)
+local Drops = require(ReplicatedStorage.Shared.Drops)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
 local Decor = require(script.Parent.Decor)
@@ -5369,7 +5862,7 @@ local function pick(palette, part: BasePart)
 	return palette[index]
 end
 
-local function facingBelt(position: Vector3): CFrame
+local function facingSquare(position: Vector3): CFrame
 	return CFrame.lookAt(position, Vector3.new(position.X, position.Y, 0))
 end
 
@@ -5417,34 +5910,34 @@ THEMES.Halloween = {
 		)
 	end,
 	build = function(props: Folder)
-		-- Every yard: jack-o'-lanterns flanking the gate, one inside by the pens, and a
-		-- pile of leaves under each corner tree.
+		-- Every barn: jack-o'-lanterns flanking the doors, one inside by the dens, and a
+		-- pile of leaves under each tree out back.
 		for i, origin in PlotService.origins() do
 			for _, side in { -1, 1 } do
-				Decor.pumpkin(props, origin * CFrame.new(side * 10.5, 0, -33.5), 1) -- outside, on the grass
-				Decor.pumpkin(props, origin * CFrame.new(side * 21, 1, -24.5), 0.8) -- on the lawn
-				Decor.leafPile(props, origin * CFrame.new(side * 27, 1, -21), i * 10 + side)
+				Decor.pumpkin(props, origin * CFrame.new(side * 16, 0.3, -34.5), 1) -- outside the doors
+				Decor.pumpkin(props, origin * CFrame.new(side * 26, 1, -22), 0.8) -- inside
+				Decor.leafPile(props, origin * CFrame.new(side * 24, 0, 39.5), i * 10 + side)
 			end
 		end
-		-- Pumpkins between the lamps along both walkways, facing the conveyor.
-		for x = Belt.START_X + 27.5, Belt.START_X + Belt.LENGTH - 10, 35 do
-			for _, z in { -27.5, 27.5 } do
-				Decor.pumpkin(props, facingBelt(Vector3.new(x, 0.3, z)), 0.9)
+		-- Pumpkins along both walkways, facing the town square.
+		for x = -122.5, 122.5, 35 do
+			for _, z in { -28, 28 } do
+				Decor.pumpkin(props, facingSquare(Vector3.new(x, 0.3, z)), 0.9)
 			end
 		end
-		-- Hay bales topped with pumpkins by the Freek Houses and the spawn.
-		local houseX = Belt.START_X - 9
+		-- Hay bales topped with pumpkins by the Freek House and the spawn.
+		local house = Drops.HOUSE_POSITION
 		for _, spot in
 			{
-				Vector3.new(houseX, 0, -15),
-				Vector3.new(houseX, 0, 15),
-				Vector3.new(houseX + 8, 0, -16),
-				Vector3.new(houseX + 8, 0, 16),
+				house + Vector3.new(3, 0, -14),
+				house + Vector3.new(3, 0, 14),
+				house + Vector3.new(14, 0, -10),
+				house + Vector3.new(14, 0, 10),
 				Vector3.new(150, 0, -7),
 				Vector3.new(150, 0, 7),
 			}
 		do
-			local ground = facingBelt(spot)
+			local ground = facingSquare(spot)
 			Decor.hayBale(props, ground)
 			Decor.pumpkin(props, ground * CFrame.new(0, 2.4, 0), 0.8)
 		end
@@ -5458,21 +5951,21 @@ THEMES.Halloween = {
 			end
 		end
 
-		-- String lights between the street lamps along both walkways, and low fog.
-		for x = Belt.START_X + 10, Belt.START_X + Belt.LENGTH - 45, 35 do
-			for _, z in { -28, 28 } do
-				HalloweenDecor.stringLights(props, Vector3.new(x, 7.6, z), Vector3.new(x + 35, 7.6, z), 14, 1.8)
+		-- String lights between the street lamps along both walkways, and low fog over the
+		-- town square.
+		for _, x in { -140, -70, 0, 70 } do
+			for _, z in { -28.5, 28.5 } do
+				HalloweenDecor.stringLights(props, Vector3.new(x, 7.6, z), Vector3.new(x + 70, 7.6, z), 24, 3)
 			end
 		end
-		for x = Belt.START_X, Belt.START_X + Belt.LENGTH, 40 do
-			for _, z in { -20, 20 } do
+		for x = Drops.AREA.minX, Drops.AREA.maxX, 40 do
+			for _, z in { -14, 14 } do
 				HalloweenDecor.fog(props, Vector3.new(x, 0.5, z))
 			end
 		end
 
-		-- Witch hats on both Freek Houses.
-		HalloweenDecor.witchHat(props, CFrame.new(houseX + 2, 14.6, Belt.LANES[1]), 0.9, Color3.fromRGB(70, 30, 110))
-		HalloweenDecor.witchHat(props, CFrame.new(houseX + 2, 14.6, Belt.LANES[2]), 0.9, Color3.fromRGB(40, 25, 60))
+		-- A witch hat on the Freek House.
+		HalloweenDecor.witchHat(props, CFrame.new(house + Vector3.new(0, 22.5, 0)), 1.3, Color3.fromRGB(70, 30, 110))
 
 		-- A graveyard past the spawn, with dead trees, fog and a bubbling cauldron.
 		for row = 0, 1 do
@@ -5491,7 +5984,7 @@ THEMES.Halloween = {
 		HalloweenDecor.cauldron(props, CFrame.new(160, 0, 0))
 
 		-- Ghosts drifting around; bats circling the Freek Houses, the graveyard and the title.
-		local houses = Vector3.new(houseX, 0, 0)
+		local houses = Drops.HOUSE_POSITION
 		HalloweenDecor.ghost(props, houses, 22, 16, 0.25, 0)
 		HalloweenDecor.ghost(props, houses, 26, 20, -0.2, 2)
 		HalloweenDecor.ghost(props, Vector3.new(178, 0, 0), 14, 9, 0.3, 1)
@@ -5629,7 +6122,7 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Stealing Freeks from other players' yards.
@@ -5784,7 +6277,7 @@ end
 local function sendBack(carrier: Player, carry, ownerMessage: string?, carrierMessage: string?)
 	if carry.bought then
 		-- The buyer is the owner: one message is enough.
-		ownerMessage, carrierMessage = "You dropped " .. carry.name .. ", so it went straight to your yard.", nil
+		ownerMessage, carrierMessage = "You dropped " .. carry.name .. ", so it went straight to your barn.", nil
 	end
 	putDown(carrier, carry)
 	Carried.set(carry.owner, carry.uid, nil)
@@ -5823,9 +6316,9 @@ local function deliver(carrier: Player, carry)
 			freek.slot = FreekUtil.freeSlot(data)
 			DataService.changed(carrier)
 			if freek.slot then
-				notify(carrier, carry.name .. " is home in your yard!", "success")
+				notify(carrier, carry.name .. " is home in your barn!", "success")
 			else
-				notify(carrier, "Your yard is full, so " .. carry.name .. " went in your backpack.", "error")
+				notify(carrier, "Your barn is full, so " .. carry.name .. " went in your backpack.", "error")
 			end
 		end
 		return
@@ -5910,7 +6403,7 @@ local function steal(prompt: ProximityPrompt, thief: Player)
 	freek.slot = nil
 	DataService.changed(owner)
 
-	notify(thief, "You grabbed " .. carry.name .. "! Get it back to your yard!", "success")
+	notify(thief, "You grabbed " .. carry.name .. "! Get it back to your barn!", "success")
 	notify(owner, thief.DisplayName .. " is stealing your " .. carry.name .. "! Bonk them!", "error")
 end
 
@@ -5940,7 +6433,7 @@ local function snatch(prompt: ProximityPrompt, snatcher: Player)
 		return sendBack(carrier, carry)
 	end
 	notify(carrier, snatcher.DisplayName .. " snatched " .. carry.name .. " from you!", "error")
-	notify(snatcher, "You snatched " .. carry.name .. "! Get it back to your yard!", "success")
+	notify(snatcher, "You snatched " .. carry.name .. "! Get it back to your barn!", "success")
 	notify(
 		carry.owner,
 		snatcher.DisplayName .. " snatched your " .. carry.name .. " from " .. carrier.DisplayName .. "!",
@@ -6060,7 +6553,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
@@ -6158,7 +6651,7 @@ local function offerProblem(player: Player, uids): string?
 		if not freek then
 			return player.DisplayName .. " no longer has one of their Freeks"
 		elseif freek.breeding then
-			return player.DisplayName .. " put an offered Freek in a Fusion Pod"
+			return player.DisplayName .. " put an offered Freek in a Fusion Den"
 		elseif Carried.is(player, uid) then
 			return "one of " .. player.DisplayName .. "'s Freeks is being stolen"
 		end
@@ -6344,7 +6837,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- Weapons: giving them out, buying them, and what happens when they hit.
@@ -6673,19 +7166,19 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="40">
+  <Item class="StarterPlayer" referent="41">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="41">
+    <Item class="StarterPlayerScripts" referent="42">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="42">
+      <Item class="Folder" referent="43">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="43">
+        <Item class="ModuleScript" referent="44">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -6759,7 +7252,7 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="44">
+        <Item class="ModuleScript" referent="45">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, event chip, menu tabs, leaderboard,
@@ -7258,7 +7751,7 @@ function Hud.gateStatus(screen: ScreenGui)
 			else
 				-- Pulses red while open so the owner notices.
 				local pulse = (math.sin(os.clock() * 6) + 1) / 2
-				label.Text = "🔓  Gate open · Lock it at your gate!"
+				label.Text = "🔓  Barn open · Lock it at your door!"
 				label.TextColor3 = colors.text
 				ring.Color = colors.red
 				button.BackgroundColor3 = colors.red:Lerp(Color3.fromRGB(120, 25, 35), pulse)
@@ -7338,7 +7831,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="45">
+        <Item class="LocalScript" referent="46">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -7350,6 +7843,7 @@ local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 print("[Fuse a Freek] Client starting")
@@ -7386,7 +7880,7 @@ task.delay(8, function()
 end)
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Belt = require(Shared.Belt)
+local Drops = require(Shared.Drops)
 local Breeding = require(Shared.Breeding)
 local Config = require(Shared.Config)
 local GateTiers = require(Shared.GateTiers)
@@ -7584,7 +8078,7 @@ end
 
 function renderers.Shop()
 	heading("New Freeks come out of the Freek Machine onto the conveyor belt. Walk up and hold Buy!", 1)
-	heading("Yard", 3)
+	heading("Barn", 3)
 	local yard = UI.grid(220, 120)
 	yard.LayoutOrder = 4
 	yard.Parent = body
@@ -7593,7 +8087,7 @@ function renderers.Shop()
 	local price = Config.slotPrice(bought)
 	UI.card({
 		lines = {
-			{ "Yard Slots", colors.text, 26 },
+			{ "Barn Slots", colors.text, 26 },
 			{
 				bought .. " / " .. Config.MAX_SLOTS .. " bought" .. (if (state.passSlots or 0) > 0
 					then "  ·  +" .. state.passSlots .. " from passes"
@@ -7652,7 +8146,7 @@ function renderers.Freeks()
 	end
 	heading(
 		string.format(
-			"%d Freeks (max %d)  ·  %d / %d in yard",
+			"%d Freeks (max %d)  ·  %d / %d in barn",
 			#list,
 			GamePasses.maxFreeks(player),
 			placed,
@@ -7674,7 +8168,7 @@ function renderers.Freeks()
 		if freek.breeding then
 			status, statusColor = "Fusing", colors.pink
 		elseif freek.slot then
-			status, statusColor = "In yard", colors.money
+			status, statusColor = "In barn", colors.money
 		else
 			status, statusColor = "In backpack (not earning)", colors.muted
 		end
@@ -7691,7 +8185,7 @@ function renderers.Freeks()
 			else
 				table.insert(
 					buttons,
-					UI.button("Put in yard", colors.green, function()
+					UI.button("Put in barn", colors.green, function()
 						send("Place", uid)
 					end)
 				)
@@ -7750,7 +8244,7 @@ function renderers.Fuse()
 				send("ClaimBreed", index)
 			end, { Size = UDim2.new(1, 0, 0, 38) })
 			card = UI.card({
-				lines = { { "Pod " .. index, colors.pink, 22 } },
+				lines = { { "Den " .. index, colors.pink, 22 } },
 				buttons = { pair, countdown, claim },
 			})
 			table.insert(penCountdowns, { label = countdown, button = claim, endsAt = breeding.endsAt })
@@ -7758,7 +8252,7 @@ function renderers.Fuse()
 			freePen = true
 			card = UI.card({
 				lines = {
-					{ "Pod " .. index, colors.pink, 22 },
+					{ "Den " .. index, colors.pink, 22 },
 					{ "Empty. Pick two Freeks below!", colors.muted, 18 },
 				},
 			})
@@ -7766,7 +8260,7 @@ function renderers.Fuse()
 			card = UI.card({
 				lines = {
 					{ "🐣", colors.text, 40 },
-					{ "Extra Fusion Pod", colors.pink, 22 },
+					{ "Extra Fusion Den", colors.pink, 22 },
 					{ "Fuse two pairs at once.", colors.muted, 18 },
 				},
 				buttons = {
@@ -7780,7 +8274,7 @@ function renderers.Fuse()
 		card.Parent = penGrid
 	end
 	if not freePen then
-		heading(if pens > 1 then "Both Fusion Pods are busy!" else "Your Fusion Pod is busy!", 1)
+		heading(if pens > 1 then "Both Fusion Dens are busy!" else "Your Fusion Den is busy!", 1)
 		return
 	end
 
@@ -8186,7 +8680,7 @@ function renderers.Rebirth()
 			{ "Your Freeks earn x" .. tostring(nextMult) .. " forever", colors.money, 22 },
 			{ if #unlocks > 0 then "Unlocks: " .. table.concat(unlocks, ", ") else "", colors.orange, 20 },
 			{ gateLine, colors.gold, 18 },
-			{ "Resets: coins, Freeks, yard slots", colors.red:Lerp(Color3.new(1, 1, 1), 0.3), 18 },
+			{ "Resets: coins, Freeks, barn slots", colors.red:Lerp(Color3.new(1, 1, 1), 0.3), 18 },
 			{ "Keeps: Discovery Book, Limited Freeks, weapons", colors.muted, 18 },
 			{
 				Format.money(state.money) .. " / " .. Format.money(cost),
@@ -8384,11 +8878,11 @@ player:GetAttributeChangedSignal("Plot"):Connect(function()
 	end
 end)
 
--- Belt Freeks only move on clients, so the server can't use Roblox's own prompt range
--- check for them; buying goes through an action the server checks itself.
+-- Cannon Freeks only move on clients, so the server can't use Roblox's own prompt range
+-- check for them; grabbing goes through an action the server checks itself.
 ProximityPromptService.PromptTriggered:Connect(function(prompt)
-	if prompt.Name == "BuyPrompt" then
-		send("BuyBelt", prompt:GetAttribute("ItemId"))
+	if prompt.Name == "GrabPrompt" then
+		send("GrabDrop", prompt:GetAttribute("ItemId"))
 	end
 end)
 
@@ -8449,24 +8943,129 @@ task.spawn(function()
 	end
 end)
 
--- Conveyor belt: move each Freek along locally from its spawn time (smooth, and matches
--- where the server thinks it is).
-local beltFolder = Workspace:WaitForChild("BeltFreeks")
+-- Cannon Freeks: fly each one out of its cannon, then let it wander the town square and
+-- walk into the Freek House, all worked out locally from its seed and launch time (smooth,
+-- and matches where the server thinks it is).
+local dropFolder = Workspace:WaitForChild("DropFreeks")
+local paths = {} -- [Model] = path; cleared when the model goes
+dropFolder.ChildRemoved:Connect(function(model)
+	paths[model] = nil
+end)
+
+-- A puff of smoke that grows and fades (cannon shots and landings).
+local function puff(position: Vector3, size: number, color: Color3)
+	for i = 1, 5 do
+		local ball = Instance.new("Part")
+		ball.Shape = Enum.PartType.Ball
+		ball.Anchored = true
+		ball.CanCollide = false
+		ball.CanQuery = false
+		ball.CastShadow = false
+		ball.Material = Enum.Material.SmoothPlastic
+		ball.Color = color
+		ball.Transparency = 0.2
+		ball.Size = Vector3.one * size * 0.4
+		ball.Position = position + Vector3.new(math.random() - 0.5, math.random() - 0.5, math.random() - 0.5) * size
+		ball.Parent = Workspace
+		local grow = TweenInfo.new(0.6 + i * 0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		TweenService:Create(ball, grow, { Size = Vector3.one * size * 1.4, Transparency = 1 }):Play()
+		task.delay(1.2, ball.Destroy, ball)
+	end
+end
+
 RunService.RenderStepped:Connect(function()
 	local now = Workspace:GetServerTimeNow()
-	for _, model in beltFolder:GetChildren() do
-		local spawnTime = model:GetAttribute("SpawnTime")
-		if spawnTime and model:IsA("Model") then
-			-- Little hops as they ride along.
-			local hop = math.abs(math.sin((now - spawnTime) * 5)) * 0.45
-			model:PivotTo(Belt.cframeAt(model:GetAttribute("Lane") or 1, spawnTime, now) * CFrame.new(0, hop, 0))
+	for _, model in dropFolder:GetChildren() do
+		if not model:IsA("Model") then
+			continue
+		end
+		local path = paths[model]
+		if not path then
+			local seed, cannon, launch =
+				model:GetAttribute("Seed"), model:GetAttribute("Cannon"), model:GetAttribute("Launch")
+			if not (seed and cannon and launch) then
+				continue
+			end
+			path = Drops.plan(seed, cannon, launch)
+			path.landed = now >= path.land
+			paths[model] = path
+		end
+		local cframe, doing, moving = Drops.cframeAt(path, now)
+		if doing == "wandering" or doing == "leaving" then
+			if not path.landed then
+				path.landed = true
+				puff(path.landAt + Vector3.new(0, 1, 0), 3, Color3.fromRGB(225, 210, 180))
+			end
+			-- Little hops while walking.
+			if moving then
+				cframe *= CFrame.new(0, math.abs(math.sin(now * 9 + model:GetAttribute("Seed"))) * 0.6, 0)
+			end
+		end
+		model:PivotTo(cframe)
+		local prompt = model:FindFirstChild("GrabPrompt", true)
+		if prompt then
+			prompt.Enabled = doing == "wandering" or doing == "leaving"
+		end
+	end
+end)
+
+-- Cannons go boom: smoke at the muzzle when the server fires one.
+local cannonsFolder = Workspace:WaitForChild("Cannons")
+for index = 1, Drops.CANNON_COUNT do
+	local cannon = cannonsFolder:WaitForChild("Cannon" .. index)
+	cannon:GetAttributeChangedSignal("FiredAt"):Connect(function()
+		local wait = (cannon:GetAttribute("FiredAt") or 0) - Workspace:GetServerTimeNow()
+		task.delay(math.max(wait, 0), function()
+			local muzzle = Drops.muzzle(index)
+			puff(muzzle, 6, Color3.fromRGB(200, 200, 205))
+			local flash = Instance.new("PointLight")
+			flash.Brightness = 6
+			flash.Range = 40
+			flash.Color = Color3.fromRGB(255, 200, 120)
+			flash.Parent = cannon.PrimaryPart
+			task.delay(0.15, flash.Destroy, flash)
+		end)
+	end)
+end
+
+-- Fade the roof of whichever barn you're standing in, so you can see inside.
+local plotsFolderForRoofs = Workspace:WaitForChild("Plots")
+task.spawn(function()
+	local faded = nil
+	while true do
+		task.wait(0.2)
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local inside = nil
+		if root then
+			for _, plot in plotsFolderForRoofs:GetChildren() do
+				local origin, size = plot:GetAttribute("Origin"), plot:GetAttribute("Size")
+				if typeof(origin) == "CFrame" and size then
+					local offset = origin:PointToObjectSpace(root.Position)
+					if math.abs(offset.X) < size / 2 and math.abs(offset.Z) < size / 2 and offset.Y < 20 then
+						inside = plot:FindFirstChild("Roof")
+					end
+				end
+			end
+		end
+		if inside ~= faded then
+			for _, roof in { faded, inside } do
+				if roof then
+					for _, piece in roof:GetChildren() do
+						if piece:IsA("BasePart") then
+							piece.LocalTransparencyModifier = if roof == inside then 0.85 else 0
+						end
+					end
+				end
+			end
+			faded = inside
 		end
 	end
 end)
 
 -- Yard Freeks gently bob and sway so yards feel alive. Only nearby ones are animated.
+-- They always move relative to the "Ground" the server set, so they can't drift upward.
 local plotsFolder = Workspace:WaitForChild("Plots")
-local restPose = setmetatable({}, { __mode = "k" }) -- [Model] = { pivot, phase }
 RunService.RenderStepped:Connect(function()
 	local camera = Workspace.CurrentCamera
 	local eye = camera and camera.CFrame.Position or Vector3.zero
@@ -8475,17 +9074,12 @@ RunService.RenderStepped:Connect(function()
 		local freeks = plot:FindFirstChild("Freeks")
 		if freeks then
 			for _, model in freeks:GetChildren() do
-				if model:IsA("Model") then
-					local rest = restPose[model]
-					if not rest then
-						rest = { pivot = model:GetPivot(), phase = math.random() * math.pi * 2 }
-						restPose[model] = rest
-					end
-					if (rest.pivot.Position - eye).Magnitude < 140 then
-						local bob = math.sin(t * 2.2 + rest.phase) * 0.15 + 0.15
-						local sway = math.sin(t * 1.3 + rest.phase) * math.rad(5)
-						model:PivotTo(rest.pivot * CFrame.new(0, bob, 0) * CFrame.Angles(0, sway, 0))
-					end
+				local ground = model:IsA("Model") and model:GetAttribute("Ground")
+				if typeof(ground) == "CFrame" and (ground.Position - eye).Magnitude < 140 then
+					local phase = ground.Position.X * 0.37 + ground.Position.Z * 0.61
+					local bob = math.sin(t * 2.2 + phase) * 0.15 + 0.15
+					local sway = math.sin(t * 1.3 + phase) * math.rad(5)
+					model:PivotTo(ground * CFrame.new(0, bob, 0) * CFrame.Angles(0, sway, 0))
 				end
 			end
 		end
@@ -8517,7 +9111,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="46">
+        <Item class="ModuleScript" referent="47">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).

@@ -26,7 +26,7 @@ local SERVICES = {
 	"WeaponService",
 	"RebirthService",
 	"PassService",
-	"ConveyorService",
+	"CannonService",
 	"SeasonalService", -- after the map and yards exist
 	"DataService",
 }

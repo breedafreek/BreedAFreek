@@ -494,7 +494,7 @@ function Hud.gateStatus(screen: ScreenGui)
 			else
 				-- Pulses red while open so the owner notices.
 				local pulse = (math.sin(os.clock() * 6) + 1) / 2
-				label.Text = "🔓  Gate open · Lock it at your gate!"
+				label.Text = "🔓  Barn open · Lock it at your door!"
 				label.TextColor3 = colors.text
 				ring.Color = colors.red
 				button.BackgroundColor3 = colors.red:Lerp(Color3.fromRGB(120, 25, 35), pulse)

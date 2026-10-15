@@ -4,7 +4,7 @@ local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
-local Belt = require(ReplicatedStorage.Shared.Belt)
+local Drops = require(ReplicatedStorage.Shared.Drops)
 
 local Decor = require(script.Parent.Decor)
 
@@ -69,28 +69,30 @@ local function buildScenery()
 	folder.Name = "Scenery"
 	folder.Parent = Workspace
 
-	-- Paved walkways along both sides of the conveyor, where players stand to buy.
-	local beltCenter = Belt.START_X + Belt.LENGTH / 2
+	-- The town square between the barn rows, where cannon Freeks land and wander: grass in
+	-- the middle, a paved walkway in front of each row of barns, and street lamps in the
+	-- gaps between the barns.
+	local length = (Drops.AREA.maxX - Drops.AREA.minX) + 40
+	local centerX = (Drops.AREA.maxX + Drops.AREA.minX) / 2
 	for _, side in { -1, 1 } do
 		Decor.part({
 			Name = "Walkway",
-			Size = Vector3.new(Belt.LENGTH + 40, 0.3, 18),
-			CFrame = CFrame.new(beltCenter, 0.15, side * 20),
+			Size = Vector3.new(length, 0.3, 8),
+			CFrame = CFrame.new(centerX, 0.15, side * 28),
 			Color = Color3.fromRGB(200, 194, 184),
 			Material = Enum.Material.Pavement,
 			Parent = folder,
 		})
 		Decor.part({
 			Name = "Curb",
-			Size = Vector3.new(Belt.LENGTH + 40, 0.5, 0.8),
-			CFrame = CFrame.new(beltCenter, 0.25, side * 29.4),
+			Size = Vector3.new(length, 0.5, 0.8),
+			CFrame = CFrame.new(centerX, 0.25, side * 23.8),
 			Color = Color3.fromRGB(150, 145, 140),
 			Material = Enum.Material.Concrete,
 			Parent = folder,
 		})
-		-- Lamps along the walkway.
-		for x = Belt.START_X + 10, Belt.START_X + Belt.LENGTH - 10, 35 do
-			Decor.lamp(folder, CFrame.new(x, 0.3, side * 28))
+		for _, x in { -140, -70, 0, 70, 140 } do
+			Decor.lamp(folder, CFrame.new(x, 0.3, side * 28.5))
 		end
 	end
 

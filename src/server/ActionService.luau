@@ -71,7 +71,7 @@ local handlers = {}
 
 function handlers.BuySlot(player: Player, data)
 	if data.slots >= Config.MAX_SLOTS then
-		return notify(player, "Your yard is as big as it gets!", "error")
+		return notify(player, "Your barn is as big as it gets!", "error")
 	end
 	local price = Config.slotPrice(data.slots)
 	if data.money < price then
@@ -79,7 +79,7 @@ function handlers.BuySlot(player: Player, data)
 	end
 	data.money -= price
 	data.slots += 1
-	notify(player, "Your yard grew! You now have " .. data.slots .. " slots.", "success")
+	notify(player, "Your barn grew! You now have " .. data.slots .. " slots.", "success")
 end
 
 function handlers.Place(player: Player, data, uid: any)
@@ -89,7 +89,7 @@ function handlers.Place(player: Player, data, uid: any)
 	end
 	local slot = FreekUtil.freeSlot(data)
 	if not slot then
-		return notify(player, "Your yard is full! Buy more slots or remove a Freek.", "error")
+		return notify(player, "Your barn is full! Buy more slots or remove a Freek.", "error")
 	end
 	freek.slot = slot
 end
@@ -132,7 +132,7 @@ function handlers.StartBreed(player: Player, data, uidA: any, uidB: any, penInde
 	if not index then
 		return notify(
 			player,
-			if pens > 1 then "Both your Fusion Pods are busy!" else "Your Fusion Pod is already busy!",
+			if pens > 1 then "Both your Fusion Dens are busy!" else "Your Fusion Den is already busy!",
 			"error"
 		)
 	end

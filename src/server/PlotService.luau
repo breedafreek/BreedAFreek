@@ -1,8 +1,9 @@
--- Builds the map and gives every player a fenced yard. Other players can walk in to look
--- (or steal, see StealService) only while the gate is open. The owner locks the gate for
--- GATE_LOCK_SECONDS at a time (longer with the Longer Lock pass) and can always walk through
--- their own gate.
--- The whole yard is rebuilt whenever its owner's data changes.
+-- Builds the map and gives every player a barn (see Barn.luau) with Freek pads and Fusion
+-- Dens inside. Other players can walk in to look (or steal, see StealService) only while
+-- the barn doors are open. The owner locks them from the padlock inside for
+-- GATE_LOCK_SECONDS at a time (longer with the Longer Lock pass) and can always walk
+-- through their own doors.
+-- The Freeks inside are rebuilt whenever the owner's data changes.
 
 local PhysicsService = game:GetService("PhysicsService")
 local Players = game:GetService("Players")
@@ -19,16 +20,15 @@ local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
+local Barn = require(script.Parent.Barn)
 local DataService = require(script.Parent.DataService)
 local Decor = require(script.Parent.Decor)
 
-local PLOT_SIZE = 64
-local ROW_SPACING = 70 -- between yard centres along the conveyor
-local ROW_DISTANCE = 64 -- from the conveyor's centre line to each yard's centre
+local PLOT_SIZE = Barn.SIZE
+local ROW_SPACING = 70 -- between barn centres along the town square
+local ROW_DISTANCE = 64 -- from the middle of the town square to each barn's centre
 local PAD_COLUMNS = 5
-local FENCE_HEIGHT = 4 -- what you see
-local WALL_HEIGHT = 45 -- invisible wall above the fence, well above the tallest gate arch, so nobody can jump it
-local GATE_WIDTH = 14
+local GATE_WIDTH = Barn.DOOR_WIDTH
 
 local PlotService = {}
 
@@ -115,12 +115,13 @@ local function setSign(plot, text: string)
 	end
 end
 
--- Optional extra decoration for every gate arch (set by SeasonalService during events).
+-- Optional extra decoration for every barn's door frame (set by SeasonalService during events).
 -- Called as decorator(archFolder, info) with info = { origin, half, innerX, beamBottom, front }.
 local archDecorator = nil
 
--- (Re)builds a yard's gate arch for a tier from GateTiers: posts, beam, name sign, and for
--- higher tiers finials, a crest and glowing gems.
+-- (Re)builds the frame around a barn's doors for a tier from GateTiers: posts, a header
+-- beam, the owner's name sign on the gable, and for higher tiers finials, a crest over the
+-- sign and glowing gems.
 local function buildArch(plot, tierIndex: number)
 	local tier = GateTiers.list[tierIndex]
 	if plot.archFolder then
@@ -132,16 +133,19 @@ local function buildArch(plot, tierIndex: number)
 	plot.archFolder = arch
 	plot.archTier = tierIndex
 
-	local origin, half = plot.origin, plot.half
+	local origin = plot.origin
+	-- Posts stand in front of the doors (which slide behind them).
+	local half = plot.half + 1.6 + tier.postWidth / 2
 	local w = tier.postWidth
 	local postX = GATE_WIDTH / 2 + w / 2
 	local material = Enum.Material[tier.material]
-	local top = 1 + tier.height -- top of the posts
+	local postHeight = Barn.DOOR_HEIGHT + 1.5
+	local top = 1 + postHeight -- top of the posts
 	for _, side in { -1, 1 } do
 		part({
 			Name = "GatePost",
-			Size = Vector3.new(w, tier.height, w),
-			CFrame = origin * CFrame.new(side * postX, 1 + tier.height / 2, -half),
+			Size = Vector3.new(w, postHeight, w),
+			CFrame = origin * CFrame.new(side * postX, 1 + postHeight / 2, -half),
 			Color = tier.color,
 			Material = material,
 			Parent = arch,
@@ -178,7 +182,7 @@ local function buildArch(plot, tierIndex: number)
 				Name = "Gem",
 				Size = Vector3.new(1.1, 1.1, 0.4),
 				CFrame = origin
-					* CFrame.new(side * postX, 1 + tier.height * 0.6, -half - w / 2 - 0.1)
+					* CFrame.new(side * postX, 1 + postHeight * 0.6, -half - w / 2 - 0.1)
 					* CFrame.Angles(0, 0, math.rad(45)),
 				Color = plot.accent,
 				Material = Enum.Material.Neon,
@@ -199,11 +203,13 @@ local function buildArch(plot, tierIndex: number)
 		Material = material,
 		Parent = arch,
 	})
-	local signY = beamY + 2.4
+	-- The name sign hangs on the gable, above the doors.
+	local signY = 1 + Barn.WALL_HEIGHT + 4.5
+	local signZ = -plot.half - 0.8
 	local signWidth = 13 + tierIndex * 1.5
 	plot.signLabels = Decor.signboard(
 		arch,
-		origin * CFrame.new(0, signY, -half),
+		origin * CFrame.new(0, signY, signZ),
 		Vector2.new(signWidth, 3),
 		plot.signText,
 		plot.accent
@@ -215,8 +221,8 @@ local function buildArch(plot, tierIndex: number)
 		for i = 0, segments - 1 do
 			local a0 = math.pi * i / segments
 			local a1 = math.pi * (i + 1) / segments
-			local p0 = origin * CFrame.new(math.cos(a0) * radius, signY - 1 + math.sin(a0) * radius * 0.45, -half)
-			local p1 = origin * CFrame.new(math.cos(a1) * radius, signY - 1 + math.sin(a1) * radius * 0.45, -half)
+			local p0 = origin * CFrame.new(math.cos(a0) * radius, signY - 1 + math.sin(a0) * radius * 0.45, signZ)
+			local p1 = origin * CFrame.new(math.cos(a1) * radius, signY - 1 + math.sin(a1) * radius * 0.45, signZ)
 			local length = (p1.Position - p0.Position).Magnitude
 			part({
 				Name = "Crest",
@@ -232,7 +238,7 @@ local function buildArch(plot, tierIndex: number)
 			Name = "CrestJewel",
 			Shape = Enum.PartType.Ball,
 			Size = Vector3.one * (if tier.gems then 1.8 else 1.2),
-			CFrame = origin * CFrame.new(0, signY - 1 + radius * 0.45, -half),
+			CFrame = origin * CFrame.new(0, signY - 1 + radius * 0.45, signZ),
 			Color = if tier.gems then plot.accent else tier.color,
 			Material = if tier.gems then Enum.Material.Neon else material,
 			CanCollide = false,
@@ -245,8 +251,8 @@ local function buildArch(plot, tierIndex: number)
 		end
 	end
 
-	-- Keep the LOCKED/OPEN timer just above the arch.
-	plot.gateGuiPart.CFrame = origin * CFrame.new(0, signY + (if tier.crest then 6 else 4), -half)
+	-- Keep the LOCKED/OPEN timer just above the sign.
+	plot.gateGuiPart.CFrame = origin * CFrame.new(0, signY + (if tier.crest then 6 else 4), signZ)
 
 	if archDecorator then
 		archDecorator(arch, {
@@ -287,35 +293,10 @@ local function buildPlot(index: number)
 	decor.Name = "Decor"
 	decor.Parent = folder
 
-	-- Lawn, with a cobblestone path from the gate to the pens and across to the pedestals.
-	Decor.tag(
-		part({
-			Name = "Base",
-			Size = Vector3.new(PLOT_SIZE, 1, PLOT_SIZE),
-			CFrame = origin * CFrame.new(0, 0.5, 0),
-			Color = Color3.fromRGB(105, 185, 85),
-			Material = Enum.Material.Grass,
-			Parent = folder,
-		}),
-		Decor.TAGS.lawn
-	)
-	for _, path in
-		{
-			{ size = Vector3.new(7, 0.2, 12), pos = Vector3.new(0, 1.1, -26) },
-			{ size = Vector3.new(58, 0.2, 3.5), pos = Vector3.new(0, 1.1, -6.2) },
-			{ size = Vector3.new(4, 0.2, 13), pos = Vector3.new(0, 1.1, -13.5) },
-		}
-	do
-		part({
-			Name = "Path",
-			Size = path.size,
-			CFrame = origin * CFrame.new(path.pos),
-			Color = Color3.fromRGB(175, 165, 150),
-			Material = Enum.Material.Cobblestone,
-			CanCollide = false,
-			Parent = decor,
-		})
-	end
+	-- The barn itself: floor, walls, roof and sliding doors.
+	local barn = Barn.build(folder, decor, origin, index)
+	folder:SetAttribute("Origin", origin)
+	folder:SetAttribute("Size", PLOT_SIZE)
 
 	-- Round stone pedestals with a glowing rim. Freeks stand on top (pad.ground).
 	local pads = {}
@@ -346,12 +327,13 @@ local function buildPlot(index: number)
 		pads[i] = { ground = spot * CFrame.new(0, 0.6, 0), base = base, rim = rim, lock = lockGui }
 	end
 
-	-- Two hay-floored breeding pens with low fences; the second needs the Extra Breeding Pen pass.
+	-- Two hay-floored Fusion Dens with low plank walls; the second needs the Extra Fusion
+	-- Den pass.
 	local pens = {}
 	for i, x in { -12, 12 } do
 		local penSpot = origin * CFrame.new(x, 1, -14)
 		local floor = part({
-			Name = "FusionPod" .. i,
+			Name = "FusionDen" .. i,
 			Size = Vector3.new(19, 0.4, 9.5),
 			CFrame = penSpot * CFrame.new(0, 0.2, 0),
 			Color = Color3.fromRGB(230, 200, 120),
@@ -361,65 +343,40 @@ local function buildPlot(index: number)
 		local corner = function(dx, dz)
 			return (penSpot * CFrame.new(dx, 0, dz)).Position
 		end
-		Decor.picketFence(decor, corner(-9.7, 4.9), corner(9.7, 4.9), 2.2, Color3.fromRGB(150, 100, 65))
-		Decor.picketFence(decor, corner(-9.7, -4.9), corner(-9.7, 4.9), 2.2, Color3.fromRGB(150, 100, 65))
-		Decor.picketFence(decor, corner(9.7, -4.9), corner(9.7, 4.9), 2.2, Color3.fromRGB(150, 100, 65))
+		for _, wall in
+			{
+				{ corner(0, 4.9), Vector3.new(19.4, 3, 0.5) },
+				{ corner(-9.7, 0), Vector3.new(0.5, 3, 9.8) },
+				{ corner(9.7, 0), Vector3.new(0.5, 3, 9.8) },
+			}
+		do
+			part({
+				Name = "DenWall",
+				Size = wall[2],
+				CFrame = CFrame.new(wall[1] + Vector3.new(0, 1.5, 0)) * origin.Rotation,
+				Color = Color3.fromRGB(150, 100, 65),
+				Material = Enum.Material.WoodPlanks,
+				Parent = decor,
+			})
+		end
+		part({
+			Name = "Hay",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.new(4, 4, 4),
+			CFrame = penSpot * CFrame.new(x / math.abs(x) * 7, -0.9, 3),
+			Color = Color3.fromRGB(235, 200, 100),
+			Material = Enum.Material.Sand,
+			CanCollide = false,
+			Parent = decor,
+		})
 		local _, label = billboard(floor, UDim2.fromScale(13, 2.3), Vector3.new(0, 9, 0), 80)
 		pens[i] = { part = floor, label = label }
 	end
 
-	-- White picket fence plus a tall invisible wall, with the gate at the front.
-	local function edge(x: number, z: number): Vector3
-		return (origin * CFrame.new(x, 1, z)).Position
-	end
-	local postX = GATE_WIDTH / 2 + 0.6
-	Decor.picketFence(decor, edge(-half, half), edge(half, half), FENCE_HEIGHT)
-	Decor.picketFence(decor, edge(-half, -half), edge(-half, half), FENCE_HEIGHT)
-	Decor.picketFence(decor, edge(half, -half), edge(half, half), FENCE_HEIGHT)
-	Decor.picketFence(decor, edge(-half, -half), edge(-postX, -half), FENCE_HEIGHT)
-	Decor.picketFence(decor, edge(postX, -half), edge(half, -half), FENCE_HEIGHT)
-	local frontSide = (PLOT_SIZE - GATE_WIDTH) / 2
-	for _, wall in
-		{
-			{ size = Vector3.new(PLOT_SIZE, WALL_HEIGHT, 1), x = 0, z = half },
-			{ size = Vector3.new(1, WALL_HEIGHT, PLOT_SIZE), x = -half, z = 0 },
-			{ size = Vector3.new(1, WALL_HEIGHT, PLOT_SIZE), x = half, z = 0 },
-			{ size = Vector3.new(frontSide, WALL_HEIGHT, 1), x = -(GATE_WIDTH / 2 + frontSide / 2), z = -half },
-			{ size = Vector3.new(frontSide, WALL_HEIGHT, 1), x = GATE_WIDTH / 2 + frontSide / 2, z = -half },
-		}
-	do
-		part({
-			Name = "Wall",
-			Size = wall.size,
-			CFrame = origin * CFrame.new(wall.x, 1 + WALL_HEIGHT / 2, wall.z),
-			Transparency = 1,
-			Parent = folder,
-		})
-	end
-
-	-- The visible force field fills the gate; an invisible part above stops jumping over.
-	local gateHeight = 9.5
-	local gate = part({
-		Name = "Gate",
-		Size = Vector3.new(GATE_WIDTH, gateHeight, 1),
-		CFrame = origin * CFrame.new(0, 1 + gateHeight / 2, -half),
-		Color = Color3.fromRGB(255, 60, 60),
-		Material = Enum.Material.ForceField,
-		CollisionGroup = "Gate" .. index,
-		Parent = folder,
-	})
-	local gateTop = part({
-		Name = "GateTop",
-		Size = Vector3.new(GATE_WIDTH, WALL_HEIGHT - gateHeight, 1),
-		CFrame = origin * CFrame.new(0, 1 + gateHeight + (WALL_HEIGHT - gateHeight) / 2, -half),
-		Transparency = 1,
-		CollisionGroup = "Gate" .. index,
-		Parent = folder,
-	})
 	local gateGuiPart = part({
 		Name = "GateSign",
 		Size = Vector3.new(1, 1, 1),
-		CFrame = origin * CFrame.new(0, 18, -half),
+		CFrame = origin * CFrame.new(0, 30, -half),
 		Transparency = 1,
 		CanCollide = false,
 		Parent = folder,
@@ -482,15 +439,6 @@ local function buildPlot(index: number)
 	lockPrompt:SetAttribute("PlotIndex", index)
 	lockPrompt.Parent = lockBody
 
-	-- Scenery: trees and bushes in the front corners, flower beds along the front fence,
-	-- lamps by the gate.
-	for _, side in { -1, 1 } do
-		Decor.tree(decor, origin * CFrame.new(side * 26.5, 1, -26.5), 0.85, index * 10 + side)
-		Decor.bush(decor, origin * CFrame.new(side * 27, 1, -14), 1, index * 20 + side)
-		Decor.flowerBed(decor, origin * CFrame.new(side * 15.5, 1, -29.3), 11, 2.2, index * 30 + side)
-		Decor.lamp(decor, origin * CFrame.new(side * 11.5, 1, -25.5)) -- clear of the gate posts and flower beds
-	end
-
 	local freekFolder = Instance.new("Folder")
 	freekFolder.Name = "Freeks"
 	freekFolder.Parent = folder
@@ -503,14 +451,13 @@ local function buildPlot(index: number)
 		pads = pads,
 		pens = pens,
 		signLabels = {},
-		signText = "Empty Yard",
+		signText = "Empty Barn",
 		archTier = 0,
 		archFolder = nil,
 		gateGuiPart = gateGuiPart,
 		half = half,
 		freeks = freekFolder,
-		gate = gate,
-		gateTop = gateTop,
+		barn = barn,
 		gateLabel = gateLabel,
 		lockLight = lockLight,
 		lockPrompt = lockPrompt,
@@ -525,6 +472,8 @@ end
 local function placeFreek(plot, freek, ground: CFrame, steal)
 	local model, height = FreekModel.build(freek.species, freek.mutations)
 	model:PivotTo(ground)
+	-- Where it rests: clients bob it around this spot (never around wherever it is now).
+	model:SetAttribute("Ground", ground)
 	model.Parent = plot.freeks
 
 	local species = FreekUtil.species(freek)
@@ -594,9 +543,9 @@ local function updatePenLabels(plot, data)
 			local left = breeding.endsAt - os.time()
 			pen.label.Text = if left > 0 then "Fusing... " .. Format.time(left) else "Fusion complete!"
 		elseif usable then
-			pen.label.Text = "Fusion Pod"
+			pen.label.Text = "Fusion Den"
 		else
-			pen.label.Text = "Extra Pod · Store"
+			pen.label.Text = "Extra Den · Store"
 		end
 	end
 end
@@ -613,7 +562,7 @@ function PlotService.render(player: Player)
 	if plot.archTier ~= tier then
 		buildArch(plot, tier)
 	end
-	setSign(plot, player.DisplayName .. "'s Yard")
+	setSign(plot, player.DisplayName .. "'s Barn")
 
 	for i, pad in plot.pads do
 		local unlocked = i <= FreekUtil.totalSlots(data)
@@ -658,9 +607,7 @@ end
 local function updateGate(plot)
 	local left = plot.lockedUntil - Workspace:GetServerTimeNow()
 	local locked = left > 0
-	plot.gate.CanCollide = locked
-	plot.gateTop.CanCollide = locked
-	plot.gate.Transparency = if locked then 0.4 else 1
+	Barn.setLocked(plot.barn, locked)
 	plot.lockLight.Color = if locked then Color3.fromRGB(80, 255, 110) else Color3.fromRGB(255, 70, 70)
 	plot.lockPrompt.ActionText = if locked then "Locked " .. Format.time(left) else "Lock Gate"
 	if not plot.owner then
@@ -674,7 +621,7 @@ local function updateGate(plot)
 	end
 end
 
--- Lets the owner's character pass through their own locked gate.
+-- Lets the owner's character pass through their own locked barn doors.
 local function setCollisionGroup(character: Model, group: string)
 	local function apply(descendant)
 		if descendant:IsA("BasePart") then
@@ -691,7 +638,7 @@ local function clearPlot(plot)
 	setGateLock(plot, math.huge) -- empty yards stay shut
 	plot.owner = nil
 	plot.freeks:ClearAllChildren()
-	setSign(plot, "Empty Yard")
+	setSign(plot, "Empty Barn")
 	if plot.archTier ~= 1 then
 		buildArch(plot, 1)
 	end
@@ -732,7 +679,7 @@ local function onPlayerAdded(player: Player)
 			return
 		end
 	end
-	Remotes.get("Notify"):FireClient(player, "This server is full of yards! Try another server.", "error")
+	Remotes.get("Notify"):FireClient(player, "This server is full of barns! Try another server.", "error")
 end
 
 -- Every yard's origin (gate faces -Z), for scenery that decorates all yards.
@@ -763,7 +710,7 @@ end
 function PlotService.lockGate(player: Player): string?
 	local plot = plotOf[player]
 	if not plot then
-		return "You don't have a yard."
+		return "You don't have a barn."
 	end
 	if PlotService.isGateLocked(plot) then
 		return "Your gate is already locked."

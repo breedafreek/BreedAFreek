@@ -7,6 +7,7 @@ local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 print("[Fuse a Freek] Client starting")
@@ -43,7 +44,7 @@ task.delay(8, function()
 end)
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Belt = require(Shared.Belt)
+local Drops = require(Shared.Drops)
 local Breeding = require(Shared.Breeding)
 local Config = require(Shared.Config)
 local GateTiers = require(Shared.GateTiers)
@@ -241,7 +242,7 @@ end
 
 function renderers.Shop()
 	heading("New Freeks come out of the Freek Machine onto the conveyor belt. Walk up and hold Buy!", 1)
-	heading("Yard", 3)
+	heading("Barn", 3)
 	local yard = UI.grid(220, 120)
 	yard.LayoutOrder = 4
 	yard.Parent = body
@@ -250,7 +251,7 @@ function renderers.Shop()
 	local price = Config.slotPrice(bought)
 	UI.card({
 		lines = {
-			{ "Yard Slots", colors.text, 26 },
+			{ "Barn Slots", colors.text, 26 },
 			{
 				bought .. " / " .. Config.MAX_SLOTS .. " bought" .. (if (state.passSlots or 0) > 0
 					then "  ·  +" .. state.passSlots .. " from passes"
@@ -309,7 +310,7 @@ function renderers.Freeks()
 	end
 	heading(
 		string.format(
-			"%d Freeks (max %d)  ·  %d / %d in yard",
+			"%d Freeks (max %d)  ·  %d / %d in barn",
 			#list,
 			GamePasses.maxFreeks(player),
 			placed,
@@ -331,7 +332,7 @@ function renderers.Freeks()
 		if freek.breeding then
 			status, statusColor = "Fusing", colors.pink
 		elseif freek.slot then
-			status, statusColor = "In yard", colors.money
+			status, statusColor = "In barn", colors.money
 		else
 			status, statusColor = "In backpack (not earning)", colors.muted
 		end
@@ -348,7 +349,7 @@ function renderers.Freeks()
 			else
 				table.insert(
 					buttons,
-					UI.button("Put in yard", colors.green, function()
+					UI.button("Put in barn", colors.green, function()
 						send("Place", uid)
 					end)
 				)
@@ -407,7 +408,7 @@ function renderers.Fuse()
 				send("ClaimBreed", index)
 			end, { Size = UDim2.new(1, 0, 0, 38) })
 			card = UI.card({
-				lines = { { "Pod " .. index, colors.pink, 22 } },
+				lines = { { "Den " .. index, colors.pink, 22 } },
 				buttons = { pair, countdown, claim },
 			})
 			table.insert(penCountdowns, { label = countdown, button = claim, endsAt = breeding.endsAt })
@@ -415,7 +416,7 @@ function renderers.Fuse()
 			freePen = true
 			card = UI.card({
 				lines = {
-					{ "Pod " .. index, colors.pink, 22 },
+					{ "Den " .. index, colors.pink, 22 },
 					{ "Empty. Pick two Freeks below!", colors.muted, 18 },
 				},
 			})
@@ -423,7 +424,7 @@ function renderers.Fuse()
 			card = UI.card({
 				lines = {
 					{ "🐣", colors.text, 40 },
-					{ "Extra Fusion Pod", colors.pink, 22 },
+					{ "Extra Fusion Den", colors.pink, 22 },
 					{ "Fuse two pairs at once.", colors.muted, 18 },
 				},
 				buttons = {
@@ -437,7 +438,7 @@ function renderers.Fuse()
 		card.Parent = penGrid
 	end
 	if not freePen then
-		heading(if pens > 1 then "Both Fusion Pods are busy!" else "Your Fusion Pod is busy!", 1)
+		heading(if pens > 1 then "Both Fusion Dens are busy!" else "Your Fusion Den is busy!", 1)
 		return
 	end
 
@@ -843,7 +844,7 @@ function renderers.Rebirth()
 			{ "Your Freeks earn x" .. tostring(nextMult) .. " forever", colors.money, 22 },
 			{ if #unlocks > 0 then "Unlocks: " .. table.concat(unlocks, ", ") else "", colors.orange, 20 },
 			{ gateLine, colors.gold, 18 },
-			{ "Resets: coins, Freeks, yard slots", colors.red:Lerp(Color3.new(1, 1, 1), 0.3), 18 },
+			{ "Resets: coins, Freeks, barn slots", colors.red:Lerp(Color3.new(1, 1, 1), 0.3), 18 },
 			{ "Keeps: Discovery Book, Limited Freeks, weapons", colors.muted, 18 },
 			{
 				Format.money(state.money) .. " / " .. Format.money(cost),
@@ -1041,11 +1042,11 @@ player:GetAttributeChangedSignal("Plot"):Connect(function()
 	end
 end)
 
--- Belt Freeks only move on clients, so the server can't use Roblox's own prompt range
--- check for them; buying goes through an action the server checks itself.
+-- Cannon Freeks only move on clients, so the server can't use Roblox's own prompt range
+-- check for them; grabbing goes through an action the server checks itself.
 ProximityPromptService.PromptTriggered:Connect(function(prompt)
-	if prompt.Name == "BuyPrompt" then
-		send("BuyBelt", prompt:GetAttribute("ItemId"))
+	if prompt.Name == "GrabPrompt" then
+		send("GrabDrop", prompt:GetAttribute("ItemId"))
 	end
 end)
 
@@ -1106,24 +1107,129 @@ task.spawn(function()
 	end
 end)
 
--- Conveyor belt: move each Freek along locally from its spawn time (smooth, and matches
--- where the server thinks it is).
-local beltFolder = Workspace:WaitForChild("BeltFreeks")
+-- Cannon Freeks: fly each one out of its cannon, then let it wander the town square and
+-- walk into the Freek House, all worked out locally from its seed and launch time (smooth,
+-- and matches where the server thinks it is).
+local dropFolder = Workspace:WaitForChild("DropFreeks")
+local paths = {} -- [Model] = path; cleared when the model goes
+dropFolder.ChildRemoved:Connect(function(model)
+	paths[model] = nil
+end)
+
+-- A puff of smoke that grows and fades (cannon shots and landings).
+local function puff(position: Vector3, size: number, color: Color3)
+	for i = 1, 5 do
+		local ball = Instance.new("Part")
+		ball.Shape = Enum.PartType.Ball
+		ball.Anchored = true
+		ball.CanCollide = false
+		ball.CanQuery = false
+		ball.CastShadow = false
+		ball.Material = Enum.Material.SmoothPlastic
+		ball.Color = color
+		ball.Transparency = 0.2
+		ball.Size = Vector3.one * size * 0.4
+		ball.Position = position + Vector3.new(math.random() - 0.5, math.random() - 0.5, math.random() - 0.5) * size
+		ball.Parent = Workspace
+		local grow = TweenInfo.new(0.6 + i * 0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		TweenService:Create(ball, grow, { Size = Vector3.one * size * 1.4, Transparency = 1 }):Play()
+		task.delay(1.2, ball.Destroy, ball)
+	end
+end
+
 RunService.RenderStepped:Connect(function()
 	local now = Workspace:GetServerTimeNow()
-	for _, model in beltFolder:GetChildren() do
-		local spawnTime = model:GetAttribute("SpawnTime")
-		if spawnTime and model:IsA("Model") then
-			-- Little hops as they ride along.
-			local hop = math.abs(math.sin((now - spawnTime) * 5)) * 0.45
-			model:PivotTo(Belt.cframeAt(model:GetAttribute("Lane") or 1, spawnTime, now) * CFrame.new(0, hop, 0))
+	for _, model in dropFolder:GetChildren() do
+		if not model:IsA("Model") then
+			continue
+		end
+		local path = paths[model]
+		if not path then
+			local seed, cannon, launch =
+				model:GetAttribute("Seed"), model:GetAttribute("Cannon"), model:GetAttribute("Launch")
+			if not (seed and cannon and launch) then
+				continue
+			end
+			path = Drops.plan(seed, cannon, launch)
+			path.landed = now >= path.land
+			paths[model] = path
+		end
+		local cframe, doing, moving = Drops.cframeAt(path, now)
+		if doing == "wandering" or doing == "leaving" then
+			if not path.landed then
+				path.landed = true
+				puff(path.landAt + Vector3.new(0, 1, 0), 3, Color3.fromRGB(225, 210, 180))
+			end
+			-- Little hops while walking.
+			if moving then
+				cframe *= CFrame.new(0, math.abs(math.sin(now * 9 + model:GetAttribute("Seed"))) * 0.6, 0)
+			end
+		end
+		model:PivotTo(cframe)
+		local prompt = model:FindFirstChild("GrabPrompt", true)
+		if prompt then
+			prompt.Enabled = doing == "wandering" or doing == "leaving"
+		end
+	end
+end)
+
+-- Cannons go boom: smoke at the muzzle when the server fires one.
+local cannonsFolder = Workspace:WaitForChild("Cannons")
+for index = 1, Drops.CANNON_COUNT do
+	local cannon = cannonsFolder:WaitForChild("Cannon" .. index)
+	cannon:GetAttributeChangedSignal("FiredAt"):Connect(function()
+		local wait = (cannon:GetAttribute("FiredAt") or 0) - Workspace:GetServerTimeNow()
+		task.delay(math.max(wait, 0), function()
+			local muzzle = Drops.muzzle(index)
+			puff(muzzle, 6, Color3.fromRGB(200, 200, 205))
+			local flash = Instance.new("PointLight")
+			flash.Brightness = 6
+			flash.Range = 40
+			flash.Color = Color3.fromRGB(255, 200, 120)
+			flash.Parent = cannon.PrimaryPart
+			task.delay(0.15, flash.Destroy, flash)
+		end)
+	end)
+end
+
+-- Fade the roof of whichever barn you're standing in, so you can see inside.
+local plotsFolderForRoofs = Workspace:WaitForChild("Plots")
+task.spawn(function()
+	local faded = nil
+	while true do
+		task.wait(0.2)
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local inside = nil
+		if root then
+			for _, plot in plotsFolderForRoofs:GetChildren() do
+				local origin, size = plot:GetAttribute("Origin"), plot:GetAttribute("Size")
+				if typeof(origin) == "CFrame" and size then
+					local offset = origin:PointToObjectSpace(root.Position)
+					if math.abs(offset.X) < size / 2 and math.abs(offset.Z) < size / 2 and offset.Y < 20 then
+						inside = plot:FindFirstChild("Roof")
+					end
+				end
+			end
+		end
+		if inside ~= faded then
+			for _, roof in { faded, inside } do
+				if roof then
+					for _, piece in roof:GetChildren() do
+						if piece:IsA("BasePart") then
+							piece.LocalTransparencyModifier = if roof == inside then 0.85 else 0
+						end
+					end
+				end
+			end
+			faded = inside
 		end
 	end
 end)
 
 -- Yard Freeks gently bob and sway so yards feel alive. Only nearby ones are animated.
+-- They always move relative to the "Ground" the server set, so they can't drift upward.
 local plotsFolder = Workspace:WaitForChild("Plots")
-local restPose = setmetatable({}, { __mode = "k" }) -- [Model] = { pivot, phase }
 RunService.RenderStepped:Connect(function()
 	local camera = Workspace.CurrentCamera
 	local eye = camera and camera.CFrame.Position or Vector3.zero
@@ -1132,17 +1238,12 @@ RunService.RenderStepped:Connect(function()
 		local freeks = plot:FindFirstChild("Freeks")
 		if freeks then
 			for _, model in freeks:GetChildren() do
-				if model:IsA("Model") then
-					local rest = restPose[model]
-					if not rest then
-						rest = { pivot = model:GetPivot(), phase = math.random() * math.pi * 2 }
-						restPose[model] = rest
-					end
-					if (rest.pivot.Position - eye).Magnitude < 140 then
-						local bob = math.sin(t * 2.2 + rest.phase) * 0.15 + 0.15
-						local sway = math.sin(t * 1.3 + rest.phase) * math.rad(5)
-						model:PivotTo(rest.pivot * CFrame.new(0, bob, 0) * CFrame.Angles(0, sway, 0))
-					end
+				local ground = model:IsA("Model") and model:GetAttribute("Ground")
+				if typeof(ground) == "CFrame" and (ground.Position - eye).Magnitude < 140 then
+					local phase = ground.Position.X * 0.37 + ground.Position.Z * 0.61
+					local bob = math.sin(t * 2.2 + phase) * 0.15 + 0.15
+					local sway = math.sin(t * 1.3 + phase) * math.rad(5)
+					model:PivotTo(ground * CFrame.new(0, bob, 0) * CFrame.Angles(0, sway, 0))
 				end
 			end
 		end
