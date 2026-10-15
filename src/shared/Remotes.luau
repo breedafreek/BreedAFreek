@@ -6,6 +6,7 @@
 -- DiscoveryUpdate server -> client   (speciesId, discovery)
 -- Trade           server -> client   ("Request" | "State" | "Closed", payload)
 -- Knockback       server -> client   (direction: Vector3, strength: number, seconds: number)
+-- LuckResult      server -> client   ({ kind = "crate" | "wheel", ... }) what a crate/spin gave
 -- GetState        client -> server   returns snapshot once data has loaded
 -- GetDiscoveries  client -> server   returns { [speciesId] = discovery }
 
@@ -19,6 +20,7 @@ local KINDS = {
 	DiscoveryUpdate = "RemoteEvent",
 	Trade = "RemoteEvent",
 	Knockback = "RemoteEvent",
+	LuckResult = "RemoteEvent",
 	GetState = "RemoteFunction",
 	GetDiscoveries = "RemoteFunction",
 }

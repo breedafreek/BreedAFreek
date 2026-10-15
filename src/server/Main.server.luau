@@ -27,6 +27,7 @@ local SERVICES = {
 	"RebirthService",
 	"PassService",
 	"CannonService",
+	"LuckService",
 	"SeasonalService", -- after the map and yards exist
 	"DataService",
 }

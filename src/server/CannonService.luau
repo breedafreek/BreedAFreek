@@ -19,6 +19,7 @@ local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
+local Luck = require(ReplicatedStorage.Shared.Luck)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -277,14 +278,20 @@ local function eligibleByRarity()
 	return groups
 end
 
+-- Lucky Skies (see Luck.luau) makes Rare and better more likely.
 local function rollRarity(): string
+	local event = Luck.current()
+	local boost = event and event.rareBoost or 1
+	local function weightOf(entry)
+		return if Rarities.rank[entry.rarity] >= Rarities.rank.Rare then entry.weight * boost else entry.weight
+	end
 	local total = 0
 	for _, entry in Drops.ODDS do
-		total += entry.weight
+		total += weightOf(entry)
 	end
 	local roll = rng:NextNumber() * total
 	for _, entry in Drops.ODDS do
-		roll -= entry.weight
+		roll -= weightOf(entry)
 		if roll <= 0 then
 			return entry.rarity
 		end
@@ -294,8 +301,10 @@ end
 
 -- Cannon Freeks get at most one mutation; stacking them is done by fusing.
 local function rollMutations(): { string }?
+	local event = Luck.current()
+	local boost = event and event.mutationBoost or 1 -- Rainbow Hour
 	for _, mutation in Mutations.list do
-		if rng:NextNumber() < mutation.chance * Drops.MUTATION_FACTOR then
+		if rng:NextNumber() < mutation.chance * Drops.MUTATION_FACTOR * boost then
 			return { mutation.id }
 		end
 	end
@@ -453,7 +462,8 @@ function CannonService.init()
 		while true do
 			cannon = cannon % Drops.CANNON_COUNT + 1
 			fire(cannon)
-			task.wait(Drops.FIRE_INTERVAL / Drops.CANNON_COUNT)
+			local event = Luck.current()
+			task.wait(Drops.FIRE_INTERVAL / Drops.CANNON_COUNT / (event and event.fireRate or 1)) -- Rapid Fire
 		end
 	end)
 

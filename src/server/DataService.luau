@@ -37,6 +37,8 @@ local function defaultData()
 		breeding = nil, -- { a = uid, b = uid, endsAt = unix seconds }
 		discovered = {}, -- [speciesId] = true for every species this player has owned
 		rebirths = 0,
+		crates = {}, -- [crateId] = how many unopened Lucky Crates (won on the wheel)
+		lastSpin = 0, -- os.time() of the last Lucky Wheel spin
 		lastSeen = os.time(),
 	}
 end

@@ -53,6 +53,7 @@ local FreekModel = require(Shared.FreekModel)
 local FreekUtil = require(Shared.FreekUtil)
 local Freeks = require(Shared.Freeks)
 local GamePasses = require(Shared.GamePasses)
+local Luck = require(Shared.Luck)
 local Mutations = require(Shared.Mutations)
 local Rarities = require(Shared.Rarities)
 local Remotes = require(Shared.Remotes)
@@ -86,6 +87,7 @@ local screen = UI.new("ScreenGui", {
 
 local setRebirthBoost = Hud.money(screen)
 Hud.eventChip(screen)
+Hud.luckChip(screen)
 Hud.leaderboard(screen)
 Hud.vipChatTag()
 local toast = Hud.toasts(screen)
@@ -927,8 +929,336 @@ player.AttributeChanged:Connect(function(name)
 	end
 end)
 
+--------------------------------------------------------------------------------
+-- Luck: the reveal overlay (crates and the wheel) and the Luck window
+--------------------------------------------------------------------------------
+
+local revealing = false
+
+-- A full-screen dimmed overlay with a box in the middle; returns overlay, box, close().
+local function overlay()
+	local shade = UI.new("TextButton", {
+		Name = "Reveal",
+		Text = "",
+		AutoButtonColor = false,
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0.35,
+		ZIndex = 50,
+		Parent = screen,
+	})
+	local box = UI.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(360, 420),
+		BackgroundTransparency = 1,
+		ZIndex = 51,
+		Parent = shade,
+	})
+	return shade, box
+end
+
+-- The prize card: the Freek, its name and rarity, and a button to close.
+local function prizeCard(box: Frame, title: string, freek, color: Color3, subtitle: string, close: () -> ())
+	local card = UI.glass({
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 52,
+		Parent = box,
+	}, {
+		UI.corner(18),
+		UI.stroke(color, 3),
+		UI.new("UIPadding", {
+			PaddingTop = UDim.new(0, 14),
+			PaddingBottom = UDim.new(0, 14),
+			PaddingLeft = UDim.new(0, 14),
+			PaddingRight = UDim.new(0, 14),
+		}),
+		UI.new("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			Padding = UDim.new(0, 6),
+		}),
+	})
+	local lines = { { title, colors.gold, 26 } }
+	local order = 0
+	local function add(child)
+		order += 1
+		child.LayoutOrder = order
+		child.ZIndex = 53
+		child.Parent = card
+	end
+	for _, line in lines do
+		add(UI.label(line[1], { TextColor3 = line[2], Size = UDim2.new(1, 0, 0, line[3]) }))
+	end
+	if freek then
+		local view = UI.viewport(freek.species, freek.mutations)
+		view.Size = UDim2.new(1, 0, 0, 200)
+		add(view)
+		add(UI.label(FreekUtil.displayName(freek), { TextColor3 = color, Size = UDim2.new(1, 0, 0, 30) }))
+	end
+	add(UI.label(subtitle, { TextColor3 = colors.muted, Size = UDim2.new(1, 0, 0, 40), TextWrapped = true }))
+	add(UI.button("Awesome!", colors.green, close, { Size = UDim2.new(1, 0, 0, 44) }))
+	-- Pop in.
+	local scale = UI.new("UIScale", { Scale = 0.3, Parent = card })
+	TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+		:Play()
+end
+
+local function freekPrize(box: Frame, freek, rarity: string, isNew: boolean, close)
+	local color = Rarities.info[rarity].color
+	local subtitle = rarity .. (if isNew then "  ·  NEW FREEK!" else "") .. "\nIt's in your barn."
+	prizeCard(box, if isNew then "NEW FREEK!" else "You got...", freek, color, subtitle, close)
+end
+
+-- A crate that shakes harder and harder, flashes, then shows what was inside.
+local function revealCrate(result, done)
+	local crate = Luck.crateById[result.crate]
+	local shade, box = overlay()
+	local function close()
+		shade:Destroy()
+		done()
+	end
+	local crateBox = UI.new("TextLabel", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(170, 170),
+		BackgroundColor3 = crate.color,
+		Text = "?",
+		TextSize = 90,
+		FontFace = UI.fonts.heavy,
+		TextColor3 = Color3.new(1, 1, 1),
+		ZIndex = 52,
+		Parent = box,
+	}, { UI.corner(22), UI.stroke(Color3.new(1, 1, 1), 4) })
+	local insideColor = Rarities.info[result.rarity].color
+	task.spawn(function()
+		for i = 1, 14 do
+			local strength = 4 + i * 1.6
+			crateBox.Rotation = if i % 2 == 0 then strength else -strength
+			crateBox.Size = UDim2.fromOffset(170 + i * 4, 170 + i * 4)
+			-- Glow in the colour of what's inside for the last few shakes.
+			if i > 9 then
+				crateBox.BackgroundColor3 = crate.color:Lerp(insideColor, (i - 9) / 5)
+			end
+			task.wait(0.11)
+		end
+		local flash = UI.new("Frame", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			ZIndex = 60,
+			Parent = shade,
+		})
+		TweenService:Create(flash, TweenInfo.new(0.5), { BackgroundTransparency = 1 }):Play()
+		task.delay(0.5, flash.Destroy, flash)
+		crateBox:Destroy()
+		freekPrize(box, result.freek, result.rarity, result.isNew, close)
+	end)
+end
+
+-- The Lucky Wheel spins and lands on the prize the server rolled.
+local function buildWheel(parent: Instance, radius: number)
+	local wheel = UI.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(radius * 2, radius * 2),
+		BackgroundColor3 = Color3.fromRGB(30, 25, 45),
+		ZIndex = 52,
+		Parent = parent,
+	}, { UI.corner(radius), UI.stroke(colors.gold, 5) })
+	local count = #Luck.WHEEL
+	for i, slice in Luck.WHEEL do
+		local angle = math.rad((i - 1) * 360 / count)
+		local petal = UI.new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromOffset(
+				radius + math.sin(angle) * radius * 0.5,
+				radius - math.cos(angle) * radius * 0.5
+			),
+			Size = UDim2.fromOffset(radius * 0.62, radius * 0.92),
+			Rotation = math.deg(angle),
+			BackgroundColor3 = slice.color,
+			ZIndex = 53,
+			Parent = wheel,
+		}, { UI.corner(math.floor(radius * 0.2)) })
+		UI.label(slice.label .. "\n" .. string.format("%.0f%%", Luck.wheelPercent(i)), {
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, 8),
+			Size = UDim2.new(1, -6, 0, 40),
+			TextColor3 = Color3.fromRGB(25, 20, 35),
+			TextSize = 13,
+			TextWrapped = true,
+			ZIndex = 54,
+			Parent = petal,
+		})
+	end
+	UI.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(radius * 0.4, radius * 0.4),
+		BackgroundColor3 = colors.gold,
+		ZIndex = 55,
+		Parent = wheel,
+	}, { UI.corner(radius), UI.stroke(Color3.new(1, 1, 1), 3) })
+	return wheel
+end
+
+local function revealWheel(result, done)
+	local shade, box = overlay()
+	local function close()
+		shade:Destroy()
+		done()
+	end
+	box.Size = UDim2.fromOffset(380, 420)
+	local wheel = buildWheel(box, 165)
+	UI.label("▼", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.5, -205),
+		Size = UDim2.fromOffset(60, 50),
+		TextSize = 46,
+		TextColor3 = colors.gold,
+		ZIndex = 60,
+		Parent = box,
+	})
+	local count = #Luck.WHEEL
+	local target = -((result.slice - 1) * 360 / count) - 360 * 6 + (math.random() - 0.5) * (300 / count)
+	local spinTween = TweenService:Create(
+		wheel,
+		TweenInfo.new(4.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+		{ Rotation = target }
+	)
+	spinTween:Play()
+	spinTween.Completed:Connect(function()
+		task.wait(0.6)
+		wheel.Parent = nil
+		local slice = Luck.WHEEL[result.slice]
+		if result.freek then
+			freekPrize(box, result.freek, result.rarity, result.isNew, close)
+		elseif result.crate then
+			prizeCard(
+				box,
+				if slice.crate == "Diamond" then "JACKPOT!" else "You won!",
+				nil,
+				slice.color,
+				"A " .. Luck.crateById[result.crate].name .. "!\nOpen it from the 🍀 Luck tab.",
+				close
+			)
+		else
+			prizeCard(box, "You won!", nil, colors.money, "+" .. Format.money(result.coins or 0) .. " coins!", close)
+		end
+	end)
+end
+
+-- Reveals queue up so two never overlap.
+local revealQueue = {}
+local function nextReveal()
+	if revealing or #revealQueue == 0 then
+		return
+	end
+	revealing = true
+	local result = table.remove(revealQueue, 1)
+	local function done()
+		revealing = false
+		nextReveal()
+	end
+	if result.kind == "wheel" then
+		revealWheel(result, done)
+	else
+		revealCrate(result, done)
+	end
+end
+Remotes.get("LuckResult").OnClientEvent:Connect(function(result)
+	table.insert(revealQueue, result)
+	nextReveal()
+end)
+
+local function spinCooldown(): number
+	return if GamePasses.has(player, "VIP") then Luck.VIP_SPIN_COOLDOWN else Luck.SPIN_COOLDOWN
+end
+
+function renderers.Luck()
+	heading("Crates always give a Freek, and every chance is shown. Spin the wheel free every day!", 1)
+
+	-- The Lucky Wheel.
+	local left = (state.lastSpin or 0) + spinCooldown() - Workspace:GetServerTimeNow()
+	local ready = left <= 0
+	local prizes = {}
+	for i, slice in Luck.WHEEL do
+		table.insert(prizes, string.format("%s %.0f%%", slice.label, Luck.wheelPercent(i)))
+	end
+	local wheelCard = UI.card({
+		lines = {
+			{ "🎡 Lucky Wheel", colors.gold, 28 },
+			{ table.concat(prizes, "  ·  "), colors.muted, 40 },
+		},
+		buttons = {
+			UI.button(
+				if ready then "SPIN! (free)" else "Next spin in " .. Format.time(left),
+				if ready then colors.green else colors.gray,
+				function()
+					if ready then
+						send("SpinWheel")
+					end
+				end,
+				{ Size = UDim2.new(1, 0, 0, 44) }
+			),
+		},
+	})
+	wheelCard.Size = UDim2.new(1, 0, 0, 150)
+	wheelCard.LayoutOrder = 2
+	wheelCard.Parent = body
+
+	-- Lucky Crates.
+	local event = Luck.current()
+	local grid = UI.grid(230, 330)
+	grid.LayoutOrder = 3
+	grid.Parent = body
+	for i, crate in Luck.CRATES do
+		local lines = {
+			{ "📦", colors.text, 40 },
+			{ crate.name, crate.color, 24 },
+		}
+		for _, odds in Luck.oddsList(crate) do
+			table.insert(lines, {
+				string.format(
+					"%s  %s%%",
+					odds.rarity,
+					if odds.percent < 1
+						then string.format("%.1f", odds.percent)
+						else string.format("%.0f", odds.percent)
+				),
+				Rarities.info[odds.rarity].color,
+				16,
+			})
+		end
+		local price = Luck.cratePrice(crate)
+		local buttons = {
+			UI.button(
+				"Buy & Open " .. Format.money(price) .. (if event and event.crateDiscount then " (sale!)" else ""),
+				if state.money >= price then crate.color:Lerp(colors.green, 0.6) else colors.gray,
+				function()
+					send("BuyCrate", crate.id)
+				end,
+				{ Size = UDim2.new(1, 0, 0, 36) }
+			),
+		}
+		local owned = state.crates and state.crates[crate.id] or 0
+		if owned > 0 then
+			table.insert(
+				buttons,
+				UI.button("Open yours (" .. owned .. ")", colors.pink, function()
+					send("OpenCrate", crate.id)
+				end, { Size = UDim2.new(1, 0, 0, 36) })
+			)
+		end
+		local card = UI.card({ lines = lines, buttons = buttons, border = crate.color })
+		card.LayoutOrder = i
+		card.Parent = grid
+	end
+end
+
 local MENU = {
 	{ "Shop", "🛒", colors.green },
+	{ "Luck", "🍀", Color3.fromRGB(90, 220, 120) },
 	{ "Freeks", "🐷", colors.blue },
 	{ "Fuse", "🧪", colors.pink },
 	{ "Book", "📖", colors.orange },

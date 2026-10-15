@@ -11,6 +11,7 @@ local Workspace = game:GetService("Workspace")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
+local Luck = require(ReplicatedStorage.Shared.Luck)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
 local UI = require(script.Parent.UI)
 
@@ -178,6 +179,44 @@ function Hud.eventChip(screen: ScreenGui)
 		while true do
 			task.wait(60)
 			update()
+		end
+	end)
+end
+
+-- Shows the Lucky Hour event that's running (see Luck.luau) with a countdown.
+function Hud.luckChip(screen: ScreenGui)
+	local chip = UI.glass({
+		Name = "LuckyEvent",
+		Position = UDim2.fromOffset(12, 114),
+		Size = UDim2.fromOffset(0, 30),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Visible = false,
+		Parent = screen,
+	}, {
+		UI.corner(15),
+		UI.new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 12) }),
+	})
+	local stroke = UI.stroke(Color3.new(1, 1, 1), 2)
+	stroke.Parent = chip
+	local label = text("", 15, {
+		Size = UDim2.fromOffset(0, 30),
+		AutomaticSize = Enum.AutomaticSize.X,
+		FontFace = UI.fonts.heavy,
+		Parent = chip,
+	})
+	task.spawn(function()
+		while true do
+			local event, ends = Luck.current()
+			chip.Visible = event ~= nil
+			if event then
+				local left = ends - Workspace:GetServerTimeNow()
+				label.Text = event.icon .. "  " .. event.name .. " · " .. Format.time(left)
+				label.TextColor3 = event.color:Lerp(Color3.new(1, 1, 1), 0.3)
+				-- Pulse the outline so it catches the eye.
+				stroke.Color = event.color
+				stroke.Transparency = (math.sin(os.clock() * 4) + 1) * 0.3
+			end
+			task.wait(0.1)
 		end
 	end)
 end

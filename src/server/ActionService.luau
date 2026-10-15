@@ -39,6 +39,8 @@ local function snapshot(data)
 		breeding = data.breeding,
 		breeding2 = data.breeding2,
 		discovered = data.discovered,
+		crates = data.crates,
+		lastSpin = data.lastSpin,
 	}
 end
 

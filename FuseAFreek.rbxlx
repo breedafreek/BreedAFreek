@@ -2567,6 +2567,159 @@ return Hybrids
       </Item>
       <Item class="ModuleScript" referent="14">
         <Properties>
+          <string name="Name">Luck</string>
+          <string name="Source"><![CDATA[-- Luck: Lucky Crates, the daily Lucky Wheel and Lucky Hour events. Shared so the client
+-- can show every chance on screen (players always see the odds), while the server does
+-- all the rolling (server/LuckService).
+--
+-- Everything here is bought with coins or free; nothing is sold for Robux, and every
+-- crate always gives a Freek.
+
+local Rarities = require(script.Parent.Rarities)
+
+local Luck = {}
+
+-- Crates crack open into a random Freek. odds are weights per rarity (shown as %).
+-- mutation multiplies each mutation's normal chance (see Mutations.luau).
+Luck.CRATES = {
+	{
+		id = "Bronze",
+		name = "Bronze Crate",
+		price = 400,
+		color = Color3.fromRGB(205, 130, 70),
+		odds = { Common = 75, Uncommon = 22, Rare = 3 },
+		mutation = 0.5,
+	},
+	{
+		id = "Silver",
+		name = "Silver Crate",
+		price = 1500,
+		color = Color3.fromRGB(200, 210, 225),
+		odds = { Common = 35, Uncommon = 45, Rare = 17, Legendary = 3 },
+		mutation = 1,
+	},
+	{
+		id = "Gold",
+		name = "Gold Crate",
+		price = 9000,
+		color = Color3.fromRGB(255, 200, 60),
+		odds = { Uncommon = 25, Rare = 45, Legendary = 25, Mystic = 5 },
+		mutation = 1.5,
+	},
+	{
+		id = "Diamond",
+		name = "Diamond Crate",
+		price = 25000,
+		color = Color3.fromRGB(110, 220, 255),
+		odds = { Rare = 40, Legendary = 40, Mystic = 18, Ultra = 2 },
+		mutation = 2.5,
+	},
+}
+Luck.crateById = {}
+for _, crate in Luck.CRATES do
+	Luck.crateById[crate.id] = crate
+end
+
+-- The crate's odds as a list, rarest last, with percentages: { { rarity, percent } }.
+function Luck.oddsList(crate)
+	local total = 0
+	for _, weight in crate.odds do
+		total += weight
+	end
+	local list = {}
+	for _, rarity in Rarities.order do
+		local weight = crate.odds[rarity]
+		if weight then
+			table.insert(list, { rarity = rarity, percent = weight / total * 100 })
+		end
+	end
+	return list
+end
+
+-- The Lucky Wheel: one free spin a day (twice a day with VIP). Coin prizes are minutes of
+-- the player's own income, so they stay worth it as the player grows.
+Luck.SPIN_COOLDOWN = 24 * 60 * 60
+Luck.VIP_SPIN_COOLDOWN = 12 * 60 * 60
+Luck.WHEEL = {
+	{ label = "Coins", minutes = 3, weight = 30, color = Color3.fromRGB(110, 235, 140) },
+	{ label = "Bronze Crate", crate = "Bronze", weight = 25, color = Color3.fromRGB(205, 130, 70) },
+	{ label = "Big Coins", minutes = 10, weight = 15, color = Color3.fromRGB(60, 200, 110) },
+	{ label = "Silver Crate", crate = "Silver", weight = 12, color = Color3.fromRGB(200, 210, 225) },
+	{ label = "Golden Freek", golden = true, weight = 6, color = Color3.fromRGB(255, 220, 90) },
+	{ label = "Gold Crate", crate = "Gold", weight = 6, color = Color3.fromRGB(255, 200, 60) },
+	{ label = "Huge Coins", minutes = 30, weight = 5, color = Color3.fromRGB(40, 160, 90) },
+	{ label = "JACKPOT", crate = "Diamond", weight = 1, color = Color3.fromRGB(110, 220, 255) },
+}
+Luck.MIN_COIN_PRIZE = 200 -- coin prizes are never less than this
+
+function Luck.wheelPercent(index: number): number
+	local total = 0
+	for _, slice in Luck.WHEEL do
+		total += slice.weight
+	end
+	return Luck.WHEEL[index].weight / total * 100
+end
+
+-- Lucky Hour events: every so often a random one runs server-wide for DURATION seconds.
+-- The current one is published as ReplicatedStorage attributes (see Luck.current).
+Luck.EVENT_DURATION = 10 * 60
+Luck.EVENT_GAP = { 20 * 60, 35 * 60 } -- seconds between events (random in this range)
+Luck.FIRST_EVENT_AFTER = 3 * 60 -- the first one comes soon after a server starts
+Luck.EVENTS = {
+	Rainbow = {
+		name = "Rainbow Hour",
+		icon = "🌈",
+		description = "Cannon Freeks are 5x as likely to be mutated!",
+		color = Color3.fromRGB(255, 120, 255),
+		mutationBoost = 5,
+	},
+	LuckySkies = {
+		name = "Lucky Skies",
+		icon = "🍀",
+		description = "Rare and better Freeks come out of the cannons 3x as often!",
+		color = Color3.fromRGB(90, 230, 120),
+		rareBoost = 3,
+	},
+	RapidFire = {
+		name = "Rapid Fire",
+		icon = "💥",
+		description = "The cannons fire twice as fast!",
+		color = Color3.fromRGB(255, 140, 50),
+		fireRate = 2,
+	},
+	CrateFrenzy = {
+		name = "Crate Frenzy",
+		icon = "📦",
+		description = "Lucky Crates are 30% off!",
+		color = Color3.fromRGB(110, 200, 255),
+		crateDiscount = 0.3,
+	},
+}
+
+-- The Lucky Hour event running right now (or nil), from the attributes the server sets.
+function Luck.current()
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local id = ReplicatedStorage:GetAttribute("LuckyEvent")
+	local ends = ReplicatedStorage:GetAttribute("LuckyEventEnds") or 0
+	if id and Luck.EVENTS[id] and game:GetService("Workspace"):GetServerTimeNow() < ends then
+		return Luck.EVENTS[id], ends
+	end
+	return nil, 0
+end
+
+-- A crate's price right now (Crate Frenzy makes it cheaper).
+function Luck.cratePrice(crate): number
+	local event = Luck.current()
+	local discount = event and event.crateDiscount or 0
+	return math.floor(crate.price * (1 - discount))
+end
+
+return Luck
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="15">
+        <Properties>
           <string name="Name">Mutations</string>
           <string name="Source"><![CDATA[-- Mutations multiply a Freek's income. They only enter the game from the cannons (chance
 -- is per cannon Freek, times Drops.MUTATION_FACTOR); after that they're passed on by
@@ -2630,7 +2783,7 @@ return Mutations
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
@@ -2660,7 +2813,7 @@ return Rarities
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">Remotes</string>
           <string name="Source"><![CDATA[-- One place that names every remote. The server creates them; clients wait for them.
@@ -2671,6 +2824,7 @@ return Rarities
 -- DiscoveryUpdate server -> client   (speciesId, discovery)
 -- Trade           server -> client   ("Request" | "State" | "Closed", payload)
 -- Knockback       server -> client   (direction: Vector3, strength: number, seconds: number)
+-- LuckResult      server -> client   ({ kind = "crate" | "wheel", ... }) what a crate/spin gave
 -- GetState        client -> server   returns snapshot once data has loaded
 -- GetDiscoveries  client -> server   returns { [speciesId] = discovery }
 
@@ -2684,6 +2838,7 @@ local KINDS = {
 	DiscoveryUpdate = "RemoteEvent",
 	Trade = "RemoteEvent",
 	Knockback = "RemoteEvent",
+	LuckResult = "RemoteEvent",
 	GetState = "RemoteFunction",
 	GetDiscoveries = "RemoteFunction",
 }
@@ -2717,7 +2872,7 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">Seasons</string>
           <string name="Source"><![CDATA[-- Limited events for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred
@@ -2854,7 +3009,7 @@ return Seasons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">WeaponModel</string>
           <string name="Source"><![CDATA[-- Builds the Tool for a weapon from its part list in Weapons.luau.
@@ -2940,7 +3095,7 @@ return WeaponModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">Weapons</string>
           <string name="Source"><![CDATA[-- Weapons. Everyone has the STARTER weapon; the rest unlock at a number of rebirths
@@ -3231,15 +3386,15 @@ return Weapons
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="20">
+  <Item class="ServerScriptService" referent="21">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="21">
+    <Item class="Folder" referent="22">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="22">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -3283,6 +3438,8 @@ local function snapshot(data)
 		breeding = data.breeding,
 		breeding2 = data.breeding2,
 		discovered = data.discovered,
+		crates = data.crates,
+		lastSpin = data.lastSpin,
 	}
 end
 
@@ -3477,7 +3634,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="24">
         <Properties>
           <string name="Name">Barn</string>
           <string name="Source"><![CDATA[-- Each player's yard is a big red barn: plank floor, red walls with white trim, a gambrel
@@ -3827,7 +3984,7 @@ return Barn
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="25">
         <Properties>
           <string name="Name">CannonService</string>
           <string name="Source"><![CDATA[-- Runs the Freek cannons (see shared/Drops.luau): builds the glass bubble over the map,
@@ -3851,6 +4008,7 @@ local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
+local Luck = require(ReplicatedStorage.Shared.Luck)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -4109,14 +4267,20 @@ local function eligibleByRarity()
 	return groups
 end
 
+-- Lucky Skies (see Luck.luau) makes Rare and better more likely.
 local function rollRarity(): string
+	local event = Luck.current()
+	local boost = event and event.rareBoost or 1
+	local function weightOf(entry)
+		return if Rarities.rank[entry.rarity] >= Rarities.rank.Rare then entry.weight * boost else entry.weight
+	end
 	local total = 0
 	for _, entry in Drops.ODDS do
-		total += entry.weight
+		total += weightOf(entry)
 	end
 	local roll = rng:NextNumber() * total
 	for _, entry in Drops.ODDS do
-		roll -= entry.weight
+		roll -= weightOf(entry)
 		if roll <= 0 then
 			return entry.rarity
 		end
@@ -4126,8 +4290,10 @@ end
 
 -- Cannon Freeks get at most one mutation; stacking them is done by fusing.
 local function rollMutations(): { string }?
+	local event = Luck.current()
+	local boost = event and event.mutationBoost or 1 -- Rainbow Hour
 	for _, mutation in Mutations.list do
-		if rng:NextNumber() < mutation.chance * Drops.MUTATION_FACTOR then
+		if rng:NextNumber() < mutation.chance * Drops.MUTATION_FACTOR * boost then
 			return { mutation.id }
 		end
 	end
@@ -4285,7 +4451,8 @@ function CannonService.init()
 		while true do
 			cannon = cannon % Drops.CANNON_COUNT + 1
 			fire(cannon)
-			task.wait(Drops.FIRE_INTERVAL / Drops.CANNON_COUNT)
+			local event = Luck.current()
+			task.wait(Drops.FIRE_INTERVAL / Drops.CANNON_COUNT / (event and event.fireRate or 1)) -- Rapid Fire
 		end
 	end)
 
@@ -4308,7 +4475,7 @@ return CannonService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">Carried</string>
           <string name="Source"><![CDATA[-- Which Freeks are being carried off by a thief right now. Kept in memory only: if the
@@ -4348,7 +4515,7 @@ return Carried
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -4390,6 +4557,8 @@ local function defaultData()
 		breeding = nil, -- { a = uid, b = uid, endsAt = unix seconds }
 		discovered = {}, -- [speciesId] = true for every species this player has owned
 		rebirths = 0,
+		crates = {}, -- [crateId] = how many unopened Lucky Crates (won on the wheel)
+		lastSpin = 0, -- os.time() of the last Lucky Wheel spin
 		lastSeen = os.time(),
 	}
 end
@@ -4611,7 +4780,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">Decor</string>
           <string name="Source"><![CDATA[-- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
@@ -4989,7 +5158,7 @@ return Decor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Discovery Book: the first player in the whole game to get each species has their
@@ -5137,7 +5306,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the Freeks in their yard, plus offline earnings
@@ -5218,7 +5387,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">Environment</string>
           <string name="Source"><![CDATA[-- Lighting, sky, terrain and the scenery around the yards and conveyor.
@@ -5367,7 +5536,7 @@ return Environment
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="31">
+      <Item class="ModuleScript" referent="32">
         <Properties>
           <string name="Name">HalloweenDecor</string>
           <string name="Source"><![CDATA[-- Halloween props: ghosts, bats, cobwebs, tombstones, dead trees, a witch's cauldron,
@@ -5827,7 +5996,224 @@ return HalloweenDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="32">
+      <Item class="ModuleScript" referent="33">
+        <Properties>
+          <string name="Name">LuckService</string>
+          <string name="Source"><![CDATA[-- Lucky Crates, the daily Lucky Wheel and Lucky Hour events (rules and odds in
+-- shared/Luck.luau). All rolls happen here; the client only shows the result
+-- (the LuckResult remote) with a reveal animation.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local Format = require(ReplicatedStorage.Shared.Format)
+local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local Freeks = require(ReplicatedStorage.Shared.Freeks)
+local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
+local Luck = require(ReplicatedStorage.Shared.Luck)
+local Mutations = require(ReplicatedStorage.Shared.Mutations)
+local Rarities = require(ReplicatedStorage.Shared.Rarities)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Seasons = require(ReplicatedStorage.Shared.Seasons)
+
+local ActionService = require(script.Parent.ActionService)
+
+local LuckService = {}
+
+local rng = Random.new()
+local notifyRemote = Remotes.get("Notify")
+local resultRemote = Remotes.get("LuckResult")
+
+local function notify(player: Player, message: string, kind: string?)
+	notifyRemote:FireClient(player, message, kind)
+end
+
+local function announce(message: string)
+	for _, player in Players:GetPlayers() do
+		notify(player, message, "discovery")
+	end
+end
+
+local function rollWeighted(weights: { [string]: number }): string
+	local total = 0
+	for _, weight in weights do
+		total += weight
+	end
+	local roll = rng:NextNumber() * total
+	for _, rarity in Rarities.order do
+		local weight = weights[rarity]
+		if weight then
+			roll -= weight
+			if roll <= 0 then
+				return rarity
+			end
+		end
+	end
+	return Rarities.order[1]
+end
+
+-- A random species of that rarity (or the next rarity down that has any).
+local function pickSpecies(rarity: string)
+	local rank = Rarities.rank[rarity]
+	while rank >= 1 do
+		local pool = {}
+		for _, species in Freeks.list do
+			if species.rarity == Rarities.order[rank] and species.rarity ~= "Secret" and Seasons.available(species) then
+				table.insert(pool, species)
+			end
+		end
+		if #pool > 0 then
+			return pool[rng:NextInteger(1, #pool)]
+		end
+		rank -= 1
+	end
+	return Freeks.list[1]
+end
+
+local function rollMutations(boost: number): { string }?
+	for _, mutation in Mutations.list do
+		if rng:NextNumber() < mutation.chance * boost then
+			return { mutation.id }
+		end
+	end
+	return nil
+end
+
+local function hasRoom(player: Player, data): boolean
+	return FreekUtil.count(data) < GamePasses.maxFreeks(player)
+end
+
+-- Gives the player a Freek and tells their client to show the reveal.
+local function giveFreek(player: Player, data, species, mutations, reveal)
+	local _, isNew = ActionService.giveFreek(player, data, species.id, mutations)
+	local freek = { species = species.id, mutations = mutations }
+	reveal.freek = freek
+	reveal.isNew = isNew
+	reveal.rarity = species.rarity
+	resultRemote:FireClient(player, reveal)
+	if Rarities.rank[species.rarity] >= Rarities.rank.Legendary then
+		announce(player.DisplayName .. " got a " .. species.rarity .. " " .. FreekUtil.displayName(freek) .. "!")
+	end
+end
+
+local function openCrate(player: Player, data, crate)
+	local species = pickSpecies(rollWeighted(crate.odds))
+	giveFreek(player, data, species, rollMutations(crate.mutation), { kind = "crate", crate = crate.id })
+end
+
+local function buyCrate(player: Player, data, crateId: any)
+	local crate = typeof(crateId) == "string" and Luck.crateById[crateId]
+	if not crate then
+		return
+	end
+	if not hasRoom(player, data) then
+		return notify(player, "You have too many Freeks! Sell or fuse some first.", "error")
+	end
+	local price = Luck.cratePrice(crate)
+	if data.money < price then
+		return notify(player, "Not enough money! It costs " .. Format.money(price) .. ".", "error")
+	end
+	data.money -= price
+	openCrate(player, data, crate)
+end
+
+-- Opens a crate the player already owns (won on the wheel).
+local function openOwnedCrate(player: Player, data, crateId: any)
+	local crate = typeof(crateId) == "string" and Luck.crateById[crateId]
+	if not crate or (data.crates[crate.id] or 0) < 1 then
+		return
+	end
+	if not hasRoom(player, data) then
+		return notify(player, "You have too many Freeks! Sell or fuse some first.", "error")
+	end
+	data.crates[crate.id] -= 1
+	openCrate(player, data, crate)
+end
+
+local function spinCooldown(player: Player): number
+	return if GamePasses.has(player, "VIP") then Luck.VIP_SPIN_COOLDOWN else Luck.SPIN_COOLDOWN
+end
+
+local function coinPrize(data, minutes: number): number
+	return math.max(Luck.MIN_COIN_PRIZE, math.floor(FreekUtil.yardIncome(data) * 60 * minutes))
+end
+
+local function spin(player: Player, data)
+	local now = os.time()
+	if now - (data.lastSpin or 0) < spinCooldown(player) then
+		return notify(player, "Your next free spin isn't ready yet!", "error")
+	end
+	data.lastSpin = now
+
+	local total = 0
+	for _, slice in Luck.WHEEL do
+		total += slice.weight
+	end
+	local roll = rng:NextNumber() * total
+	local index = #Luck.WHEEL
+	for i, slice in Luck.WHEEL do
+		roll -= slice.weight
+		if roll <= 0 then
+			index = i
+			break
+		end
+	end
+	local slice = Luck.WHEEL[index]
+	local reveal = { kind = "wheel", slice = index }
+
+	if slice.golden and hasRoom(player, data) then
+		local species = pickSpecies(rollWeighted(Luck.crateById.Silver.odds))
+		return giveFreek(player, data, species, { "Golden" }, reveal)
+	end
+	if slice.crate then
+		data.crates[slice.crate] = (data.crates[slice.crate] or 0) + 1
+		reveal.crate = slice.crate
+		if slice.crate == "Diamond" then
+			announce(player.DisplayName .. " hit the JACKPOT on the Lucky Wheel!")
+		end
+	else
+		-- Coins (also the fallback for a Golden Freek when the barn is full).
+		local amount = coinPrize(data, slice.minutes or 10)
+		data.money += amount
+		reveal.coins = amount
+	end
+	resultRemote:FireClient(player, reveal)
+end
+
+-- Runs Lucky Hour events forever: a random one every so often, announced to everyone.
+local function runEvents()
+	task.wait(Luck.FIRST_EVENT_AFTER)
+	local ids = {}
+	for id in Luck.EVENTS do
+		table.insert(ids, id)
+	end
+	table.sort(ids)
+	while true do
+		local id = ids[rng:NextInteger(1, #ids)]
+		local event = Luck.EVENTS[id]
+		ReplicatedStorage:SetAttribute("LuckyEvent", id)
+		ReplicatedStorage:SetAttribute("LuckyEventEnds", Workspace:GetServerTimeNow() + Luck.EVENT_DURATION)
+		announce(event.icon .. " " .. event.name .. "! " .. event.description)
+		task.wait(Luck.EVENT_DURATION)
+		ReplicatedStorage:SetAttribute("LuckyEvent", nil)
+		announce(event.name .. " is over. Another one will come soon!")
+		task.wait(rng:NextInteger(Luck.EVENT_GAP[1], Luck.EVENT_GAP[2]))
+	end
+end
+
+function LuckService.init()
+	ActionService.register("BuyCrate", buyCrate)
+	ActionService.register("OpenCrate", openOwnedCrate)
+	ActionService.register("SpinWheel", spin)
+	task.spawn(runEvents)
+end
+
+return LuckService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="Script" referent="34">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -5860,6 +6246,7 @@ local SERVICES = {
 	"RebirthService",
 	"PassService",
 	"CannonService",
+	"LuckService",
 	"SeasonalService", -- after the map and yards exist
 	"DataService",
 }
@@ -5887,7 +6274,7 @@ print("[Fuse a Freek] Server started")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -5979,7 +6366,7 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the map and gives every player a barn (see Barn.luau) with Freek pads and Fusion
@@ -6760,7 +7147,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">RebirthService</string>
           <string name="Source"><![CDATA[-- Rebirth: pay Config.rebirthCost to start over with a permanent income bonus.
@@ -6856,7 +7243,7 @@ return RebirthService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">Recipes</string>
           <string name="Source"><![CDATA[-- Decides what two Freeks fuse into. Server-only so players can't read the Secret recipes
@@ -6907,7 +7294,7 @@ return Recipes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -7201,7 +7588,7 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Stealing Freeks from other players' yards.
@@ -7632,7 +8019,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
@@ -7916,7 +8303,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- Weapons: giving them out, buying them, and what happens when they hit.
@@ -8245,19 +8632,19 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="41">
+  <Item class="StarterPlayer" referent="43">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="42">
+    <Item class="StarterPlayerScripts" referent="44">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="43">
+      <Item class="Folder" referent="45">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="44">
+        <Item class="ModuleScript" referent="46">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -8331,7 +8718,7 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="45">
+        <Item class="ModuleScript" referent="47">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, event chip, menu tabs, leaderboard,
@@ -8347,6 +8734,7 @@ local Workspace = game:GetService("Workspace")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
+local Luck = require(ReplicatedStorage.Shared.Luck)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
 local UI = require(script.Parent.UI)
 
@@ -8514,6 +8902,44 @@ function Hud.eventChip(screen: ScreenGui)
 		while true do
 			task.wait(60)
 			update()
+		end
+	end)
+end
+
+-- Shows the Lucky Hour event that's running (see Luck.luau) with a countdown.
+function Hud.luckChip(screen: ScreenGui)
+	local chip = UI.glass({
+		Name = "LuckyEvent",
+		Position = UDim2.fromOffset(12, 114),
+		Size = UDim2.fromOffset(0, 30),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Visible = false,
+		Parent = screen,
+	}, {
+		UI.corner(15),
+		UI.new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 12) }),
+	})
+	local stroke = UI.stroke(Color3.new(1, 1, 1), 2)
+	stroke.Parent = chip
+	local label = text("", 15, {
+		Size = UDim2.fromOffset(0, 30),
+		AutomaticSize = Enum.AutomaticSize.X,
+		FontFace = UI.fonts.heavy,
+		Parent = chip,
+	})
+	task.spawn(function()
+		while true do
+			local event, ends = Luck.current()
+			chip.Visible = event ~= nil
+			if event then
+				local left = ends - Workspace:GetServerTimeNow()
+				label.Text = event.icon .. "  " .. event.name .. " · " .. Format.time(left)
+				label.TextColor3 = event.color:Lerp(Color3.new(1, 1, 1), 0.3)
+				-- Pulse the outline so it catches the eye.
+				stroke.Color = event.color
+				stroke.Transparency = (math.sin(os.clock() * 4) + 1) * 0.3
+			end
+			task.wait(0.1)
 		end
 	end)
 end
@@ -8910,7 +9336,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="46">
+        <Item class="LocalScript" referent="48">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -8968,6 +9394,7 @@ local FreekModel = require(Shared.FreekModel)
 local FreekUtil = require(Shared.FreekUtil)
 local Freeks = require(Shared.Freeks)
 local GamePasses = require(Shared.GamePasses)
+local Luck = require(Shared.Luck)
 local Mutations = require(Shared.Mutations)
 local Rarities = require(Shared.Rarities)
 local Remotes = require(Shared.Remotes)
@@ -9001,6 +9428,7 @@ local screen = UI.new("ScreenGui", {
 
 local setRebirthBoost = Hud.money(screen)
 Hud.eventChip(screen)
+Hud.luckChip(screen)
 Hud.leaderboard(screen)
 Hud.vipChatTag()
 local toast = Hud.toasts(screen)
@@ -9842,8 +10270,336 @@ player.AttributeChanged:Connect(function(name)
 	end
 end)
 
+--------------------------------------------------------------------------------
+-- Luck: the reveal overlay (crates and the wheel) and the Luck window
+--------------------------------------------------------------------------------
+
+local revealing = false
+
+-- A full-screen dimmed overlay with a box in the middle; returns overlay, box, close().
+local function overlay()
+	local shade = UI.new("TextButton", {
+		Name = "Reveal",
+		Text = "",
+		AutoButtonColor = false,
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0.35,
+		ZIndex = 50,
+		Parent = screen,
+	})
+	local box = UI.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(360, 420),
+		BackgroundTransparency = 1,
+		ZIndex = 51,
+		Parent = shade,
+	})
+	return shade, box
+end
+
+-- The prize card: the Freek, its name and rarity, and a button to close.
+local function prizeCard(box: Frame, title: string, freek, color: Color3, subtitle: string, close: () -> ())
+	local card = UI.glass({
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 52,
+		Parent = box,
+	}, {
+		UI.corner(18),
+		UI.stroke(color, 3),
+		UI.new("UIPadding", {
+			PaddingTop = UDim.new(0, 14),
+			PaddingBottom = UDim.new(0, 14),
+			PaddingLeft = UDim.new(0, 14),
+			PaddingRight = UDim.new(0, 14),
+		}),
+		UI.new("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			Padding = UDim.new(0, 6),
+		}),
+	})
+	local lines = { { title, colors.gold, 26 } }
+	local order = 0
+	local function add(child)
+		order += 1
+		child.LayoutOrder = order
+		child.ZIndex = 53
+		child.Parent = card
+	end
+	for _, line in lines do
+		add(UI.label(line[1], { TextColor3 = line[2], Size = UDim2.new(1, 0, 0, line[3]) }))
+	end
+	if freek then
+		local view = UI.viewport(freek.species, freek.mutations)
+		view.Size = UDim2.new(1, 0, 0, 200)
+		add(view)
+		add(UI.label(FreekUtil.displayName(freek), { TextColor3 = color, Size = UDim2.new(1, 0, 0, 30) }))
+	end
+	add(UI.label(subtitle, { TextColor3 = colors.muted, Size = UDim2.new(1, 0, 0, 40), TextWrapped = true }))
+	add(UI.button("Awesome!", colors.green, close, { Size = UDim2.new(1, 0, 0, 44) }))
+	-- Pop in.
+	local scale = UI.new("UIScale", { Scale = 0.3, Parent = card })
+	TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+		:Play()
+end
+
+local function freekPrize(box: Frame, freek, rarity: string, isNew: boolean, close)
+	local color = Rarities.info[rarity].color
+	local subtitle = rarity .. (if isNew then "  ·  NEW FREEK!" else "") .. "\nIt's in your barn."
+	prizeCard(box, if isNew then "NEW FREEK!" else "You got...", freek, color, subtitle, close)
+end
+
+-- A crate that shakes harder and harder, flashes, then shows what was inside.
+local function revealCrate(result, done)
+	local crate = Luck.crateById[result.crate]
+	local shade, box = overlay()
+	local function close()
+		shade:Destroy()
+		done()
+	end
+	local crateBox = UI.new("TextLabel", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(170, 170),
+		BackgroundColor3 = crate.color,
+		Text = "?",
+		TextSize = 90,
+		FontFace = UI.fonts.heavy,
+		TextColor3 = Color3.new(1, 1, 1),
+		ZIndex = 52,
+		Parent = box,
+	}, { UI.corner(22), UI.stroke(Color3.new(1, 1, 1), 4) })
+	local insideColor = Rarities.info[result.rarity].color
+	task.spawn(function()
+		for i = 1, 14 do
+			local strength = 4 + i * 1.6
+			crateBox.Rotation = if i % 2 == 0 then strength else -strength
+			crateBox.Size = UDim2.fromOffset(170 + i * 4, 170 + i * 4)
+			-- Glow in the colour of what's inside for the last few shakes.
+			if i > 9 then
+				crateBox.BackgroundColor3 = crate.color:Lerp(insideColor, (i - 9) / 5)
+			end
+			task.wait(0.11)
+		end
+		local flash = UI.new("Frame", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			ZIndex = 60,
+			Parent = shade,
+		})
+		TweenService:Create(flash, TweenInfo.new(0.5), { BackgroundTransparency = 1 }):Play()
+		task.delay(0.5, flash.Destroy, flash)
+		crateBox:Destroy()
+		freekPrize(box, result.freek, result.rarity, result.isNew, close)
+	end)
+end
+
+-- The Lucky Wheel spins and lands on the prize the server rolled.
+local function buildWheel(parent: Instance, radius: number)
+	local wheel = UI.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(radius * 2, radius * 2),
+		BackgroundColor3 = Color3.fromRGB(30, 25, 45),
+		ZIndex = 52,
+		Parent = parent,
+	}, { UI.corner(radius), UI.stroke(colors.gold, 5) })
+	local count = #Luck.WHEEL
+	for i, slice in Luck.WHEEL do
+		local angle = math.rad((i - 1) * 360 / count)
+		local petal = UI.new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromOffset(
+				radius + math.sin(angle) * radius * 0.5,
+				radius - math.cos(angle) * radius * 0.5
+			),
+			Size = UDim2.fromOffset(radius * 0.62, radius * 0.92),
+			Rotation = math.deg(angle),
+			BackgroundColor3 = slice.color,
+			ZIndex = 53,
+			Parent = wheel,
+		}, { UI.corner(math.floor(radius * 0.2)) })
+		UI.label(slice.label .. "\n" .. string.format("%.0f%%", Luck.wheelPercent(i)), {
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, 8),
+			Size = UDim2.new(1, -6, 0, 40),
+			TextColor3 = Color3.fromRGB(25, 20, 35),
+			TextSize = 13,
+			TextWrapped = true,
+			ZIndex = 54,
+			Parent = petal,
+		})
+	end
+	UI.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(radius * 0.4, radius * 0.4),
+		BackgroundColor3 = colors.gold,
+		ZIndex = 55,
+		Parent = wheel,
+	}, { UI.corner(radius), UI.stroke(Color3.new(1, 1, 1), 3) })
+	return wheel
+end
+
+local function revealWheel(result, done)
+	local shade, box = overlay()
+	local function close()
+		shade:Destroy()
+		done()
+	end
+	box.Size = UDim2.fromOffset(380, 420)
+	local wheel = buildWheel(box, 165)
+	UI.label("▼", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.5, -205),
+		Size = UDim2.fromOffset(60, 50),
+		TextSize = 46,
+		TextColor3 = colors.gold,
+		ZIndex = 60,
+		Parent = box,
+	})
+	local count = #Luck.WHEEL
+	local target = -((result.slice - 1) * 360 / count) - 360 * 6 + (math.random() - 0.5) * (300 / count)
+	local spinTween = TweenService:Create(
+		wheel,
+		TweenInfo.new(4.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+		{ Rotation = target }
+	)
+	spinTween:Play()
+	spinTween.Completed:Connect(function()
+		task.wait(0.6)
+		wheel.Parent = nil
+		local slice = Luck.WHEEL[result.slice]
+		if result.freek then
+			freekPrize(box, result.freek, result.rarity, result.isNew, close)
+		elseif result.crate then
+			prizeCard(
+				box,
+				if slice.crate == "Diamond" then "JACKPOT!" else "You won!",
+				nil,
+				slice.color,
+				"A " .. Luck.crateById[result.crate].name .. "!\nOpen it from the 🍀 Luck tab.",
+				close
+			)
+		else
+			prizeCard(box, "You won!", nil, colors.money, "+" .. Format.money(result.coins or 0) .. " coins!", close)
+		end
+	end)
+end
+
+-- Reveals queue up so two never overlap.
+local revealQueue = {}
+local function nextReveal()
+	if revealing or #revealQueue == 0 then
+		return
+	end
+	revealing = true
+	local result = table.remove(revealQueue, 1)
+	local function done()
+		revealing = false
+		nextReveal()
+	end
+	if result.kind == "wheel" then
+		revealWheel(result, done)
+	else
+		revealCrate(result, done)
+	end
+end
+Remotes.get("LuckResult").OnClientEvent:Connect(function(result)
+	table.insert(revealQueue, result)
+	nextReveal()
+end)
+
+local function spinCooldown(): number
+	return if GamePasses.has(player, "VIP") then Luck.VIP_SPIN_COOLDOWN else Luck.SPIN_COOLDOWN
+end
+
+function renderers.Luck()
+	heading("Crates always give a Freek, and every chance is shown. Spin the wheel free every day!", 1)
+
+	-- The Lucky Wheel.
+	local left = (state.lastSpin or 0) + spinCooldown() - Workspace:GetServerTimeNow()
+	local ready = left <= 0
+	local prizes = {}
+	for i, slice in Luck.WHEEL do
+		table.insert(prizes, string.format("%s %.0f%%", slice.label, Luck.wheelPercent(i)))
+	end
+	local wheelCard = UI.card({
+		lines = {
+			{ "🎡 Lucky Wheel", colors.gold, 28 },
+			{ table.concat(prizes, "  ·  "), colors.muted, 40 },
+		},
+		buttons = {
+			UI.button(
+				if ready then "SPIN! (free)" else "Next spin in " .. Format.time(left),
+				if ready then colors.green else colors.gray,
+				function()
+					if ready then
+						send("SpinWheel")
+					end
+				end,
+				{ Size = UDim2.new(1, 0, 0, 44) }
+			),
+		},
+	})
+	wheelCard.Size = UDim2.new(1, 0, 0, 150)
+	wheelCard.LayoutOrder = 2
+	wheelCard.Parent = body
+
+	-- Lucky Crates.
+	local event = Luck.current()
+	local grid = UI.grid(230, 330)
+	grid.LayoutOrder = 3
+	grid.Parent = body
+	for i, crate in Luck.CRATES do
+		local lines = {
+			{ "📦", colors.text, 40 },
+			{ crate.name, crate.color, 24 },
+		}
+		for _, odds in Luck.oddsList(crate) do
+			table.insert(lines, {
+				string.format(
+					"%s  %s%%",
+					odds.rarity,
+					if odds.percent < 1
+						then string.format("%.1f", odds.percent)
+						else string.format("%.0f", odds.percent)
+				),
+				Rarities.info[odds.rarity].color,
+				16,
+			})
+		end
+		local price = Luck.cratePrice(crate)
+		local buttons = {
+			UI.button(
+				"Buy & Open " .. Format.money(price) .. (if event and event.crateDiscount then " (sale!)" else ""),
+				if state.money >= price then crate.color:Lerp(colors.green, 0.6) else colors.gray,
+				function()
+					send("BuyCrate", crate.id)
+				end,
+				{ Size = UDim2.new(1, 0, 0, 36) }
+			),
+		}
+		local owned = state.crates and state.crates[crate.id] or 0
+		if owned > 0 then
+			table.insert(
+				buttons,
+				UI.button("Open yours (" .. owned .. ")", colors.pink, function()
+					send("OpenCrate", crate.id)
+				end, { Size = UDim2.new(1, 0, 0, 36) })
+			)
+		end
+		local card = UI.card({ lines = lines, buttons = buttons, border = crate.color })
+		card.LayoutOrder = i
+		card.Parent = grid
+	end
+end
+
 local MENU = {
 	{ "Shop", "🛒", colors.green },
+	{ "Luck", "🍀", Color3.fromRGB(90, 220, 120) },
 	{ "Freeks", "🐷", colors.blue },
 	{ "Fuse", "🧪", colors.pink },
 	{ "Book", "📖", colors.orange },
@@ -10251,7 +11007,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="47">
+        <Item class="ModuleScript" referent="49">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).
