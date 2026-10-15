@@ -108,161 +108,292 @@ local function faceText(
 	return label
 end
 
--- The back of the card, like a premium collector card: deep purple with a sunburst,
--- a gold inner border and corner gems, a raised gold medallion holding a big googly eye
--- (every Freek's trademark), a red FUSE A FREEK ribbon, and a holographic glint (returned,
--- so it can be swept across). Built round the card's centre; the back faces -Z.
-local function buildCardBack(card: Model): BasePart
+-- The back of the card: a monster card that feels alive. Dark chrome with scanlines, a
+-- silver-and-gold frame with curved horns out of the top corners, violet energy cracks
+-- flickering out from a big glowing dragon eye that looks around and blinks, a ring of
+-- runes turning round it, a chrome nameplate, and a holographic glint sweeping across.
+-- Built round the card's centre (the back faces -Z). Returns animate(t), which moves the
+-- living parts; call it every frame after the card is placed.
+local function buildCardBack(card: Model, body: BasePart): (number) -> ()
 	local half = Vector2.new(CARD_SIZE.X / 2, CARD_SIZE.Y / 2)
-	local back = -CARD_SIZE.Z / 2
-	local center = Vector2.new(0, 0.5)
-	-- Sunburst: rays from the medallion out to just inside the edge.
-	for k = 0, 23 do
-		local angle = k / 24 * math.pi * 2
-		local dir = Vector2.new(math.cos(angle), math.sin(angle))
-		local reachX = if math.abs(dir.X) > 1e-3
-			then (half.X - 0.45 - center.X * dir.X) / math.abs(dir.X)
-			else math.huge
-		local reachY = if math.abs(dir.Y) > 1e-3
-			then (half.Y - 0.45 - center.Y * math.sign(dir.Y)) / math.abs(dir.Y)
-			else math.huge
-		local length = math.min(reachX, reachY) - 1.8
-		if length > 0.3 then
-			local mid = center + dir * (1.8 + length / 2)
-			newPart(card, {
-				Name = "Ray",
-				Size = Vector3.new(length, if k % 2 == 0 then 0.42 else 0.22, 0.03),
-				CFrame = CFrame.new(mid.X, mid.Y, back - 0.02) * CFrame.Angles(0, 0, angle),
-				Color = if k % 2 == 0 then Color3.fromRGB(95, 60, 190) else Color3.fromRGB(70, 40, 150),
-			})
-		end
-	end
-	-- Gold inner border.
-	local inset = 0.4
-	for _, bar in
-		{
-			{ Vector3.new(CARD_SIZE.X - inset * 2, 0.14, 0.04), Vector3.new(0, half.Y - inset, 0) },
-			{ Vector3.new(CARD_SIZE.X - inset * 2, 0.14, 0.04), Vector3.new(0, -half.Y + inset, 0) },
-			{ Vector3.new(0.14, CARD_SIZE.Y - inset * 2, 0.04), Vector3.new(half.X - inset, 0, 0) },
-			{ Vector3.new(0.14, CARD_SIZE.Y - inset * 2, 0.04), Vector3.new(-half.X + inset, 0, 0) },
-		}
-	do
-		newPart(card, {
-			Name = "InnerBorder",
-			Size = bar[1],
-			CFrame = CFrame.new(bar[2].X, bar[2].Y, back - 0.04),
-			Color = GOLD,
-			Material = Enum.Material.Foil,
+	local z0 = -CARD_SIZE.Z / 2
+	local eye = Vector2.new(0, 0.55)
+	local violet = Color3.fromRGB(175, 90, 255)
+	local cyan = Color3.fromRGB(90, 235, 255)
+	local chrome = Color3.fromRGB(200, 205, 220)
+	local random = Random.new(7)
+	local function flat(
+		name: string,
+		size: Vector3,
+		x: number,
+		y: number,
+		z: number,
+		color: Color3,
+		material,
+		angle: number?
+	)
+		return newPart(card, {
+			Name = name,
+			Size = size,
+			CFrame = CFrame.new(x, y, z) * CFrame.Angles(0, 0, angle or 0),
+			Color = color,
+			Material = material or Enum.Material.SmoothPlastic,
 		})
 	end
-	-- Corner gems: a gold diamond with a glowing pink dot.
-	for _, corner in { Vector2.new(1, 1), Vector2.new(-1, 1), Vector2.new(1, -1), Vector2.new(-1, -1) } do
-		local spot = Vector2.new(corner.X * (half.X - inset), corner.Y * (half.Y - inset))
-		newPart(card, {
-			Name = "CornerGem",
-			Size = Vector3.new(0.6, 0.6, 0.08),
-			CFrame = CFrame.new(spot.X, spot.Y, back - 0.07) * CFrame.Angles(0, 0, math.rad(45)),
-			Color = GOLD,
-			Material = Enum.Material.Foil,
-		})
-		newPart(card, {
-			Name = "CornerDot",
-			Shape = Enum.PartType.Ball,
-			Size = Vector3.one * 0.28,
-			CFrame = CFrame.new(spot.X, spot.Y, back - 0.12),
-			Color = Color3.fromRGB(255, 110, 220),
-			Material = Enum.Material.Neon,
-		})
+	local function ellipsoid(name: string, size: Vector3, x: number, y: number, z: number, color: Color3, material)
+		local part = flat(name, size, x, y, z, color, material)
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Parent = part
+		return part
 	end
-	-- The medallion: a gold ring round a deep blue disc, with a big googly eye popping out.
 	local function disc(name: string, diameter: number, depth: number, z: number, color: Color3, material)
 		return newPart(card, {
 			Name = name,
 			Shape = Enum.PartType.Cylinder,
 			Size = Vector3.new(depth, diameter, diameter),
-			CFrame = CFrame.new(center.X, center.Y, z) * CFrame.Angles(0, math.pi / 2, 0),
+			CFrame = CFrame.new(eye.X, eye.Y, z) * CFrame.Angles(0, math.pi / 2, 0),
 			Color = color,
 			Material = material or Enum.Material.SmoothPlastic,
 		})
 	end
-	disc("MedallionRing", 3.9, 0.3, back - 0.12, GOLD, Enum.Material.Foil)
-	disc("MedallionDisc", 3.3, 0.3, back - 0.2, Color3.fromRGB(28, 36, 100))
-	for k = 0, 11 do
-		local angle = k / 12 * math.pi * 2
+
+	-- Dark chrome with faint scanlines.
+	body.Color = Color3.fromRGB(16, 12, 30)
+	body.Material = Enum.Material.Metal
+	for k = 0, 15 do
+		flat(
+			"Scanline",
+			Vector3.new(CARD_SIZE.X - 1, 0.07, 0.02),
+			0,
+			-half.Y + 0.6 + k * 0.48,
+			z0 - 0.01,
+			Color3.fromRGB(34, 24, 62)
+		)
+	end
+
+	-- Energy cracks: jagged violet lines from the eye out towards the edges.
+	local cracks = {}
+	for k = 0, 7 do
+		local angle = k / 8 * math.pi * 2 + 0.3
+		local point = eye + Vector2.new(math.cos(angle), math.sin(angle)) * 2.3
+		for _ = 1, 3 do
+			local turn = angle + random:NextNumber(-0.6, 0.6)
+			local step = random:NextNumber(0.6, 1.1)
+			local nextPoint = point + Vector2.new(math.cos(turn), math.sin(turn)) * step
+			if math.abs(nextPoint.X) > half.X - 0.7 or math.abs(nextPoint.Y) > half.Y - 0.7 then
+				break
+			end
+			local mid = (point + nextPoint) / 2
+			local dir = nextPoint - point
+			table.insert(
+				cracks,
+				flat(
+					"Crack",
+					Vector3.new(dir.Magnitude + 0.12, 0.15, 0.03),
+					mid.X,
+					mid.Y,
+					z0 - 0.03,
+					violet,
+					Enum.Material.Neon,
+					math.atan2(dir.Y, dir.X)
+				)
+			)
+			point = nextPoint
+		end
+	end
+
+	-- Frame: chrome bevel with a thin gold line inside it.
+	for _, inset in { { 0.32, 0.22, chrome, Enum.Material.Foil, 0.08 }, { 0.6, 0.08, GOLD, Enum.Material.Neon, 0.06 } } do
+		local d, w = inset[1], inset[2]
+		for _, bar in
+			{
+				{ Vector3.new(CARD_SIZE.X - d * 2, w, inset[5]), Vector3.new(0, half.Y - d, 0) },
+				{ Vector3.new(CARD_SIZE.X - d * 2, w, inset[5]), Vector3.new(0, -half.Y + d, 0) },
+				{ Vector3.new(w, CARD_SIZE.Y - d * 2, inset[5]), Vector3.new(half.X - d, 0, 0) },
+				{ Vector3.new(w, CARD_SIZE.Y - d * 2, inset[5]), Vector3.new(-half.X + d, 0, 0) },
+			}
+		do
+			flat("Frame", bar[1], bar[2].X, bar[2].Y, z0 - 0.05, inset[3], inset[4])
+		end
+	end
+	-- Horns curling up and out of the top corners: thick dark purple at the root, tapering
+	-- to a glowing gold tip. Each is a chain of tapered cylinders with balls at the joints.
+	for _, side in { -1, 1 } do
+		local points = {}
+		for k = 0, 8 do
+			local f = k / 8
+			local angle = math.rad(25 + 70 * f) -- sweeps from out-and-up to straight up
+			table.insert(
+				points,
+				Vector2.new(
+					side * (half.X - 0.55 + math.cos(angle) * 1.6 * f),
+					half.Y - 0.35 + math.sin(angle) * 2.1 * f
+				)
+			)
+		end
+		for k = 1, #points - 1 do
+			local f = (k - 1) / (#points - 1)
+			local a0, a1 = points[k], points[k + 1]
+			local width = 0.95 - 0.8 * f
+			local color = Color3.fromRGB(55, 22, 90):Lerp(Color3.fromRGB(170, 100, 230), f)
+			local dir = a1 - a0
+			newPart(card, {
+				Name = "Horn",
+				Shape = Enum.PartType.Cylinder,
+				Size = Vector3.new(dir.Magnitude + width * 0.3, width, width),
+				CFrame = CFrame.new((a0.X + a1.X) / 2, (a0.Y + a1.Y) / 2, z0 + 0.05)
+					* CFrame.Angles(0, 0, math.atan2(dir.Y, dir.X)),
+				Color = color,
+			})
+			newPart(card, {
+				Name = "Horn",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.one * width,
+				CFrame = CFrame.new(a0.X, a0.Y, z0 + 0.05),
+				Color = color,
+			})
+		end
+		local tip = points[#points]
 		newPart(card, {
-			Name = "MedallionStud",
+			Name = "HornTip",
 			Shape = Enum.PartType.Ball,
-			Size = Vector3.one * 0.22,
-			CFrame = CFrame.new(center.X + math.cos(angle) * 1.78, center.Y + math.sin(angle) * 1.78, back - 0.3),
-			Color = Color3.fromRGB(255, 240, 180),
+			Size = Vector3.one * 0.3,
+			CFrame = CFrame.new(tip.X, tip.Y, z0 + 0.05),
+			Color = GOLD,
 			Material = Enum.Material.Neon,
 		})
 	end
-	newPart(card, {
-		Name = "Eye",
-		Shape = Enum.PartType.Ball,
-		Size = Vector3.one * 2.3,
-		CFrame = CFrame.new(center.X, center.Y, back - 0.35),
-		Color = Color3.new(1, 1, 1),
-	})
-	newPart(card, {
-		Name = "Pupil",
-		Shape = Enum.PartType.Ball,
-		Size = Vector3.one * 1.05,
-		CFrame = CFrame.new(center.X - 0.25, center.Y + 0.2, back - 1.08),
-		Color = Color3.fromRGB(15, 15, 25),
-	})
-	newPart(card, {
+
+	-- The eye: a glowing socket, an amber eyeball, a green iris with a slit pupil, and lids.
+	disc("SocketGlow", 4.3, 0.06, z0 - 0.04, violet, Enum.Material.Neon).Transparency = 0.35
+	disc("SocketRing", 3.9, 0.2, z0 - 0.12, chrome, Enum.Material.Foil)
+	disc("Socket", 3.5, 0.24, z0 - 0.16, Color3.fromRGB(10, 6, 20))
+	local eyeball = ellipsoid(
+		"Eyeball",
+		Vector3.new(3.0, 2.1, 0.9),
+		eye.X,
+		eye.Y,
+		z0 - 0.3,
+		Color3.fromRGB(255, 160, 40),
+		Enum.Material.Neon
+	)
+	local iris = ellipsoid("Iris", Vector3.new(1.55, 1.55, 0.35), eye.X, eye.Y, z0 - 0.82, Color3.fromRGB(110, 240, 90))
+	local irisRing =
+		ellipsoid("IrisRing", Vector3.new(1.75, 1.75, 0.3), eye.X, eye.Y, z0 - 0.8, Color3.fromRGB(30, 90, 30))
+	local pupil = flat("Pupil", Vector3.new(0.3, 1.3, 0.1), eye.X, eye.Y, z0 - 1.0, Color3.fromRGB(8, 6, 14))
+	local glint = newPart(card, {
 		Name = "Glint",
 		Shape = Enum.PartType.Ball,
-		Size = Vector3.one * 0.32,
-		CFrame = CFrame.new(center.X - 0.45, center.Y + 0.45, back - 1.52),
+		Size = Vector3.one * 0.3,
+		CFrame = CFrame.new(eye.X - 0.35, eye.Y + 0.4, z0 - 1.05),
 		Color = Color3.new(1, 1, 1),
 		Material = Enum.Material.Neon,
 	})
-	-- The ribbon under the medallion, with folded-back ends.
-	local ribbonY = center.Y - 2.65
-	local ribbon = newPart(card, {
-		Name = "Ribbon",
-		Size = Vector3.new(4.6, 0.95, 0.12),
-		CFrame = CFrame.new(0, ribbonY, back - 0.18),
-		Color = Color3.fromRGB(225, 45, 65),
-	})
+	-- An angry brow over the eye.
 	for _, side in { -1, 1 } do
-		newPart(card, {
-			Name = "RibbonEnd",
-			Size = Vector3.new(0.9, 0.75, 0.1),
-			CFrame = CFrame.new(side * 2.55, ribbonY - 0.18, back - 0.1) * CFrame.Angles(0, 0, math.rad(side * -12)),
-			Color = Color3.fromRGB(160, 25, 45),
-		})
+		flat(
+			"Brow",
+			Vector3.new(1.7, 0.32, 0.25),
+			eye.X + side * 0.85,
+			eye.Y + 1.45,
+			z0 - 0.35,
+			Color3.fromRGB(60, 24, 100),
+			nil,
+			math.rad(side * -14)
+		)
 	end
+
+	-- Runes circling the eye.
+	local runes = {}
+	for k = 1, 12 do
+		table.insert(
+			runes,
+			newPart(card, {
+				Name = "Rune",
+				Size = if k % 3 == 0 then Vector3.new(0.34, 0.34, 0.05) else Vector3.new(0.12, 0.34, 0.05),
+				Color = cyan,
+				Material = Enum.Material.Neon,
+			})
+		)
+	end
+
+	-- Title and nameplate.
+	local title = flat("BackTitle", Vector3.new(4.2, 0.5, 0.02), 0, half.Y - 1.05, z0 - 0.05, Color3.new(), nil)
+	title.Transparency = 1
+	faceText(title, Enum.NormalId.Front, "✦ FREEK CARD ✦", cyan, UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), true)
+	local plate = flat("Nameplate", Vector3.new(4.6, 1, 0.16), 0, -half.Y + 1.3, z0 - 0.1, chrome, Enum.Material.Foil)
+	flat("NameplateInset", Vector3.new(4.3, 0.75, 0.04), 0, -half.Y + 1.3, z0 - 0.19, Color3.fromRGB(24, 14, 44))
+	local plateText = flat("NameplateText", Vector3.new(4.2, 0.7, 0.02), 0, -half.Y + 1.3, z0 - 0.22, Color3.new(), nil)
+	plateText.Transparency = 1
 	faceText(
-		ribbon,
+		plateText,
 		Enum.NormalId.Front,
 		"FUSE A FREEK",
-		Color3.new(1, 1, 1),
-		UDim2.fromScale(0.04, 0.08),
-		UDim2.fromScale(0.92, 0.84),
+		GOLD,
+		UDim2.fromScale(0.03, 0.05),
+		UDim2.fromScale(0.94, 0.9),
 		true
 	)
-	-- A small title along the top.
-	local title = newPart(card, {
-		Name = "BackTitle",
-		Size = Vector3.new(4.2, 0.55, 0.02),
-		CFrame = CFrame.new(0, half.Y - 1.05, back - 0.05),
-		Transparency = 1,
-	})
-	faceText(title, Enum.NormalId.Front, "✦ FREEK CARD ✦", GOLD, UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), true)
-	-- The holographic glint (moved by the reveal).
-	return newPart(card, {
+	for _, side in { -1, 1 } do
+		newPart(card, {
+			Name = "PlateBolt",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * 0.22,
+			CFrame = CFrame.new(side * 2.1, plate.Position.Y, z0 - 0.2),
+			Color = violet,
+			Material = Enum.Material.Neon,
+		})
+	end
+
+	-- The holographic glint.
+	local shine = newPart(card, {
 		Name = "Shine",
-		Size = Vector3.new(0.55, CARD_SIZE.Y - 1.4, 0.02),
-		CFrame = CFrame.new(0, 0, back - 0.62),
+		Size = Vector3.new(0.3, CARD_SIZE.Y - 1.4, 0.02),
+		CFrame = CFrame.new(0, 0, z0 - 1.2),
 		Color = Color3.new(1, 1, 1),
 		Material = Enum.Material.Neon,
 		Transparency = 1,
 		CastShadow = false,
 	})
+
+	local flicker = Random.new()
+	return function(t: number)
+		local base = body.CFrame
+		local function put(part: BasePart, x: number, y: number, z: number, angle: number?)
+			part.CFrame = base * CFrame.new(x, y, z) * CFrame.Angles(0, 0, angle or 0)
+		end
+		-- The eye looks around, darting now and then.
+		local look = Vector2.new(math.sin(t * 0.8) * 0.45 + math.sin(t * 3.1) * 0.08, math.sin(t * 1.3) * 0.2)
+		-- A blink every few seconds: the eye squints shut and opens again.
+		local phase = (t % 3.4) / 0.28
+		local open = 1 - (if phase < 1 then math.sin(phase * math.pi) else 0) * 0.92
+		eyeball.Size = Vector3.new(3.0, 2.1 * open, 0.9)
+		iris.Size = Vector3.new(1.55, 1.55 * open, 0.35)
+		irisRing.Size = Vector3.new(1.75, 1.75 * open, 0.3)
+		pupil.Size = Vector3.new(0.3, 1.3 * open, 0.1)
+		glint.Transparency = if open < 0.5 then 1 else 0
+		local lookY = look.Y * open
+		put(eyeball, eye.X, eye.Y, z0 - 0.3)
+		put(irisRing, eye.X + look.X, eye.Y + lookY, z0 - 0.62)
+		put(iris, eye.X + look.X, eye.Y + lookY, z0 - 0.66)
+		put(pupil, eye.X + look.X, eye.Y + lookY, z0 - 0.84)
+		put(glint, eye.X + look.X - 0.35, eye.Y + lookY + 0.4, z0 - 0.9)
+		-- The runes turn round the eye.
+		for k, rune in runes do
+			local angle = k / #runes * math.pi * 2 + t * 0.6
+			put(rune, eye.X + math.cos(angle) * 2.3, eye.Y + math.sin(angle) * 2.3, z0 - 0.09, angle)
+		end
+		-- The cracks crackle.
+		for _, crack in cracks do
+			crack.Transparency = if flicker:NextNumber() < 0.15 then 0.6 else 0
+		end
+		-- The glint sweeps across every couple of seconds.
+		local x = ((t * 0.9) % 2.2 - 1.1) * CARD_SIZE.X
+		local inside = math.abs(x) < half.X - 1.6
+		put(shine, x, 0, z0 - 1.2, math.rad(20))
+		shine.Transparency = if inside then 0.78 + 0.2 * (math.abs(x) / (half.X - 1.6)) ^ 2 else 1
+	end
 end
 
 -- Hides the rest of the HUD while the reveal plays; returns a function that brings it back.
@@ -714,10 +845,10 @@ function PackReveal.play(result, done: () -> ())
 	local rimParts = {}
 	for _, bar in
 		{
-			{ Vector3.new(CARD_SIZE.X + 0.5, 0.5, 0.55), Vector3.new(0, CARD_SIZE.Y / 2, 0) },
-			{ Vector3.new(CARD_SIZE.X + 0.5, 0.5, 0.55), Vector3.new(0, -CARD_SIZE.Y / 2, 0) },
-			{ Vector3.new(0.5, CARD_SIZE.Y + 0.5, 0.55), Vector3.new(CARD_SIZE.X / 2, 0, 0) },
-			{ Vector3.new(0.5, CARD_SIZE.Y + 0.5, 0.55), Vector3.new(-CARD_SIZE.X / 2, 0, 0) },
+			{ Vector3.new(CARD_SIZE.X + 0.3, 0.3, 0.5), Vector3.new(0, CARD_SIZE.Y / 2, 0) },
+			{ Vector3.new(CARD_SIZE.X + 0.3, 0.3, 0.5), Vector3.new(0, -CARD_SIZE.Y / 2, 0) },
+			{ Vector3.new(0.3, CARD_SIZE.Y + 0.3, 0.5), Vector3.new(CARD_SIZE.X / 2, 0, 0) },
+			{ Vector3.new(0.3, CARD_SIZE.Y + 0.3, 0.5), Vector3.new(-CARD_SIZE.X / 2, 0, 0) },
 		}
 	do
 		table.insert(
@@ -732,7 +863,7 @@ function PackReveal.play(result, done: () -> ())
 		)
 	end
 	-- The back (facing the camera to start with): see buildCardBack.
-	local shine = buildCardBack(card)
+	local animateBack = buildCardBack(card, body)
 	-- The front (hidden until the flip): rarity colours, series and rarity.
 	local face = newPart(card, {
 		Name = "CardFace",
@@ -770,12 +901,7 @@ function PackReveal.play(result, done: () -> ())
 				* CFrame.Angles(0, cardSpin + math.sin(t * 0.9) * 0.12, 0)
 				* (extra or CFrame.new())
 		)
-		-- A holographic glint sweeps across the back every couple of seconds.
-		local sweep = (t * 0.9) % 2.2 - 1.1 -- -1.1 .. 1.1, then a pause off the edge
-		local x = sweep * CARD_SIZE.X
-		local inside = math.abs(x) < CARD_SIZE.X / 2 - 1.6
-		shine.CFrame = body.CFrame * CFrame.new(x, 0, -CARD_SIZE.Z / 2 - 0.62) * CFrame.Angles(0, 0, math.rad(20))
-		shine.Transparency = if inside then 0.55 + 0.4 * (math.abs(x) / (CARD_SIZE.X / 2 - 1.6)) ^ 2 else 1
+		animateBack(t)
 	end
 	moveCamera(Vector3.new(0, 7.5, -20), CARD_HOME)
 	camTime = 0.6
