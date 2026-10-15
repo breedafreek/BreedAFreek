@@ -5,6 +5,7 @@
 -- through their own doors.
 -- The Freeks inside are rebuilt whenever the owner's data changes.
 
+local CollectionService = game:GetService("CollectionService")
 local PhysicsService = game:GetService("PhysicsService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13,6 +14,7 @@ local Workspace = game:GetService("Workspace")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
 local GateTiers = require(ReplicatedStorage.Shared.GateTiers)
+local BarnUpgrades = require(script.Parent.BarnUpgrades)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
@@ -349,8 +351,17 @@ local function buildArch(plot, tierIndex: number)
 		end
 	end
 
+	-- The top tier's metal shimmers through the rainbow (the client cycles the colour).
+	if tier.rainbow then
+		for _, p in arch:GetDescendants() do
+			if p:IsA("BasePart") and p.Color == tier.color then
+				CollectionService:AddTag(p, FreekModel.RAINBOW_TAG)
+			end
+		end
+	end
+
 	-- The LOCKED/OPEN timer floats over the doors.
-	plot.gateGuiPart.CFrame = origin * CFrame.new(0, Barn.DOOR_HEIGHT + 7, -plot.half - 1)
+	plot.gateGuiPart.CFrame = origin * CFrame.new(0, Barn.DOOR_HEIGHT + 3.6, -plot.half - 1)
 
 	if archDecorator then
 		archDecorator(arch, {
@@ -637,6 +648,7 @@ function PlotService.render(player: Player)
 		buildArch(plot, tier)
 	end
 	setSign(plot, player.DisplayName .. "'s", if (data.rebirths or 0) > 0 then "Barn  ⭐" .. data.rebirths else "Barn")
+	BarnUpgrades.apply(plot, data.rebirths or 0, data)
 
 	for i, pad in plot.pads do
 		local unlocked = i <= FreekUtil.totalSlots(data)
@@ -713,6 +725,7 @@ local function clearPlot(plot)
 	plot.owner = nil
 	plot.freeks:ClearAllChildren()
 	setSign(plot, "Empty", "Barn")
+	BarnUpgrades.apply(plot, 0, nil)
 	if plot.archTier ~= 1 then
 		buildArch(plot, 1)
 	end
@@ -757,6 +770,16 @@ local function onPlayerAdded(player: Player)
 end
 
 -- Every yard's origin (gate faces -Z), for scenery that decorates all yards.
+-- Dresses a barn as if its owner had `rebirths` rebirths (for previews and tests).
+function PlotService.previewLook(index: number, rebirths: number, data)
+	local plot = plots[index]
+	if plot then
+		buildArch(plot, GateTiers.forRebirths(rebirths))
+		setSign(plot, "Mike's", if rebirths > 0 then "Barn  ⭐" .. rebirths else "Barn")
+		BarnUpgrades.apply(plot, rebirths, data)
+	end
+end
+
 function PlotService.origins(): { CFrame }
 	local list = {}
 	for _, plot in plots do
