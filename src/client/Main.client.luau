@@ -1137,11 +1137,74 @@ local function puff(position: Vector3, size: number, color: Color3)
 	end
 end
 
+-- How each kind of Freek walks: steps per second (speed, radians), how high it bobs, how
+-- much it rocks side to side (roll) and turns from side to side (yaw), and how far its legs
+-- swing (degrees). Set per species with `walk` in Freeks.luau.
+local WALKS = {
+	waddle = { speed = 9, bob = 0.25, roll = 7, yaw = 0, legs = 30 },
+	trot = { speed = 12, bob = 0.35, roll = 3, yaw = 0, legs = 35 },
+	prowl = { speed = 8, bob = 0.08, roll = 2, yaw = 4, legs = 28 },
+	slither = { speed = 9, bob = 0, roll = 0, yaw = 10, legs = 40 },
+	stomp = { speed = 6, bob = 0.35, roll = 4, yaw = 0, legs = 25 },
+	flap = { speed = 9, bob = 0.5, roll = 8, yaw = 0, legs = 30 },
+	bounce = { speed = 7, bob = 1, roll = 6, yaw = 0, legs = 30 },
+	strut = { speed = 10, bob = 0.25, roll = 2, yaw = 5, legs = 35 },
+	catwalk = { speed = 9, bob = 0.15, roll = 0, yaw = 9, legs = 30 },
+}
+
+-- What Freeks stand on: the ground itself (terrain, the town square floor and the
+-- walkways), never lamps, trees, players or other Freeks.
+local groundParams = RaycastParams.new()
+groundParams.FilterType = Enum.RaycastFilterType.Include
+local groundList = { Workspace.Terrain }
+local scenery = Workspace:WaitForChild("Scenery")
+for _, part in scenery:GetDescendants() do
+	if part:IsA("BasePart") and (part.Name == "TownSquare" or part.Name == "Walkway" or part.Name == "Curb") then
+		table.insert(groundList, part)
+	end
+end
+groundParams.FilterDescendantsInstances = groundList
+
+-- Height of the ground at a spot (nil if there's nothing below).
+local function groundAt(position: Vector3): number?
+	local hit = Workspace:Raycast(position + Vector3.new(0, 12, 0), Vector3.new(0, -40, 0), groundParams)
+	return hit and hit.Position.Y
+end
+
+-- The parts of a Freek that swing as it walks, with where they rest relative to the model.
+local function swingParts(model: Model)
+	local pivot = model:GetPivot()
+	local list = {}
+	for _, part in model:GetDescendants() do
+		local hinge = part:IsA("BasePart") and part:GetAttribute("SwingHinge")
+		if typeof(hinge) == "Vector3" then
+			table.insert(list, {
+				part = part,
+				rest = pivot:ToObjectSpace(part.CFrame),
+				hinge = hinge,
+				phase = part:GetAttribute("SwingPhase") or 0,
+				axis = part:GetAttribute("SwingAxis") or "X",
+				amount = part:GetAttribute("SwingAmount") or 1,
+			})
+		end
+	end
+	return list
+end
+
+local function axisRotation(axis: string, angle: number): CFrame
+	if axis == "Y" then
+		return CFrame.Angles(0, angle, 0)
+	elseif axis == "Z" then
+		return CFrame.Angles(0, 0, angle)
+	end
+	return CFrame.Angles(angle, 0, 0)
+end
+
 RunService.RenderStepped:Connect(function()
 	local now = Workspace:GetServerTimeNow()
 	for _, model in dropFolder:GetChildren() do
-		if not model:IsA("Model") then
-			continue
+		if not model:IsA("Model") or not model.PrimaryPart then
+			continue -- not streamed in yet
 		end
 		local path = paths[model]
 		if not path then
@@ -1152,20 +1215,53 @@ RunService.RenderStepped:Connect(function()
 			end
 			path = Drops.plan(seed, cannon, launch)
 			path.landed = now >= path.land
+			path.swing = swingParts(model)
+			path.walk = WALKS[model:GetAttribute("Walk")] or WALKS.waddle
+			path.offset = (seed % 100) / 10
 			paths[model] = path
 		end
 		local cframe, doing, moving = Drops.cframeAt(path, now)
+		local stepAngle = 0
 		if doing == "wandering" or doing == "leaving" then
+			-- Stand on whatever the ground really is right there.
+			local groundY = groundAt(cframe.Position)
+			if groundY then
+				cframe = cframe + Vector3.new(0, groundY - cframe.Position.Y, 0)
+			end
 			if not path.landed then
 				path.landed = true
-				puff(path.landAt + Vector3.new(0, 1, 0), 3, Color3.fromRGB(225, 210, 180))
+				puff(cframe.Position + Vector3.new(0, 1, 0), 3, Color3.fromRGB(225, 210, 180))
 			end
-			-- Little hops while walking.
+			local walk = path.walk
+			local t = now + path.offset
 			if moving then
-				cframe *= CFrame.new(0, math.abs(math.sin(now * 9 + model:GetAttribute("Seed"))) * 0.6, 0)
+				stepAngle = t * walk.speed
+				local step = math.sin(stepAngle)
+				cframe *= CFrame.new(0, math.abs(step) * walk.bob, 0) * CFrame.Angles(
+					0,
+					math.rad(step * walk.yaw),
+					math.rad(step * walk.roll)
+				)
+			else
+				-- Standing still: just breathing.
+				cframe *= CFrame.new(0, (math.sin(t * 2) + 1) * 0.04, 0)
 			end
 		end
 		model:PivotTo(cframe)
+
+		-- Legs, arms, wings and tails swing around their hinges while walking.
+		local legs = math.rad(path.walk.legs)
+		for _, swing in path.swing do
+			local angle = if stepAngle ~= 0
+				then math.sin(stepAngle + swing.phase * math.pi * 2) * legs * swing.amount
+				else 0
+			swing.part.CFrame = cframe
+				* CFrame.new(swing.hinge)
+				* axisRotation(swing.axis, angle)
+				* CFrame.new(-swing.hinge)
+				* swing.rest
+		end
+
 		local prompt = model:FindFirstChild("GrabPrompt", true)
 		if prompt then
 			prompt.Enabled = doing == "wandering" or doing == "leaving"
@@ -1203,7 +1299,7 @@ RunService.RenderStepped:Connect(function()
 		local freeks = plot:FindFirstChild("Freeks")
 		if freeks then
 			for _, model in freeks:GetChildren() do
-				local ground = model:IsA("Model") and model:GetAttribute("Ground")
+				local ground = model:IsA("Model") and model.PrimaryPart and model:GetAttribute("Ground")
 				if typeof(ground) == "CFrame" and (ground.Position - eye).Magnitude < 140 then
 					local phase = ground.Position.X * 0.37 + ground.Position.Z * 0.61
 					local bob = math.sin(t * 2.2 + phase) * 0.15 + 0.15

@@ -5,6 +5,8 @@
 -- price    set only for starter Freeks: always allowed on the conveyor belt, at this price.
 --          Other species appear on the belt once discovered, priced from their income.
 -- season   optional Seasonal tag (a key in Seasons.luau): only obtainable during that season
+-- walk     how it moves around the town square: waddle, trot, prowl, slither, flap, stomp,
+--          bounce, strut or catwalk (see the client)
 -- look     how the model is built: either a placeholder (shape "Ball" or "Block", size in
 --          studs, eyes 1-3, antennae 0-3) or a part list (see FreekModel), e.g. from human()
 --
@@ -61,15 +63,19 @@ local function googly(add, c, r: number, spread: number, height: number, size: n
 	end
 end
 
--- Straight legs standing on the ground, centred at each (x, z).
+-- Straight legs standing on the ground, centred at each (x, z). Given front-left,
+-- front-right, back-left, back-right, they walk in diagonal pairs.
+local DIAGONAL = { 0, 0.5, 0.5, 0 }
 local function legs(add, spots, height: number, width: number, color: Color3, paw: Color3?)
-	for _, spot in spots do
+	for i, spot in spots do
+		local swing = { hinge = { spot[1], height, spot[2] }, phase = DIAGONAL[i] or 0 }
 		add({
 			shape = "Cylinder",
 			size = { height, width, width },
 			pos = { spot[1], height / 2, spot[2] },
 			rot = { 0, 0, 90 },
 			color = color,
+			swing = swing,
 		})
 		if paw then
 			add({
@@ -77,6 +83,7 @@ local function legs(add, spots, height: number, width: number, color: Color3, pa
 				size = width + 0.15,
 				pos = { spot[1], (width + 0.15) / 2, spot[2] - 0.08 },
 				color = paw,
+				swing = swing,
 			})
 		end
 	end
@@ -115,26 +122,44 @@ local function human(o)
 
 	add({ name = "Body", shape = "Block", size = { torsoW, 1.7, torsoD }, pos = { 0, torsoY, 0 }, color = o.shirt })
 	add({ shape = "Block", size = { torsoW - 0.1, 0.5, torsoD - 0.05 }, pos = { 0, 1.4, 0 }, color = o.pants })
-	for _, x in { -0.45, 0.45 } do
-		add({ shape = "Cylinder", size = { 1.2, 0.6, 0.6 }, pos = { x, 0.75, 0 }, rot = { 0, 0, 90 }, color = o.pants })
+	-- Legs swing in turn, and each arm swings with the opposite leg.
+	for i, x in { -0.45, 0.45 } do
+		local swing = { hinge = { x, 1.35, 0 }, phase = (i - 1) * 0.5 }
+		add({
+			shape = "Cylinder",
+			size = { 1.2, 0.6, 0.6 },
+			pos = { x, 0.75, 0 },
+			rot = { 0, 0, 90 },
+			color = o.pants,
+			swing = swing,
+		})
 		add({
 			shape = "Block",
 			size = o.shoeSize or { 0.7, 0.35, 1.05 },
 			pos = { x, 0.18, -0.15 },
 			color = o.shoes,
 			detail = true,
+			swing = swing,
 		})
 	end
 	local shoulderX = torsoW / 2 + armD / 2 - 0.02
 	for _, side in { -1, 1 } do
+		local swing = { hinge = { side * shoulderX, 3.2, 0 }, phase = if side < 0 then 0.5 else 0, amount = 0.8 }
 		add({
 			shape = "Cylinder",
 			size = { 1.45, armD, armD },
 			pos = { side * shoulderX, 2.5, 0 },
 			rot = { 0, 0, 90 + side * 6 },
 			color = o.sleeves or o.skin,
+			swing = swing,
 		})
-		add({ shape = "Ball", size = armD + 0.12, pos = { side * (shoulderX + 0.08), 1.72, 0 }, color = o.skin })
+		add({
+			shape = "Ball",
+			size = armD + 0.12,
+			pos = { side * (shoulderX + 0.08), 1.72, 0 },
+			color = o.skin,
+			swing = swing,
+		})
 	end
 	add({
 		shape = "Cylinder",
@@ -197,6 +222,7 @@ Freeks.list = {
 	-- Starter Freeks (shop)
 	{
 		id = "Oinkle",
+		walk = "waddle",
 		name = "Oinkle",
 		rarity = "Common",
 		income = 1,
@@ -210,6 +236,7 @@ Freeks.list = {
 					shape = "Cylinder",
 					size = { 1, 0.75, 0.75 },
 					pos = { -0.8, 0.5, -0.75 },
+					swing = { hinge = { -0.8, 1, -0.75 }, phase = 0 },
 					rot = { 0, 0, 90 },
 					color = Color3.fromRGB(240, 145, 170),
 				},
@@ -217,6 +244,7 @@ Freeks.list = {
 					shape = "Cylinder",
 					size = { 1, 0.75, 0.75 },
 					pos = { 0.8, 0.5, -0.75 },
+					swing = { hinge = { 0.8, 1, -0.75 }, phase = 0.5 },
 					rot = { 0, 0, 90 },
 					color = Color3.fromRGB(240, 145, 170),
 				},
@@ -224,6 +252,7 @@ Freeks.list = {
 					shape = "Cylinder",
 					size = { 1, 0.75, 0.75 },
 					pos = { -0.8, 0.5, 0.75 },
+					swing = { hinge = { -0.8, 1, 0.75 }, phase = 0.5 },
 					rot = { 0, 0, 90 },
 					color = Color3.fromRGB(240, 145, 170),
 				},
@@ -231,6 +260,7 @@ Freeks.list = {
 					shape = "Cylinder",
 					size = { 1, 0.75, 0.75 },
 					pos = { 0.8, 0.5, 0.75 },
+					swing = { hinge = { 0.8, 1, 0.75 }, phase = 0 },
 					rot = { 0, 0, 90 },
 					color = Color3.fromRGB(240, 145, 170),
 				},
@@ -323,6 +353,7 @@ Freeks.list = {
 	-- The Animal line (Oinkle is the pig)
 	{
 		id = "Woofles",
+		walk = "trot",
 		name = "Woofles",
 		rarity = "Common",
 		income = 3,
@@ -360,6 +391,7 @@ Freeks.list = {
 				pos = { 0, 2.8, 1.95 },
 				rot = { 0, -90, 55 },
 				color = tan,
+				swing = { hinge = { 0, 2.4, 1.6 }, axis = "Y", amount = 1.5 },
 			})
 			add({
 				shape = "Cylinder",
@@ -374,6 +406,7 @@ Freeks.list = {
 	},
 	{
 		id = "Whiskerz",
+		walk = "prowl",
 		name = "Whiskerz",
 		rarity = "Uncommon",
 		income = 14,
@@ -450,13 +483,20 @@ Freeks.list = {
 				{ 0, 3.9, 1.65 },
 			}
 			for _, p in tail do
-				add({ shape = "Ball", size = 0.45, pos = p, color = orange })
+				add({
+					shape = "Ball",
+					size = 0.45,
+					pos = p,
+					color = orange,
+					swing = { hinge = { 0, 1.9, 1.5 }, axis = "Y", amount = 0.6 },
+				})
 			end
 			return { parts = list }
 		end)(),
 	},
 	{
 		id = "Lizzle",
+		walk = "slither",
 		name = "Lizzle",
 		rarity = "Uncommon",
 		income = 18,
@@ -465,15 +505,23 @@ Freeks.list = {
 			local lime, spot, belly = rgb(130, 225, 80), rgb(60, 160, 60), rgb(235, 240, 150)
 			add({ name = "Body", shape = "Ball", size = 2.1, pos = { 0, 1.25, 0.3 }, color = lime })
 			add({ shape = "Ball", size = 1.6, pos = { 0, 1.05, -0.2 }, color = belly })
-			for _, leg in { { -1, -0.3 }, { 1, -0.3 }, { -1, 0.9 }, { 1, 0.9 } } do
+			for i, leg in { { -1, -0.3 }, { 1, -0.3 }, { -1, 0.9 }, { 1, 0.9 } } do
+				local swing = { hinge = { leg[1] * 0.6, 0.95, leg[2] }, phase = DIAGONAL[i] }
 				add({
 					shape = "Cylinder",
 					size = { 1, 0.4, 0.4 },
 					pos = { leg[1] * 0.95, 0.65, leg[2] },
 					rot = { 0, 0, leg[1] * -35 },
 					color = lime,
+					swing = swing,
 				})
-				add({ shape = "Ball", size = 0.5, pos = { leg[1] * 1.35, 0.25, leg[2] - 0.1 }, color = lime })
+				add({
+					shape = "Ball",
+					size = 0.5,
+					pos = { leg[1] * 1.35, 0.25, leg[2] - 0.1 },
+					color = lime,
+					swing = swing,
+				})
 			end
 			local head = { 0, 1.75, -1.25 }
 			add({ name = "Head", shape = "Ball", size = 1.7, pos = head, color = lime })
@@ -526,6 +574,7 @@ Freeks.list = {
 	},
 	{
 		id = "Hootsworth",
+		walk = "flap",
 		name = "Hootsworth",
 		rarity = "Rare",
 		income = 70,
@@ -567,6 +616,7 @@ Freeks.list = {
 					pos = { side * 1.6, 2.05, 0.15 },
 					rot = { 0, 0, side * 10 },
 					color = dark,
+					swing = { hinge = { side * 1.45, 2.85, 0.15 }, axis = "Z", amount = side * 1.4 },
 				})
 				for _, toe in { -0.22, 0, 0.22 } do
 					add({
@@ -630,6 +680,7 @@ Freeks.list = {
 	},
 	{
 		id = "Chompers",
+		walk = "slither",
 		name = "Chompers",
 		rarity = "Legendary",
 		income = 260,
@@ -638,19 +689,22 @@ Freeks.list = {
 			local green, belly, dark = rgb(70, 145, 65), rgb(185, 210, 130), rgb(45, 100, 45)
 			add({ name = "Body", shape = "Block", size = { 2.6, 1.5, 4.6 }, pos = { 0, 1.35, 0.4 }, color = green })
 			add({ shape = "Block", size = { 2.4, 0.3, 4.4 }, pos = { 0, 0.62, 0.4 }, color = belly })
-			for _, leg in { { -1, -1.2 }, { 1, -1.2 }, { -1, 1.9 }, { 1, 1.9 } } do
+			for i, leg in { { -1, -1.2 }, { 1, -1.2 }, { -1, 1.9 }, { 1, 1.9 } } do
+				local swing = { hinge = { leg[1] * 1.35, 0.9, leg[2] }, phase = DIAGONAL[i] }
 				add({
 					shape = "Cylinder",
 					size = { 0.9, 0.7, 0.7 },
 					pos = { leg[1] * 1.35, 0.45, leg[2] },
 					rot = { 0, 0, 90 },
 					color = green,
+					swing = swing,
 				})
 				add({
 					shape = "Block",
 					size = { 0.8, 0.3, 1 },
 					pos = { leg[1] * 1.45, 0.15, leg[2] - 0.2 },
 					color = green,
+					swing = swing,
 				})
 			end
 			-- Big jaws, slightly open, full of teeth.
@@ -705,14 +759,33 @@ Freeks.list = {
 					})
 				end
 			end
-			add({ shape = "Block", size = { 1.8, 1.1, 1.7 }, pos = { 0, 1.15, 3.4 }, color = green })
-			add({ shape = "Block", size = { 1.3, 0.8, 1.7 }, pos = { 0, 1.0, 4.95 }, color = green })
-			add({ shape = "Block", size = { 0.8, 0.5, 1.7 }, pos = { 0, 0.85, 6.45 }, color = green })
+			add({
+				shape = "Block",
+				size = { 1.8, 1.1, 1.7 },
+				pos = { 0, 1.15, 3.4 },
+				color = green,
+				swing = { hinge = { 0, 1.1, 2.6 }, axis = "Y", amount = 0.5 },
+			})
+			add({
+				shape = "Block",
+				size = { 1.3, 0.8, 1.7 },
+				pos = { 0, 1.0, 4.95 },
+				color = green,
+				swing = { hinge = { 0, 1.1, 2.6 }, axis = "Y", amount = 0.5 },
+			})
+			add({
+				shape = "Block",
+				size = { 0.8, 0.5, 1.7 },
+				pos = { 0, 0.85, 6.45 },
+				color = green,
+				swing = { hinge = { 0, 1.1, 2.6 }, axis = "Y", amount = 0.5 },
+			})
 			return { parts = list }
 		end)(),
 	},
 	{
 		id = "Stompy",
+		walk = "stomp",
 		name = "Stompy",
 		rarity = "Mystic",
 		income = 1000,
@@ -722,7 +795,7 @@ Freeks.list = {
 			add({ name = "Body", shape = "Ball", size = 3.8, pos = { 0, 2.65, 0.3 }, color = grey })
 			add({ shape = "Ball", size = 3.3, pos = { 0, 2.5, 1.6 }, color = grey })
 			legs(add, { { -1.1, -0.6 }, { 1.1, -0.6 }, { -1.1, 2 }, { 1.1, 2 } }, 1.5, 1.2, grey)
-			for _, leg in { { -1.1, -0.6 }, { 1.1, -0.6 } } do
+			for i, leg in { { -1.1, -0.6 }, { 1.1, -0.6 } } do
 				for _, toe in { -0.3, 0, 0.3 } do
 					add({
 						shape = "Ball",
@@ -730,6 +803,7 @@ Freeks.list = {
 						pos = { leg[1] + toe, 0.15, leg[2] - 0.55 },
 						color = ivory,
 						detail = true,
+						swing = { hinge = { leg[1], 1.5, leg[2] }, phase = DIAGONAL[i] },
 					})
 				end
 			end
@@ -800,6 +874,7 @@ Freeks.list = {
 	-- The Human line
 	{
 		id = "Chuckles",
+		walk = "bounce",
 		name = "Chuckles",
 		rarity = "Common",
 		income = 4,
@@ -888,6 +963,7 @@ Freeks.list = {
 	},
 	{
 		id = "Nerdle",
+		walk = "strut",
 		name = "Nerdle",
 		rarity = "Uncommon",
 		income = 20,
@@ -994,6 +1070,7 @@ Freeks.list = {
 	},
 	{
 		id = "Flexo",
+		walk = "stomp",
 		name = "Flexo",
 		rarity = "Rare",
 		income = 80,
@@ -1085,6 +1162,7 @@ Freeks.list = {
 	},
 	{
 		id = "Glamora",
+		walk = "catwalk",
 		name = "Glamora",
 		rarity = "Legendary",
 		income = 300,

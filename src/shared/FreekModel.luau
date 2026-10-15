@@ -11,7 +11,10 @@
 --   { shape = "Ball" | "Block" | "Cylinder" | "Wedge", size = { x, y, z } (or one number),
 --     pos = { x, y, z }, rot = { x, y, z } (degrees, optional), color = Color3,
 --     material = "Neon" etc. (optional), transparency = 0-1 (optional),
---     detail = true (optional: keeps its color when mutated, e.g. eyes) }
+--     detail = true (optional: keeps its color when mutated, e.g. eyes),
+--     swing = { hinge = {x, y, z}, phase = 0..1, axis = "X" | "Y" | "Z", amount = 1 }
+--       (optional: the part swings around the hinge while the Freek walks, e.g. legs) }
+-- A species' walk = "waddle" | "trot" | ... picks how it moves (see the client).
 -- The first part is the main body. Effects:
 --   { type = "Sparkles" | "Fire" | "Smoke" | "Glow", part = index (default 1), color = Color3,
 --     size = number (optional) }
@@ -130,6 +133,12 @@ local function buildFromParts(species, mutationId: string?): (Model, number)
 			part.Material = Enum.Material[spec.material]
 		end
 		part.Transparency = spec.transparency or 0
+		if spec.swing then
+			part:SetAttribute("SwingHinge", vector(spec.swing.hinge))
+			part:SetAttribute("SwingPhase", spec.swing.phase or 0)
+			part:SetAttribute("SwingAxis", spec.swing.axis or "X")
+			part:SetAttribute("SwingAmount", spec.swing.amount or 1)
+		end
 
 		if not spec.detail then
 			if mutationId == "Golden" then
@@ -318,6 +327,10 @@ function buildHybrid(species, mutationId: string?): (Model, number)
 			local offset = (part.Position - otherCenter) * scale
 			part.Size *= scale
 			part.CFrame = CFrame.new(body.Position + offset) * part.CFrame.Rotation
+			local hinge = part:GetAttribute("SwingHinge")
+			if typeof(hinge) == "Vector3" then
+				part:SetAttribute("SwingHinge", body.Position + (hinge - otherCenter) * scale)
+			end
 		end
 	end
 
@@ -347,6 +360,14 @@ end
 function FreekModel.build(speciesId: string, mutations): (Model, number)
 	local list = Mutations.normalize(mutations)
 	local model, height = buildSingle(speciesId, list[1])
+	local species = Freeks.byId[speciesId]
+	model:SetAttribute("Walk", species and species.walk or "waddle")
+	-- Stream the whole Freek to clients at once. Otherwise a client can get the model
+	-- before its body part, and then Roblox pivots it from its middle instead of its feet,
+	-- leaving it half in the ground.
+	pcall(function()
+		model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
+	end)
 	local body = model.PrimaryPart
 	for i = 2, #list do
 		local effect = MUTATION_EFFECTS[list[i]]

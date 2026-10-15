@@ -381,7 +381,10 @@ return Format
 --   { shape = "Ball" | "Block" | "Cylinder" | "Wedge", size = { x, y, z } (or one number),
 --     pos = { x, y, z }, rot = { x, y, z } (degrees, optional), color = Color3,
 --     material = "Neon" etc. (optional), transparency = 0-1 (optional),
---     detail = true (optional: keeps its color when mutated, e.g. eyes) }
+--     detail = true (optional: keeps its color when mutated, e.g. eyes),
+--     swing = { hinge = {x, y, z}, phase = 0..1, axis = "X" | "Y" | "Z", amount = 1 }
+--       (optional: the part swings around the hinge while the Freek walks, e.g. legs) }
+-- A species' walk = "waddle" | "trot" | ... picks how it moves (see the client).
 -- The first part is the main body. Effects:
 --   { type = "Sparkles" | "Fire" | "Smoke" | "Glow", part = index (default 1), color = Color3,
 --     size = number (optional) }
@@ -500,6 +503,12 @@ local function buildFromParts(species, mutationId: string?): (Model, number)
 			part.Material = Enum.Material[spec.material]
 		end
 		part.Transparency = spec.transparency or 0
+		if spec.swing then
+			part:SetAttribute("SwingHinge", vector(spec.swing.hinge))
+			part:SetAttribute("SwingPhase", spec.swing.phase or 0)
+			part:SetAttribute("SwingAxis", spec.swing.axis or "X")
+			part:SetAttribute("SwingAmount", spec.swing.amount or 1)
+		end
 
 		if not spec.detail then
 			if mutationId == "Golden" then
@@ -688,6 +697,10 @@ function buildHybrid(species, mutationId: string?): (Model, number)
 			local offset = (part.Position - otherCenter) * scale
 			part.Size *= scale
 			part.CFrame = CFrame.new(body.Position + offset) * part.CFrame.Rotation
+			local hinge = part:GetAttribute("SwingHinge")
+			if typeof(hinge) == "Vector3" then
+				part:SetAttribute("SwingHinge", body.Position + (hinge - otherCenter) * scale)
+			end
 		end
 	end
 
@@ -717,6 +730,14 @@ end
 function FreekModel.build(speciesId: string, mutations): (Model, number)
 	local list = Mutations.normalize(mutations)
 	local model, height = buildSingle(speciesId, list[1])
+	local species = Freeks.byId[speciesId]
+	model:SetAttribute("Walk", species and species.walk or "waddle")
+	-- Stream the whole Freek to clients at once. Otherwise a client can get the model
+	-- before its body part, and then Roblox pivots it from its middle instead of its feet,
+	-- leaving it half in the ground.
+	pcall(function()
+		model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
+	end)
 	local body = model.PrimaryPart
 	for i = 2, #list do
 		local effect = MUTATION_EFFECTS[list[i]]
@@ -854,6 +875,8 @@ return FreekUtil
 -- price    set only for starter Freeks: always allowed on the conveyor belt, at this price.
 --          Other species appear on the belt once discovered, priced from their income.
 -- season   optional Seasonal tag (a key in Seasons.luau): only obtainable during that season
+-- walk     how it moves around the town square: waddle, trot, prowl, slither, flap, stomp,
+--          bounce, strut or catwalk (see the client)
 -- look     how the model is built: either a placeholder (shape "Ball" or "Block", size in
 --          studs, eyes 1-3, antennae 0-3) or a part list (see FreekModel), e.g. from human()
 --
@@ -910,15 +933,19 @@ local function googly(add, c, r: number, spread: number, height: number, size: n
 	end
 end
 
--- Straight legs standing on the ground, centred at each (x, z).
+-- Straight legs standing on the ground, centred at each (x, z). Given front-left,
+-- front-right, back-left, back-right, they walk in diagonal pairs.
+local DIAGONAL = { 0, 0.5, 0.5, 0 }
 local function legs(add, spots, height: number, width: number, color: Color3, paw: Color3?)
-	for _, spot in spots do
+	for i, spot in spots do
+		local swing = { hinge = { spot[1], height, spot[2] }, phase = DIAGONAL[i] or 0 }
 		add({
 			shape = "Cylinder",
 			size = { height, width, width },
 			pos = { spot[1], height / 2, spot[2] },
 			rot = { 0, 0, 90 },
 			color = color,
+			swing = swing,
 		})
 		if paw then
 			add({
@@ -926,6 +953,7 @@ local function legs(add, spots, height: number, width: number, color: Color3, pa
 				size = width + 0.15,
 				pos = { spot[1], (width + 0.15) / 2, spot[2] - 0.08 },
 				color = paw,
+				swing = swing,
 			})
 		end
 	end
@@ -964,26 +992,44 @@ local function human(o)
 
 	add({ name = "Body", shape = "Block", size = { torsoW, 1.7, torsoD }, pos = { 0, torsoY, 0 }, color = o.shirt })
 	add({ shape = "Block", size = { torsoW - 0.1, 0.5, torsoD - 0.05 }, pos = { 0, 1.4, 0 }, color = o.pants })
-	for _, x in { -0.45, 0.45 } do
-		add({ shape = "Cylinder", size = { 1.2, 0.6, 0.6 }, pos = { x, 0.75, 0 }, rot = { 0, 0, 90 }, color = o.pants })
+	-- Legs swing in turn, and each arm swings with the opposite leg.
+	for i, x in { -0.45, 0.45 } do
+		local swing = { hinge = { x, 1.35, 0 }, phase = (i - 1) * 0.5 }
+		add({
+			shape = "Cylinder",
+			size = { 1.2, 0.6, 0.6 },
+			pos = { x, 0.75, 0 },
+			rot = { 0, 0, 90 },
+			color = o.pants,
+			swing = swing,
+		})
 		add({
 			shape = "Block",
 			size = o.shoeSize or { 0.7, 0.35, 1.05 },
 			pos = { x, 0.18, -0.15 },
 			color = o.shoes,
 			detail = true,
+			swing = swing,
 		})
 	end
 	local shoulderX = torsoW / 2 + armD / 2 - 0.02
 	for _, side in { -1, 1 } do
+		local swing = { hinge = { side * shoulderX, 3.2, 0 }, phase = if side < 0 then 0.5 else 0, amount = 0.8 }
 		add({
 			shape = "Cylinder",
 			size = { 1.45, armD, armD },
 			pos = { side * shoulderX, 2.5, 0 },
 			rot = { 0, 0, 90 + side * 6 },
 			color = o.sleeves or o.skin,
+			swing = swing,
 		})
-		add({ shape = "Ball", size = armD + 0.12, pos = { side * (shoulderX + 0.08), 1.72, 0 }, color = o.skin })
+		add({
+			shape = "Ball",
+			size = armD + 0.12,
+			pos = { side * (shoulderX + 0.08), 1.72, 0 },
+			color = o.skin,
+			swing = swing,
+		})
 	end
 	add({
 		shape = "Cylinder",
@@ -1046,6 +1092,7 @@ Freeks.list = {
 	-- Starter Freeks (shop)
 	{
 		id = "Oinkle",
+		walk = "waddle",
 		name = "Oinkle",
 		rarity = "Common",
 		income = 1,
@@ -1059,6 +1106,7 @@ Freeks.list = {
 					shape = "Cylinder",
 					size = { 1, 0.75, 0.75 },
 					pos = { -0.8, 0.5, -0.75 },
+					swing = { hinge = { -0.8, 1, -0.75 }, phase = 0 },
 					rot = { 0, 0, 90 },
 					color = Color3.fromRGB(240, 145, 170),
 				},
@@ -1066,6 +1114,7 @@ Freeks.list = {
 					shape = "Cylinder",
 					size = { 1, 0.75, 0.75 },
 					pos = { 0.8, 0.5, -0.75 },
+					swing = { hinge = { 0.8, 1, -0.75 }, phase = 0.5 },
 					rot = { 0, 0, 90 },
 					color = Color3.fromRGB(240, 145, 170),
 				},
@@ -1073,6 +1122,7 @@ Freeks.list = {
 					shape = "Cylinder",
 					size = { 1, 0.75, 0.75 },
 					pos = { -0.8, 0.5, 0.75 },
+					swing = { hinge = { -0.8, 1, 0.75 }, phase = 0.5 },
 					rot = { 0, 0, 90 },
 					color = Color3.fromRGB(240, 145, 170),
 				},
@@ -1080,6 +1130,7 @@ Freeks.list = {
 					shape = "Cylinder",
 					size = { 1, 0.75, 0.75 },
 					pos = { 0.8, 0.5, 0.75 },
+					swing = { hinge = { 0.8, 1, 0.75 }, phase = 0 },
 					rot = { 0, 0, 90 },
 					color = Color3.fromRGB(240, 145, 170),
 				},
@@ -1172,6 +1223,7 @@ Freeks.list = {
 	-- The Animal line (Oinkle is the pig)
 	{
 		id = "Woofles",
+		walk = "trot",
 		name = "Woofles",
 		rarity = "Common",
 		income = 3,
@@ -1209,6 +1261,7 @@ Freeks.list = {
 				pos = { 0, 2.8, 1.95 },
 				rot = { 0, -90, 55 },
 				color = tan,
+				swing = { hinge = { 0, 2.4, 1.6 }, axis = "Y", amount = 1.5 },
 			})
 			add({
 				shape = "Cylinder",
@@ -1223,6 +1276,7 @@ Freeks.list = {
 	},
 	{
 		id = "Whiskerz",
+		walk = "prowl",
 		name = "Whiskerz",
 		rarity = "Uncommon",
 		income = 14,
@@ -1299,13 +1353,20 @@ Freeks.list = {
 				{ 0, 3.9, 1.65 },
 			}
 			for _, p in tail do
-				add({ shape = "Ball", size = 0.45, pos = p, color = orange })
+				add({
+					shape = "Ball",
+					size = 0.45,
+					pos = p,
+					color = orange,
+					swing = { hinge = { 0, 1.9, 1.5 }, axis = "Y", amount = 0.6 },
+				})
 			end
 			return { parts = list }
 		end)(),
 	},
 	{
 		id = "Lizzle",
+		walk = "slither",
 		name = "Lizzle",
 		rarity = "Uncommon",
 		income = 18,
@@ -1314,15 +1375,23 @@ Freeks.list = {
 			local lime, spot, belly = rgb(130, 225, 80), rgb(60, 160, 60), rgb(235, 240, 150)
 			add({ name = "Body", shape = "Ball", size = 2.1, pos = { 0, 1.25, 0.3 }, color = lime })
 			add({ shape = "Ball", size = 1.6, pos = { 0, 1.05, -0.2 }, color = belly })
-			for _, leg in { { -1, -0.3 }, { 1, -0.3 }, { -1, 0.9 }, { 1, 0.9 } } do
+			for i, leg in { { -1, -0.3 }, { 1, -0.3 }, { -1, 0.9 }, { 1, 0.9 } } do
+				local swing = { hinge = { leg[1] * 0.6, 0.95, leg[2] }, phase = DIAGONAL[i] }
 				add({
 					shape = "Cylinder",
 					size = { 1, 0.4, 0.4 },
 					pos = { leg[1] * 0.95, 0.65, leg[2] },
 					rot = { 0, 0, leg[1] * -35 },
 					color = lime,
+					swing = swing,
 				})
-				add({ shape = "Ball", size = 0.5, pos = { leg[1] * 1.35, 0.25, leg[2] - 0.1 }, color = lime })
+				add({
+					shape = "Ball",
+					size = 0.5,
+					pos = { leg[1] * 1.35, 0.25, leg[2] - 0.1 },
+					color = lime,
+					swing = swing,
+				})
 			end
 			local head = { 0, 1.75, -1.25 }
 			add({ name = "Head", shape = "Ball", size = 1.7, pos = head, color = lime })
@@ -1375,6 +1444,7 @@ Freeks.list = {
 	},
 	{
 		id = "Hootsworth",
+		walk = "flap",
 		name = "Hootsworth",
 		rarity = "Rare",
 		income = 70,
@@ -1416,6 +1486,7 @@ Freeks.list = {
 					pos = { side * 1.6, 2.05, 0.15 },
 					rot = { 0, 0, side * 10 },
 					color = dark,
+					swing = { hinge = { side * 1.45, 2.85, 0.15 }, axis = "Z", amount = side * 1.4 },
 				})
 				for _, toe in { -0.22, 0, 0.22 } do
 					add({
@@ -1479,6 +1550,7 @@ Freeks.list = {
 	},
 	{
 		id = "Chompers",
+		walk = "slither",
 		name = "Chompers",
 		rarity = "Legendary",
 		income = 260,
@@ -1487,19 +1559,22 @@ Freeks.list = {
 			local green, belly, dark = rgb(70, 145, 65), rgb(185, 210, 130), rgb(45, 100, 45)
 			add({ name = "Body", shape = "Block", size = { 2.6, 1.5, 4.6 }, pos = { 0, 1.35, 0.4 }, color = green })
 			add({ shape = "Block", size = { 2.4, 0.3, 4.4 }, pos = { 0, 0.62, 0.4 }, color = belly })
-			for _, leg in { { -1, -1.2 }, { 1, -1.2 }, { -1, 1.9 }, { 1, 1.9 } } do
+			for i, leg in { { -1, -1.2 }, { 1, -1.2 }, { -1, 1.9 }, { 1, 1.9 } } do
+				local swing = { hinge = { leg[1] * 1.35, 0.9, leg[2] }, phase = DIAGONAL[i] }
 				add({
 					shape = "Cylinder",
 					size = { 0.9, 0.7, 0.7 },
 					pos = { leg[1] * 1.35, 0.45, leg[2] },
 					rot = { 0, 0, 90 },
 					color = green,
+					swing = swing,
 				})
 				add({
 					shape = "Block",
 					size = { 0.8, 0.3, 1 },
 					pos = { leg[1] * 1.45, 0.15, leg[2] - 0.2 },
 					color = green,
+					swing = swing,
 				})
 			end
 			-- Big jaws, slightly open, full of teeth.
@@ -1554,14 +1629,33 @@ Freeks.list = {
 					})
 				end
 			end
-			add({ shape = "Block", size = { 1.8, 1.1, 1.7 }, pos = { 0, 1.15, 3.4 }, color = green })
-			add({ shape = "Block", size = { 1.3, 0.8, 1.7 }, pos = { 0, 1.0, 4.95 }, color = green })
-			add({ shape = "Block", size = { 0.8, 0.5, 1.7 }, pos = { 0, 0.85, 6.45 }, color = green })
+			add({
+				shape = "Block",
+				size = { 1.8, 1.1, 1.7 },
+				pos = { 0, 1.15, 3.4 },
+				color = green,
+				swing = { hinge = { 0, 1.1, 2.6 }, axis = "Y", amount = 0.5 },
+			})
+			add({
+				shape = "Block",
+				size = { 1.3, 0.8, 1.7 },
+				pos = { 0, 1.0, 4.95 },
+				color = green,
+				swing = { hinge = { 0, 1.1, 2.6 }, axis = "Y", amount = 0.5 },
+			})
+			add({
+				shape = "Block",
+				size = { 0.8, 0.5, 1.7 },
+				pos = { 0, 0.85, 6.45 },
+				color = green,
+				swing = { hinge = { 0, 1.1, 2.6 }, axis = "Y", amount = 0.5 },
+			})
 			return { parts = list }
 		end)(),
 	},
 	{
 		id = "Stompy",
+		walk = "stomp",
 		name = "Stompy",
 		rarity = "Mystic",
 		income = 1000,
@@ -1571,7 +1665,7 @@ Freeks.list = {
 			add({ name = "Body", shape = "Ball", size = 3.8, pos = { 0, 2.65, 0.3 }, color = grey })
 			add({ shape = "Ball", size = 3.3, pos = { 0, 2.5, 1.6 }, color = grey })
 			legs(add, { { -1.1, -0.6 }, { 1.1, -0.6 }, { -1.1, 2 }, { 1.1, 2 } }, 1.5, 1.2, grey)
-			for _, leg in { { -1.1, -0.6 }, { 1.1, -0.6 } } do
+			for i, leg in { { -1.1, -0.6 }, { 1.1, -0.6 } } do
 				for _, toe in { -0.3, 0, 0.3 } do
 					add({
 						shape = "Ball",
@@ -1579,6 +1673,7 @@ Freeks.list = {
 						pos = { leg[1] + toe, 0.15, leg[2] - 0.55 },
 						color = ivory,
 						detail = true,
+						swing = { hinge = { leg[1], 1.5, leg[2] }, phase = DIAGONAL[i] },
 					})
 				end
 			end
@@ -1649,6 +1744,7 @@ Freeks.list = {
 	-- The Human line
 	{
 		id = "Chuckles",
+		walk = "bounce",
 		name = "Chuckles",
 		rarity = "Common",
 		income = 4,
@@ -1737,6 +1833,7 @@ Freeks.list = {
 	},
 	{
 		id = "Nerdle",
+		walk = "strut",
 		name = "Nerdle",
 		rarity = "Uncommon",
 		income = 20,
@@ -1843,6 +1940,7 @@ Freeks.list = {
 	},
 	{
 		id = "Flexo",
+		walk = "stomp",
 		name = "Flexo",
 		rarity = "Rare",
 		income = 80,
@@ -1934,6 +2032,7 @@ Freeks.list = {
 	},
 	{
 		id = "Glamora",
+		walk = "catwalk",
 		name = "Glamora",
 		rarity = "Legendary",
 		income = 300,
@@ -2455,6 +2554,7 @@ function Hybrids.info(id: string, get)
 		rarity = Rarities.order[rank],
 		income = a.income + b.income, -- only a guide: each hybrid Freek stores its own
 		hybrid = true,
+		walk = a.walk,
 		parts = ranked,
 		look = { hybrid = { a = a.id, b = b.id } },
 		order = math.huge,
@@ -9952,11 +10052,74 @@ local function puff(position: Vector3, size: number, color: Color3)
 	end
 end
 
+-- How each kind of Freek walks: steps per second (speed, radians), how high it bobs, how
+-- much it rocks side to side (roll) and turns from side to side (yaw), and how far its legs
+-- swing (degrees). Set per species with `walk` in Freeks.luau.
+local WALKS = {
+	waddle = { speed = 9, bob = 0.25, roll = 7, yaw = 0, legs = 30 },
+	trot = { speed = 12, bob = 0.35, roll = 3, yaw = 0, legs = 35 },
+	prowl = { speed = 8, bob = 0.08, roll = 2, yaw = 4, legs = 28 },
+	slither = { speed = 9, bob = 0, roll = 0, yaw = 10, legs = 40 },
+	stomp = { speed = 6, bob = 0.35, roll = 4, yaw = 0, legs = 25 },
+	flap = { speed = 9, bob = 0.5, roll = 8, yaw = 0, legs = 30 },
+	bounce = { speed = 7, bob = 1, roll = 6, yaw = 0, legs = 30 },
+	strut = { speed = 10, bob = 0.25, roll = 2, yaw = 5, legs = 35 },
+	catwalk = { speed = 9, bob = 0.15, roll = 0, yaw = 9, legs = 30 },
+}
+
+-- What Freeks stand on: the ground itself (terrain, the town square floor and the
+-- walkways), never lamps, trees, players or other Freeks.
+local groundParams = RaycastParams.new()
+groundParams.FilterType = Enum.RaycastFilterType.Include
+local groundList = { Workspace.Terrain }
+local scenery = Workspace:WaitForChild("Scenery")
+for _, part in scenery:GetDescendants() do
+	if part:IsA("BasePart") and (part.Name == "TownSquare" or part.Name == "Walkway" or part.Name == "Curb") then
+		table.insert(groundList, part)
+	end
+end
+groundParams.FilterDescendantsInstances = groundList
+
+-- Height of the ground at a spot (nil if there's nothing below).
+local function groundAt(position: Vector3): number?
+	local hit = Workspace:Raycast(position + Vector3.new(0, 12, 0), Vector3.new(0, -40, 0), groundParams)
+	return hit and hit.Position.Y
+end
+
+-- The parts of a Freek that swing as it walks, with where they rest relative to the model.
+local function swingParts(model: Model)
+	local pivot = model:GetPivot()
+	local list = {}
+	for _, part in model:GetDescendants() do
+		local hinge = part:IsA("BasePart") and part:GetAttribute("SwingHinge")
+		if typeof(hinge) == "Vector3" then
+			table.insert(list, {
+				part = part,
+				rest = pivot:ToObjectSpace(part.CFrame),
+				hinge = hinge,
+				phase = part:GetAttribute("SwingPhase") or 0,
+				axis = part:GetAttribute("SwingAxis") or "X",
+				amount = part:GetAttribute("SwingAmount") or 1,
+			})
+		end
+	end
+	return list
+end
+
+local function axisRotation(axis: string, angle: number): CFrame
+	if axis == "Y" then
+		return CFrame.Angles(0, angle, 0)
+	elseif axis == "Z" then
+		return CFrame.Angles(0, 0, angle)
+	end
+	return CFrame.Angles(angle, 0, 0)
+end
+
 RunService.RenderStepped:Connect(function()
 	local now = Workspace:GetServerTimeNow()
 	for _, model in dropFolder:GetChildren() do
-		if not model:IsA("Model") then
-			continue
+		if not model:IsA("Model") or not model.PrimaryPart then
+			continue -- not streamed in yet
 		end
 		local path = paths[model]
 		if not path then
@@ -9967,20 +10130,53 @@ RunService.RenderStepped:Connect(function()
 			end
 			path = Drops.plan(seed, cannon, launch)
 			path.landed = now >= path.land
+			path.swing = swingParts(model)
+			path.walk = WALKS[model:GetAttribute("Walk")] or WALKS.waddle
+			path.offset = (seed % 100) / 10
 			paths[model] = path
 		end
 		local cframe, doing, moving = Drops.cframeAt(path, now)
+		local stepAngle = 0
 		if doing == "wandering" or doing == "leaving" then
+			-- Stand on whatever the ground really is right there.
+			local groundY = groundAt(cframe.Position)
+			if groundY then
+				cframe = cframe + Vector3.new(0, groundY - cframe.Position.Y, 0)
+			end
 			if not path.landed then
 				path.landed = true
-				puff(path.landAt + Vector3.new(0, 1, 0), 3, Color3.fromRGB(225, 210, 180))
+				puff(cframe.Position + Vector3.new(0, 1, 0), 3, Color3.fromRGB(225, 210, 180))
 			end
-			-- Little hops while walking.
+			local walk = path.walk
+			local t = now + path.offset
 			if moving then
-				cframe *= CFrame.new(0, math.abs(math.sin(now * 9 + model:GetAttribute("Seed"))) * 0.6, 0)
+				stepAngle = t * walk.speed
+				local step = math.sin(stepAngle)
+				cframe *= CFrame.new(0, math.abs(step) * walk.bob, 0) * CFrame.Angles(
+					0,
+					math.rad(step * walk.yaw),
+					math.rad(step * walk.roll)
+				)
+			else
+				-- Standing still: just breathing.
+				cframe *= CFrame.new(0, (math.sin(t * 2) + 1) * 0.04, 0)
 			end
 		end
 		model:PivotTo(cframe)
+
+		-- Legs, arms, wings and tails swing around their hinges while walking.
+		local legs = math.rad(path.walk.legs)
+		for _, swing in path.swing do
+			local angle = if stepAngle ~= 0
+				then math.sin(stepAngle + swing.phase * math.pi * 2) * legs * swing.amount
+				else 0
+			swing.part.CFrame = cframe
+				* CFrame.new(swing.hinge)
+				* axisRotation(swing.axis, angle)
+				* CFrame.new(-swing.hinge)
+				* swing.rest
+		end
+
 		local prompt = model:FindFirstChild("GrabPrompt", true)
 		if prompt then
 			prompt.Enabled = doing == "wandering" or doing == "leaving"
@@ -10018,7 +10214,7 @@ RunService.RenderStepped:Connect(function()
 		local freeks = plot:FindFirstChild("Freeks")
 		if freeks then
 			for _, model in freeks:GetChildren() do
-				local ground = model:IsA("Model") and model:GetAttribute("Ground")
+				local ground = model:IsA("Model") and model.PrimaryPart and model:GetAttribute("Ground")
 				if typeof(ground) == "CFrame" and (ground.Position - eye).Magnitude < 140 then
 					local phase = ground.Position.X * 0.37 + ground.Position.Z * 0.61
 					local bob = math.sin(t * 2.2 + phase) * 0.15 + 0.15
