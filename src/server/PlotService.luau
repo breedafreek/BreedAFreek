@@ -27,7 +27,7 @@ local ROW_SPACING = 70 -- between yard centres along the conveyor
 local ROW_DISTANCE = 64 -- from the conveyor's centre line to each yard's centre
 local PAD_COLUMNS = 5
 local FENCE_HEIGHT = 4 -- what you see
-local WALL_HEIGHT = 16 -- invisible wall above the fence so nobody can jump it
+local WALL_HEIGHT = 45 -- invisible wall above the fence, well above the tallest gate arch, so nobody can jump it
 local GATE_WIDTH = 14
 
 local PlotService = {}
@@ -432,7 +432,7 @@ local function buildPlot(index: number)
 		Decor.tree(decor, origin * CFrame.new(side * 26.5, 1, -26.5), 0.85, index * 10 + side)
 		Decor.bush(decor, origin * CFrame.new(side * 27, 1, -14), 1, index * 20 + side)
 		Decor.flowerBed(decor, origin * CFrame.new(side * 15.5, 1, -29.3), 11, 2.2, index * 30 + side)
-		Decor.lamp(decor, origin * CFrame.new(side * (postX + 2), 1, -27.5))
+		Decor.lamp(decor, origin * CFrame.new(side * 11.5, 1, -25.5)) -- clear of the gate posts and flower beds
 	end
 
 	local freekFolder = Instance.new("Folder")
