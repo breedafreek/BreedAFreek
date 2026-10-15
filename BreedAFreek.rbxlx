@@ -988,6 +988,62 @@ return GamePasses
       </Item>
       <Item class="ModuleScript" referent="11">
         <Properties>
+          <string name="Name">GateTiers</string>
+          <string name="Source"><![CDATA[-- Yard gate arches upgrade with rebirths: Iron, then Bronze, Silver and Gold. The gate opening
+-- stays the same width; the arch gets taller, chunkier and fancier.
+--
+-- height: post height in studs; postWidth: post thickness; finials: balls on the posts;
+-- crest: an arch over the sign; gems: glowing gems and sparkles.
+
+local GateTiers = {}
+
+GateTiers.list = {
+	{
+		name = "Iron",
+		color = Color3.fromRGB(38, 38, 44),
+		material = "Metal",
+		height = 11,
+		postWidth = 1.6,
+	},
+	{
+		name = "Bronze",
+		color = Color3.fromRGB(180, 112, 58),
+		material = "Foil",
+		height = 12.5,
+		postWidth = 2.1,
+		finials = true,
+	},
+	{
+		name = "Silver",
+		color = Color3.fromRGB(205, 210, 222),
+		material = "Foil",
+		height = 14,
+		postWidth = 2.5,
+		finials = true,
+		crest = true,
+	},
+	{
+		name = "Gold",
+		color = Color3.fromRGB(255, 196, 55),
+		material = "Foil",
+		height = 15.5,
+		postWidth = 2.9,
+		finials = true,
+		crest = true,
+		gems = true,
+	},
+}
+
+function GateTiers.forRebirths(rebirths: number): number
+	return math.clamp((rebirths or 0) + 1, 1, #GateTiers.list)
+end
+
+return GateTiers
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="12">
+        <Properties>
           <string name="Name">Mutations</string>
           <string name="Source"><![CDATA[-- Mutations a bred Freek can roll. Rarest first: breeding checks them in this order.
 -- chance is per breed; it is multiplied by INHERIT_BOOST when a parent has that mutation.
@@ -1016,7 +1072,7 @@ return Mutations
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
@@ -1046,7 +1102,7 @@ return Rarities
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">Remotes</string>
           <string name="Source"><![CDATA[-- One place that names every remote. The server creates them; clients wait for them.
@@ -1103,7 +1159,7 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">Seasons</string>
           <string name="Source"><![CDATA[-- Limited events for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred
@@ -1240,7 +1296,7 @@ return Seasons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">WeaponModel</string>
           <string name="Source"><![CDATA[-- Builds the Tool for a weapon from its part list in Weapons.luau.
@@ -1326,7 +1382,7 @@ return WeaponModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">Weapons</string>
           <string name="Source"><![CDATA[-- Weapons. Everyone has the STARTER weapon; the rest unlock at a number of rebirths
@@ -1617,15 +1673,15 @@ return Weapons
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="17">
+  <Item class="ServerScriptService" referent="18">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="18">
+    <Item class="Folder" referent="19">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -1857,7 +1913,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">Carried</string>
           <string name="Source"><![CDATA[-- Which Freeks are being carried off by a thief right now. Kept in memory only: if the
@@ -1897,7 +1953,7 @@ return Carried
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">ConveyorService</string>
           <string name="Source"><![CDATA[-- Runs the conveyor: two lanes down the middle of the map, each fed by its own Freek House.
@@ -2285,7 +2341,7 @@ return ConveyorService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="22">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -2516,7 +2572,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="24">
         <Properties>
           <string name="Name">Decor</string>
           <string name="Source"><![CDATA[-- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
@@ -2894,7 +2950,7 @@ return Decor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="25">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Discovery Book: the first player in the whole game to get each species has their
@@ -3028,7 +3084,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the Freeks in their yard, plus offline earnings
@@ -3109,7 +3165,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">Environment</string>
           <string name="Source"><![CDATA[-- Lighting, sky, terrain and the scenery around the yards and conveyor.
@@ -3239,7 +3295,7 @@ return Environment
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">HalloweenDecor</string>
           <string name="Source"><![CDATA[-- Halloween props: ghosts, bats, cobwebs, tombstones, dead trees, a witch's cauldron,
@@ -3699,7 +3755,7 @@ return HalloweenDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="28">
+      <Item class="Script" referent="29">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -3722,7 +3778,7 @@ require(Server.DataService).init()
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -3814,7 +3870,7 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the map and gives every player a fenced yard. Other players can walk in to look
@@ -3830,6 +3886,7 @@ local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
+local GateTiers = require(ReplicatedStorage.Shared.GateTiers)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
@@ -3927,8 +3984,163 @@ local ACCENTS = {
 }
 
 local function setSign(plot, text: string)
+	plot.signText = text
 	for _, label in plot.signLabels do
 		label.Text = text
+	end
+end
+
+-- Optional extra decoration for every gate arch (set by SeasonalService during events).
+-- Called as decorator(archFolder, info) with info = { origin, half, innerX, beamBottom, front }.
+local archDecorator = nil
+
+-- (Re)builds a yard's gate arch for a tier from GateTiers: posts, beam, name sign, and for
+-- higher tiers finials, a crest and glowing gems.
+local function buildArch(plot, tierIndex: number)
+	local tier = GateTiers.list[tierIndex]
+	if plot.archFolder then
+		plot.archFolder:Destroy()
+	end
+	local arch = Instance.new("Model")
+	arch.Name = "GateArch"
+	arch.Parent = plot.freeks.Parent
+	plot.archFolder = arch
+	plot.archTier = tierIndex
+
+	local origin, half = plot.origin, plot.half
+	local w = tier.postWidth
+	local postX = GATE_WIDTH / 2 + w / 2
+	local material = Enum.Material[tier.material]
+	local top = 1 + tier.height -- top of the posts
+	for _, side in { -1, 1 } do
+		part({
+			Name = "GatePost",
+			Size = Vector3.new(w, tier.height, w),
+			CFrame = origin * CFrame.new(side * postX, 1 + tier.height / 2, -half),
+			Color = tier.color,
+			Material = material,
+			Parent = arch,
+		})
+		-- A wider base and cap on each post.
+		part({
+			Name = "PostBase",
+			Size = Vector3.new(w + 0.8, 1, w + 0.8),
+			CFrame = origin * CFrame.new(side * postX, 1.5, -half),
+			Color = tier.color,
+			Material = material,
+			Parent = arch,
+		})
+		part({
+			Name = "PostCap",
+			Size = Vector3.new(w + 0.6, 0.6, w + 0.6),
+			CFrame = origin * CFrame.new(side * postX, top + 0.3, -half),
+			Color = plot.accent,
+			Parent = arch,
+		})
+		if tier.finials then
+			part({
+				Name = "Finial",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.one * (w * 0.9),
+				CFrame = origin * CFrame.new(side * postX, top + 0.6 + w * 0.4, -half),
+				Color = tier.color,
+				Material = material,
+				Parent = arch,
+			})
+		end
+		if tier.gems then
+			local gem = part({
+				Name = "Gem",
+				Size = Vector3.new(1.1, 1.1, 0.4),
+				CFrame = origin
+					* CFrame.new(side * postX, 1 + tier.height * 0.6, -half - w / 2 - 0.1)
+					* CFrame.Angles(0, 0, math.rad(45)),
+				Color = plot.accent,
+				Material = Enum.Material.Neon,
+				CanCollide = false,
+				Parent = arch,
+			})
+			local sparkle = Instance.new("Sparkles")
+			sparkle.SparkleColor = Color3.fromRGB(255, 235, 150)
+			sparkle.Parent = gem
+		end
+	end
+	local beamY = top - 0.6
+	part({
+		Name = "ArchBeam",
+		Size = Vector3.new(postX * 2 + w, 1.2, w * 0.85),
+		CFrame = origin * CFrame.new(0, beamY, -half),
+		Color = tier.color,
+		Material = material,
+		Parent = arch,
+	})
+	local signY = beamY + 2.4
+	local signWidth = 13 + tierIndex * 1.5
+	plot.signLabels = Decor.signboard(
+		arch,
+		origin * CFrame.new(0, signY, -half),
+		Vector2.new(signWidth, 3),
+		plot.signText,
+		plot.accent
+	)
+	if tier.crest then
+		-- A half-ring of segments arching over the sign.
+		local radius = signWidth / 2 + 1
+		local segments = 9
+		for i = 0, segments - 1 do
+			local a0 = math.pi * i / segments
+			local a1 = math.pi * (i + 1) / segments
+			local p0 = origin * CFrame.new(math.cos(a0) * radius, signY - 1 + math.sin(a0) * radius * 0.45, -half)
+			local p1 = origin * CFrame.new(math.cos(a1) * radius, signY - 1 + math.sin(a1) * radius * 0.45, -half)
+			local length = (p1.Position - p0.Position).Magnitude
+			part({
+				Name = "Crest",
+				Size = Vector3.new(0.6, 0.6, length + 0.3),
+				CFrame = CFrame.lookAt(p0.Position, p1.Position) * CFrame.new(0, 0, -length / 2),
+				Color = tier.color,
+				Material = material,
+				CanCollide = false,
+				Parent = arch,
+			})
+		end
+		local jewel = part({
+			Name = "CrestJewel",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * (if tier.gems then 1.8 else 1.2),
+			CFrame = origin * CFrame.new(0, signY - 1 + radius * 0.45, -half),
+			Color = if tier.gems then plot.accent else tier.color,
+			Material = if tier.gems then Enum.Material.Neon else material,
+			CanCollide = false,
+			Parent = arch,
+		})
+		if tier.gems then
+			local sparkle = Instance.new("Sparkles")
+			sparkle.SparkleColor = Color3.fromRGB(255, 235, 150)
+			sparkle.Parent = jewel
+		end
+	end
+
+	-- Keep the LOCKED/OPEN timer just above the arch.
+	plot.gateGuiPart.CFrame = origin * CFrame.new(0, signY + (if tier.crest then 6 else 4), -half)
+
+	if archDecorator then
+		archDecorator(arch, {
+			origin = origin,
+			half = half,
+			innerX = GATE_WIDTH / 2,
+			beamBottom = beamY - 0.6,
+			front = -half - w / 2 - 0.1,
+		})
+	end
+end
+
+-- Rebuilds every arch, e.g. when a seasonal theme starts or ends.
+function PlotService.setArchDecorator(decorator)
+	archDecorator = decorator
+	for _, plot in plots do
+		if plot.archTier > 0 then
+			buildArch(plot, plot.archTier)
+		end
 	end
 end
 
@@ -4060,35 +4272,6 @@ local function buildPlot(index: number)
 		})
 	end
 
-	-- Wooden gate arch with the owner's name on a sign.
-	for _, x in { -1, 1 } do
-		part({
-			Name = "GatePost",
-			Size = Vector3.new(1.6, 11, 1.6),
-			CFrame = origin * CFrame.new(x * postX, 6.5, -half),
-			Color = Color3.fromRGB(120, 85, 55),
-			Material = Enum.Material.Wood,
-			Parent = folder,
-		})
-		part({
-			Name = "PostCap",
-			Size = Vector3.new(2, 0.6, 2),
-			CFrame = origin * CFrame.new(x * postX, 12.3, -half),
-			Color = accent,
-			Parent = decor,
-		})
-	end
-	part({
-		Name = "ArchBeam",
-		Size = Vector3.new(postX * 2 + 1.6, 1.2, 1.4),
-		CFrame = origin * CFrame.new(0, 11.4, -half),
-		Color = Color3.fromRGB(120, 85, 55),
-		Material = Enum.Material.Wood,
-		Parent = folder,
-	})
-	local signLabels =
-		Decor.signboard(decor, origin * CFrame.new(0, 13.8, -half), Vector2.new(15, 3), "Empty Yard", accent)
-
 	-- The visible force field fills the gate; an invisible part above stops jumping over.
 	local gateHeight = 9.5
 	local gate = part({
@@ -4138,7 +4321,12 @@ local function buildPlot(index: number)
 		spawn = origin * CFrame.new(0, 4, -(PLOT_SIZE / 2 - 5)) * CFrame.Angles(0, math.pi, 0),
 		pads = pads,
 		pens = pens,
-		signLabels = signLabels,
+		signLabels = {},
+		signText = "Empty Yard",
+		archTier = 0,
+		archFolder = nil,
+		gateGuiPart = gateGuiPart,
+		half = half,
 		freeks = freekFolder,
 		gate = gate,
 		gateTop = gateTop,
@@ -4239,6 +4427,10 @@ function PlotService.render(player: Player)
 	end
 
 	plot.freeks:ClearAllChildren()
+	local tier = GateTiers.forRebirths(data.rebirths)
+	if plot.archTier ~= tier then
+		buildArch(plot, tier)
+	end
 	setSign(plot, player.DisplayName .. "'s Yard")
 
 	for i, pad in plot.pads do
@@ -4316,6 +4508,9 @@ local function clearPlot(plot)
 	plot.owner = nil
 	plot.freeks:ClearAllChildren()
 	setSign(plot, "Empty Yard")
+	if plot.archTier ~= 1 then
+		buildArch(plot, 1)
+	end
 	updatePenLabels(plot, nil)
 	for _, pad in plot.pads do
 		setPadLook(plot, pad, false)
@@ -4450,7 +4645,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="31">
+      <Item class="ModuleScript" referent="32">
         <Properties>
           <string name="Name">RebirthService</string>
           <string name="Source"><![CDATA[-- Rebirth: pay Config.rebirthCost to start over with a permanent income bonus.
@@ -4546,7 +4741,7 @@ return RebirthService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="32">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">Recipes</string>
           <string name="Source"><![CDATA[-- Secret breeding recipes. Server-only so players can't read them out of the game.
@@ -4622,7 +4817,7 @@ return Recipes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -4689,6 +4884,20 @@ THEMES.Halloween = {
 		},
 		BloomEffect = { Intensity = 0.9 },
 	},
+	-- Cobwebs in the top corners of every gate arch and string lights along its beam.
+	-- Runs whenever an arch is (re)built, so it fits every gate tier.
+	arch = function(arch: Instance, info)
+		local origin, x, y, z = info.origin, info.innerX, info.beamBottom, info.front
+		HalloweenDecor.cobweb(arch, origin * CFrame.new(-x, y, z), 3)
+		HalloweenDecor.cobweb(arch, origin * CFrame.new(x, y, z) * CFrame.Angles(0, math.pi, 0), 3)
+		HalloweenDecor.stringLights(
+			arch,
+			(origin * CFrame.new(-x, y - 0.1, z - 0.1)).Position,
+			(origin * CFrame.new(x, y - 0.1, z - 0.1)).Position,
+			10,
+			0.8
+		)
+	end,
 	build = function(props: Folder)
 		-- Every yard: jack-o'-lanterns flanking the gate, one inside by the pens, and a
 		-- pile of leaves under each corner tree.
@@ -4729,20 +4938,6 @@ THEMES.Halloween = {
 			for _, z in { -142, 142 } do
 				Decor.leafPile(props, CFrame.new(x, 0, z), x + z)
 			end
-		end
-
-		-- Every yard's gate arch: cobwebs in the top corners and string lights along the beam.
-		local half = 31.5
-		for _, origin in PlotService.origins() do
-			HalloweenDecor.cobweb(props, origin * CFrame.new(-6.8, 10.8, -half - 0.8), 3)
-			HalloweenDecor.cobweb(props, origin * CFrame.new(6.8, 10.8, -half - 0.8) * CFrame.Angles(0, math.pi, 0), 3)
-			HalloweenDecor.stringLights(
-				props,
-				(origin * CFrame.new(-7.6, 10.7, -half - 0.9)).Position,
-				(origin * CFrame.new(7.6, 10.7, -half - 0.9)).Position,
-				10,
-				0.8
-			)
 		end
 
 		-- String lights between the street lamps along both walkways, and low fog.
@@ -4860,6 +5055,7 @@ local function clearTheme()
 	recolour(Decor.TAGS.lawn, nil)
 	setLamps(nil)
 	restoreLighting()
+	PlotService.setArchDecorator(nil)
 	Workspace.Terrain:SetMaterialColor(Enum.Material.Grass, defaults.grass)
 	current = nil
 end
@@ -4874,6 +5070,9 @@ local function applyTheme(id: string)
 	recolour(Decor.TAGS.lawn, theme.lawn)
 	setLamps(theme.bulb)
 	applyLighting(theme.lighting)
+	if theme.arch then
+		PlotService.setArchDecorator(theme.arch)
+	end
 	Workspace.Terrain:SetMaterialColor(Enum.Material.Grass, theme.grass)
 	current = id
 end
@@ -4912,7 +5111,7 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Stealing Freeks from other players' yards.
@@ -5273,7 +5472,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
@@ -5554,7 +5753,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- Weapons: giving them out, buying them, and what happens when they hit.
@@ -5883,19 +6082,19 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="37">
+  <Item class="StarterPlayer" referent="38">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="38">
+    <Item class="StarterPlayerScripts" referent="39">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="39">
+      <Item class="Folder" referent="40">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="40">
+        <Item class="ModuleScript" referent="41">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -5969,7 +6168,7 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="41">
+        <Item class="ModuleScript" referent="42">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, event chip, menu tabs, leaderboard,
@@ -6553,7 +6752,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="42">
+        <Item class="LocalScript" referent="43">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -6569,6 +6768,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Belt = require(Shared.Belt)
 local Config = require(Shared.Config)
+local GateTiers = require(Shared.GateTiers)
 local Format = require(Shared.Format)
 local FreekModel = require(Shared.FreekModel)
 local FreekUtil = require(Shared.FreekUtil)
@@ -7294,7 +7494,13 @@ function renderers.Rebirth()
 		end
 	end
 
-	local grid = UI.grid(440, 270)
+	local gateNow = GateTiers.list[GateTiers.forRebirths(rebirths)]
+	local gateNext = GateTiers.list[GateTiers.forRebirths(rebirths + 1)]
+	local gateLine = if gateNext ~= gateNow
+		then "Gate upgrade: " .. gateNow.name .. " → " .. gateNext.name
+		else "Your gate: " .. gateNow.name .. " (max)"
+
+	local grid = UI.grid(440, 290)
 	grid.LayoutOrder = 2
 	grid.Parent = body
 	local ready = state.money >= cost
@@ -7303,6 +7509,7 @@ function renderers.Rebirth()
 			{ "Rebirth " .. (rebirths + 1), Color3.fromRGB(255, 210, 80), 30 },
 			{ "Your Freeks earn x" .. tostring(nextMult) .. " forever", colors.money, 22 },
 			{ if #unlocks > 0 then "Unlocks: " .. table.concat(unlocks, ", ") else "", colors.orange, 20 },
+			{ gateLine, colors.gold, 18 },
 			{ "Resets: coins, Freeks, yard slots", colors.red:Lerp(Color3.new(1, 1, 1), 0.3), 18 },
 			{ "Keeps: Discovery Book, Limited Freeks, weapons", colors.muted, 18 },
 			{
@@ -7618,7 +7825,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="43">
+        <Item class="ModuleScript" referent="44">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).

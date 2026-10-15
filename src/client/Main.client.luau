@@ -11,6 +11,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Belt = require(Shared.Belt)
 local Config = require(Shared.Config)
+local GateTiers = require(Shared.GateTiers)
 local Format = require(Shared.Format)
 local FreekModel = require(Shared.FreekModel)
 local FreekUtil = require(Shared.FreekUtil)
@@ -736,7 +737,13 @@ function renderers.Rebirth()
 		end
 	end
 
-	local grid = UI.grid(440, 270)
+	local gateNow = GateTiers.list[GateTiers.forRebirths(rebirths)]
+	local gateNext = GateTiers.list[GateTiers.forRebirths(rebirths + 1)]
+	local gateLine = if gateNext ~= gateNow
+		then "Gate upgrade: " .. gateNow.name .. " → " .. gateNext.name
+		else "Your gate: " .. gateNow.name .. " (max)"
+
+	local grid = UI.grid(440, 290)
 	grid.LayoutOrder = 2
 	grid.Parent = body
 	local ready = state.money >= cost
@@ -745,6 +752,7 @@ function renderers.Rebirth()
 			{ "Rebirth " .. (rebirths + 1), Color3.fromRGB(255, 210, 80), 30 },
 			{ "Your Freeks earn x" .. tostring(nextMult) .. " forever", colors.money, 22 },
 			{ if #unlocks > 0 then "Unlocks: " .. table.concat(unlocks, ", ") else "", colors.orange, 20 },
+			{ gateLine, colors.gold, 18 },
 			{ "Resets: coins, Freeks, yard slots", colors.red:Lerp(Color3.new(1, 1, 1), 0.3), 18 },
 			{ "Keeps: Discovery Book, Limited Freeks, weapons", colors.muted, 18 },
 			{

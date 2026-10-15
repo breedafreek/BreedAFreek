@@ -62,6 +62,20 @@ THEMES.Halloween = {
 		},
 		BloomEffect = { Intensity = 0.9 },
 	},
+	-- Cobwebs in the top corners of every gate arch and string lights along its beam.
+	-- Runs whenever an arch is (re)built, so it fits every gate tier.
+	arch = function(arch: Instance, info)
+		local origin, x, y, z = info.origin, info.innerX, info.beamBottom, info.front
+		HalloweenDecor.cobweb(arch, origin * CFrame.new(-x, y, z), 3)
+		HalloweenDecor.cobweb(arch, origin * CFrame.new(x, y, z) * CFrame.Angles(0, math.pi, 0), 3)
+		HalloweenDecor.stringLights(
+			arch,
+			(origin * CFrame.new(-x, y - 0.1, z - 0.1)).Position,
+			(origin * CFrame.new(x, y - 0.1, z - 0.1)).Position,
+			10,
+			0.8
+		)
+	end,
 	build = function(props: Folder)
 		-- Every yard: jack-o'-lanterns flanking the gate, one inside by the pens, and a
 		-- pile of leaves under each corner tree.
@@ -102,20 +116,6 @@ THEMES.Halloween = {
 			for _, z in { -142, 142 } do
 				Decor.leafPile(props, CFrame.new(x, 0, z), x + z)
 			end
-		end
-
-		-- Every yard's gate arch: cobwebs in the top corners and string lights along the beam.
-		local half = 31.5
-		for _, origin in PlotService.origins() do
-			HalloweenDecor.cobweb(props, origin * CFrame.new(-6.8, 10.8, -half - 0.8), 3)
-			HalloweenDecor.cobweb(props, origin * CFrame.new(6.8, 10.8, -half - 0.8) * CFrame.Angles(0, math.pi, 0), 3)
-			HalloweenDecor.stringLights(
-				props,
-				(origin * CFrame.new(-7.6, 10.7, -half - 0.9)).Position,
-				(origin * CFrame.new(7.6, 10.7, -half - 0.9)).Position,
-				10,
-				0.8
-			)
 		end
 
 		-- String lights between the street lamps along both walkways, and low fog.
@@ -233,6 +233,7 @@ local function clearTheme()
 	recolour(Decor.TAGS.lawn, nil)
 	setLamps(nil)
 	restoreLighting()
+	PlotService.setArchDecorator(nil)
 	Workspace.Terrain:SetMaterialColor(Enum.Material.Grass, defaults.grass)
 	current = nil
 end
@@ -247,6 +248,9 @@ local function applyTheme(id: string)
 	recolour(Decor.TAGS.lawn, theme.lawn)
 	setLamps(theme.bulb)
 	applyLighting(theme.lighting)
+	if theme.arch then
+		PlotService.setArchDecorator(theme.arch)
+	end
 	Workspace.Terrain:SetMaterialColor(Enum.Material.Grass, theme.grass)
 	current = id
 end

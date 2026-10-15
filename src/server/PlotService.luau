@@ -11,6 +11,7 @@ local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
+local GateTiers = require(ReplicatedStorage.Shared.GateTiers)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
@@ -108,8 +109,163 @@ local ACCENTS = {
 }
 
 local function setSign(plot, text: string)
+	plot.signText = text
 	for _, label in plot.signLabels do
 		label.Text = text
+	end
+end
+
+-- Optional extra decoration for every gate arch (set by SeasonalService during events).
+-- Called as decorator(archFolder, info) with info = { origin, half, innerX, beamBottom, front }.
+local archDecorator = nil
+
+-- (Re)builds a yard's gate arch for a tier from GateTiers: posts, beam, name sign, and for
+-- higher tiers finials, a crest and glowing gems.
+local function buildArch(plot, tierIndex: number)
+	local tier = GateTiers.list[tierIndex]
+	if plot.archFolder then
+		plot.archFolder:Destroy()
+	end
+	local arch = Instance.new("Model")
+	arch.Name = "GateArch"
+	arch.Parent = plot.freeks.Parent
+	plot.archFolder = arch
+	plot.archTier = tierIndex
+
+	local origin, half = plot.origin, plot.half
+	local w = tier.postWidth
+	local postX = GATE_WIDTH / 2 + w / 2
+	local material = Enum.Material[tier.material]
+	local top = 1 + tier.height -- top of the posts
+	for _, side in { -1, 1 } do
+		part({
+			Name = "GatePost",
+			Size = Vector3.new(w, tier.height, w),
+			CFrame = origin * CFrame.new(side * postX, 1 + tier.height / 2, -half),
+			Color = tier.color,
+			Material = material,
+			Parent = arch,
+		})
+		-- A wider base and cap on each post.
+		part({
+			Name = "PostBase",
+			Size = Vector3.new(w + 0.8, 1, w + 0.8),
+			CFrame = origin * CFrame.new(side * postX, 1.5, -half),
+			Color = tier.color,
+			Material = material,
+			Parent = arch,
+		})
+		part({
+			Name = "PostCap",
+			Size = Vector3.new(w + 0.6, 0.6, w + 0.6),
+			CFrame = origin * CFrame.new(side * postX, top + 0.3, -half),
+			Color = plot.accent,
+			Parent = arch,
+		})
+		if tier.finials then
+			part({
+				Name = "Finial",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.one * (w * 0.9),
+				CFrame = origin * CFrame.new(side * postX, top + 0.6 + w * 0.4, -half),
+				Color = tier.color,
+				Material = material,
+				Parent = arch,
+			})
+		end
+		if tier.gems then
+			local gem = part({
+				Name = "Gem",
+				Size = Vector3.new(1.1, 1.1, 0.4),
+				CFrame = origin
+					* CFrame.new(side * postX, 1 + tier.height * 0.6, -half - w / 2 - 0.1)
+					* CFrame.Angles(0, 0, math.rad(45)),
+				Color = plot.accent,
+				Material = Enum.Material.Neon,
+				CanCollide = false,
+				Parent = arch,
+			})
+			local sparkle = Instance.new("Sparkles")
+			sparkle.SparkleColor = Color3.fromRGB(255, 235, 150)
+			sparkle.Parent = gem
+		end
+	end
+	local beamY = top - 0.6
+	part({
+		Name = "ArchBeam",
+		Size = Vector3.new(postX * 2 + w, 1.2, w * 0.85),
+		CFrame = origin * CFrame.new(0, beamY, -half),
+		Color = tier.color,
+		Material = material,
+		Parent = arch,
+	})
+	local signY = beamY + 2.4
+	local signWidth = 13 + tierIndex * 1.5
+	plot.signLabels = Decor.signboard(
+		arch,
+		origin * CFrame.new(0, signY, -half),
+		Vector2.new(signWidth, 3),
+		plot.signText,
+		plot.accent
+	)
+	if tier.crest then
+		-- A half-ring of segments arching over the sign.
+		local radius = signWidth / 2 + 1
+		local segments = 9
+		for i = 0, segments - 1 do
+			local a0 = math.pi * i / segments
+			local a1 = math.pi * (i + 1) / segments
+			local p0 = origin * CFrame.new(math.cos(a0) * radius, signY - 1 + math.sin(a0) * radius * 0.45, -half)
+			local p1 = origin * CFrame.new(math.cos(a1) * radius, signY - 1 + math.sin(a1) * radius * 0.45, -half)
+			local length = (p1.Position - p0.Position).Magnitude
+			part({
+				Name = "Crest",
+				Size = Vector3.new(0.6, 0.6, length + 0.3),
+				CFrame = CFrame.lookAt(p0.Position, p1.Position) * CFrame.new(0, 0, -length / 2),
+				Color = tier.color,
+				Material = material,
+				CanCollide = false,
+				Parent = arch,
+			})
+		end
+		local jewel = part({
+			Name = "CrestJewel",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * (if tier.gems then 1.8 else 1.2),
+			CFrame = origin * CFrame.new(0, signY - 1 + radius * 0.45, -half),
+			Color = if tier.gems then plot.accent else tier.color,
+			Material = if tier.gems then Enum.Material.Neon else material,
+			CanCollide = false,
+			Parent = arch,
+		})
+		if tier.gems then
+			local sparkle = Instance.new("Sparkles")
+			sparkle.SparkleColor = Color3.fromRGB(255, 235, 150)
+			sparkle.Parent = jewel
+		end
+	end
+
+	-- Keep the LOCKED/OPEN timer just above the arch.
+	plot.gateGuiPart.CFrame = origin * CFrame.new(0, signY + (if tier.crest then 6 else 4), -half)
+
+	if archDecorator then
+		archDecorator(arch, {
+			origin = origin,
+			half = half,
+			innerX = GATE_WIDTH / 2,
+			beamBottom = beamY - 0.6,
+			front = -half - w / 2 - 0.1,
+		})
+	end
+end
+
+-- Rebuilds every arch, e.g. when a seasonal theme starts or ends.
+function PlotService.setArchDecorator(decorator)
+	archDecorator = decorator
+	for _, plot in plots do
+		if plot.archTier > 0 then
+			buildArch(plot, plot.archTier)
+		end
 	end
 end
 
@@ -241,35 +397,6 @@ local function buildPlot(index: number)
 		})
 	end
 
-	-- Wooden gate arch with the owner's name on a sign.
-	for _, x in { -1, 1 } do
-		part({
-			Name = "GatePost",
-			Size = Vector3.new(1.6, 11, 1.6),
-			CFrame = origin * CFrame.new(x * postX, 6.5, -half),
-			Color = Color3.fromRGB(120, 85, 55),
-			Material = Enum.Material.Wood,
-			Parent = folder,
-		})
-		part({
-			Name = "PostCap",
-			Size = Vector3.new(2, 0.6, 2),
-			CFrame = origin * CFrame.new(x * postX, 12.3, -half),
-			Color = accent,
-			Parent = decor,
-		})
-	end
-	part({
-		Name = "ArchBeam",
-		Size = Vector3.new(postX * 2 + 1.6, 1.2, 1.4),
-		CFrame = origin * CFrame.new(0, 11.4, -half),
-		Color = Color3.fromRGB(120, 85, 55),
-		Material = Enum.Material.Wood,
-		Parent = folder,
-	})
-	local signLabels =
-		Decor.signboard(decor, origin * CFrame.new(0, 13.8, -half), Vector2.new(15, 3), "Empty Yard", accent)
-
 	-- The visible force field fills the gate; an invisible part above stops jumping over.
 	local gateHeight = 9.5
 	local gate = part({
@@ -319,7 +446,12 @@ local function buildPlot(index: number)
 		spawn = origin * CFrame.new(0, 4, -(PLOT_SIZE / 2 - 5)) * CFrame.Angles(0, math.pi, 0),
 		pads = pads,
 		pens = pens,
-		signLabels = signLabels,
+		signLabels = {},
+		signText = "Empty Yard",
+		archTier = 0,
+		archFolder = nil,
+		gateGuiPart = gateGuiPart,
+		half = half,
 		freeks = freekFolder,
 		gate = gate,
 		gateTop = gateTop,
@@ -420,6 +552,10 @@ function PlotService.render(player: Player)
 	end
 
 	plot.freeks:ClearAllChildren()
+	local tier = GateTiers.forRebirths(data.rebirths)
+	if plot.archTier ~= tier then
+		buildArch(plot, tier)
+	end
 	setSign(plot, player.DisplayName .. "'s Yard")
 
 	for i, pad in plot.pads do
@@ -497,6 +633,9 @@ local function clearPlot(plot)
 	plot.owner = nil
 	plot.freeks:ClearAllChildren()
 	setSign(plot, "Empty Yard")
+	if plot.archTier ~= 1 then
+		buildArch(plot, 1)
+	end
 	updatePenLabels(plot, nil)
 	for _, pad in plot.pads do
 		setPadLook(plot, pad, false)
