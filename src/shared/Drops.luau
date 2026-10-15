@@ -26,6 +26,8 @@ Drops.WANDER_SPEED = 5
 Drops.EXIT_SPEED = 9
 -- The town square between the two rows of barns, where Freeks land and wander.
 Drops.AREA = { minX = -125, maxX = 125, minZ = -23, maxZ = 23 }
+-- Height of the town square's floor, which Freeks walk on.
+Drops.GROUND_Y = 0.2
 -- The Freek House at the west end; Freeks nobody grabbed walk in through this door.
 Drops.HOUSE_POSITION = Vector3.new(-152, 0, 0)
 Drops.HOUSE_DOOR = Vector3.new(-143.5, 0, 0)
@@ -70,7 +72,11 @@ end
 
 local function clampToArea(position: Vector3): Vector3
 	local area = Drops.AREA
-	return Vector3.new(math.clamp(position.X, area.minX, area.maxX), 0, math.clamp(position.Z, area.minZ, area.maxZ))
+	return Vector3.new(
+		math.clamp(position.X, area.minX, area.maxX),
+		Drops.GROUND_Y,
+		math.clamp(position.Z, area.minZ, area.maxZ)
+	)
 end
 
 -- The whole trip of one Freek: { launch, land, muzzle, legs, wanderEnd, finish }.
@@ -78,7 +84,8 @@ end
 function Drops.plan(seed: number, cannon: number, launch: number)
 	local rng = Random.new(seed)
 	local area = Drops.AREA
-	local landAt = Vector3.new(rng:NextNumber(area.minX, area.maxX), 0, rng:NextNumber(area.minZ, area.maxZ))
+	local landAt =
+		Vector3.new(rng:NextNumber(area.minX, area.maxX), Drops.GROUND_Y, rng:NextNumber(area.minZ, area.maxZ))
 	local legs = {}
 	local t = launch + Drops.FLIGHT_TIME
 	local wanderEnd = t + Drops.WANDER_TIME
@@ -105,7 +112,7 @@ function Drops.plan(seed: number, cannon: number, launch: number)
 	end
 
 	-- Time's up: head into the Freek House.
-	local home = Drops.HOUSE_DOOR
+	local home = Drops.HOUSE_DOOR + Vector3.new(0, Drops.GROUND_Y, 0)
 	local length = (home - position).Magnitude
 	if length > 0.5 then
 		facing = (home - position).Unit

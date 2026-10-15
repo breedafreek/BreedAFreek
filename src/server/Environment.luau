@@ -62,6 +62,10 @@ local function setupTerrain()
 	terrain:FillBlock(CFrame.new(0, -4, 0), Vector3.new(600, 8, 600), Enum.Material.Grass)
 	terrain:SetMaterialColor(Enum.Material.Grass, Color3.fromRGB(95, 175, 80))
 	terrain:SetMaterialColor(Enum.Material.Pavement, Color3.fromRGB(196, 190, 180))
+	-- No tall grass blades: they hide the feet of anything standing on the grass.
+	pcall(function()
+		terrain.Decoration = false
+	end)
 end
 
 local function buildScenery()
@@ -74,6 +78,19 @@ local function buildScenery()
 	-- gaps between the barns.
 	local length = (Drops.AREA.maxX - Drops.AREA.minX) + 40
 	local centerX = (Drops.AREA.maxX + Drops.AREA.minX) / 2
+	-- A flat grass floor for the square, so Freeks walk on a level surface instead of
+	-- terrain (whose grass blades would hide their feet).
+	Decor.tag(
+		Decor.part({
+			Name = "TownSquare",
+			Size = Vector3.new(length, Drops.GROUND_Y, 47.2),
+			CFrame = CFrame.new(centerX - 10, Drops.GROUND_Y / 2, 0),
+			Color = Color3.fromRGB(105, 185, 85),
+			Material = Enum.Material.Grass,
+			Parent = folder,
+		}),
+		Decor.TAGS.lawn
+	)
 	for _, side in { -1, 1 } do
 		Decor.part({
 			Name = "Walkway",
