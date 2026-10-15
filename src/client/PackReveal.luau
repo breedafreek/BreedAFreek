@@ -213,18 +213,81 @@ function PackReveal.play(result, done: () -> ())
 	light.Shadows = false
 	light.Parent = rim
 
-	-- Spotlight beams from the ceiling, sweeping round the pedestal.
+	-- Stage spotlights: lamps on a ring above the stage, each throwing a soft cone of light
+	-- (a bright core inside a wide glow, fading towards the floor) that sweeps round the
+	-- pedestal, with a real spotlight and a glowing pool where it lands.
+	local RIG_HEIGHT, RIG_RADIUS = 30, 19
+	newPart(stage, {
+		Name = "LightRig",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.6, RIG_RADIUS * 2 + 2, RIG_RADIUS * 2 + 2),
+		CFrame = at(0, RIG_HEIGHT + 1.2, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		Color = Color3.fromRGB(30, 30, 40),
+		Material = Enum.Material.Metal,
+		Transparency = 0,
+	})
+	local function coneBeam(a0: Attachment, a1: Attachment, width0: number, width1: number, near: number, far: number)
+		local beam = Instance.new("Beam")
+		beam.Attachment0 = a0
+		beam.Attachment1 = a1
+		beam.Width0 = width0
+		beam.Width1 = width1
+		beam.FaceCamera = true
+		beam.LightEmission = 1
+		beam.LightInfluence = 0
+		beam.Segments = 12
+		beam.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, near),
+			NumberSequenceKeypoint.new(0.7, (near + far) / 2 + 0.05),
+			NumberSequenceKeypoint.new(1, far),
+		})
+		beam.Parent = a0.Parent
+		return beam
+	end
 	local beams = {}
 	for k = 1, 8 do
-		local beam = litPart({
-			Name = "Beam",
+		local angle = k / 8 * math.pi * 2
+		local lampAt = Vector3.new(math.cos(angle) * RIG_RADIUS, RIG_HEIGHT, math.sin(angle) * RIG_RADIUS)
+		local lamp = newPart(stage, {
+			Name = "Lamp",
 			Shape = Enum.PartType.Cylinder,
-			Size = Vector3.new(10, 1.6, 1.6),
+			Size = Vector3.new(2.2, 1.8, 1.8),
+			CFrame = at(lampAt.X, lampAt.Y, lampAt.Z),
+			Color = Color3.fromRGB(35, 35, 45),
+			Material = Enum.Material.Metal,
+		})
+		local lens = litPart({
+			Name = "LampLens",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * 1.3,
+			CFrame = at(lampAt.X, lampAt.Y - 0.9, lampAt.Z),
 			Material = Enum.Material.Neon,
-			Transparency = 0.9,
+		}, k / 8)
+		local pool = litPart({
+			Name = "LightPool",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.05, 5, 5),
+			Material = Enum.Material.Neon,
+			Transparency = 0.8,
 			CastShadow = false,
 		}, k / 8)
-		table.insert(beams, { part = beam, angle = k / 8 * math.pi * 2 })
+		local from = Instance.new("Attachment")
+		from.Parent = lens
+		local to = Instance.new("Attachment")
+		to.Parent = pool
+		local core = coneBeam(from, to, 0.8, 3.2, 0.45, 0.85)
+		local halo = coneBeam(from, to, 2.2, 9, 0.82, 0.97)
+		local spot = Instance.new("SpotLight")
+		spot.Angle = 30
+		spot.Range = 45
+		spot.Brightness = 3
+		spot.Shadows = false
+		spot.Face = Enum.NormalId.Front
+		spot.Parent = lens
+		table.insert(
+			beams,
+			{ lens = lens, pool = pool, spot = spot, core = core, halo = halo, top = lampAt, angle = angle }
+		)
 	end
 
 	----------------------------------------------------------------------------
@@ -335,14 +398,19 @@ function PackReveal.play(result, done: () -> ())
 		local now = os.clock()
 		sweepAngle += state.sweep * dt
 		for i, beam in beams do
-			-- Each beam hangs from the ceiling and swings round the pedestal.
-			local top = Vector3.new(math.cos(beam.angle) * 20, 58, math.sin(beam.angle) * 20)
+			-- Each lamp swings its beam round the pedestal.
 			local swing = beam.angle + sweepAngle + math.sin(sweepAngle * 2 + i) * 0.4
-			local target = Vector3.new(math.cos(swing) * 9, 0, math.sin(swing) * 9)
-			local length = (target - top).Magnitude
-			beam.part.Size = Vector3.new(length, 1.6, 1.6)
-			beam.part.CFrame = STAGE * CFrame.lookAt((top + target) / 2, target) * CFrame.Angles(0, math.pi / 2, 0)
-			beam.part.Transparency = 1 - 0.12 * state.brightness
+			local target = Vector3.new(math.cos(swing) * 8, 0.05, math.sin(swing) * 8)
+			beam.lens.CFrame = STAGE * CFrame.lookAt(beam.top - Vector3.new(0, 0.9, 0), target)
+			beam.pool.CFrame = STAGE * CFrame.new(target) * CFrame.Angles(0, 0, math.pi / 2)
+			local color = if state.rainbow then rainbow(now, i / #beams) else state.color
+			beam.core.Color = ColorSequence.new(color)
+			beam.halo.Color = ColorSequence.new(color)
+			beam.spot.Color = color
+			beam.spot.Brightness = 1 + 4 * state.brightness
+			beam.core.Brightness = 0.6 + 1.4 * state.brightness
+			beam.halo.Brightness = beam.core.Brightness
+			beam.pool.Transparency = 0.95 - 0.07 * state.brightness
 		end
 		for _, entry in lit do
 			entry.part.Color = if state.rainbow then rainbow(now, entry.offset) else state.color
