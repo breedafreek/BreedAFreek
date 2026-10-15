@@ -37,7 +37,8 @@ local function defaultData()
 		breeding = nil, -- { a = uid, b = uid, endsAt = unix seconds }
 		discovered = {}, -- [speciesId] = true for every species this player has owned
 		rebirths = 0,
-		crates = {}, -- [crateId] = how many unopened Lucky Crates (won on the wheel)
+		crates = {}, -- [crateId] = how many unopened Monster Crates (won on the wheel)
+		receipts = {}, -- recent Robux purchase IDs, so a purchase is never granted twice
 		lastSpin = 0, -- os.time() of the last Lucky Wheel spin
 		lastSeen = os.time(),
 	}
@@ -132,10 +133,15 @@ local function load(player: Player)
 	return nil, reason
 end
 
-function DataService.save(player: Player, release: boolean?)
+-- Saves the player's data. Returns true once it's safely stored (or if this is a
+-- temporary Studio save that's never stored).
+function DataService.save(player: Player, release: boolean?): boolean
 	local data = profiles[player]
-	if not data or noSave[player] then
-		return
+	if not data then
+		return false
+	end
+	if noSave[player] then
+		return true
 	end
 	data.lastSeen = os.time()
 	data.lock = if release then nil else { job = game.JobId, time = os.time() }
@@ -149,11 +155,12 @@ function DataService.save(player: Player, release: boolean?)
 			end)
 		end)
 		if ok then
-			return
+			return true
 		end
 		warn("Save failed for", player.Name, err)
 		task.wait(attempt)
 	end
+	return false
 end
 
 function DataService.get(player: Player)

@@ -546,10 +546,13 @@ function renderers.Book()
 	grid.Parent = body
 	for _, species in Freeks.list do
 		local discovery = discoveries[species.id]
-		local known = species.price ~= nil or discovery ~= nil
+		-- Monsters are always shown, so players can see what the crates hold.
+		local known = species.price ~= nil or discovery ~= nil or species.exclusive == true
 		local credit
 		if species.price then
 			credit = "Starter Freek"
+		elseif species.exclusive and not discovery then
+			credit = "Only from Monster Crates (🍀 Luck tab)"
 		elseif discovery then
 			credit = "First found by\n" .. discovery.name
 		elseif not Seasons.available(species) then
@@ -1176,7 +1179,10 @@ local function spinCooldown(): number
 end
 
 function renderers.Luck()
-	heading("Crates always give a Freek, and every chance is shown. Spin the wheel free every day!", 1)
+	heading(
+		"Monster Crates hold Freeks you can't get anywhere else. Every chance is shown. Spin the wheel free every day!",
+		1
+	)
 
 	-- The Lucky Wheel.
 	local left = (state.lastSpin or 0) + spinCooldown() - Workspace:GetServerTimeNow()
@@ -1207,39 +1213,42 @@ function renderers.Luck()
 	wheelCard.LayoutOrder = 2
 	wheelCard.Parent = body
 
-	-- Lucky Crates.
-	local event = Luck.current()
-	local grid = UI.grid(230, 330)
+	-- Monster Crates (Robux): the only place to get the Monster line.
+	local restricted = player:GetAttribute("CratesRestricted")
+	local grid = UI.grid(250, 470)
 	grid.LayoutOrder = 3
 	grid.Parent = body
 	for i, crate in Luck.CRATES do
-		local lines = {
-			{ "📦", colors.text, 40 },
-			{ crate.name, crate.color, 24 },
-		}
-		for _, odds in Luck.oddsList(crate) do
+		local odds = Luck.oddsList(crate)
+		local best = odds[#odds].species
+		local lines = { { crate.name, crate.color, 24 } }
+		for _, entry in odds do
+			local species = Freeks.byId[entry.species]
+			local percent = if entry.percent < 1
+				then string.format("%.1f", entry.percent)
+				else string.format("%.0f", entry.percent)
 			table.insert(lines, {
-				string.format(
-					"%s  %s%%",
-					odds.rarity,
-					if odds.percent < 1
-						then string.format("%.1f", odds.percent)
-						else string.format("%.0f", odds.percent)
-				),
-				Rarities.info[odds.rarity].color,
+				string.format("%s · %s  %s%%", species.name, species.rarity, percent),
+				Rarities.info[species.rarity].color,
 				16,
 			})
 		end
-		local price = Luck.cratePrice(crate)
+		local label, color
+		if restricted then
+			label, color = "Not available in your region", colors.gray
+		elseif crate.productId ~= 0 then
+			label, color = "R$ " .. crate.robux, Color3.fromRGB(40, 180, 90)
+		elseif RunService:IsStudio() and Luck.STUDIO_FREE_CRATES then
+			label, color = "R$ " .. crate.robux .. " (free in Studio)", Color3.fromRGB(40, 180, 90)
+		else
+			label, color = "Coming soon", colors.gray
+		end
 		local buttons = {
-			UI.button(
-				"Buy & Open " .. Format.money(price) .. (if event and event.crateDiscount then " (sale!)" else ""),
-				if state.money >= price then crate.color:Lerp(colors.green, 0.6) else colors.gray,
-				function()
+			UI.button(label, color, function()
+				if not restricted then
 					send("BuyCrate", crate.id)
-				end,
-				{ Size = UDim2.new(1, 0, 0, 36) }
-			),
+				end
+			end, { Size = UDim2.new(1, 0, 0, 38) }),
 		}
 		local owned = state.crates and state.crates[crate.id] or 0
 		if owned > 0 then
@@ -1250,7 +1259,8 @@ function renderers.Luck()
 				end, { Size = UDim2.new(1, 0, 0, 36) })
 			)
 		end
-		local card = UI.card({ lines = lines, buttons = buttons, border = crate.color })
+		-- Show off the rarest Monster inside.
+		local card = UI.card({ species = best, lines = lines, buttons = buttons, border = crate.color })
 		card.LayoutOrder = i
 		card.Parent = grid
 	end
@@ -1480,6 +1490,8 @@ local WALKS = {
 	bounce = { speed = 7, bob = 1, roll = 6, yaw = 0, legs = 30 },
 	strut = { speed = 10, bob = 0.25, roll = 2, yaw = 5, legs = 35 },
 	catwalk = { speed = 9, bob = 0.15, roll = 0, yaw = 9, legs = 30 },
+	shamble = { speed = 5, bob = 0.15, roll = 9, yaw = 3, legs = 22 },
+	float = { speed = 3, bob = 0.7, roll = 4, yaw = 0, legs = 30 },
 }
 
 -- What Freeks stand on: the ground itself (terrain, the town square floor and the

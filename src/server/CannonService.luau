@@ -270,7 +270,7 @@ end
 local function eligibleByRarity()
 	local groups = {}
 	for _, species in Freeks.list do
-		if Seasons.available(species) and species.rarity ~= "Secret" then
+		if Seasons.available(species) and species.rarity ~= "Secret" and not species.exclusive then
 			groups[species.rarity] = groups[species.rarity] or {}
 			table.insert(groups[species.rarity], species)
 		end

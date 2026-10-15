@@ -1,12 +1,18 @@
--- Lucky Crates, the daily Lucky Wheel and Lucky Hour events (rules and odds in
--- shared/Luck.luau). All rolls happen here; the client only shows the result
--- (the LuckResult remote) with a reveal animation.
+-- Monster Crates, the daily Lucky Wheel and Lucky Hour events (rules and odds in
+-- shared/Luck.luau). All rolls happen here; the client only shows the result (the
+-- LuckResult remote) with a reveal animation.
+--
+-- Monster Crates are Developer Products. ProcessReceipt grants a crate only once per
+-- purchase (receipts are remembered in the player's save) and only tells Roblox the
+-- purchase went through after the save succeeds, so nobody pays without getting it.
 
+local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
+local PolicyService = game:GetService("PolicyService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
-local Format = require(ReplicatedStorage.Shared.Format)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
@@ -17,12 +23,17 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
 local ActionService = require(script.Parent.ActionService)
+local DataService = require(script.Parent.DataService)
 
 local LuckService = {}
 
 local rng = Random.new()
 local notifyRemote = Remotes.get("Notify")
 local resultRemote = Remotes.get("LuckResult")
+local RECEIPTS_KEPT = 50 -- how many recent purchase IDs each save remembers
+
+-- Odds for the wheel's Golden/Rainbow Freek (by rarity, never Monsters).
+local WHEEL_FREEK_ODDS = { Common = 35, Uncommon = 45, Rare = 17, Legendary = 3 }
 
 local function notify(player: Player, message: string, kind: string?)
 	notifyRemote:FireClient(player, message, kind)
@@ -34,31 +45,37 @@ local function announce(message: string)
 	end
 end
 
+-- Picks a key from a { [key] = weight } table.
 local function rollWeighted(weights: { [string]: number }): string
+	local keys = {}
 	local total = 0
-	for _, weight in weights do
+	for key, weight in weights do
+		table.insert(keys, key)
 		total += weight
 	end
+	table.sort(keys)
 	local roll = rng:NextNumber() * total
-	for _, rarity in Rarities.order do
-		local weight = weights[rarity]
-		if weight then
-			roll -= weight
-			if roll <= 0 then
-				return rarity
-			end
+	for _, key in keys do
+		roll -= weights[key]
+		if roll <= 0 then
+			return key
 		end
 	end
-	return Rarities.order[1]
+	return keys[#keys]
 end
 
--- A random species of that rarity (or the next rarity down that has any).
+-- A random non-Monster species of that rarity (or the next rarity down that has any).
 local function pickSpecies(rarity: string)
 	local rank = Rarities.rank[rarity]
 	while rank >= 1 do
 		local pool = {}
 		for _, species in Freeks.list do
-			if species.rarity == Rarities.order[rank] and species.rarity ~= "Secret" and Seasons.available(species) then
+			if
+				species.rarity == Rarities.order[rank]
+				and not species.exclusive
+				and species.rarity ~= "Secret"
+				and Seasons.available(species)
+			then
 				table.insert(pool, species)
 			end
 		end
@@ -97,27 +114,44 @@ local function giveFreek(player: Player, data, species, mutations, reveal)
 end
 
 local function openCrate(player: Player, data, crate)
-	local species = pickSpecies(rollWeighted(crate.odds))
+	local species = Freeks.byId[rollWeighted(Luck.crateOdds(crate))]
 	giveFreek(player, data, species, rollMutations(crate.mutation), { kind = "crate", crate = crate.id })
 end
 
+-- Whether paid random items are allowed for this player (some countries ban them).
+local function cratesAllowed(player: Player): boolean
+	local ok, info = pcall(function()
+		return PolicyService:GetPolicyInfoForPlayerAsync(player)
+	end)
+	if not ok then
+		return RunService:IsStudio() -- can't check: only allow while testing in Studio
+	end
+	return not info.ArePaidRandomItemsRestricted
+end
+
+-- The player asked to buy a crate: check, then show Roblox's purchase prompt.
 local function buyCrate(player: Player, data, crateId: any)
 	local crate = typeof(crateId) == "string" and Luck.crateById[crateId]
 	if not crate then
 		return
 	end
+	if player:GetAttribute("CratesRestricted") then
+		return notify(player, "Monster Crates aren't available where you live.", "error")
+	end
 	if not hasRoom(player, data) then
 		return notify(player, "You have too many Freeks! Sell or fuse some first.", "error")
 	end
-	local price = Luck.cratePrice(crate)
-	if data.money < price then
-		return notify(player, "Not enough money! It costs " .. Format.money(price) .. ".", "error")
+	if crate.productId == 0 then
+		if RunService:IsStudio() and Luck.STUDIO_FREE_CRATES then
+			notify(player, "Studio test: opening " .. crate.name .. " for free.", "success")
+			return openCrate(player, data, crate)
+		end
+		return notify(player, "Monster Crates are coming soon!", "error")
 	end
-	data.money -= price
-	openCrate(player, data, crate)
+	MarketplaceService:PromptProductPurchase(player, crate.productId)
 end
 
--- Opens a crate the player already owns (won on the wheel).
+-- Opens a crate the player already owns (won on the wheel, or bought while full).
 local function openOwnedCrate(player: Player, data, crateId: any)
 	local crate = typeof(crateId) == "string" and Luck.crateById[crateId]
 	if not crate or (data.crates[crate.id] or 0) < 1 then
@@ -128,6 +162,38 @@ local function openOwnedCrate(player: Player, data, crateId: any)
 	end
 	data.crates[crate.id] -= 1
 	openCrate(player, data, crate)
+end
+
+local function processReceipt(receipt)
+	local crate = Luck.crateByProduct[receipt.ProductId]
+	local player = Players:GetPlayerByUserId(receipt.PlayerId)
+	local data = player and DataService.get(player)
+	if not crate or not data then
+		-- Not ours, or the player isn't here: Roblox will try again later.
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	data.receipts = data.receipts or {}
+	if not table.find(data.receipts, receipt.PurchaseId) then
+		if hasRoom(player, data) then
+			openCrate(player, data, crate)
+		else
+			data.crates[crate.id] = (data.crates[crate.id] or 0) + 1
+			notify(
+				player,
+				"Your barn is full, so your " .. crate.name .. " was saved. Open it from the 🍀 Luck tab!",
+				"success"
+			)
+		end
+		table.insert(data.receipts, receipt.PurchaseId)
+		while #data.receipts > RECEIPTS_KEPT do
+			table.remove(data.receipts, 1)
+		end
+		DataService.changed(player)
+	end
+	if not DataService.save(player) then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	return Enum.ProductPurchaseDecision.PurchaseGranted
 end
 
 local function spinCooldown(player: Player): number
@@ -145,34 +211,26 @@ local function spin(player: Player, data)
 	end
 	data.lastSpin = now
 
-	local total = 0
-	for _, slice in Luck.WHEEL do
-		total += slice.weight
-	end
-	local roll = rng:NextNumber() * total
-	local index = #Luck.WHEEL
+	local weights = {}
 	for i, slice in Luck.WHEEL do
-		roll -= slice.weight
-		if roll <= 0 then
-			index = i
-			break
-		end
+		weights[tostring(i)] = slice.weight
 	end
+	local index = tonumber(rollWeighted(weights)) :: number
 	local slice = Luck.WHEEL[index]
 	local reveal = { kind = "wheel", slice = index }
 
-	if slice.golden and hasRoom(player, data) then
-		local species = pickSpecies(rollWeighted(Luck.crateById.Silver.odds))
-		return giveFreek(player, data, species, { "Golden" }, reveal)
+	if (slice.golden or slice.rainbow) and hasRoom(player, data) then
+		local species = pickSpecies(rollWeighted(WHEEL_FREEK_ODDS))
+		return giveFreek(player, data, species, { if slice.rainbow then "Rainbow" else "Golden" }, reveal)
 	end
 	if slice.crate then
 		data.crates[slice.crate] = (data.crates[slice.crate] or 0) + 1
 		reveal.crate = slice.crate
-		if slice.crate == "Diamond" then
+		if slice.crate == "LegendaryMonster" then
 			announce(player.DisplayName .. " hit the JACKPOT on the Lucky Wheel!")
 		end
 	else
-		-- Coins (also the fallback for a Golden Freek when the barn is full).
+		-- Coins (also the fallback for a Freek prize when the barn is full).
 		local amount = coinPrize(data, slice.minutes or 10)
 		data.money += amount
 		reveal.coins = amount
@@ -201,10 +259,20 @@ local function runEvents()
 	end
 end
 
+-- Marks players who can't buy crates so their client hides the buy buttons.
+local function checkPolicy(player: Player)
+	player:SetAttribute("CratesRestricted", not cratesAllowed(player))
+end
+
 function LuckService.init()
 	ActionService.register("BuyCrate", buyCrate)
 	ActionService.register("OpenCrate", openOwnedCrate)
 	ActionService.register("SpinWheel", spin)
+	MarketplaceService.ProcessReceipt = processReceipt
+	Players.PlayerAdded:Connect(checkPolicy)
+	for _, player in Players:GetPlayers() do
+		task.spawn(checkPolicy, player)
+	end
 	task.spawn(runEvents)
 end
 

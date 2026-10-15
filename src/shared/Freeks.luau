@@ -6,7 +6,8 @@
 --          Other species appear on the belt once discovered, priced from their income.
 -- season   optional Seasonal tag (a key in Seasons.luau): only obtainable during that season
 -- walk     how it moves around the town square: waddle, trot, prowl, slither, flap, stomp,
---          bounce, strut or catwalk (see the client)
+--          bounce, strut, catwalk, shamble or float (see the client)
+-- exclusive only from Monster Crates (never from cannons, the wheel or anywhere else)
 -- look     how the model is built: either a placeholder (shape "Ball" or "Block", size in
 --          studs, eyes 1-3, antennae 0-3) or a part list (see FreekModel), e.g. from human()
 --
@@ -144,22 +145,42 @@ local function human(o)
 	end
 	local shoulderX = torsoW / 2 + armD / 2 - 0.02
 	for _, side in { -1, 1 } do
-		local swing = { hinge = { side * shoulderX, 3.2, 0 }, phase = if side < 0 then 0.5 else 0, amount = 0.8 }
-		add({
-			shape = "Cylinder",
-			size = { 1.45, armD, armD },
-			pos = { side * shoulderX, 2.5, 0 },
-			rot = { 0, 0, 90 + side * 6 },
-			color = o.sleeves or o.skin,
-			swing = swing,
-		})
-		add({
-			shape = "Ball",
-			size = armD + 0.12,
-			pos = { side * (shoulderX + 0.08), 1.72, 0 },
-			color = o.skin,
-			swing = swing,
-		})
+		if o.armsForward then
+			-- Arms stuck straight out in front (zombies, mummies), barely swinging.
+			local swing = { hinge = { side * shoulderX, 2.95, 0 }, phase = if side < 0 then 0.5 else 0, amount = 0.25 }
+			add({
+				shape = "Cylinder",
+				size = { 1.5, armD, armD },
+				pos = { side * shoulderX, 2.95, -0.7 },
+				rot = { 0, 90, 0 },
+				color = o.sleeves or o.skin,
+				swing = swing,
+			})
+			add({
+				shape = "Ball",
+				size = armD + 0.12,
+				pos = { side * shoulderX, 2.95, -1.5 },
+				color = o.skin,
+				swing = swing,
+			})
+		else
+			local swing = { hinge = { side * shoulderX, 3.2, 0 }, phase = if side < 0 then 0.5 else 0, amount = 0.8 }
+			add({
+				shape = "Cylinder",
+				size = { 1.45, armD, armD },
+				pos = { side * shoulderX, 2.5, 0 },
+				rot = { 0, 0, 90 + side * 6 },
+				color = o.sleeves or o.skin,
+				swing = swing,
+			})
+			add({
+				shape = "Ball",
+				size = armD + 0.12,
+				pos = { side * (shoulderX + 0.08), 1.72, 0 },
+				color = o.skin,
+				swing = swing,
+			})
+		end
 	end
 	add({
 		shape = "Cylinder",
@@ -1274,6 +1295,420 @@ Freeks.list = {
 				table.insert(h.effects, { type = "Sparkles", part = gem, color = rgb(255, 220, 255) })
 			end,
 		}),
+	},
+
+	-- The Monster line: only from Monster Crates (exclusive = true keeps them out of the
+	-- cannons and everywhere else).
+	{
+		id = "BooBoo",
+		name = "Boo-Boo",
+		rarity = "Uncommon",
+		exclusive = true,
+		walk = "float",
+		income = 25,
+		look = (function()
+			local list, add = newParts()
+			local white = rgb(240, 245, 255)
+			local body = { 0, 2.9, 0 }
+			add({ name = "Body", shape = "Ball", size = 3, pos = body, color = white, transparency = 0.1 })
+			-- A wavy hem floating above the ground.
+			for i = 0, 7 do
+				local a = i / 8 * math.pi * 2
+				add({
+					shape = "Ball",
+					size = 1.05,
+					pos = { math.cos(a) * 1.05, 1.55, math.sin(a) * 1.05 },
+					color = white,
+					transparency = 0.1,
+				})
+			end
+			for _, side in { -1, 1 } do
+				add({
+					shape = "Ball",
+					size = 0.62,
+					pos = onBall(body, 1.5, side * 0.45, 0.25, -0.1),
+					color = rgb(25, 25, 40),
+					detail = true,
+				})
+				add({
+					shape = "Ball",
+					size = 0.2,
+					pos = onBall(body, 1.5, side * 0.38, 0.38, 0.12),
+					color = rgb(255, 255, 255),
+					detail = true,
+				})
+				add({
+					shape = "Ball",
+					size = 0.4,
+					pos = onBall(body, 1.5, side * 0.85, -0.15, -0.12),
+					color = rgb(255, 170, 200),
+					detail = true,
+				})
+				add({
+					shape = "Ball",
+					size = 0.75,
+					pos = { side * 1.6, 2.5, -0.2 },
+					color = white,
+					transparency = 0.1,
+					swing = {
+						hinge = { side * 1.3, 2.9, -0.2 },
+						phase = if side < 0 then 0 else 0.5,
+						axis = "Z",
+						amount = side * 0.8,
+					},
+				})
+			end
+			add({
+				shape = "Ball",
+				size = 0.45,
+				pos = onBall(body, 1.5, 0, -0.45, -0.1),
+				color = rgb(25, 25, 40),
+				detail = true,
+			})
+			return { parts = list, effects = { { type = "Glow", part = 1, color = rgb(190, 220, 255), size = 8 } } }
+		end)(),
+	},
+	{
+		id = "Zomboy",
+		name = "Zomboy",
+		rarity = "Uncommon",
+		exclusive = true,
+		walk = "shamble",
+		income = 30,
+		look = human({
+			skin = rgb(140, 200, 110),
+			shirt = rgb(80, 120, 190),
+			pants = rgb(110, 80, 60),
+			shoes = rgb(60, 50, 45),
+			armsForward = true,
+			head = 2.15,
+			extra = function(h)
+				-- Messy hair, a peek of brain, stitches and a torn shirt.
+				h.add({
+					shape = "Ball",
+					size = h.head + 0.1,
+					pos = { 0, h.headY + 0.35, 0.25 },
+					color = rgb(60, 45, 35),
+				})
+				h.add({ shape = "Ball", size = 0.6, pos = { 0.45, h.headY + 0.95, -0.3 }, color = rgb(255, 150, 170) })
+				h.add({ shape = "Ball", size = 0.45, pos = { 0.75, h.headY + 0.8, -0.1 }, color = rgb(255, 150, 170) })
+				for i = -1, 1 do
+					h.add({
+						shape = "Block",
+						size = { 0.06, 0.3, 0.06 },
+						pos = { -0.6 + i * 0.15, h.headY + 0.45, h.face(-0.6 + i * 0.15, 0.45, -0.02) },
+						color = rgb(40, 40, 40),
+						detail = true,
+					})
+				end
+				h.add({
+					shape = "Block",
+					size = { 0.5, 0.05, 0.06 },
+					pos = { -0.6, h.headY + 0.45, h.face(-0.6, 0.45, -0.03) },
+					color = rgb(40, 40, 40),
+					detail = true,
+				})
+				for _, x in { -0.5, 0.1, 0.6 } do
+					h.add({
+						shape = "Wedge",
+						size = { 0.3, 0.35, 0.3 },
+						pos = { x, 1.75, -h.torsoD / 2 - 0.05 },
+						rot = { 180, 0, 0 },
+						color = rgb(80, 120, 190),
+					})
+				end
+			end,
+		}),
+	},
+	{
+		id = "Mumbles",
+		name = "Mumbles",
+		rarity = "Rare",
+		exclusive = true,
+		walk = "shamble",
+		income = 100,
+		look = human({
+			skin = rgb(235, 225, 195),
+			shirt = rgb(235, 225, 195),
+			pants = rgb(225, 214, 182),
+			shoes = rgb(210, 198, 165),
+			armsForward = true,
+			head = 2.15,
+			extra = function(h)
+				-- Bandage strips wrapped every which way, one eye peeking out.
+				local strip = rgb(200, 188, 155)
+				for i, y in { 1.9, 2.35, 2.8, 3.15 } do
+					h.add({
+						shape = "Block",
+						size = { h.torsoW + 0.08, 0.14, h.torsoD + 0.08 },
+						pos = { 0, y, 0 },
+						rot = { 0, 0, if i % 2 == 0 then 8 else -8 },
+						color = strip,
+					})
+				end
+				for i, dy in { -0.55, 0.05, 0.6 } do
+					h.add({
+						shape = "Cylinder",
+						size = { 0.16, h.head + 0.06, h.head + 0.06 },
+						pos = { 0, h.headY + dy, 0 },
+						rot = { 0, 0, 90 + (if i == 2 then 10 else -6) },
+						color = strip,
+					})
+				end
+				h.add({
+					shape = "Block",
+					size = { 0.75, 0.55, 0.2 },
+					pos = { h.eyeX, h.headY + h.eyeY, h.face(h.eyeX, h.eyeY, 0.2) },
+					rot = { 0, 0, 12 },
+					color = rgb(235, 225, 195),
+				})
+				-- A loose end dangling down the back.
+				h.add({
+					shape = "Block",
+					size = { 0.25, 1.2, 0.08 },
+					pos = { 0.9, h.headY - 1.0, 0.4 },
+					rot = { 0, 0, 15 },
+					color = strip,
+				})
+			end,
+		}),
+	},
+	{
+		id = "CountFangula",
+		name = "Count Fangula",
+		rarity = "Legendary",
+		exclusive = true,
+		walk = "strut",
+		income = 400,
+		look = human({
+			skin = rgb(225, 215, 240),
+			shirt = rgb(30, 25, 40),
+			sleeves = rgb(30, 25, 40),
+			pants = rgb(30, 25, 40),
+			shoes = rgb(15, 15, 20),
+			head = 2.2,
+			extra = function(h)
+				-- Slicked black hair with a widow's peak, red eyes, fangs, and a big cape.
+				h.add({
+					shape = "Ball",
+					size = h.head + 0.12,
+					pos = { 0, h.headY + 0.32, 0.3 },
+					color = rgb(20, 15, 25),
+				})
+				h.add({
+					shape = "Block",
+					size = { 0.5, 0.5, 0.3 },
+					pos = { 0, h.headY + 0.8, h.face(0, 0.8, -0.2) },
+					rot = { 0, 0, 45 },
+					color = rgb(20, 15, 25),
+				})
+				for _, side in { -1, 1 } do
+					local p = { side * h.eyeX, h.headY + h.eyeY, h.face(h.eyeX, h.eyeY, -0.12) }
+					h.add({
+						shape = "Ball",
+						size = 0.38,
+						pos = { p[1], p[2], p[3] - 0.12 },
+						color = rgb(220, 30, 50),
+						detail = true,
+					})
+					h.add({
+						shape = "Wedge",
+						size = { 0.1, 0.3, 0.12 },
+						pos = { side * 0.18, h.headY - h.head * 0.2 - 0.18, h.face(0.18, h.head * 0.2 + 0.18, 0.02) },
+						rot = { 180, 0, 0 },
+						color = rgb(255, 255, 255),
+						detail = true,
+					})
+				end
+				local red = rgb(190, 20, 40)
+				h.add({
+					shape = "Block",
+					size = { h.torsoW + 0.7, 3.1, 0.15 },
+					pos = { 0, 1.75, h.torsoD / 2 + 0.2 },
+					color = red,
+				})
+				h.add({
+					shape = "Block",
+					size = { h.torsoW + 0.9, 3.2, 0.12 },
+					pos = { 0, 1.75, h.torsoD / 2 + 0.32 },
+					color = rgb(20, 15, 25),
+				})
+				for _, side in { -1, 1 } do
+					h.add({
+						shape = "Block",
+						size = { 0.9, 1.2, 0.12 },
+						pos = { side * 0.75, h.torsoTop + 0.45, 0.35 },
+						rot = { -15, side * 25, 0 },
+						color = red,
+					})
+				end
+				h.add({
+					shape = "Ball",
+					size = 0.3,
+					pos = { 0, h.torsoTop - 0.3, -h.torsoD / 2 - 0.08 },
+					color = red,
+					material = "Neon",
+					detail = true,
+				})
+			end,
+		}),
+	},
+	{
+		id = "Howlz",
+		name = "Howlz",
+		rarity = "Mystic",
+		exclusive = true,
+		walk = "prowl",
+		income = 1500,
+		look = human({
+			skin = rgb(120, 85, 60),
+			shirt = rgb(110, 60, 140),
+			sleeves = rgb(120, 85, 60),
+			pants = rgb(60, 60, 80),
+			shoes = rgb(120, 85, 60),
+			torsoWidth = 2.2,
+			torsoDepth = 1.3,
+			armSize = 0.6,
+			head = 2.1,
+			noMouth = true,
+			extra = function(h)
+				local fur, light = rgb(120, 85, 60), rgb(200, 170, 140)
+				-- Wolf snout, nose, pointy ears, yellow eyes and a fluffy tail.
+				h.add({ shape = "Ball", size = 1.1, pos = { 0, h.headY - 0.35, h.face(0, -0.35, -0.3) }, color = light })
+				h.add({
+					shape = "Ball",
+					size = 0.4,
+					pos = { 0, h.headY - 0.15, h.face(0, -0.15, 0.25) },
+					color = rgb(20, 15, 15),
+					detail = true,
+				})
+				h.add({
+					shape = "Block",
+					size = { 0.5, 0.08, 0.08 },
+					pos = { 0, h.headY - 0.7, h.face(0, -0.7, 0.1) },
+					color = rgb(60, 20, 20),
+					detail = true,
+				})
+				for _, side in { -1, 1 } do
+					pointyEar(h.add, side * 0.62, h.headY + 1.15, 0, 0.7, 0.9, fur)
+					local p = { side * h.eyeX, h.headY + h.eyeY, h.face(h.eyeX, h.eyeY, -0.12) }
+					h.add({
+						shape = "Ball",
+						size = 0.36,
+						pos = { p[1], p[2], p[3] - 0.12 },
+						color = rgb(255, 210, 40),
+						detail = true,
+					})
+					-- Claws.
+					for _, dx in { -0.12, 0, 0.12 } do
+						h.add({
+							shape = "Block",
+							size = { 0.06, 0.25, 0.06 },
+							pos = { side * (h.shoulderX + 0.08) + dx, 1.4, -0.2 },
+							color = rgb(250, 245, 230),
+							detail = true,
+						})
+					end
+				end
+				for i = 0, 3 do
+					h.add({
+						shape = "Ball",
+						size = 0.75 - i * 0.08,
+						pos = { 0, 1.9 + i * 0.3, h.torsoD / 2 + 0.4 + i * 0.25 },
+						color = if i == 3 then light else fur,
+					})
+				end
+				h.add({
+					shape = "Block",
+					size = { 0.8, 0.5, 0.1 },
+					pos = { 0, h.torsoTop - 0.35, -h.torsoD / 2 - 0.02 },
+					color = light,
+				})
+			end,
+		}),
+	},
+	{
+		id = "Blinky",
+		name = "Blinky",
+		rarity = "Ultra",
+		exclusive = true,
+		walk = "bounce",
+		income = 6000,
+		look = (function()
+			local list, add = newParts()
+			local purple, dark = rgb(140, 80, 220), rgb(95, 45, 170)
+			local body = { 0, 2.6, 0 }
+			add({ name = "Body", shape = "Ball", size = 3.6, pos = body, color = purple })
+			legs(add, { { -0.75, -0.2 }, { 0.75, -0.2 } }, 1.0, 0.7, dark, dark)
+			-- One huge eye.
+			local eye = onBall(body, 1.8, 0, 0.35, -0.5)
+			add({ shape = "Ball", size = 1.8, pos = eye, color = rgb(255, 255, 255), detail = true })
+			add({
+				shape = "Ball",
+				size = 1.1,
+				pos = { eye[1], eye[2], eye[3] - 0.42 },
+				color = rgb(80, 220, 160),
+				detail = true,
+			})
+			add({
+				shape = "Ball",
+				size = 0.55,
+				pos = { eye[1], eye[2], eye[3] - 0.72 },
+				color = rgb(15, 15, 20),
+				detail = true,
+			})
+			add({
+				shape = "Ball",
+				size = 0.22,
+				pos = { eye[1] + 0.25, eye[2] + 0.25, eye[3] - 0.85 },
+				color = rgb(255, 255, 255),
+				detail = true,
+			})
+			-- A toothy grin.
+			add({
+				shape = "Block",
+				size = { 1.3, 0.3, 0.12 },
+				pos = onBall(body, 1.8, 0, -0.75, -0.05),
+				color = rgb(60, 20, 40),
+				detail = true,
+			})
+			for _, x in { -0.4, 0, 0.4 } do
+				add({
+					shape = "Block",
+					size = { 0.18, 0.2, 0.08 },
+					pos = onBall(body, 1.8, x, -0.68, 0.02),
+					color = rgb(255, 255, 255),
+					detail = true,
+				})
+			end
+			-- Two little horns (stacked rings) and stubby arms.
+			for _, side in { -1, 1 } do
+				for k = 0, 3 do
+					local width = 0.5 - k * 0.11
+					add({
+						shape = "Cylinder",
+						size = { 0.22, width, width },
+						pos = { side * (0.75 + k * 0.08), 4.25 + k * 0.2, 0 },
+						rot = { 0, 0, 90 - side * 20 },
+						color = rgb(255, 220, 120),
+					})
+				end
+				add({
+					shape = "Ball",
+					size = 0.8,
+					pos = { side * 1.9, 2.4, -0.1 },
+					color = purple,
+					swing = { hinge = { side * 1.6, 2.6, -0.1 }, phase = if side < 0 then 0.5 else 0, amount = 0.6 },
+				})
+			end
+			return {
+				parts = list,
+				effects = {
+					{ type = "Sparkles", part = 1, color = rgb(200, 255, 230) },
+					{ type = "Glow", part = 1, color = rgb(80, 220, 160), size = 12 },
+				},
+			}
+		end)(),
 	},
 }
 

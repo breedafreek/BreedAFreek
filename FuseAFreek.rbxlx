@@ -876,7 +876,8 @@ return FreekUtil
 --          Other species appear on the belt once discovered, priced from their income.
 -- season   optional Seasonal tag (a key in Seasons.luau): only obtainable during that season
 -- walk     how it moves around the town square: waddle, trot, prowl, slither, flap, stomp,
---          bounce, strut or catwalk (see the client)
+--          bounce, strut, catwalk, shamble or float (see the client)
+-- exclusive only from Monster Crates (never from cannons, the wheel or anywhere else)
 -- look     how the model is built: either a placeholder (shape "Ball" or "Block", size in
 --          studs, eyes 1-3, antennae 0-3) or a part list (see FreekModel), e.g. from human()
 --
@@ -1014,22 +1015,42 @@ local function human(o)
 	end
 	local shoulderX = torsoW / 2 + armD / 2 - 0.02
 	for _, side in { -1, 1 } do
-		local swing = { hinge = { side * shoulderX, 3.2, 0 }, phase = if side < 0 then 0.5 else 0, amount = 0.8 }
-		add({
-			shape = "Cylinder",
-			size = { 1.45, armD, armD },
-			pos = { side * shoulderX, 2.5, 0 },
-			rot = { 0, 0, 90 + side * 6 },
-			color = o.sleeves or o.skin,
-			swing = swing,
-		})
-		add({
-			shape = "Ball",
-			size = armD + 0.12,
-			pos = { side * (shoulderX + 0.08), 1.72, 0 },
-			color = o.skin,
-			swing = swing,
-		})
+		if o.armsForward then
+			-- Arms stuck straight out in front (zombies, mummies), barely swinging.
+			local swing = { hinge = { side * shoulderX, 2.95, 0 }, phase = if side < 0 then 0.5 else 0, amount = 0.25 }
+			add({
+				shape = "Cylinder",
+				size = { 1.5, armD, armD },
+				pos = { side * shoulderX, 2.95, -0.7 },
+				rot = { 0, 90, 0 },
+				color = o.sleeves or o.skin,
+				swing = swing,
+			})
+			add({
+				shape = "Ball",
+				size = armD + 0.12,
+				pos = { side * shoulderX, 2.95, -1.5 },
+				color = o.skin,
+				swing = swing,
+			})
+		else
+			local swing = { hinge = { side * shoulderX, 3.2, 0 }, phase = if side < 0 then 0.5 else 0, amount = 0.8 }
+			add({
+				shape = "Cylinder",
+				size = { 1.45, armD, armD },
+				pos = { side * shoulderX, 2.5, 0 },
+				rot = { 0, 0, 90 + side * 6 },
+				color = o.sleeves or o.skin,
+				swing = swing,
+			})
+			add({
+				shape = "Ball",
+				size = armD + 0.12,
+				pos = { side * (shoulderX + 0.08), 1.72, 0 },
+				color = o.skin,
+				swing = swing,
+			})
+		end
 	end
 	add({
 		shape = "Cylinder",
@@ -2145,6 +2166,420 @@ Freeks.list = {
 			end,
 		}),
 	},
+
+	-- The Monster line: only from Monster Crates (exclusive = true keeps them out of the
+	-- cannons and everywhere else).
+	{
+		id = "BooBoo",
+		name = "Boo-Boo",
+		rarity = "Uncommon",
+		exclusive = true,
+		walk = "float",
+		income = 25,
+		look = (function()
+			local list, add = newParts()
+			local white = rgb(240, 245, 255)
+			local body = { 0, 2.9, 0 }
+			add({ name = "Body", shape = "Ball", size = 3, pos = body, color = white, transparency = 0.1 })
+			-- A wavy hem floating above the ground.
+			for i = 0, 7 do
+				local a = i / 8 * math.pi * 2
+				add({
+					shape = "Ball",
+					size = 1.05,
+					pos = { math.cos(a) * 1.05, 1.55, math.sin(a) * 1.05 },
+					color = white,
+					transparency = 0.1,
+				})
+			end
+			for _, side in { -1, 1 } do
+				add({
+					shape = "Ball",
+					size = 0.62,
+					pos = onBall(body, 1.5, side * 0.45, 0.25, -0.1),
+					color = rgb(25, 25, 40),
+					detail = true,
+				})
+				add({
+					shape = "Ball",
+					size = 0.2,
+					pos = onBall(body, 1.5, side * 0.38, 0.38, 0.12),
+					color = rgb(255, 255, 255),
+					detail = true,
+				})
+				add({
+					shape = "Ball",
+					size = 0.4,
+					pos = onBall(body, 1.5, side * 0.85, -0.15, -0.12),
+					color = rgb(255, 170, 200),
+					detail = true,
+				})
+				add({
+					shape = "Ball",
+					size = 0.75,
+					pos = { side * 1.6, 2.5, -0.2 },
+					color = white,
+					transparency = 0.1,
+					swing = {
+						hinge = { side * 1.3, 2.9, -0.2 },
+						phase = if side < 0 then 0 else 0.5,
+						axis = "Z",
+						amount = side * 0.8,
+					},
+				})
+			end
+			add({
+				shape = "Ball",
+				size = 0.45,
+				pos = onBall(body, 1.5, 0, -0.45, -0.1),
+				color = rgb(25, 25, 40),
+				detail = true,
+			})
+			return { parts = list, effects = { { type = "Glow", part = 1, color = rgb(190, 220, 255), size = 8 } } }
+		end)(),
+	},
+	{
+		id = "Zomboy",
+		name = "Zomboy",
+		rarity = "Uncommon",
+		exclusive = true,
+		walk = "shamble",
+		income = 30,
+		look = human({
+			skin = rgb(140, 200, 110),
+			shirt = rgb(80, 120, 190),
+			pants = rgb(110, 80, 60),
+			shoes = rgb(60, 50, 45),
+			armsForward = true,
+			head = 2.15,
+			extra = function(h)
+				-- Messy hair, a peek of brain, stitches and a torn shirt.
+				h.add({
+					shape = "Ball",
+					size = h.head + 0.1,
+					pos = { 0, h.headY + 0.35, 0.25 },
+					color = rgb(60, 45, 35),
+				})
+				h.add({ shape = "Ball", size = 0.6, pos = { 0.45, h.headY + 0.95, -0.3 }, color = rgb(255, 150, 170) })
+				h.add({ shape = "Ball", size = 0.45, pos = { 0.75, h.headY + 0.8, -0.1 }, color = rgb(255, 150, 170) })
+				for i = -1, 1 do
+					h.add({
+						shape = "Block",
+						size = { 0.06, 0.3, 0.06 },
+						pos = { -0.6 + i * 0.15, h.headY + 0.45, h.face(-0.6 + i * 0.15, 0.45, -0.02) },
+						color = rgb(40, 40, 40),
+						detail = true,
+					})
+				end
+				h.add({
+					shape = "Block",
+					size = { 0.5, 0.05, 0.06 },
+					pos = { -0.6, h.headY + 0.45, h.face(-0.6, 0.45, -0.03) },
+					color = rgb(40, 40, 40),
+					detail = true,
+				})
+				for _, x in { -0.5, 0.1, 0.6 } do
+					h.add({
+						shape = "Wedge",
+						size = { 0.3, 0.35, 0.3 },
+						pos = { x, 1.75, -h.torsoD / 2 - 0.05 },
+						rot = { 180, 0, 0 },
+						color = rgb(80, 120, 190),
+					})
+				end
+			end,
+		}),
+	},
+	{
+		id = "Mumbles",
+		name = "Mumbles",
+		rarity = "Rare",
+		exclusive = true,
+		walk = "shamble",
+		income = 100,
+		look = human({
+			skin = rgb(235, 225, 195),
+			shirt = rgb(235, 225, 195),
+			pants = rgb(225, 214, 182),
+			shoes = rgb(210, 198, 165),
+			armsForward = true,
+			head = 2.15,
+			extra = function(h)
+				-- Bandage strips wrapped every which way, one eye peeking out.
+				local strip = rgb(200, 188, 155)
+				for i, y in { 1.9, 2.35, 2.8, 3.15 } do
+					h.add({
+						shape = "Block",
+						size = { h.torsoW + 0.08, 0.14, h.torsoD + 0.08 },
+						pos = { 0, y, 0 },
+						rot = { 0, 0, if i % 2 == 0 then 8 else -8 },
+						color = strip,
+					})
+				end
+				for i, dy in { -0.55, 0.05, 0.6 } do
+					h.add({
+						shape = "Cylinder",
+						size = { 0.16, h.head + 0.06, h.head + 0.06 },
+						pos = { 0, h.headY + dy, 0 },
+						rot = { 0, 0, 90 + (if i == 2 then 10 else -6) },
+						color = strip,
+					})
+				end
+				h.add({
+					shape = "Block",
+					size = { 0.75, 0.55, 0.2 },
+					pos = { h.eyeX, h.headY + h.eyeY, h.face(h.eyeX, h.eyeY, 0.2) },
+					rot = { 0, 0, 12 },
+					color = rgb(235, 225, 195),
+				})
+				-- A loose end dangling down the back.
+				h.add({
+					shape = "Block",
+					size = { 0.25, 1.2, 0.08 },
+					pos = { 0.9, h.headY - 1.0, 0.4 },
+					rot = { 0, 0, 15 },
+					color = strip,
+				})
+			end,
+		}),
+	},
+	{
+		id = "CountFangula",
+		name = "Count Fangula",
+		rarity = "Legendary",
+		exclusive = true,
+		walk = "strut",
+		income = 400,
+		look = human({
+			skin = rgb(225, 215, 240),
+			shirt = rgb(30, 25, 40),
+			sleeves = rgb(30, 25, 40),
+			pants = rgb(30, 25, 40),
+			shoes = rgb(15, 15, 20),
+			head = 2.2,
+			extra = function(h)
+				-- Slicked black hair with a widow's peak, red eyes, fangs, and a big cape.
+				h.add({
+					shape = "Ball",
+					size = h.head + 0.12,
+					pos = { 0, h.headY + 0.32, 0.3 },
+					color = rgb(20, 15, 25),
+				})
+				h.add({
+					shape = "Block",
+					size = { 0.5, 0.5, 0.3 },
+					pos = { 0, h.headY + 0.8, h.face(0, 0.8, -0.2) },
+					rot = { 0, 0, 45 },
+					color = rgb(20, 15, 25),
+				})
+				for _, side in { -1, 1 } do
+					local p = { side * h.eyeX, h.headY + h.eyeY, h.face(h.eyeX, h.eyeY, -0.12) }
+					h.add({
+						shape = "Ball",
+						size = 0.38,
+						pos = { p[1], p[2], p[3] - 0.12 },
+						color = rgb(220, 30, 50),
+						detail = true,
+					})
+					h.add({
+						shape = "Wedge",
+						size = { 0.1, 0.3, 0.12 },
+						pos = { side * 0.18, h.headY - h.head * 0.2 - 0.18, h.face(0.18, h.head * 0.2 + 0.18, 0.02) },
+						rot = { 180, 0, 0 },
+						color = rgb(255, 255, 255),
+						detail = true,
+					})
+				end
+				local red = rgb(190, 20, 40)
+				h.add({
+					shape = "Block",
+					size = { h.torsoW + 0.7, 3.1, 0.15 },
+					pos = { 0, 1.75, h.torsoD / 2 + 0.2 },
+					color = red,
+				})
+				h.add({
+					shape = "Block",
+					size = { h.torsoW + 0.9, 3.2, 0.12 },
+					pos = { 0, 1.75, h.torsoD / 2 + 0.32 },
+					color = rgb(20, 15, 25),
+				})
+				for _, side in { -1, 1 } do
+					h.add({
+						shape = "Block",
+						size = { 0.9, 1.2, 0.12 },
+						pos = { side * 0.75, h.torsoTop + 0.45, 0.35 },
+						rot = { -15, side * 25, 0 },
+						color = red,
+					})
+				end
+				h.add({
+					shape = "Ball",
+					size = 0.3,
+					pos = { 0, h.torsoTop - 0.3, -h.torsoD / 2 - 0.08 },
+					color = red,
+					material = "Neon",
+					detail = true,
+				})
+			end,
+		}),
+	},
+	{
+		id = "Howlz",
+		name = "Howlz",
+		rarity = "Mystic",
+		exclusive = true,
+		walk = "prowl",
+		income = 1500,
+		look = human({
+			skin = rgb(120, 85, 60),
+			shirt = rgb(110, 60, 140),
+			sleeves = rgb(120, 85, 60),
+			pants = rgb(60, 60, 80),
+			shoes = rgb(120, 85, 60),
+			torsoWidth = 2.2,
+			torsoDepth = 1.3,
+			armSize = 0.6,
+			head = 2.1,
+			noMouth = true,
+			extra = function(h)
+				local fur, light = rgb(120, 85, 60), rgb(200, 170, 140)
+				-- Wolf snout, nose, pointy ears, yellow eyes and a fluffy tail.
+				h.add({ shape = "Ball", size = 1.1, pos = { 0, h.headY - 0.35, h.face(0, -0.35, -0.3) }, color = light })
+				h.add({
+					shape = "Ball",
+					size = 0.4,
+					pos = { 0, h.headY - 0.15, h.face(0, -0.15, 0.25) },
+					color = rgb(20, 15, 15),
+					detail = true,
+				})
+				h.add({
+					shape = "Block",
+					size = { 0.5, 0.08, 0.08 },
+					pos = { 0, h.headY - 0.7, h.face(0, -0.7, 0.1) },
+					color = rgb(60, 20, 20),
+					detail = true,
+				})
+				for _, side in { -1, 1 } do
+					pointyEar(h.add, side * 0.62, h.headY + 1.15, 0, 0.7, 0.9, fur)
+					local p = { side * h.eyeX, h.headY + h.eyeY, h.face(h.eyeX, h.eyeY, -0.12) }
+					h.add({
+						shape = "Ball",
+						size = 0.36,
+						pos = { p[1], p[2], p[3] - 0.12 },
+						color = rgb(255, 210, 40),
+						detail = true,
+					})
+					-- Claws.
+					for _, dx in { -0.12, 0, 0.12 } do
+						h.add({
+							shape = "Block",
+							size = { 0.06, 0.25, 0.06 },
+							pos = { side * (h.shoulderX + 0.08) + dx, 1.4, -0.2 },
+							color = rgb(250, 245, 230),
+							detail = true,
+						})
+					end
+				end
+				for i = 0, 3 do
+					h.add({
+						shape = "Ball",
+						size = 0.75 - i * 0.08,
+						pos = { 0, 1.9 + i * 0.3, h.torsoD / 2 + 0.4 + i * 0.25 },
+						color = if i == 3 then light else fur,
+					})
+				end
+				h.add({
+					shape = "Block",
+					size = { 0.8, 0.5, 0.1 },
+					pos = { 0, h.torsoTop - 0.35, -h.torsoD / 2 - 0.02 },
+					color = light,
+				})
+			end,
+		}),
+	},
+	{
+		id = "Blinky",
+		name = "Blinky",
+		rarity = "Ultra",
+		exclusive = true,
+		walk = "bounce",
+		income = 6000,
+		look = (function()
+			local list, add = newParts()
+			local purple, dark = rgb(140, 80, 220), rgb(95, 45, 170)
+			local body = { 0, 2.6, 0 }
+			add({ name = "Body", shape = "Ball", size = 3.6, pos = body, color = purple })
+			legs(add, { { -0.75, -0.2 }, { 0.75, -0.2 } }, 1.0, 0.7, dark, dark)
+			-- One huge eye.
+			local eye = onBall(body, 1.8, 0, 0.35, -0.5)
+			add({ shape = "Ball", size = 1.8, pos = eye, color = rgb(255, 255, 255), detail = true })
+			add({
+				shape = "Ball",
+				size = 1.1,
+				pos = { eye[1], eye[2], eye[3] - 0.42 },
+				color = rgb(80, 220, 160),
+				detail = true,
+			})
+			add({
+				shape = "Ball",
+				size = 0.55,
+				pos = { eye[1], eye[2], eye[3] - 0.72 },
+				color = rgb(15, 15, 20),
+				detail = true,
+			})
+			add({
+				shape = "Ball",
+				size = 0.22,
+				pos = { eye[1] + 0.25, eye[2] + 0.25, eye[3] - 0.85 },
+				color = rgb(255, 255, 255),
+				detail = true,
+			})
+			-- A toothy grin.
+			add({
+				shape = "Block",
+				size = { 1.3, 0.3, 0.12 },
+				pos = onBall(body, 1.8, 0, -0.75, -0.05),
+				color = rgb(60, 20, 40),
+				detail = true,
+			})
+			for _, x in { -0.4, 0, 0.4 } do
+				add({
+					shape = "Block",
+					size = { 0.18, 0.2, 0.08 },
+					pos = onBall(body, 1.8, x, -0.68, 0.02),
+					color = rgb(255, 255, 255),
+					detail = true,
+				})
+			end
+			-- Two little horns (stacked rings) and stubby arms.
+			for _, side in { -1, 1 } do
+				for k = 0, 3 do
+					local width = 0.5 - k * 0.11
+					add({
+						shape = "Cylinder",
+						size = { 0.22, width, width },
+						pos = { side * (0.75 + k * 0.08), 4.25 + k * 0.2, 0 },
+						rot = { 0, 0, 90 - side * 20 },
+						color = rgb(255, 220, 120),
+					})
+				end
+				add({
+					shape = "Ball",
+					size = 0.8,
+					pos = { side * 1.9, 2.4, -0.1 },
+					color = purple,
+					swing = { hinge = { side * 1.6, 2.6, -0.1 }, phase = if side < 0 then 0.5 else 0, amount = 0.6 },
+				})
+			end
+			return {
+				parts = list,
+				effects = {
+					{ type = "Sparkles", part = 1, color = rgb(200, 255, 230) },
+					{ type = "Glow", part = 1, color = rgb(80, 220, 160), size = 12 },
+				},
+			}
+		end)(),
+	},
 }
 
 local base = {}
@@ -2568,71 +3003,92 @@ return Hybrids
       <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">Luck</string>
-          <string name="Source"><![CDATA[-- Luck: Lucky Crates, the daily Lucky Wheel and Lucky Hour events. Shared so the client
--- can show every chance on screen (players always see the odds), while the server does
--- all the rolling (server/LuckService).
+          <string name="Source"><![CDATA[-- Luck: Monster Crates, the daily Lucky Wheel and Lucky Hour events. Shared so the client
+-- can show every chance on screen (players always see the odds before buying), while the
+-- server does all the rolling (server/LuckService).
 --
--- Everything here is bought with coins or free; nothing is sold for Robux, and every
--- crate always gives a Freek.
+-- Monster Crates are Developer Products bought with Robux. They're the only way to get
+-- the Monster line (Freeks with exclusive = true). Roblox's rules for paid random items:
+-- the odds are shown before buying, and players in countries where paid random items
+-- aren't allowed can't buy them (LuckService checks PolicyService).
 
+local Freeks = require(script.Parent.Freeks)
 local Rarities = require(script.Parent.Rarities)
 
 local Luck = {}
 
--- Crates crack open into a random Freek. odds are weights per rarity (shown as %).
--- mutation multiplies each mutation's normal chance (see Mutations.luau).
+-- Monster Crates. productId: create a Developer Product for each on the Creator Dashboard
+-- (Monetization -> Developer Products) at this price and paste its ID here. Until then
+-- the crate shows "Coming soon", except in Studio where it opens free for testing.
+-- odds are weights per Monster; mutation multiplies each mutation's normal chance.
 Luck.CRATES = {
 	{
-		id = "Bronze",
-		name = "Bronze Crate",
-		price = 400,
-		color = Color3.fromRGB(205, 130, 70),
-		odds = { Common = 75, Uncommon = 22, Rare = 3 },
-		mutation = 0.5,
-	},
-	{
-		id = "Silver",
-		name = "Silver Crate",
-		price = 1500,
-		color = Color3.fromRGB(200, 210, 225),
-		odds = { Common = 35, Uncommon = 45, Rare = 17, Legendary = 3 },
+		id = "Monster",
+		name = "Monster Crate",
+		robux = 49,
+		productId = 0,
+		color = Color3.fromRGB(120, 200, 120),
+		odds = { BooBoo = 45, Zomboy = 35, Mumbles = 15, CountFangula = 4.5, Howlz = 0.5 },
 		mutation = 1,
 	},
 	{
-		id = "Gold",
-		name = "Gold Crate",
-		price = 9000,
-		color = Color3.fromRGB(255, 200, 60),
-		odds = { Uncommon = 25, Rare = 45, Legendary = 25, Mystic = 5 },
-		mutation = 1.5,
+		id = "MegaMonster",
+		name = "Mega Monster Crate",
+		robux = 149,
+		productId = 0,
+		color = Color3.fromRGB(160, 110, 240),
+		odds = { BooBoo = 20, Zomboy = 25, Mumbles = 35, CountFangula = 15, Howlz = 4.5, Blinky = 0.5 },
+		mutation = 2,
 	},
 	{
-		id = "Diamond",
-		name = "Diamond Crate",
-		price = 25000,
-		color = Color3.fromRGB(110, 220, 255),
-		odds = { Rare = 40, Legendary = 40, Mystic = 18, Ultra = 2 },
-		mutation = 2.5,
+		id = "LegendaryMonster",
+		name = "Legendary Monster Crate",
+		robux = 399,
+		productId = 0,
+		color = Color3.fromRGB(255, 200, 60),
+		odds = { Mumbles = 30, CountFangula = 45, Howlz = 20, Blinky = 5 },
+		mutation = 3,
 	},
 }
+-- Opens crates for free in Studio when they have no product ID yet (for testing).
+Luck.STUDIO_FREE_CRATES = true
+
 Luck.crateById = {}
+Luck.crateByProduct = {}
 for _, crate in Luck.CRATES do
 	Luck.crateById[crate.id] = crate
+	if crate.productId ~= 0 then
+		Luck.crateByProduct[crate.productId] = crate
+	end
 end
 
--- The crate's odds as a list, rarest last, with percentages: { { rarity, percent } }.
+-- The crate's odds right now (Crate Luck makes the rarest ones likelier), as weights.
+function Luck.crateOdds(crate): { [string]: number }
+	local event = Luck.current()
+	local boost = event and event.crateLuck or 1
+	local odds = {}
+	for speciesId, weight in crate.odds do
+		local species = Freeks.byId[speciesId]
+		local rare = species and Rarities.rank[species.rarity] >= Rarities.rank.Legendary
+		odds[speciesId] = if rare then weight * boost else weight
+	end
+	return odds
+end
+
+-- The crate's odds as a list, most likely first: { { species, percent } }.
 function Luck.oddsList(crate)
+	local odds = Luck.crateOdds(crate)
 	local total = 0
-	for _, weight in crate.odds do
+	for _, weight in odds do
 		total += weight
 	end
 	local list = {}
-	for _, rarity in Rarities.order do
-		local weight = crate.odds[rarity]
-		if weight then
-			table.insert(list, { rarity = rarity, percent = weight / total * 100 })
-		end
+	for speciesId, weight in odds do
+		table.insert(list, { species = speciesId, percent = weight / total * 100 })
 	end
+	table.sort(list, function(a, b)
+		return a.percent > b.percent
+	end)
 	return list
 end
 
@@ -2641,14 +3097,14 @@ end
 Luck.SPIN_COOLDOWN = 24 * 60 * 60
 Luck.VIP_SPIN_COOLDOWN = 12 * 60 * 60
 Luck.WHEEL = {
-	{ label = "Coins", minutes = 3, weight = 30, color = Color3.fromRGB(110, 235, 140) },
-	{ label = "Bronze Crate", crate = "Bronze", weight = 25, color = Color3.fromRGB(205, 130, 70) },
-	{ label = "Big Coins", minutes = 10, weight = 15, color = Color3.fromRGB(60, 200, 110) },
-	{ label = "Silver Crate", crate = "Silver", weight = 12, color = Color3.fromRGB(200, 210, 225) },
-	{ label = "Golden Freek", golden = true, weight = 6, color = Color3.fromRGB(255, 220, 90) },
-	{ label = "Gold Crate", crate = "Gold", weight = 6, color = Color3.fromRGB(255, 200, 60) },
-	{ label = "Huge Coins", minutes = 30, weight = 5, color = Color3.fromRGB(40, 160, 90) },
-	{ label = "JACKPOT", crate = "Diamond", weight = 1, color = Color3.fromRGB(110, 220, 255) },
+	{ label = "Coins", minutes = 3, weight = 34, color = Color3.fromRGB(110, 235, 140) },
+	{ label = "Big Coins", minutes = 10, weight = 22, color = Color3.fromRGB(60, 200, 110) },
+	{ label = "Golden Freek", golden = true, weight = 14, color = Color3.fromRGB(255, 220, 90) },
+	{ label = "Monster Crate", crate = "Monster", weight = 12, color = Color3.fromRGB(120, 200, 120) },
+	{ label = "Huge Coins", minutes = 30, weight = 10, color = Color3.fromRGB(40, 160, 90) },
+	{ label = "Rainbow Freek", rainbow = true, weight = 4, color = Color3.fromRGB(255, 120, 255) },
+	{ label = "Mega Crate", crate = "MegaMonster", weight = 3, color = Color3.fromRGB(160, 110, 240) },
+	{ label = "JACKPOT", crate = "LegendaryMonster", weight = 1, color = Color3.fromRGB(255, 200, 60) },
 }
 Luck.MIN_COIN_PRIZE = 200 -- coin prizes are never less than this
 
@@ -2687,12 +3143,12 @@ Luck.EVENTS = {
 		color = Color3.fromRGB(255, 140, 50),
 		fireRate = 2,
 	},
-	CrateFrenzy = {
-		name = "Crate Frenzy",
+	CrateLuck = {
+		name = "Crate Luck",
 		icon = "📦",
-		description = "Lucky Crates are 30% off!",
+		description = "Legendary and better Monsters are 2x as likely from Monster Crates!",
 		color = Color3.fromRGB(110, 200, 255),
-		crateDiscount = 0.3,
+		crateLuck = 2,
 	},
 }
 
@@ -2705,13 +3161,6 @@ function Luck.current()
 		return Luck.EVENTS[id], ends
 	end
 	return nil, 0
-end
-
--- A crate's price right now (Crate Frenzy makes it cheaper).
-function Luck.cratePrice(crate): number
-	local event = Luck.current()
-	local discount = event and event.crateDiscount or 0
-	return math.floor(crate.price * (1 - discount))
 end
 
 return Luck
@@ -4259,7 +4708,7 @@ end
 local function eligibleByRarity()
 	local groups = {}
 	for _, species in Freeks.list do
-		if Seasons.available(species) and species.rarity ~= "Secret" then
+		if Seasons.available(species) and species.rarity ~= "Secret" and not species.exclusive then
 			groups[species.rarity] = groups[species.rarity] or {}
 			table.insert(groups[species.rarity], species)
 		end
@@ -4557,7 +5006,8 @@ local function defaultData()
 		breeding = nil, -- { a = uid, b = uid, endsAt = unix seconds }
 		discovered = {}, -- [speciesId] = true for every species this player has owned
 		rebirths = 0,
-		crates = {}, -- [crateId] = how many unopened Lucky Crates (won on the wheel)
+		crates = {}, -- [crateId] = how many unopened Monster Crates (won on the wheel)
+		receipts = {}, -- recent Robux purchase IDs, so a purchase is never granted twice
 		lastSpin = 0, -- os.time() of the last Lucky Wheel spin
 		lastSeen = os.time(),
 	}
@@ -4652,10 +5102,15 @@ local function load(player: Player)
 	return nil, reason
 end
 
-function DataService.save(player: Player, release: boolean?)
+-- Saves the player's data. Returns true once it's safely stored (or if this is a
+-- temporary Studio save that's never stored).
+function DataService.save(player: Player, release: boolean?): boolean
 	local data = profiles[player]
-	if not data or noSave[player] then
-		return
+	if not data then
+		return false
+	end
+	if noSave[player] then
+		return true
 	end
 	data.lastSeen = os.time()
 	data.lock = if release then nil else { job = game.JobId, time = os.time() }
@@ -4669,11 +5124,12 @@ function DataService.save(player: Player, release: boolean?)
 			end)
 		end)
 		if ok then
-			return
+			return true
 		end
 		warn("Save failed for", player.Name, err)
 		task.wait(attempt)
 	end
+	return false
 end
 
 function DataService.get(player: Player)
@@ -5999,15 +6455,21 @@ return HalloweenDecor
       <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">LuckService</string>
-          <string name="Source"><![CDATA[-- Lucky Crates, the daily Lucky Wheel and Lucky Hour events (rules and odds in
--- shared/Luck.luau). All rolls happen here; the client only shows the result
--- (the LuckResult remote) with a reveal animation.
+          <string name="Source"><![CDATA[-- Monster Crates, the daily Lucky Wheel and Lucky Hour events (rules and odds in
+-- shared/Luck.luau). All rolls happen here; the client only shows the result (the
+-- LuckResult remote) with a reveal animation.
+--
+-- Monster Crates are Developer Products. ProcessReceipt grants a crate only once per
+-- purchase (receipts are remembered in the player's save) and only tells Roblox the
+-- purchase went through after the save succeeds, so nobody pays without getting it.
 
+local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
+local PolicyService = game:GetService("PolicyService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
-local Format = require(ReplicatedStorage.Shared.Format)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
@@ -6018,12 +6480,17 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
 local ActionService = require(script.Parent.ActionService)
+local DataService = require(script.Parent.DataService)
 
 local LuckService = {}
 
 local rng = Random.new()
 local notifyRemote = Remotes.get("Notify")
 local resultRemote = Remotes.get("LuckResult")
+local RECEIPTS_KEPT = 50 -- how many recent purchase IDs each save remembers
+
+-- Odds for the wheel's Golden/Rainbow Freek (by rarity, never Monsters).
+local WHEEL_FREEK_ODDS = { Common = 35, Uncommon = 45, Rare = 17, Legendary = 3 }
 
 local function notify(player: Player, message: string, kind: string?)
 	notifyRemote:FireClient(player, message, kind)
@@ -6035,31 +6502,37 @@ local function announce(message: string)
 	end
 end
 
+-- Picks a key from a { [key] = weight } table.
 local function rollWeighted(weights: { [string]: number }): string
+	local keys = {}
 	local total = 0
-	for _, weight in weights do
+	for key, weight in weights do
+		table.insert(keys, key)
 		total += weight
 	end
+	table.sort(keys)
 	local roll = rng:NextNumber() * total
-	for _, rarity in Rarities.order do
-		local weight = weights[rarity]
-		if weight then
-			roll -= weight
-			if roll <= 0 then
-				return rarity
-			end
+	for _, key in keys do
+		roll -= weights[key]
+		if roll <= 0 then
+			return key
 		end
 	end
-	return Rarities.order[1]
+	return keys[#keys]
 end
 
--- A random species of that rarity (or the next rarity down that has any).
+-- A random non-Monster species of that rarity (or the next rarity down that has any).
 local function pickSpecies(rarity: string)
 	local rank = Rarities.rank[rarity]
 	while rank >= 1 do
 		local pool = {}
 		for _, species in Freeks.list do
-			if species.rarity == Rarities.order[rank] and species.rarity ~= "Secret" and Seasons.available(species) then
+			if
+				species.rarity == Rarities.order[rank]
+				and not species.exclusive
+				and species.rarity ~= "Secret"
+				and Seasons.available(species)
+			then
 				table.insert(pool, species)
 			end
 		end
@@ -6098,27 +6571,44 @@ local function giveFreek(player: Player, data, species, mutations, reveal)
 end
 
 local function openCrate(player: Player, data, crate)
-	local species = pickSpecies(rollWeighted(crate.odds))
+	local species = Freeks.byId[rollWeighted(Luck.crateOdds(crate))]
 	giveFreek(player, data, species, rollMutations(crate.mutation), { kind = "crate", crate = crate.id })
 end
 
+-- Whether paid random items are allowed for this player (some countries ban them).
+local function cratesAllowed(player: Player): boolean
+	local ok, info = pcall(function()
+		return PolicyService:GetPolicyInfoForPlayerAsync(player)
+	end)
+	if not ok then
+		return RunService:IsStudio() -- can't check: only allow while testing in Studio
+	end
+	return not info.ArePaidRandomItemsRestricted
+end
+
+-- The player asked to buy a crate: check, then show Roblox's purchase prompt.
 local function buyCrate(player: Player, data, crateId: any)
 	local crate = typeof(crateId) == "string" and Luck.crateById[crateId]
 	if not crate then
 		return
 	end
+	if player:GetAttribute("CratesRestricted") then
+		return notify(player, "Monster Crates aren't available where you live.", "error")
+	end
 	if not hasRoom(player, data) then
 		return notify(player, "You have too many Freeks! Sell or fuse some first.", "error")
 	end
-	local price = Luck.cratePrice(crate)
-	if data.money < price then
-		return notify(player, "Not enough money! It costs " .. Format.money(price) .. ".", "error")
+	if crate.productId == 0 then
+		if RunService:IsStudio() and Luck.STUDIO_FREE_CRATES then
+			notify(player, "Studio test: opening " .. crate.name .. " for free.", "success")
+			return openCrate(player, data, crate)
+		end
+		return notify(player, "Monster Crates are coming soon!", "error")
 	end
-	data.money -= price
-	openCrate(player, data, crate)
+	MarketplaceService:PromptProductPurchase(player, crate.productId)
 end
 
--- Opens a crate the player already owns (won on the wheel).
+-- Opens a crate the player already owns (won on the wheel, or bought while full).
 local function openOwnedCrate(player: Player, data, crateId: any)
 	local crate = typeof(crateId) == "string" and Luck.crateById[crateId]
 	if not crate or (data.crates[crate.id] or 0) < 1 then
@@ -6129,6 +6619,38 @@ local function openOwnedCrate(player: Player, data, crateId: any)
 	end
 	data.crates[crate.id] -= 1
 	openCrate(player, data, crate)
+end
+
+local function processReceipt(receipt)
+	local crate = Luck.crateByProduct[receipt.ProductId]
+	local player = Players:GetPlayerByUserId(receipt.PlayerId)
+	local data = player and DataService.get(player)
+	if not crate or not data then
+		-- Not ours, or the player isn't here: Roblox will try again later.
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	data.receipts = data.receipts or {}
+	if not table.find(data.receipts, receipt.PurchaseId) then
+		if hasRoom(player, data) then
+			openCrate(player, data, crate)
+		else
+			data.crates[crate.id] = (data.crates[crate.id] or 0) + 1
+			notify(
+				player,
+				"Your barn is full, so your " .. crate.name .. " was saved. Open it from the 🍀 Luck tab!",
+				"success"
+			)
+		end
+		table.insert(data.receipts, receipt.PurchaseId)
+		while #data.receipts > RECEIPTS_KEPT do
+			table.remove(data.receipts, 1)
+		end
+		DataService.changed(player)
+	end
+	if not DataService.save(player) then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	return Enum.ProductPurchaseDecision.PurchaseGranted
 end
 
 local function spinCooldown(player: Player): number
@@ -6146,34 +6668,26 @@ local function spin(player: Player, data)
 	end
 	data.lastSpin = now
 
-	local total = 0
-	for _, slice in Luck.WHEEL do
-		total += slice.weight
-	end
-	local roll = rng:NextNumber() * total
-	local index = #Luck.WHEEL
+	local weights = {}
 	for i, slice in Luck.WHEEL do
-		roll -= slice.weight
-		if roll <= 0 then
-			index = i
-			break
-		end
+		weights[tostring(i)] = slice.weight
 	end
+	local index = tonumber(rollWeighted(weights)) :: number
 	local slice = Luck.WHEEL[index]
 	local reveal = { kind = "wheel", slice = index }
 
-	if slice.golden and hasRoom(player, data) then
-		local species = pickSpecies(rollWeighted(Luck.crateById.Silver.odds))
-		return giveFreek(player, data, species, { "Golden" }, reveal)
+	if (slice.golden or slice.rainbow) and hasRoom(player, data) then
+		local species = pickSpecies(rollWeighted(WHEEL_FREEK_ODDS))
+		return giveFreek(player, data, species, { if slice.rainbow then "Rainbow" else "Golden" }, reveal)
 	end
 	if slice.crate then
 		data.crates[slice.crate] = (data.crates[slice.crate] or 0) + 1
 		reveal.crate = slice.crate
-		if slice.crate == "Diamond" then
+		if slice.crate == "LegendaryMonster" then
 			announce(player.DisplayName .. " hit the JACKPOT on the Lucky Wheel!")
 		end
 	else
-		-- Coins (also the fallback for a Golden Freek when the barn is full).
+		-- Coins (also the fallback for a Freek prize when the barn is full).
 		local amount = coinPrize(data, slice.minutes or 10)
 		data.money += amount
 		reveal.coins = amount
@@ -6202,10 +6716,20 @@ local function runEvents()
 	end
 end
 
+-- Marks players who can't buy crates so their client hides the buy buttons.
+local function checkPolicy(player: Player)
+	player:SetAttribute("CratesRestricted", not cratesAllowed(player))
+end
+
 function LuckService.init()
 	ActionService.register("BuyCrate", buyCrate)
 	ActionService.register("OpenCrate", openOwnedCrate)
 	ActionService.register("SpinWheel", spin)
+	MarketplaceService.ProcessReceipt = processReceipt
+	Players.PlayerAdded:Connect(checkPolicy)
+	for _, player in Players:GetPlayers() do
+		task.spawn(checkPolicy, player)
+	end
 	task.spawn(runEvents)
 end
 
@@ -9887,10 +10411,13 @@ function renderers.Book()
 	grid.Parent = body
 	for _, species in Freeks.list do
 		local discovery = discoveries[species.id]
-		local known = species.price ~= nil or discovery ~= nil
+		-- Monsters are always shown, so players can see what the crates hold.
+		local known = species.price ~= nil or discovery ~= nil or species.exclusive == true
 		local credit
 		if species.price then
 			credit = "Starter Freek"
+		elseif species.exclusive and not discovery then
+			credit = "Only from Monster Crates (🍀 Luck tab)"
 		elseif discovery then
 			credit = "First found by\n" .. discovery.name
 		elseif not Seasons.available(species) then
@@ -10517,7 +11044,10 @@ local function spinCooldown(): number
 end
 
 function renderers.Luck()
-	heading("Crates always give a Freek, and every chance is shown. Spin the wheel free every day!", 1)
+	heading(
+		"Monster Crates hold Freeks you can't get anywhere else. Every chance is shown. Spin the wheel free every day!",
+		1
+	)
 
 	-- The Lucky Wheel.
 	local left = (state.lastSpin or 0) + spinCooldown() - Workspace:GetServerTimeNow()
@@ -10548,39 +11078,42 @@ function renderers.Luck()
 	wheelCard.LayoutOrder = 2
 	wheelCard.Parent = body
 
-	-- Lucky Crates.
-	local event = Luck.current()
-	local grid = UI.grid(230, 330)
+	-- Monster Crates (Robux): the only place to get the Monster line.
+	local restricted = player:GetAttribute("CratesRestricted")
+	local grid = UI.grid(250, 470)
 	grid.LayoutOrder = 3
 	grid.Parent = body
 	for i, crate in Luck.CRATES do
-		local lines = {
-			{ "📦", colors.text, 40 },
-			{ crate.name, crate.color, 24 },
-		}
-		for _, odds in Luck.oddsList(crate) do
+		local odds = Luck.oddsList(crate)
+		local best = odds[#odds].species
+		local lines = { { crate.name, crate.color, 24 } }
+		for _, entry in odds do
+			local species = Freeks.byId[entry.species]
+			local percent = if entry.percent < 1
+				then string.format("%.1f", entry.percent)
+				else string.format("%.0f", entry.percent)
 			table.insert(lines, {
-				string.format(
-					"%s  %s%%",
-					odds.rarity,
-					if odds.percent < 1
-						then string.format("%.1f", odds.percent)
-						else string.format("%.0f", odds.percent)
-				),
-				Rarities.info[odds.rarity].color,
+				string.format("%s · %s  %s%%", species.name, species.rarity, percent),
+				Rarities.info[species.rarity].color,
 				16,
 			})
 		end
-		local price = Luck.cratePrice(crate)
+		local label, color
+		if restricted then
+			label, color = "Not available in your region", colors.gray
+		elseif crate.productId ~= 0 then
+			label, color = "R$ " .. crate.robux, Color3.fromRGB(40, 180, 90)
+		elseif RunService:IsStudio() and Luck.STUDIO_FREE_CRATES then
+			label, color = "R$ " .. crate.robux .. " (free in Studio)", Color3.fromRGB(40, 180, 90)
+		else
+			label, color = "Coming soon", colors.gray
+		end
 		local buttons = {
-			UI.button(
-				"Buy & Open " .. Format.money(price) .. (if event and event.crateDiscount then " (sale!)" else ""),
-				if state.money >= price then crate.color:Lerp(colors.green, 0.6) else colors.gray,
-				function()
+			UI.button(label, color, function()
+				if not restricted then
 					send("BuyCrate", crate.id)
-				end,
-				{ Size = UDim2.new(1, 0, 0, 36) }
-			),
+				end
+			end, { Size = UDim2.new(1, 0, 0, 38) }),
 		}
 		local owned = state.crates and state.crates[crate.id] or 0
 		if owned > 0 then
@@ -10591,7 +11124,8 @@ function renderers.Luck()
 				end, { Size = UDim2.new(1, 0, 0, 36) })
 			)
 		end
-		local card = UI.card({ lines = lines, buttons = buttons, border = crate.color })
+		-- Show off the rarest Monster inside.
+		local card = UI.card({ species = best, lines = lines, buttons = buttons, border = crate.color })
 		card.LayoutOrder = i
 		card.Parent = grid
 	end
@@ -10821,6 +11355,8 @@ local WALKS = {
 	bounce = { speed = 7, bob = 1, roll = 6, yaw = 0, legs = 30 },
 	strut = { speed = 10, bob = 0.25, roll = 2, yaw = 5, legs = 35 },
 	catwalk = { speed = 9, bob = 0.15, roll = 0, yaw = 9, legs = 30 },
+	shamble = { speed = 5, bob = 0.15, roll = 9, yaw = 3, legs = 22 },
+	float = { speed = 3, bob = 0.7, roll = 4, yaw = 0, legs = 30 },
 }
 
 -- What Freeks stand on: the ground itself (terrain, the town square floor and the

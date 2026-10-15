@@ -1,68 +1,89 @@
--- Luck: Lucky Crates, the daily Lucky Wheel and Lucky Hour events. Shared so the client
--- can show every chance on screen (players always see the odds), while the server does
--- all the rolling (server/LuckService).
+-- Luck: Monster Crates, the daily Lucky Wheel and Lucky Hour events. Shared so the client
+-- can show every chance on screen (players always see the odds before buying), while the
+-- server does all the rolling (server/LuckService).
 --
--- Everything here is bought with coins or free; nothing is sold for Robux, and every
--- crate always gives a Freek.
+-- Monster Crates are Developer Products bought with Robux. They're the only way to get
+-- the Monster line (Freeks with exclusive = true). Roblox's rules for paid random items:
+-- the odds are shown before buying, and players in countries where paid random items
+-- aren't allowed can't buy them (LuckService checks PolicyService).
 
+local Freeks = require(script.Parent.Freeks)
 local Rarities = require(script.Parent.Rarities)
 
 local Luck = {}
 
--- Crates crack open into a random Freek. odds are weights per rarity (shown as %).
--- mutation multiplies each mutation's normal chance (see Mutations.luau).
+-- Monster Crates. productId: create a Developer Product for each on the Creator Dashboard
+-- (Monetization -> Developer Products) at this price and paste its ID here. Until then
+-- the crate shows "Coming soon", except in Studio where it opens free for testing.
+-- odds are weights per Monster; mutation multiplies each mutation's normal chance.
 Luck.CRATES = {
 	{
-		id = "Bronze",
-		name = "Bronze Crate",
-		price = 400,
-		color = Color3.fromRGB(205, 130, 70),
-		odds = { Common = 75, Uncommon = 22, Rare = 3 },
-		mutation = 0.5,
-	},
-	{
-		id = "Silver",
-		name = "Silver Crate",
-		price = 1500,
-		color = Color3.fromRGB(200, 210, 225),
-		odds = { Common = 35, Uncommon = 45, Rare = 17, Legendary = 3 },
+		id = "Monster",
+		name = "Monster Crate",
+		robux = 49,
+		productId = 0,
+		color = Color3.fromRGB(120, 200, 120),
+		odds = { BooBoo = 45, Zomboy = 35, Mumbles = 15, CountFangula = 4.5, Howlz = 0.5 },
 		mutation = 1,
 	},
 	{
-		id = "Gold",
-		name = "Gold Crate",
-		price = 9000,
-		color = Color3.fromRGB(255, 200, 60),
-		odds = { Uncommon = 25, Rare = 45, Legendary = 25, Mystic = 5 },
-		mutation = 1.5,
+		id = "MegaMonster",
+		name = "Mega Monster Crate",
+		robux = 149,
+		productId = 0,
+		color = Color3.fromRGB(160, 110, 240),
+		odds = { BooBoo = 20, Zomboy = 25, Mumbles = 35, CountFangula = 15, Howlz = 4.5, Blinky = 0.5 },
+		mutation = 2,
 	},
 	{
-		id = "Diamond",
-		name = "Diamond Crate",
-		price = 25000,
-		color = Color3.fromRGB(110, 220, 255),
-		odds = { Rare = 40, Legendary = 40, Mystic = 18, Ultra = 2 },
-		mutation = 2.5,
+		id = "LegendaryMonster",
+		name = "Legendary Monster Crate",
+		robux = 399,
+		productId = 0,
+		color = Color3.fromRGB(255, 200, 60),
+		odds = { Mumbles = 30, CountFangula = 45, Howlz = 20, Blinky = 5 },
+		mutation = 3,
 	},
 }
+-- Opens crates for free in Studio when they have no product ID yet (for testing).
+Luck.STUDIO_FREE_CRATES = true
+
 Luck.crateById = {}
+Luck.crateByProduct = {}
 for _, crate in Luck.CRATES do
 	Luck.crateById[crate.id] = crate
+	if crate.productId ~= 0 then
+		Luck.crateByProduct[crate.productId] = crate
+	end
 end
 
--- The crate's odds as a list, rarest last, with percentages: { { rarity, percent } }.
+-- The crate's odds right now (Crate Luck makes the rarest ones likelier), as weights.
+function Luck.crateOdds(crate): { [string]: number }
+	local event = Luck.current()
+	local boost = event and event.crateLuck or 1
+	local odds = {}
+	for speciesId, weight in crate.odds do
+		local species = Freeks.byId[speciesId]
+		local rare = species and Rarities.rank[species.rarity] >= Rarities.rank.Legendary
+		odds[speciesId] = if rare then weight * boost else weight
+	end
+	return odds
+end
+
+-- The crate's odds as a list, most likely first: { { species, percent } }.
 function Luck.oddsList(crate)
+	local odds = Luck.crateOdds(crate)
 	local total = 0
-	for _, weight in crate.odds do
+	for _, weight in odds do
 		total += weight
 	end
 	local list = {}
-	for _, rarity in Rarities.order do
-		local weight = crate.odds[rarity]
-		if weight then
-			table.insert(list, { rarity = rarity, percent = weight / total * 100 })
-		end
+	for speciesId, weight in odds do
+		table.insert(list, { species = speciesId, percent = weight / total * 100 })
 	end
+	table.sort(list, function(a, b)
+		return a.percent > b.percent
+	end)
 	return list
 end
 
@@ -71,14 +92,14 @@ end
 Luck.SPIN_COOLDOWN = 24 * 60 * 60
 Luck.VIP_SPIN_COOLDOWN = 12 * 60 * 60
 Luck.WHEEL = {
-	{ label = "Coins", minutes = 3, weight = 30, color = Color3.fromRGB(110, 235, 140) },
-	{ label = "Bronze Crate", crate = "Bronze", weight = 25, color = Color3.fromRGB(205, 130, 70) },
-	{ label = "Big Coins", minutes = 10, weight = 15, color = Color3.fromRGB(60, 200, 110) },
-	{ label = "Silver Crate", crate = "Silver", weight = 12, color = Color3.fromRGB(200, 210, 225) },
-	{ label = "Golden Freek", golden = true, weight = 6, color = Color3.fromRGB(255, 220, 90) },
-	{ label = "Gold Crate", crate = "Gold", weight = 6, color = Color3.fromRGB(255, 200, 60) },
-	{ label = "Huge Coins", minutes = 30, weight = 5, color = Color3.fromRGB(40, 160, 90) },
-	{ label = "JACKPOT", crate = "Diamond", weight = 1, color = Color3.fromRGB(110, 220, 255) },
+	{ label = "Coins", minutes = 3, weight = 34, color = Color3.fromRGB(110, 235, 140) },
+	{ label = "Big Coins", minutes = 10, weight = 22, color = Color3.fromRGB(60, 200, 110) },
+	{ label = "Golden Freek", golden = true, weight = 14, color = Color3.fromRGB(255, 220, 90) },
+	{ label = "Monster Crate", crate = "Monster", weight = 12, color = Color3.fromRGB(120, 200, 120) },
+	{ label = "Huge Coins", minutes = 30, weight = 10, color = Color3.fromRGB(40, 160, 90) },
+	{ label = "Rainbow Freek", rainbow = true, weight = 4, color = Color3.fromRGB(255, 120, 255) },
+	{ label = "Mega Crate", crate = "MegaMonster", weight = 3, color = Color3.fromRGB(160, 110, 240) },
+	{ label = "JACKPOT", crate = "LegendaryMonster", weight = 1, color = Color3.fromRGB(255, 200, 60) },
 }
 Luck.MIN_COIN_PRIZE = 200 -- coin prizes are never less than this
 
@@ -117,12 +138,12 @@ Luck.EVENTS = {
 		color = Color3.fromRGB(255, 140, 50),
 		fireRate = 2,
 	},
-	CrateFrenzy = {
-		name = "Crate Frenzy",
+	CrateLuck = {
+		name = "Crate Luck",
 		icon = "📦",
-		description = "Lucky Crates are 30% off!",
+		description = "Legendary and better Monsters are 2x as likely from Monster Crates!",
 		color = Color3.fromRGB(110, 200, 255),
-		crateDiscount = 0.3,
+		crateLuck = 2,
 	},
 }
 
@@ -135,13 +156,6 @@ function Luck.current()
 		return Luck.EVENTS[id], ends
 	end
 	return nil, 0
-end
-
--- A crate's price right now (Crate Frenzy makes it cheaper).
-function Luck.cratePrice(crate): number
-	local event = Luck.current()
-	local discount = event and event.crateDiscount or 0
-	return math.floor(crate.price * (1 - discount))
 end
 
 return Luck
