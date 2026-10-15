@@ -14847,51 +14847,181 @@ function PackReveal.play(result, done: () -> ())
 	hideClue()
 
 	----------------------------------------------------------------------------
-	-- 5. Clue two: the rarity. White-hot build-up, then everything turns its colour.
+	-- 5. Clue two: the rarity, climbing the ladder. COMMON slams in, then UNCOMMON,
+	-- RARE... one rung at a time, each lighting the next pip on the meter and turning the
+	-- whole arena its colour, with the pauses getting longer and the beams faster as it
+	-- climbs. Before a big final rung the arena blacks out and the card's edge pulses like a
+	-- heartbeat; then the real rarity lands with everything it's got.
 	----------------------------------------------------------------------------
-	state.color = Color3.new(1, 1, 1)
-	state.sweep = 1 + tier * 0.4
-	camTime = 0.35 + tier * 0.12
-	moveCamera(Vector3.new(0, 7.5, -15), CARD_HOME)
-	animate(0.35 + tier * 0.12, function(a, t)
+	local rungs = math.max(tier, 1)
+	local shown = math.max(math.min(#Rarities.order, math.max(tier, 6)), 1) -- Common..Ultra (Secret if pulled)
+	local meter = UI.new("Frame", {
+		Name = "RarityMeter",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.92),
+		Size = UDim2.fromOffset(shown * 126, 40),
+		BackgroundTransparency = 1,
+		ZIndex = 20,
+		Parent = overlay,
+	}, {
+		UI.new("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			Padding = UDim.new(0, 6),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	local pips = {}
+	for k = 1, shown do
+		local name = Rarities.order[k]
+		local pip = UI.new("Frame", {
+			Name = name,
+			Size = UDim2.fromOffset(118, 34),
+			BackgroundColor3 = Color3.fromRGB(30, 30, 52),
+			BackgroundTransparency = 0.25,
+			LayoutOrder = k,
+			ZIndex = 20,
+			Parent = meter,
+		}, { UI.corner(17) })
+		local stroke = UI.stroke(nil, 2.5)
+		stroke.Parent = pip
+		local label = UI.label(string.upper(name), {
+			Size = UDim2.fromScale(1, 1),
+			FontFace = UI.fonts.heavy,
+			TextColor3 = Color3.fromRGB(120, 120, 150),
+			ZIndex = 21,
+			Parent = pip,
+		})
+		label.Size = UDim2.new(1, -10, 1, -8)
+		label.Position = UDim2.fromOffset(5, 4)
+		local scale = UI.new("UIScale", { Parent = pip })
+		pips[k] = { frame = pip, stroke = stroke, label = label, scale = scale }
+	end
+	animate(0.25, function(a, t)
 		placeCard(t)
-		state.brightness = 0.7 + 0.3 * a
-		setRim(Color3.new(1, 1, 1))
+		meter.Position = UDim2.new(0.5, 0, 0.92, 60 * (1 - easeOut(a)))
 	end)
-	state.color = rarityColor
-	state.rainbow = tier >= 6
-	if tier >= 3 then
-		flash(rarityColor:Lerp(Color3.new(1, 1, 1), 0.5), 0.35)
-	end
-	if state.rainbow then
-		local keys = {}
-		for k = 0, 6 do
-			table.insert(keys, ColorSequenceKeypoint.new(k / 6, Color3.fromHSV(k / 6, 0.75, 1)))
+
+	local function lightPip(k: number, current: boolean)
+		local pip = pips[k]
+		if not pip then
+			return
 		end
-		clueGradient.Color = ColorSequence.new(keys)
-		clueGradient.Enabled = true
+		local color = Rarities.info[Rarities.order[k]].color
+		pip.frame.BackgroundColor3 = color:Lerp(Color3.new(0, 0, 0), 0.25)
+		pip.frame.BackgroundTransparency = 0
+		pip.label.TextColor3 = Color3.new(1, 1, 1)
+		pip.stroke.Color = if current then Color3.new(1, 1, 1) else UI.OUTLINE
+		pip.stroke.Thickness = if current then 3.5 else 2.5
+		pip.scale.Scale = if current then 1.15 else 1
 	end
-	slam(
-		"RARITY",
-		RARITY_WORDS[rarity] or string.upper(rarity),
-		if state.rainbow then Color3.new(1, 1, 1) else rarityColor
-	)
-	setRim(rarityColor)
-	if tier >= 4 then
-		local colors = {}
-		for k = 1, 6 do
-			table.insert(colors, Color3.fromHSV(k / 6, 0.7, 1))
+
+	-- Camera stations for the climb: each rung pushes in a little closer.
+	local function climbCamera(k: number)
+		local f = (k - 1) / math.max(rungs - 1, 1)
+		camTime = 0.35
+		moveCamera(Vector3.new(math.sin(k * 1.7) * 3, 7.5 - f * 0.8, -19 + f * 5), CARD_HOME)
+	end
+
+	for k = 1, rungs do
+		local name = Rarities.order[k]
+		local color = Rarities.info[name].color
+		local final = k == rungs
+		if final and tier >= 3 then
+			-- Blackout and heartbeat before the big one.
+			hideClue()
+			state.color = Color3.fromRGB(60, 50, 90)
+			state.sweep = 0.2
+			camTime = 1.1
+			moveCamera(Vector3.new(0, 7.2, -12.5), CARD_HOME)
+			animate(0.5 + tier * 0.12, function(a, t)
+				placeCard(t)
+				state.brightness = 0.9 * (1 - a) + 0.08
+				local beat = math.max(math.sin(t * 9), 0) ^ 6
+				setRim(Color3.fromRGB(255, 255, 255):Lerp(Color3.fromRGB(40, 30, 60), 1 - beat))
+				if beat > 0.95 then
+					state.shake = math.max(state.shake, 0.25)
+				end
+			end)
 		end
-		burst(CARD_HOME + Vector3.new(0, 4, 0), 30 + tier * 8, colors, true)
+		lightPip(k, true)
+		if pips[k - 1] then
+			lightPip(k - 1, false)
+		end
+		state.color = color
+		setRim(color)
+		if not final then
+			-- A quick rung: the word punches in, the arena turns its colour, then on.
+			clueLabel.Text = string.upper(name)
+			clueLabel.TextColor3 = color
+			captionLabel.Text = "RARITY"
+			captionLabel.TextTransparency = 0
+			captionLabel:FindFirstChildOfClass("UIStroke").Transparency = 0
+			state.brightness = 0.55 + 0.1 * k
+			state.sweep = 0.6 + k * 0.5
+			climbCamera(k)
+			animate(0.14, function(a, t)
+				placeCard(t)
+				clueScale.Scale = 1.8 - 0.8 * easeOut(a)
+				clueLabel.TextTransparency = 1 - a
+				clueStroke.Transparency = 1 - a
+			end)
+			flash(color:Lerp(Color3.new(1, 1, 1), 0.6), 0.15)
+			state.shake = 0.3 + k * 0.06
+			-- Each rung holds a little longer than the last: the suspense builds.
+			animate(0.3 + k * 0.14, function(a, t)
+				placeCard(t)
+				pips[k].scale.Scale = 1.15 + math.sin(a * math.pi) * 0.08
+			end)
+			animate(0.1, function(a, t)
+				placeCard(t)
+				clueLabel.TextTransparency = a * 0.7
+			end)
+		else
+			-- The real rarity lands.
+			state.brightness = 1
+			state.sweep = 1 + tier * 0.4
+			state.rainbow = tier >= 6
+			if tier >= 3 then
+				flash(color:Lerp(Color3.new(1, 1, 1), 0.5), 0.4)
+			end
+			if state.rainbow then
+				local keys = {}
+				for c = 0, 6 do
+					table.insert(keys, ColorSequenceKeypoint.new(c / 6, Color3.fromHSV(c / 6, 0.75, 1)))
+				end
+				clueGradient.Color = ColorSequence.new(keys)
+				clueGradient.Enabled = true
+			end
+			slam(
+				"RARITY",
+				RARITY_WORDS[rarity] or string.upper(rarity),
+				if state.rainbow then Color3.new(1, 1, 1) else color
+			)
+			state.shake = 0.8 + tier * 0.1
+			if tier >= 4 then
+				local colors = {}
+				for c = 1, 6 do
+					table.insert(colors, Color3.fromHSV(c / 6, 0.7, 1))
+				end
+				burst(CARD_HOME + Vector3.new(0, 4, 0), 30 + tier * 8, colors, true)
+			end
+		end
 	end
+
 	local nextStrike = 0.3
 	camTime = 1.5 + tier * 0.25
 	moveCamera(Vector3.new(5, 6.5, -17), CARD_HOME)
 	animate(1.2 + tier * 0.25, function(_, t)
 		placeCard(t)
+		pips[rungs].scale.Scale = 1.15 + math.sin(t * 6) * 0.06
 		if state.rainbow then
 			setRim(rainbow(os.clock()))
 			clueGradient.Offset = Vector2.new(math.sin(t * 2) * 0.5, 0)
+			for k = 1, rungs do
+				pips[k].frame.BackgroundColor3 = rainbow(os.clock(), k / rungs)
+			end
 		end
 		if tier >= 5 and t >= nextStrike then
 			nextStrike += 0.55
@@ -14900,6 +15030,7 @@ function PackReveal.play(result, done: () -> ())
 		end
 	end)
 	hideClue()
+	meter:Destroy()
 
 	----------------------------------------------------------------------------
 	-- 6. The flip: the card turns over in 3D, then the Freek walks out in front of it.
