@@ -21,6 +21,529 @@
       </Properties>
       <Item class="ModuleScript" referent="4">
         <Properties>
+          <string name="Name">Accessories</string>
+          <string name="Source"><![CDATA[-- Signature accessories: one per species (Freeks.luau `signature`), worn by the species
+-- itself and mixed onto fusions, so a fused Freek shows off both parents' signatures (the
+-- nerd's glasses on a pig's head, the pig's bow, ...).
+--
+-- Each accessory is a list of parts in the Freeks.luau part format, built for a head of
+-- radius 1 centred at the origin, facing -Z. Neck accessories are built round a neck point
+-- (the origin) instead, sized for a head of radius 1 above it. `slot` says where it goes,
+-- so two accessories never fight over the same spot.
+
+local Accessories = {}
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+-- How far forward the front of a radius-1 head is at (x, y).
+local function front(x: number, y: number): number
+	return -math.sqrt(math.max(1 - x * x - y * y, 0.01))
+end
+
+local GOLD = rgb(255, 205, 60)
+
+local list = {}
+
+-- Nerdle: big round glasses.
+list.glasses = {
+	slot = "eyes",
+	build = function()
+		local parts: { any } = {}
+		for _, side in { -1, 1 } do
+			local x = side * 0.38
+			local z = front(x, 0.15) - 0.14
+			table.insert(parts, {
+				shape = "Cylinder",
+				size = { 0.08, 0.5, 0.5 },
+				pos = { x, 0.15, z },
+				rot = { 0, 90, 0 },
+				color = rgb(30, 30, 40),
+				detail = true,
+			})
+			table.insert(parts, {
+				shape = "Cylinder",
+				size = { 0.09, 0.4, 0.4 },
+				pos = { x, 0.15, z },
+				rot = { 0, 90, 0 },
+				color = rgb(220, 240, 255),
+				transparency = 0.55,
+				detail = true,
+			})
+			table.insert(parts, {
+				shape = "Block",
+				size = { 0.06, 0.06, 0.8 },
+				pos = { side * 0.72, 0.18, z + 0.42 },
+				color = rgb(30, 30, 40),
+				detail = true,
+			})
+		end
+		table.insert(parts, {
+			shape = "Block",
+			size = { 0.28, 0.07, 0.07 },
+			pos = { 0, 0.2, front(0, 0.2) - 0.14 },
+			color = rgb(30, 30, 40),
+			detail = true,
+		})
+		return parts
+	end,
+}
+
+-- Chompers: cool black shades with a shine.
+list.shades = {
+	slot = "eyes",
+	build = function()
+		local parts: { any } = {}
+		for _, side in { -1, 1 } do
+			local x = side * 0.36
+			local z = front(x, 0.15) - 0.16
+			table.insert(parts, {
+				shape = "Ellipsoid",
+				size = { 0.52, 0.34, 0.1 },
+				pos = { x, 0.15, z },
+				color = rgb(20, 20, 28),
+				detail = true,
+			})
+			table.insert(parts, {
+				shape = "Block",
+				size = { 0.08, 0.2, 0.04 },
+				pos = { x - 0.1, 0.19, z - 0.05 },
+				rot = { 0, 0, -30 },
+				color = rgb(255, 255, 255),
+				detail = true,
+				shine = false,
+			})
+		end
+		table.insert(parts, {
+			shape = "Block",
+			size = { 0.3, 0.07, 0.07 },
+			pos = { 0, 0.2, front(0, 0.2) - 0.16 },
+			color = rgb(20, 20, 28),
+			detail = true,
+		})
+		return parts
+	end,
+}
+
+-- Hootsworth: a posh top hat with a red band.
+list.tophat = {
+	slot = "top",
+	build = function()
+		return {
+			{
+				shape = "Cylinder",
+				size = { 0.08, 1.25, 1.25 },
+				pos = { 0, 0.86, 0.05 },
+				rot = { 0, 0, 90 },
+				color = rgb(25, 25, 32),
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.85, 0.8, 0.8 },
+				pos = { 0, 1.3, 0.05 },
+				rot = { 0, 0, 90 },
+				color = rgb(25, 25, 32),
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.16, 0.82, 0.82 },
+				pos = { 0, 1.0, 0.05 },
+				rot = { 0, 0, 90 },
+				color = rgb(220, 40, 50),
+			},
+		}
+	end,
+}
+
+-- Glamora: a sparkling tiara.
+list.tiara = {
+	slot = "top",
+	build = function()
+		local parts: { any } = {}
+		for k = -3, 3 do
+			local a = math.rad(k * 16)
+			local x, z = math.sin(a) * 0.6, -math.cos(a) * 0.6 + 0.12
+			table.insert(parts, {
+				shape = "Ball",
+				size = if k == 0 then 0.24 else 0.15,
+				pos = { x, 0.82 + (3 - math.abs(k)) * 0.04, z },
+				color = if k == 0 then rgb(255, 120, 200) else GOLD,
+				material = if k == 0 then "Neon" else "Foil",
+				detail = true,
+				shine = false,
+			})
+		end
+		return parts
+	end,
+}
+
+-- Oinkle: a big pink bow on one side of the head.
+list.bow = {
+	slot = "top",
+	build = function()
+		local pink, deep = rgb(255, 50, 140), rgb(200, 20, 100)
+		return {
+			{
+				shape = "Ellipsoid",
+				size = { 0.6, 0.46, 0.3 },
+				pos = { 0.26, 0.98, -0.12 },
+				rot = { 0, 0, 25 },
+				color = pink,
+				detail = true,
+			},
+			{
+				shape = "Ellipsoid",
+				size = { 0.6, 0.46, 0.3 },
+				pos = { 0.82, 0.72, -0.12 },
+				rot = { 0, 0, 25 },
+				color = pink,
+				detail = true,
+			},
+			{ shape = "Ball", size = 0.28, pos = { 0.54, 0.85, -0.18 }, color = deep, detail = true, shine = false },
+		}
+	end,
+}
+
+-- Lizzle: a little flower with a leaf.
+list.flower = {
+	slot = "top",
+	build = function()
+		local parts: { any } = {
+			{
+				shape = "Ball",
+				size = 0.2,
+				pos = { -0.45, 0.88, -0.12 },
+				color = rgb(255, 210, 60),
+				detail = true,
+				shine = false,
+			},
+			{
+				shape = "Ellipsoid",
+				size = { 0.3, 0.08, 0.16 },
+				pos = { -0.3, 0.84, 0 },
+				rot = { 0, 30, -20 },
+				color = rgb(90, 190, 80),
+				detail = true,
+			},
+		}
+		for k = 0, 4 do
+			local a = k / 5 * math.pi * 2
+			table.insert(parts, {
+				shape = "Ball",
+				size = 0.17,
+				pos = { -0.45 + math.cos(a) * 0.15, 0.88 + math.sin(a) * 0.15, -0.1 },
+				color = rgb(255, 255, 255),
+				detail = true,
+				shine = false,
+			})
+		end
+		return parts
+	end,
+}
+
+-- Stompy: an ivory horn on the forehead with a glowing tip.
+list.horn = {
+	slot = "forehead",
+	build = function()
+		local parts: { any } = {}
+		for k = 0, 4 do
+			local up = k * 0.13
+			table.insert(parts, {
+				shape = "Cylinder",
+				size = { 0.14, 0.34 - k * 0.06, 0.34 - k * 0.06 },
+				pos = { 0, 0.68 + up, -0.62 - up * 0.45 },
+				rot = { 25, 0, 90 },
+				color = rgb(250, 245, 225),
+				detail = true,
+			})
+		end
+		table.insert(parts, {
+			shape = "Ball",
+			size = 0.12,
+			pos = { 0, 0.68 + 0.68, -0.62 - 0.31 },
+			color = rgb(190, 120, 255),
+			material = "Neon",
+			detail = true,
+			shine = false,
+		})
+		return parts
+	end,
+}
+
+-- Blinky: two little golden horns.
+list.horns = {
+	slot = "top",
+	build = function()
+		local parts: { any } = {}
+		for _, side in { -1, 1 } do
+			for k = 0, 3 do
+				table.insert(parts, {
+					shape = "Cylinder",
+					size = { 0.12, 0.26 - k * 0.055, 0.26 - k * 0.055 },
+					pos = { side * (0.45 + k * 0.04), 0.85 + k * 0.1, 0 },
+					rot = { 0, 0, 90 - side * 20 },
+					color = rgb(255, 220, 120),
+					detail = true,
+				})
+			end
+		end
+		return parts
+	end,
+}
+
+-- Chuckles: a big red clown nose.
+list.clownnose = {
+	slot = "nose",
+	build = function()
+		return {
+			{ shape = "Ball", size = 0.36, pos = { 0, -0.08, front(0, -0.08) - 0.08 }, color = rgb(235, 30, 40) },
+		}
+	end,
+}
+
+-- Flexo: a sporty sweatband round the forehead.
+list.sweatband = {
+	slot = "forehead",
+	build = function()
+		return {
+			{
+				shape = "Cylinder",
+				size = { 0.2, 1.9, 1.9 },
+				pos = { 0, 0.42, 0 },
+				rot = { 0, 0, 90 },
+				color = rgb(255, 255, 255),
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.06, 1.92, 1.92 },
+				pos = { 0, 0.47, 0 },
+				rot = { 0, 0, 90 },
+				color = rgb(230, 40, 50),
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.06, 1.92, 1.92 },
+				pos = { 0, 0.37, 0 },
+				rot = { 0, 0, 90 },
+				color = rgb(230, 40, 50),
+			},
+		}
+	end,
+}
+
+-- Mumbles: a bandage wrapped round the forehead with a loose end.
+list.bandage = {
+	slot = "forehead",
+	build = function()
+		local cloth = rgb(240, 232, 205)
+		return {
+			{ shape = "Cylinder", size = { 0.24, 1.92, 1.92 }, pos = { 0, 0.4, 0 }, rot = { 0, 0, 82 }, color = cloth },
+			{
+				shape = "Block",
+				size = { 0.2, 0.5, 0.06 },
+				pos = { 0.55, 0.15, 0.78 },
+				rot = { 0, 0, -20 },
+				color = cloth,
+			},
+		}
+	end,
+}
+
+-- Boo-Boo: a spooky witch hat.
+list.witchhat = {
+	slot = "top",
+	build = function()
+		local purple = rgb(110, 50, 170)
+		local parts: { any } = {
+			{ shape = "Cylinder", size = { 0.08, 1.4, 1.4 }, pos = { 0, 0.85, 0 }, rot = { 0, 0, 90 }, color = purple },
+			{
+				shape = "Cylinder",
+				size = { 0.14, 0.86, 0.86 },
+				pos = { 0, 0.95, 0 },
+				rot = { 0, 0, 90 },
+				color = rgb(255, 150, 40),
+			},
+		}
+		for k = 0, 5 do
+			table.insert(parts, {
+				shape = "Cylinder",
+				size = { 0.2, 0.8 - k * 0.13, 0.8 - k * 0.13 },
+				pos = { k * 0.035, 1.05 + k * 0.18, k * 0.02 },
+				rot = { 0, 0, 90 - k * 4 },
+				color = purple,
+			})
+		end
+		return parts
+	end,
+}
+
+-- Zomboy: bolts sticking out of the sides of the head.
+list.bolts = {
+	slot = "sides",
+	build = function()
+		local parts: { any } = {}
+		for _, side in { -1, 1 } do
+			table.insert(parts, {
+				shape = "Cylinder",
+				size = { 0.4, 0.16, 0.16 },
+				pos = { side * 1.0, -0.25, 0 },
+				color = rgb(150, 155, 165),
+				material = "Metal",
+				detail = true,
+			})
+			table.insert(parts, {
+				shape = "Cylinder",
+				size = { 0.12, 0.3, 0.3 },
+				pos = { side * 1.2, -0.25, 0 },
+				color = rgb(120, 125, 135),
+				material = "Metal",
+				detail = true,
+			})
+		end
+		return parts
+	end,
+}
+
+-- Neck accessories (the origin is the neck, under a radius-1 head).
+
+-- Woofles: a red collar with a gold tag.
+list.collar = {
+	slot = "neck",
+	build = function()
+		return {
+			{
+				shape = "Cylinder",
+				size = { 0.24, 1.6, 1.6 },
+				pos = { 0, 0, 0 },
+				rot = { 0, 0, 90 },
+				color = rgb(225, 40, 55),
+			},
+			{
+				shape = "Cylinder",
+				size = { 0.08, 0.34, 0.34 },
+				pos = { 0, -0.24, -0.8 },
+				rot = { 0, 90, 0 },
+				color = GOLD,
+				material = "Foil",
+			},
+		}
+	end,
+}
+
+-- Whiskerz: a pink ribbon with a gold bell.
+list.bell = {
+	slot = "neck",
+	build = function()
+		return {
+			{
+				shape = "Cylinder",
+				size = { 0.2, 1.55, 1.55 },
+				pos = { 0, 0, 0 },
+				rot = { 0, 0, 90 },
+				color = rgb(255, 120, 170),
+			},
+			{ shape = "Ball", size = 0.36, pos = { 0, -0.22, -0.8 }, color = GOLD, material = "Foil" },
+			{
+				shape = "Block",
+				size = { 0.16, 0.04, 0.04 },
+				pos = { 0, -0.27, -0.97 },
+				color = rgb(60, 40, 20),
+				detail = true,
+			},
+		}
+	end,
+}
+
+-- Count Fangula: a tall popped cape collar, black outside and red inside.
+list.capecollar = {
+	slot = "neck",
+	build = function()
+		local parts: { any } = {}
+		for _, side in { -1, 1 } do
+			table.insert(parts, {
+				shape = "Wedge",
+				size = { 0.08, 0.9, 0.7 },
+				pos = { side * 0.55, 0.35, 0.25 },
+				rot = { 0, side * 50, 0 },
+				color = rgb(25, 20, 30),
+			})
+			table.insert(parts, {
+				shape = "Wedge",
+				size = { 0.06, 0.8, 0.6 },
+				pos = { side * 0.5, 0.33, 0.2 },
+				rot = { 0, side * 50, 0 },
+				color = rgb(200, 30, 45),
+			})
+		end
+		table.insert(parts, {
+			shape = "Cylinder",
+			size = { 0.2, 1.45, 1.45 },
+			pos = { 0, 0, 0 },
+			rot = { 0, 0, 90 },
+			color = rgb(25, 20, 30),
+		})
+		return parts
+	end,
+}
+
+-- Howlz: a black spiked collar.
+list.spikedcollar = {
+	slot = "neck",
+	build = function()
+		local parts: { any } = {
+			{
+				shape = "Cylinder",
+				size = { 0.26, 1.6, 1.6 },
+				pos = { 0, 0, 0 },
+				rot = { 0, 0, 90 },
+				color = rgb(30, 30, 38),
+			},
+		}
+		for k = 0, 7 do
+			local a = k / 8 * math.pi * 2
+			table.insert(parts, {
+				shape = "Ball",
+				size = 0.18,
+				pos = { math.cos(a) * 0.82, 0, math.sin(a) * 0.82 },
+				color = rgb(210, 215, 225),
+				material = "Metal",
+			})
+		end
+		return parts
+	end,
+}
+
+Accessories.list = list
+
+-- Adds accessory `id` to a Freeks.luau part list, for a head of radius r centred at
+-- `center` (or round a neck point, for a neck accessory).
+function Accessories.put(add, id: string, center: { number }, r: number)
+	local accessory = list[id]
+	if not accessory then
+		return
+	end
+	for _, spec in accessory.build() do
+		local copy = table.clone(spec)
+		copy.pos = { center[1] + spec.pos[1] * r, center[2] + spec.pos[2] * r, center[3] + spec.pos[3] * r }
+		if type(spec.size) == "number" then
+			copy.size = spec.size * r
+		else
+			copy.size = { spec.size[1] * r, spec.size[2] * r, spec.size[3] * r }
+		end
+		if accessory.slot == "neck" then
+			copy.onHead = false -- stays on the body when the head turns
+		end
+		add(copy)
+	end
+end
+
+return Accessories
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="5">
+        <Properties>
           <string name="Name">Breeding</string>
           <string name="Source"><![CDATA[-- The fusing rules (the code calls it breeding). Shared so the Fuse window can show what a
 -- pair will make.
@@ -99,7 +622,7 @@ return Breeding
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="5">
+      <Item class="ModuleScript" referent="6">
         <Properties>
           <string name="Name">Config</string>
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
@@ -152,7 +675,7 @@ return Config
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="6">
+      <Item class="ModuleScript" referent="7">
         <Properties>
           <string name="Name">Drops</string>
           <string name="Source"><![CDATA[-- Freeks arrive by cannon. Eight cannons hang on the glass bubble over the map, and each
@@ -338,7 +861,7 @@ return Drops
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="7">
+      <Item class="ModuleScript" referent="8">
         <Properties>
           <string name="Name">EggModel</string>
           <string name="Source"><![CDATA[-- 3D models of the Monster Eggs (Halloween style), used for the egg stands in the world,
@@ -619,7 +1142,7 @@ return EggModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="8">
+      <Item class="ModuleScript" referent="9">
         <Properties>
           <string name="Name">Format</string>
           <string name="Source"><![CDATA[local Format = {}
@@ -663,7 +1186,7 @@ return Format
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="9">
+      <Item class="ModuleScript" referent="10">
         <Properties>
           <string name="Name">FreekAnimator</string>
           <string name="Source"><![CDATA[-- Brings Freek models to life: idle animations for Freeks standing in barns and on the
@@ -1152,7 +1675,7 @@ return FreekAnimator
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="10">
+      <Item class="ModuleScript" referent="11">
         <Properties>
           <string name="Name">FreekModel</string>
           <string name="Source"><![CDATA[-- Builds the 3D model for a Freek out of plain parts.
@@ -1186,6 +1709,7 @@ return FreekAnimator
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Accessories = require(script.Parent.Accessories)
 local Freeks = require(script.Parent.Freeks)
 local Mutations = require(script.Parent.Mutations)
 
@@ -1684,6 +2208,53 @@ end
 -- separate head (its face is on its body) gets the new head on top, and loses its old
 -- face; given as the head, its whole round body becomes the head.
 
+-- Puts accessory `id` (see Accessories.luau) on a hybrid: on its head (centre `origin`,
+-- radius r) or round its neck (origin = the neck). `turn` tilts it about the origin, e.g.
+-- a second pair of glasses pushed up onto the forehead.
+local function wear(model: Model, id: string, origin: Vector3, r: number, onHead: boolean, turn: CFrame?)
+	local accessory = Accessories.list[id]
+	if not accessory then
+		return
+	end
+	local tilt = turn or CFrame.identity
+	for _, spec in accessory.build() do
+		local shape = spec.shape or "Block"
+		local part
+		if shape == "Wedge" then
+			part = Instance.new("WedgePart")
+			part.Anchored = true
+			part.CanCollide = false
+			part.CanTouch = false
+			part.Material = Enum.Material.SmoothPlastic
+		elseif shape == "Ellipsoid" then
+			part = newPart({ Shape = Enum.PartType.Block })
+			local mesh = Instance.new("SpecialMesh")
+			mesh.MeshType = Enum.MeshType.Sphere
+			mesh.Parent = part
+		else
+			part = newPart({ Shape = SHAPES[shape] or Enum.PartType.Block })
+		end
+		local rot = spec.rot or { 0, 0, 0 }
+		local local_ = tilt
+			* CFrame.new(vector(spec.pos) * r)
+			* CFrame.Angles(math.rad(rot[1]), math.rad(rot[2]), math.rad(rot[3]))
+		part.Name = "Accessory"
+		part.Size = vector(spec.size) * r
+		part.CFrame = CFrame.new(origin) * local_
+		part.Color = spec.color or Color3.new(1, 1, 1)
+		if spec.material then
+			part.Material = Enum.Material[spec.material]
+		end
+		part.Transparency = spec.transparency or 0
+		if onHead then
+			part:SetAttribute("OnHead", true)
+		else
+			part:SetAttribute("NotOnHead", true)
+		end
+		part.Parent = model
+	end
+end
+
 -- The parts that make up a Freek's head, where it is and how big.
 local function headOf(model: Model): ({ BasePart }, Vector3, number, BasePart)
 	local body = model.PrimaryPart :: BasePart
@@ -1917,46 +2488,81 @@ function buildHybrid(species, mutationId: string?): (Model, number)
 		eyePatch.Parent = model
 	end
 
-	-- The fusion collar where the head meets the body: a chunky two-tone ring with a glowing
-	-- trim and a gem in front, so the join looks made that way.
-	local bodyColor = body.Color
+	-- Both parents' signature accessories. The body parent already wears a neck one (a
+	-- collar) and the head parent a head one (glasses, a hat); the others are added: the body
+	-- parent's head accessory on the new head, the head parent's neck one round the neck.
+	-- Two in one spot don't fight: a second pair of glasses goes up on the forehead.
 	local neck = target - Vector3.new(0, targetRadius * 1.0, 0)
-	local ring = targetRadius * 1.45
-	for k, layer in
-		{
-			{ 0.18, ring, bodyColor, Enum.Material.SmoothPlastic },
-			{ -0.18, ring * 0.95, headColor, Enum.Material.SmoothPlastic },
-			{ 0, ring * 1.08, Color3.fromRGB(255, 120, 230), Enum.Material.Neon },
-		}
-	do
-		local collar = newPart({
-			Name = "FusionCollar",
-			Shape = Enum.PartType.Cylinder,
-			Size = Vector3.new(if k == 3 then targetRadius * 0.12 else targetRadius * 0.3, layer[2], layer[2]),
-			CFrame = CFrame.new(neck + Vector3.new(0, layer[1] * targetRadius * 0.6, 0))
-				* CFrame.Angles(0, 0, math.pi / 2),
-			Color = layer[3],
-			Material = layer[4],
+	local firstSpecies = Freeks.byId[species.look.hybrid.a]
+	local secondSpecies = Freeks.byId[species.look.hybrid.b]
+	local sigA = firstSpecies and firstSpecies.signature
+	local sigB = secondSpecies and secondSpecies.signature
+	local slotA = sigA and Accessories.list[sigA] and Accessories.list[sigA].slot
+	local slotB = sigB and Accessories.list[sigB] and Accessories.list[sigB].slot
+	local taken = {}
+	if slotA == "neck" then
+		taken.neck = true
+	end
+	if slotB and slotB ~= "neck" then
+		taken[slotB] = true
+	end
+	if sigA and slotA and slotA ~= "neck" then
+		if not taken[slotA] then
+			wear(model, sigA, target, targetRadius, true)
+			taken[slotA] = true
+		elseif slotA == "eyes" then
+			wear(model, sigA, target, targetRadius, true, CFrame.Angles(math.rad(42), 0, 0))
+		end
+	end
+	if sigB and slotB == "neck" and not taken.neck then
+		wear(model, sigB, neck, targetRadius, false)
+		taken.neck = true
+	end
+
+	-- The fusion collar where the head meets the body (unless a parent's collar is there): a
+	-- chunky two-tone ring with a glowing trim and a gem in front, so the join looks made
+	-- that way.
+	local bodyColor = body.Color
+	local shine = body
+	if not taken.neck then
+		local ring = targetRadius * 1.45
+		for k, layer in
+			{
+				{ 0.18, ring, bodyColor, Enum.Material.SmoothPlastic },
+				{ -0.18, ring * 0.95, headColor, Enum.Material.SmoothPlastic },
+				{ 0, ring * 1.08, Color3.fromRGB(255, 120, 230), Enum.Material.Neon },
+			}
+		do
+			local collar = newPart({
+				Name = "FusionCollar",
+				Shape = Enum.PartType.Cylinder,
+				Size = Vector3.new(if k == 3 then targetRadius * 0.12 else targetRadius * 0.3, layer[2], layer[2]),
+				CFrame = CFrame.new(neck + Vector3.new(0, layer[1] * targetRadius * 0.6, 0))
+					* CFrame.Angles(0, 0, math.pi / 2),
+				Color = layer[3],
+				Material = layer[4],
+				CanQuery = false,
+			})
+			collar:SetAttribute("NotOnHead", true)
+			collar.Parent = model
+		end
+		local gem = newPart({
+			Name = "FusionGem",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * targetRadius * 0.45,
+			CFrame = CFrame.new(neck + Vector3.new(0, 0, -ring / 2)),
+			Color = Color3.fromRGB(255, 120, 230),
+			Material = Enum.Material.Neon,
 			CanQuery = false,
 		})
-		collar:SetAttribute("NotOnHead", true)
-		collar.Parent = model
+		gem.Parent = model
+		shine = gem
 	end
-	local gem = newPart({
-		Name = "FusionGem",
-		Shape = Enum.PartType.Ball,
-		Size = Vector3.one * targetRadius * 0.45,
-		CFrame = CFrame.new(neck + Vector3.new(0, 0, -ring / 2)),
-		Color = Color3.fromRGB(255, 120, 230),
-		Material = Enum.Material.Neon,
-		CanQuery = false,
-	})
-	gem.Parent = model
 	if not mutationId then
 		-- A fusion shimmer in the two parents' colours.
 		local shimmer = Instance.new("Sparkles")
 		shimmer.SparkleColor = bodyColor:Lerp(headColor, 0.5)
-		shimmer.Parent = gem
+		shimmer.Parent = shine
 	end
 	other:Destroy()
 
@@ -1999,7 +2605,7 @@ return FreekModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="11">
+      <Item class="ModuleScript" referent="12">
         <Properties>
           <string name="Name">FreekUtil</string>
           <string name="Source"><![CDATA[-- Helpers shared by server and client for reading a saved Freek record:
@@ -2110,7 +2716,7 @@ return FreekUtil
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">Freeks</string>
           <string name="Source"><![CDATA[-- Every Freek species in the game.
@@ -2128,6 +2734,8 @@ return FreekUtil
 --
 -- Fusing two different Freeks makes a hybrid (see Hybrids.luau); the only hand-made results
 -- are the Ultra pairs that make Secrets, in ServerScriptService (Recipes).
+
+local Accessories = require(script.Parent.Accessories)
 
 local Freeks = {}
 
@@ -2480,6 +3088,7 @@ Freeks.list = {
 	-- Starter Freeks (shop)
 	{
 		id = "Oinkle",
+		signature = "bow",
 		walk = "waddle",
 		name = "Oinkle",
 		rarity = "Common",
@@ -2517,6 +3126,8 @@ Freeks.list = {
 			cuteEyes(add, c, r, 0.46, 0.3, 0.62, rgb(70, 40, 35))
 			blush(add, c, r, 0.85, -0.18, 0.42)
 			smile(add, c, r, -0.72, 0.42)
+			-- Its signature pink bow, between the ears.
+			Accessories.put(add, "bow", { c[1] - 0.66, c[2], c[3] }, r)
 			-- Floppy ears, pink inside.
 			for _, side in { -1, 1 } do
 				add({
@@ -2556,6 +3167,7 @@ Freeks.list = {
 	-- The Animal line (Oinkle is the pig)
 	{
 		id = "Woofles",
+		signature = "collar",
 		walk = "trot",
 		name = "Woofles",
 		rarity = "Common",
@@ -2636,6 +3248,7 @@ Freeks.list = {
 	},
 	{
 		id = "Whiskerz",
+		signature = "bell",
 		walk = "prowl",
 		name = "Whiskerz",
 		rarity = "Uncommon",
@@ -2683,6 +3296,8 @@ Freeks.list = {
 			end
 			cuteEyes(add, c, r, 0.46, 0.25, 0.62, rgb(110, 205, 80))
 			blush(add, c, r, 0.82, -0.12, 0.36)
+			-- Its signature ribbon and bell.
+			Accessories.put(add, "bell", { c[1], c[2] - 0.75 * r, c[3] + 0.25 * r }, r)
 			for _, x in { -0.25, 0, 0.25 } do
 				add({
 					shape = "Ellipsoid",
@@ -2728,6 +3343,7 @@ Freeks.list = {
 	},
 	{
 		id = "Lizzle",
+		signature = "flower",
 		walk = "slither",
 		name = "Lizzle",
 		rarity = "Uncommon",
@@ -2775,6 +3391,8 @@ Freeks.list = {
 			end
 			smile(add, head, 0.95, -0.15, 1.05, rgb(60, 110, 40), 0.1)
 			blush(add, head, 0.95, 0.75, 0.05, 0.36)
+			-- Its signature flower, on top between the eyes.
+			Accessories.put(add, "flower", { 0.52, 1.68, -0.685 }, 1.15)
 			for _, p in { { -0.5, 1.95, 0.4 }, { 0.55, 1.9, 0.05 }, { 0.1, 2.0, 0.85 }, { -0.2, 1.95, -0.2 } } do
 				add({ shape = "Ellipsoid", size = { 0.45, 0.2, 0.45 }, pos = p, color = spot })
 			end
@@ -2798,6 +3416,7 @@ Freeks.list = {
 	},
 	{
 		id = "Hootsworth",
+		signature = "tophat",
 		walk = "flap",
 		name = "Hootsworth",
 		rarity = "Rare",
@@ -2919,6 +3538,7 @@ Freeks.list = {
 	},
 	{
 		id = "Chompers",
+		signature = "shades",
 		walk = "slither",
 		name = "Chompers",
 		rarity = "Legendary",
@@ -3081,6 +3701,7 @@ Freeks.list = {
 	},
 	{
 		id = "Stompy",
+		signature = "horn",
 		walk = "stomp",
 		name = "Stompy",
 		rarity = "Mystic",
@@ -3181,6 +3802,7 @@ Freeks.list = {
 	-- The Human line
 	{
 		id = "Chuckles",
+		signature = "clownnose",
 		walk = "bounce",
 		name = "Chuckles",
 		rarity = "Common",
@@ -3257,6 +3879,7 @@ Freeks.list = {
 	},
 	{
 		id = "Nerdle",
+		signature = "glasses",
 		walk = "strut",
 		name = "Nerdle",
 		rarity = "Uncommon",
@@ -3364,6 +3987,7 @@ Freeks.list = {
 	},
 	{
 		id = "Flexo",
+		signature = "sweatband",
 		walk = "stomp",
 		name = "Flexo",
 		rarity = "Rare",
@@ -3378,6 +4002,8 @@ Freeks.list = {
 			armSize = 0.8,
 			head = 1.85,
 			extra = function(h)
+				-- Its signature sweatband.
+				Accessories.put(h.add, "sweatband", { 0, h.headY, 0 }, h.head / 2)
 				-- Bulging shoulders and biceps.
 				for _, side in { -1, 1 } do
 					h.add({
@@ -3456,6 +4082,7 @@ Freeks.list = {
 	},
 	{
 		id = "Glamora",
+		signature = "tiara",
 		walk = "catwalk",
 		name = "Glamora",
 		rarity = "Legendary",
@@ -3574,6 +4201,7 @@ Freeks.list = {
 	-- cannons and everywhere else).
 	{
 		id = "BooBoo",
+		signature = "witchhat",
 		name = "Boo-Boo",
 		rarity = "Uncommon",
 		exclusive = true,
@@ -3584,6 +4212,8 @@ Freeks.list = {
 			local white = rgb(240, 245, 255)
 			local body = { 0, 2.9, 0 }
 			add({ name = "Body", shape = "Ball", size = 3, pos = body, color = white, transparency = 0.1 })
+			-- Its signature witch hat.
+			Accessories.put(add, "witchhat", body, 1.5)
 			-- A wavy hem floating above the ground.
 			for i = 0, 7 do
 				local a = i / 8 * math.pi * 2
@@ -3637,6 +4267,7 @@ Freeks.list = {
 	},
 	{
 		id = "Zomboy",
+		signature = "bolts",
 		name = "Zomboy",
 		rarity = "Uncommon",
 		exclusive = true,
@@ -3650,6 +4281,8 @@ Freeks.list = {
 			armsForward = true,
 			head = 2.15,
 			extra = function(h)
+				-- Its signature neck bolts.
+				Accessories.put(h.add, "bolts", { 0, h.headY, 0 }, h.head / 2)
 				-- Messy hair, a peek of brain, stitches and a torn shirt.
 				h.add({
 					shape = "Ball",
@@ -3689,6 +4322,7 @@ Freeks.list = {
 	},
 	{
 		id = "Mumbles",
+		signature = "bandage",
 		name = "Mumbles",
 		rarity = "Rare",
 		exclusive = true,
@@ -3742,6 +4376,7 @@ Freeks.list = {
 	},
 	{
 		id = "CountFangula",
+		signature = "capecollar",
 		name = "Count Fangula",
 		rarity = "Legendary",
 		exclusive = true,
@@ -3822,6 +4457,7 @@ Freeks.list = {
 	},
 	{
 		id = "Howlz",
+		signature = "spikedcollar",
 		name = "Howlz",
 		rarity = "Mystic",
 		exclusive = true,
@@ -3840,6 +4476,8 @@ Freeks.list = {
 			noMouth = true,
 			extra = function(h)
 				local fur, light = rgb(120, 85, 60), rgb(200, 170, 140)
+				-- Its signature spiked collar.
+				Accessories.put(h.add, "spikedcollar", { 0, h.headY - h.head / 2, 0 }, h.head / 2)
 				-- Wolf snout, nose, pointy ears, yellow eyes and a fluffy tail.
 				h.add({ shape = "Ball", size = 1.1, pos = { 0, h.headY - 0.35, h.face(0, -0.35, -0.3) }, color = light })
 				h.add({
@@ -3897,6 +4535,7 @@ Freeks.list = {
 	},
 	{
 		id = "Blinky",
+		signature = "horns",
 		name = "Blinky",
 		rarity = "Ultra",
 		exclusive = true,
@@ -4015,7 +4654,7 @@ return Freeks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">GamePasses</string>
           <string name="Source"><![CDATA[-- Game passes: one-time Robux purchases with permanent perks.
@@ -4167,7 +4806,7 @@ return GamePasses
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">GateTiers</string>
           <string name="Source"><![CDATA[-- The frame around each barn's doors upgrades with rebirths: Iron, then Bronze, Silver,
@@ -4247,7 +4886,7 @@ return GateTiers
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">Hybrids</string>
           <string name="Source"><![CDATA[-- Hybrids: what you get when two different Freeks fuse.
@@ -4432,7 +5071,7 @@ return Hybrids
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">Luck</string>
           <string name="Source"><![CDATA[-- Luck: Monster Eggs, the daily Lucky Wheel and Lucky Hour events. Shared so the client
@@ -4600,7 +5239,7 @@ return Luck
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">Mutations</string>
           <string name="Source"><![CDATA[-- Mutations multiply a Freek's income. They only enter the game from the cannons (chance
@@ -4665,7 +5304,7 @@ return Mutations
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
@@ -4695,7 +5334,7 @@ return Rarities
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">Remotes</string>
           <string name="Source"><![CDATA[-- One place that names every remote. The server creates them; clients wait for them.
@@ -4754,7 +5393,7 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">Seasons</string>
           <string name="Source"><![CDATA[-- Limited events for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred
@@ -4891,7 +5530,7 @@ return Seasons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">WeaponModel</string>
           <string name="Source"><![CDATA[-- Builds the Tool for a weapon from its part list in Weapons.luau.
@@ -4977,7 +5616,7 @@ return WeaponModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="22">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">Weapons</string>
           <string name="Source"><![CDATA[-- Weapons. Everyone has the STARTER weapon; the rest unlock at a number of rebirths
@@ -5268,15 +5907,15 @@ return Weapons
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="23">
+  <Item class="ServerScriptService" referent="24">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="24">
+    <Item class="Folder" referent="25">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -5516,7 +6155,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">Barn</string>
           <string name="Source"><![CDATA[-- Each player's yard is a big red barn: plank floor, red walls with white trim, a gambrel
@@ -6219,7 +6858,7 @@ return Barn
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">BarnUpgrades</string>
           <string name="Source"><![CDATA[-- The barn gets cooler with every rebirth. Each level keeps everything from the levels
@@ -7542,7 +8181,7 @@ return BarnUpgrades
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">CannonService</string>
           <string name="Source"><![CDATA[-- Runs the Freek cannons (see shared/Drops.luau): builds the glass bubble over the map,
@@ -8286,7 +8925,7 @@ return CannonService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">Carried</string>
           <string name="Source"><![CDATA[-- Which Freeks are being carried off by a thief right now. Kept in memory only: if the
@@ -8326,7 +8965,7 @@ return Carried
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -8598,7 +9237,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="31">
+      <Item class="ModuleScript" referent="32">
         <Properties>
           <string name="Name">Decor</string>
           <string name="Source"><![CDATA[-- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
@@ -8976,7 +9615,7 @@ return Decor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="32">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Discovery Book: the first player in the whole game to get each species has their
@@ -9124,7 +9763,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the Freeks in their yard, plus offline earnings
@@ -9205,7 +9844,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">Environment</string>
           <string name="Source"><![CDATA[-- Lighting, sky, terrain and the scenery around the yards and conveyor.
@@ -9354,7 +9993,7 @@ return Environment
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">FreekTag</string>
           <string name="Source"><![CDATA[-- The floating tag over a Freek, in the chunky cartoon style: rarity on top (in its colour),
@@ -9430,7 +10069,7 @@ return FreekTag
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">HalloweenDecor</string>
           <string name="Source"><![CDATA[-- Halloween props: ghosts, bats, cobwebs, tombstones, dead trees, a witch's cauldron,
@@ -9890,7 +10529,7 @@ return HalloweenDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">LuckService</string>
           <string name="Source"><![CDATA[-- Monster Crates, the daily Lucky Wheel and Lucky Hour events (rules and odds in
@@ -10304,7 +10943,7 @@ return LuckService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="38">
+      <Item class="Script" referent="39">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -10365,7 +11004,7 @@ print("[Fuse a Freek] Server started")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -10457,7 +11096,7 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the map and gives every player a barn (see Barn.luau) with Freek pads and Fusion
@@ -11335,7 +11974,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">RebirthService</string>
           <string name="Source"><![CDATA[-- Rebirth: pay Config.rebirthCost to start over with a permanent income bonus.
@@ -11431,7 +12070,7 @@ return RebirthService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">Recipes</string>
           <string name="Source"><![CDATA[-- Decides what two Freeks fuse into. Server-only so players can't read the Secret recipes
@@ -11482,7 +12121,7 @@ return Recipes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -11777,7 +12416,7 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="44">
+      <Item class="ModuleScript" referent="45">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Stealing Freeks from other players' yards.
@@ -12208,7 +12847,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="45">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
@@ -12492,7 +13131,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="46">
+      <Item class="ModuleScript" referent="47">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- Weapons: giving them out, buying them, and what happens when they hit.
@@ -12821,19 +13460,19 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="47">
+  <Item class="StarterPlayer" referent="48">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="48">
+    <Item class="StarterPlayerScripts" referent="49">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="49">
+      <Item class="Folder" referent="50">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="50">
+        <Item class="ModuleScript" referent="51">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -12907,7 +13546,7 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="51">
+        <Item class="ModuleScript" referent="52">
           <Properties>
             <string name="Name">BarnFX</string>
             <string name="Source"><![CDATA[-- Moving bits of the rebirth barn upgrades (BarnUpgrades.luau on the server), animated
@@ -13055,7 +13694,7 @@ return BarnFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="52">
+        <Item class="ModuleScript" referent="53">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, event chip, menu tabs, leaderboard,
@@ -13674,7 +14313,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="53">
+        <Item class="ModuleScript" referent="54">
           <Properties>
             <string name="Name">ItemPictures</string>
             <string name="Source"><![CDATA[-- 3D pictures for shop items (barn slots, weapons, game passes), built from parts like
@@ -13984,7 +14623,7 @@ return ItemPictures
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="54">
+        <Item class="LocalScript" referent="55">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -15596,7 +16235,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="55">
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">PackReveal</string>
             <string name="Source"><![CDATA[-- Monster Egg opening, done like a card-pack reveal in the big sports games, in 3D.
@@ -16941,7 +17580,7 @@ return PackReveal
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="56">
+        <Item class="ModuleScript" referent="57">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).

@@ -28,6 +28,9 @@ match it.
   thick dark `UIStroke`. Freeks show rarity, name, price (if for sale) and $/s.
 - Models are built from simple parts (balls, blocks, cylinders, wedges) with bold, flat,
   saturated colours, big googly eyes and chunky proportions. Neon for glowing bits.
+- Every species has a signature accessory (`signature` in `Freeks.luau`, built by
+  `src/shared/Accessories.luau`: glasses, a bow, a top hat, a collar...). Fused Freeks wear
+  both parents' signatures, so give any new species one.
 - Seasonal themes (currently Halloween) dress things up: pumpkins, purples, oranges,
   cobwebs, glowing eyes, bats.
 

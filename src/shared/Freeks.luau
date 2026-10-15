@@ -14,6 +14,8 @@
 -- Fusing two different Freeks makes a hybrid (see Hybrids.luau); the only hand-made results
 -- are the Ultra pairs that make Secrets, in ServerScriptService (Recipes).
 
+local Accessories = require(script.Parent.Accessories)
+
 local Freeks = {}
 
 -- The Human line: Freeks shaped like little cartoon people. human() builds the shared body
@@ -365,6 +367,7 @@ Freeks.list = {
 	-- Starter Freeks (shop)
 	{
 		id = "Oinkle",
+		signature = "bow",
 		walk = "waddle",
 		name = "Oinkle",
 		rarity = "Common",
@@ -402,6 +405,8 @@ Freeks.list = {
 			cuteEyes(add, c, r, 0.46, 0.3, 0.62, rgb(70, 40, 35))
 			blush(add, c, r, 0.85, -0.18, 0.42)
 			smile(add, c, r, -0.72, 0.42)
+			-- Its signature pink bow, between the ears.
+			Accessories.put(add, "bow", { c[1] - 0.66, c[2], c[3] }, r)
 			-- Floppy ears, pink inside.
 			for _, side in { -1, 1 } do
 				add({
@@ -441,6 +446,7 @@ Freeks.list = {
 	-- The Animal line (Oinkle is the pig)
 	{
 		id = "Woofles",
+		signature = "collar",
 		walk = "trot",
 		name = "Woofles",
 		rarity = "Common",
@@ -521,6 +527,7 @@ Freeks.list = {
 	},
 	{
 		id = "Whiskerz",
+		signature = "bell",
 		walk = "prowl",
 		name = "Whiskerz",
 		rarity = "Uncommon",
@@ -568,6 +575,8 @@ Freeks.list = {
 			end
 			cuteEyes(add, c, r, 0.46, 0.25, 0.62, rgb(110, 205, 80))
 			blush(add, c, r, 0.82, -0.12, 0.36)
+			-- Its signature ribbon and bell.
+			Accessories.put(add, "bell", { c[1], c[2] - 0.75 * r, c[3] + 0.25 * r }, r)
 			for _, x in { -0.25, 0, 0.25 } do
 				add({
 					shape = "Ellipsoid",
@@ -613,6 +622,7 @@ Freeks.list = {
 	},
 	{
 		id = "Lizzle",
+		signature = "flower",
 		walk = "slither",
 		name = "Lizzle",
 		rarity = "Uncommon",
@@ -660,6 +670,8 @@ Freeks.list = {
 			end
 			smile(add, head, 0.95, -0.15, 1.05, rgb(60, 110, 40), 0.1)
 			blush(add, head, 0.95, 0.75, 0.05, 0.36)
+			-- Its signature flower, on top between the eyes.
+			Accessories.put(add, "flower", { 0.52, 1.68, -0.685 }, 1.15)
 			for _, p in { { -0.5, 1.95, 0.4 }, { 0.55, 1.9, 0.05 }, { 0.1, 2.0, 0.85 }, { -0.2, 1.95, -0.2 } } do
 				add({ shape = "Ellipsoid", size = { 0.45, 0.2, 0.45 }, pos = p, color = spot })
 			end
@@ -683,6 +695,7 @@ Freeks.list = {
 	},
 	{
 		id = "Hootsworth",
+		signature = "tophat",
 		walk = "flap",
 		name = "Hootsworth",
 		rarity = "Rare",
@@ -804,6 +817,7 @@ Freeks.list = {
 	},
 	{
 		id = "Chompers",
+		signature = "shades",
 		walk = "slither",
 		name = "Chompers",
 		rarity = "Legendary",
@@ -966,6 +980,7 @@ Freeks.list = {
 	},
 	{
 		id = "Stompy",
+		signature = "horn",
 		walk = "stomp",
 		name = "Stompy",
 		rarity = "Mystic",
@@ -1066,6 +1081,7 @@ Freeks.list = {
 	-- The Human line
 	{
 		id = "Chuckles",
+		signature = "clownnose",
 		walk = "bounce",
 		name = "Chuckles",
 		rarity = "Common",
@@ -1142,6 +1158,7 @@ Freeks.list = {
 	},
 	{
 		id = "Nerdle",
+		signature = "glasses",
 		walk = "strut",
 		name = "Nerdle",
 		rarity = "Uncommon",
@@ -1249,6 +1266,7 @@ Freeks.list = {
 	},
 	{
 		id = "Flexo",
+		signature = "sweatband",
 		walk = "stomp",
 		name = "Flexo",
 		rarity = "Rare",
@@ -1263,6 +1281,8 @@ Freeks.list = {
 			armSize = 0.8,
 			head = 1.85,
 			extra = function(h)
+				-- Its signature sweatband.
+				Accessories.put(h.add, "sweatband", { 0, h.headY, 0 }, h.head / 2)
 				-- Bulging shoulders and biceps.
 				for _, side in { -1, 1 } do
 					h.add({
@@ -1341,6 +1361,7 @@ Freeks.list = {
 	},
 	{
 		id = "Glamora",
+		signature = "tiara",
 		walk = "catwalk",
 		name = "Glamora",
 		rarity = "Legendary",
@@ -1459,6 +1480,7 @@ Freeks.list = {
 	-- cannons and everywhere else).
 	{
 		id = "BooBoo",
+		signature = "witchhat",
 		name = "Boo-Boo",
 		rarity = "Uncommon",
 		exclusive = true,
@@ -1469,6 +1491,8 @@ Freeks.list = {
 			local white = rgb(240, 245, 255)
 			local body = { 0, 2.9, 0 }
 			add({ name = "Body", shape = "Ball", size = 3, pos = body, color = white, transparency = 0.1 })
+			-- Its signature witch hat.
+			Accessories.put(add, "witchhat", body, 1.5)
 			-- A wavy hem floating above the ground.
 			for i = 0, 7 do
 				local a = i / 8 * math.pi * 2
@@ -1522,6 +1546,7 @@ Freeks.list = {
 	},
 	{
 		id = "Zomboy",
+		signature = "bolts",
 		name = "Zomboy",
 		rarity = "Uncommon",
 		exclusive = true,
@@ -1535,6 +1560,8 @@ Freeks.list = {
 			armsForward = true,
 			head = 2.15,
 			extra = function(h)
+				-- Its signature neck bolts.
+				Accessories.put(h.add, "bolts", { 0, h.headY, 0 }, h.head / 2)
 				-- Messy hair, a peek of brain, stitches and a torn shirt.
 				h.add({
 					shape = "Ball",
@@ -1574,6 +1601,7 @@ Freeks.list = {
 	},
 	{
 		id = "Mumbles",
+		signature = "bandage",
 		name = "Mumbles",
 		rarity = "Rare",
 		exclusive = true,
@@ -1627,6 +1655,7 @@ Freeks.list = {
 	},
 	{
 		id = "CountFangula",
+		signature = "capecollar",
 		name = "Count Fangula",
 		rarity = "Legendary",
 		exclusive = true,
@@ -1707,6 +1736,7 @@ Freeks.list = {
 	},
 	{
 		id = "Howlz",
+		signature = "spikedcollar",
 		name = "Howlz",
 		rarity = "Mystic",
 		exclusive = true,
@@ -1725,6 +1755,8 @@ Freeks.list = {
 			noMouth = true,
 			extra = function(h)
 				local fur, light = rgb(120, 85, 60), rgb(200, 170, 140)
+				-- Its signature spiked collar.
+				Accessories.put(h.add, "spikedcollar", { 0, h.headY - h.head / 2, 0 }, h.head / 2)
 				-- Wolf snout, nose, pointy ears, yellow eyes and a fluffy tail.
 				h.add({ shape = "Ball", size = 1.1, pos = { 0, h.headY - 0.35, h.face(0, -0.35, -0.3) }, color = light })
 				h.add({
@@ -1782,6 +1814,7 @@ Freeks.list = {
 	},
 	{
 		id = "Blinky",
+		signature = "horns",
 		name = "Blinky",
 		rarity = "Ultra",
 		exclusive = true,

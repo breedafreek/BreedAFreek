@@ -29,6 +29,7 @@
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Accessories = require(script.Parent.Accessories)
 local Freeks = require(script.Parent.Freeks)
 local Mutations = require(script.Parent.Mutations)
 
@@ -527,6 +528,53 @@ end
 -- separate head (its face is on its body) gets the new head on top, and loses its old
 -- face; given as the head, its whole round body becomes the head.
 
+-- Puts accessory `id` (see Accessories.luau) on a hybrid: on its head (centre `origin`,
+-- radius r) or round its neck (origin = the neck). `turn` tilts it about the origin, e.g.
+-- a second pair of glasses pushed up onto the forehead.
+local function wear(model: Model, id: string, origin: Vector3, r: number, onHead: boolean, turn: CFrame?)
+	local accessory = Accessories.list[id]
+	if not accessory then
+		return
+	end
+	local tilt = turn or CFrame.identity
+	for _, spec in accessory.build() do
+		local shape = spec.shape or "Block"
+		local part
+		if shape == "Wedge" then
+			part = Instance.new("WedgePart")
+			part.Anchored = true
+			part.CanCollide = false
+			part.CanTouch = false
+			part.Material = Enum.Material.SmoothPlastic
+		elseif shape == "Ellipsoid" then
+			part = newPart({ Shape = Enum.PartType.Block })
+			local mesh = Instance.new("SpecialMesh")
+			mesh.MeshType = Enum.MeshType.Sphere
+			mesh.Parent = part
+		else
+			part = newPart({ Shape = SHAPES[shape] or Enum.PartType.Block })
+		end
+		local rot = spec.rot or { 0, 0, 0 }
+		local local_ = tilt
+			* CFrame.new(vector(spec.pos) * r)
+			* CFrame.Angles(math.rad(rot[1]), math.rad(rot[2]), math.rad(rot[3]))
+		part.Name = "Accessory"
+		part.Size = vector(spec.size) * r
+		part.CFrame = CFrame.new(origin) * local_
+		part.Color = spec.color or Color3.new(1, 1, 1)
+		if spec.material then
+			part.Material = Enum.Material[spec.material]
+		end
+		part.Transparency = spec.transparency or 0
+		if onHead then
+			part:SetAttribute("OnHead", true)
+		else
+			part:SetAttribute("NotOnHead", true)
+		end
+		part.Parent = model
+	end
+end
+
 -- The parts that make up a Freek's head, where it is and how big.
 local function headOf(model: Model): ({ BasePart }, Vector3, number, BasePart)
 	local body = model.PrimaryPart :: BasePart
@@ -760,46 +808,81 @@ function buildHybrid(species, mutationId: string?): (Model, number)
 		eyePatch.Parent = model
 	end
 
-	-- The fusion collar where the head meets the body: a chunky two-tone ring with a glowing
-	-- trim and a gem in front, so the join looks made that way.
-	local bodyColor = body.Color
+	-- Both parents' signature accessories. The body parent already wears a neck one (a
+	-- collar) and the head parent a head one (glasses, a hat); the others are added: the body
+	-- parent's head accessory on the new head, the head parent's neck one round the neck.
+	-- Two in one spot don't fight: a second pair of glasses goes up on the forehead.
 	local neck = target - Vector3.new(0, targetRadius * 1.0, 0)
-	local ring = targetRadius * 1.45
-	for k, layer in
-		{
-			{ 0.18, ring, bodyColor, Enum.Material.SmoothPlastic },
-			{ -0.18, ring * 0.95, headColor, Enum.Material.SmoothPlastic },
-			{ 0, ring * 1.08, Color3.fromRGB(255, 120, 230), Enum.Material.Neon },
-		}
-	do
-		local collar = newPart({
-			Name = "FusionCollar",
-			Shape = Enum.PartType.Cylinder,
-			Size = Vector3.new(if k == 3 then targetRadius * 0.12 else targetRadius * 0.3, layer[2], layer[2]),
-			CFrame = CFrame.new(neck + Vector3.new(0, layer[1] * targetRadius * 0.6, 0))
-				* CFrame.Angles(0, 0, math.pi / 2),
-			Color = layer[3],
-			Material = layer[4],
+	local firstSpecies = Freeks.byId[species.look.hybrid.a]
+	local secondSpecies = Freeks.byId[species.look.hybrid.b]
+	local sigA = firstSpecies and firstSpecies.signature
+	local sigB = secondSpecies and secondSpecies.signature
+	local slotA = sigA and Accessories.list[sigA] and Accessories.list[sigA].slot
+	local slotB = sigB and Accessories.list[sigB] and Accessories.list[sigB].slot
+	local taken = {}
+	if slotA == "neck" then
+		taken.neck = true
+	end
+	if slotB and slotB ~= "neck" then
+		taken[slotB] = true
+	end
+	if sigA and slotA and slotA ~= "neck" then
+		if not taken[slotA] then
+			wear(model, sigA, target, targetRadius, true)
+			taken[slotA] = true
+		elseif slotA == "eyes" then
+			wear(model, sigA, target, targetRadius, true, CFrame.Angles(math.rad(42), 0, 0))
+		end
+	end
+	if sigB and slotB == "neck" and not taken.neck then
+		wear(model, sigB, neck, targetRadius, false)
+		taken.neck = true
+	end
+
+	-- The fusion collar where the head meets the body (unless a parent's collar is there): a
+	-- chunky two-tone ring with a glowing trim and a gem in front, so the join looks made
+	-- that way.
+	local bodyColor = body.Color
+	local shine = body
+	if not taken.neck then
+		local ring = targetRadius * 1.45
+		for k, layer in
+			{
+				{ 0.18, ring, bodyColor, Enum.Material.SmoothPlastic },
+				{ -0.18, ring * 0.95, headColor, Enum.Material.SmoothPlastic },
+				{ 0, ring * 1.08, Color3.fromRGB(255, 120, 230), Enum.Material.Neon },
+			}
+		do
+			local collar = newPart({
+				Name = "FusionCollar",
+				Shape = Enum.PartType.Cylinder,
+				Size = Vector3.new(if k == 3 then targetRadius * 0.12 else targetRadius * 0.3, layer[2], layer[2]),
+				CFrame = CFrame.new(neck + Vector3.new(0, layer[1] * targetRadius * 0.6, 0))
+					* CFrame.Angles(0, 0, math.pi / 2),
+				Color = layer[3],
+				Material = layer[4],
+				CanQuery = false,
+			})
+			collar:SetAttribute("NotOnHead", true)
+			collar.Parent = model
+		end
+		local gem = newPart({
+			Name = "FusionGem",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * targetRadius * 0.45,
+			CFrame = CFrame.new(neck + Vector3.new(0, 0, -ring / 2)),
+			Color = Color3.fromRGB(255, 120, 230),
+			Material = Enum.Material.Neon,
 			CanQuery = false,
 		})
-		collar:SetAttribute("NotOnHead", true)
-		collar.Parent = model
+		gem.Parent = model
+		shine = gem
 	end
-	local gem = newPart({
-		Name = "FusionGem",
-		Shape = Enum.PartType.Ball,
-		Size = Vector3.one * targetRadius * 0.45,
-		CFrame = CFrame.new(neck + Vector3.new(0, 0, -ring / 2)),
-		Color = Color3.fromRGB(255, 120, 230),
-		Material = Enum.Material.Neon,
-		CanQuery = false,
-	})
-	gem.Parent = model
 	if not mutationId then
 		-- A fusion shimmer in the two parents' colours.
 		local shimmer = Instance.new("Sparkles")
 		shimmer.SparkleColor = bodyColor:Lerp(headColor, 0.5)
-		shimmer.Parent = gem
+		shimmer.Parent = shine
 	end
 	other:Destroy()
 
