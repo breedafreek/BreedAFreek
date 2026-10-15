@@ -2,25 +2,24 @@
 --
 --   * Any two Freeks can breed.
 --   * The baby's rarity is the rarer parent's rarity; breeding never raises it.
---     The one exception: two Ultras make a Secret (the only way to get one).
---   * Which species of that rarity you get is fixed per pair (see server/Recipes), so
---     every combination has its own result to discover.
---   * Mutations are only inherited: if both parents share one the baby always gets it; if
---     only one parent has one it's a 50% chance; if they have different ones the baby gets
---     one of the two at random.
+--   * Which species you get is fixed per pair (see server/Recipes), so every combination
+--     has its own result to discover. Mutations are what make two babies different.
+--   * The one way to get a Secret: certain pairs of Ultras (listed in server/Recipes).
+--   * Mutations are only inherited, each one rolled on its own: if both parents have it the
+--     baby always gets it, if only one parent has it it's a 50% chance. A baby can end up
+--     with several.
 
 local Freeks = require(script.Parent.Freeks)
+local Mutations = require(script.Parent.Mutations)
 local Rarities = require(script.Parent.Rarities)
 
 local Breeding = {}
 
--- Chance that two Ultras make a Secret (otherwise the baby is an Ultra).
-Breeding.SECRET_CHANCE = 1
-
--- Chance of passing on a mutation when only one parent has it.
+-- Chance of passing on a mutation that only one parent has.
 Breeding.SINGLE_PARENT_MUTATION_CHANCE = 0.5
 
--- The rarity the baby will be, plus whether it could be a Secret instead.
+-- The rarity the baby will be, plus whether both parents are Ultras (some Ultra pairs make
+-- a Secret instead; which ones is kept on the server).
 function Breeding.babyRarity(parentA, parentB): (string, boolean)
 	local rankA = Rarities.rank[Freeks.byId[parentA.species].rarity]
 	local rankB = Rarities.rank[Freeks.byId[parentB.species].rarity]
@@ -29,28 +28,28 @@ function Breeding.babyRarity(parentA, parentB): (string, boolean)
 	return rarity, bothUltra
 end
 
--- Possible mutations for the baby as { { id, chance } }, chances adding up to <= 1.
+-- Every mutation the baby could get, rarest first: { { id, chance } }. Each is rolled
+-- separately.
 function Breeding.mutationOdds(parentA, parentB)
-	local a, b = parentA.mutation, parentB.mutation
-	if a and b and a == b then
-		return { { id = a, chance = 1 } }
-	elseif a and b then
-		return { { id = a, chance = 0.5 }, { id = b, chance = 0.5 } }
-	elseif a or b then
-		return { { id = a or b, chance = Breeding.SINGLE_PARENT_MUTATION_CHANCE } }
+	local fromA = Mutations.normalize(parentA.mutations)
+	local fromB = Mutations.normalize(parentB.mutations)
+	local odds = {}
+	for _, id in Mutations.normalize(table.move(fromB, 1, #fromB, #fromA + 1, table.clone(fromA))) do
+		local both = table.find(fromA, id) and table.find(fromB, id)
+		table.insert(odds, { id = id, chance = if both then 1 else Breeding.SINGLE_PARENT_MUTATION_CHANCE })
 	end
-	return {}
+	return odds
 end
 
-function Breeding.rollMutation(parentA, parentB, rng: Random): string?
-	local roll = rng:NextNumber()
+-- The baby's mutations (a list, or nil for none).
+function Breeding.rollMutations(parentA, parentB, rng: Random): { string }?
+	local list = {}
 	for _, option in Breeding.mutationOdds(parentA, parentB) do
-		if roll < option.chance then
-			return option.id
+		if rng:NextNumber() < option.chance then
+			table.insert(list, option.id)
 		end
-		roll -= option.chance
 	end
-	return nil
+	return Mutations.pack(list)
 end
 
 return Breeding

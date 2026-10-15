@@ -83,25 +83,24 @@ return Belt
 --
 --   * Any two Freeks can breed.
 --   * The baby's rarity is the rarer parent's rarity; breeding never raises it.
---     The one exception: two Ultras make a Secret (the only way to get one).
---   * Which species of that rarity you get is fixed per pair (see server/Recipes), so
---     every combination has its own result to discover.
---   * Mutations are only inherited: if both parents share one the baby always gets it; if
---     only one parent has one it's a 50% chance; if they have different ones the baby gets
---     one of the two at random.
+--   * Which species you get is fixed per pair (see server/Recipes), so every combination
+--     has its own result to discover. Mutations are what make two babies different.
+--   * The one way to get a Secret: certain pairs of Ultras (listed in server/Recipes).
+--   * Mutations are only inherited, each one rolled on its own: if both parents have it the
+--     baby always gets it, if only one parent has it it's a 50% chance. A baby can end up
+--     with several.
 
 local Freeks = require(script.Parent.Freeks)
+local Mutations = require(script.Parent.Mutations)
 local Rarities = require(script.Parent.Rarities)
 
 local Breeding = {}
 
--- Chance that two Ultras make a Secret (otherwise the baby is an Ultra).
-Breeding.SECRET_CHANCE = 1
-
--- Chance of passing on a mutation when only one parent has it.
+-- Chance of passing on a mutation that only one parent has.
 Breeding.SINGLE_PARENT_MUTATION_CHANCE = 0.5
 
--- The rarity the baby will be, plus whether it could be a Secret instead.
+-- The rarity the baby will be, plus whether both parents are Ultras (some Ultra pairs make
+-- a Secret instead; which ones is kept on the server).
 function Breeding.babyRarity(parentA, parentB): (string, boolean)
 	local rankA = Rarities.rank[Freeks.byId[parentA.species].rarity]
 	local rankB = Rarities.rank[Freeks.byId[parentB.species].rarity]
@@ -110,28 +109,28 @@ function Breeding.babyRarity(parentA, parentB): (string, boolean)
 	return rarity, bothUltra
 end
 
--- Possible mutations for the baby as { { id, chance } }, chances adding up to <= 1.
+-- Every mutation the baby could get, rarest first: { { id, chance } }. Each is rolled
+-- separately.
 function Breeding.mutationOdds(parentA, parentB)
-	local a, b = parentA.mutation, parentB.mutation
-	if a and b and a == b then
-		return { { id = a, chance = 1 } }
-	elseif a and b then
-		return { { id = a, chance = 0.5 }, { id = b, chance = 0.5 } }
-	elseif a or b then
-		return { { id = a or b, chance = Breeding.SINGLE_PARENT_MUTATION_CHANCE } }
+	local fromA = Mutations.normalize(parentA.mutations)
+	local fromB = Mutations.normalize(parentB.mutations)
+	local odds = {}
+	for _, id in Mutations.normalize(table.move(fromB, 1, #fromB, #fromA + 1, table.clone(fromA))) do
+		local both = table.find(fromA, id) and table.find(fromB, id)
+		table.insert(odds, { id = id, chance = if both then 1 else Breeding.SINGLE_PARENT_MUTATION_CHANCE })
 	end
-	return {}
+	return odds
 end
 
-function Breeding.rollMutation(parentA, parentB, rng: Random): string?
-	local roll = rng:NextNumber()
+-- The baby's mutations (a list, or nil for none).
+function Breeding.rollMutations(parentA, parentB, rng: Random): { string }?
+	local list = {}
 	for _, option in Breeding.mutationOdds(parentA, parentB) do
-		if roll < option.chance then
-			return option.id
+		if rng:NextNumber() < option.chance then
+			table.insert(list, option.id)
 		end
-		roll -= option.chance
 	end
-	return nil
+	return Mutations.pack(list)
 end
 
 return Breeding
@@ -252,6 +251,7 @@ local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Freeks = require(script.Parent.Freeks)
+local Mutations = require(script.Parent.Mutations)
 
 local FreekModel = {}
 
@@ -398,8 +398,15 @@ local function buildFromParts(species, mutationId: string?): (Model, number)
 	return model, top
 end
 
--- Returns the model and roughly how tall it is (for placing name tags).
-function FreekModel.build(speciesId: string, mutationId: string?): (Model, number)
+-- Effects that show a mutation, for Freeks that carry more than one (the rarest sets the
+-- colours, the rest add their effect on top).
+local MUTATION_EFFECTS = {
+	Rainbow = { type = "Sparkles", color = Color3.new(1, 1, 1) },
+	Golden = { type = "Sparkles", color = Color3.fromRGB(255, 220, 80) },
+	Shadow = { type = "Smoke", color = Color3.fromRGB(60, 30, 90), size = 1.5 },
+}
+
+local function buildSingle(speciesId: string, mutationId: string?): (Model, number)
 	local species = Freeks.byId[speciesId] or Freeks.list[1]
 	local look = species.look
 	local s = look.size or 3
@@ -516,6 +523,23 @@ function FreekModel.build(speciesId: string, mutationId: string?): (Model, numbe
 	return model, s * 1.6
 end
 
+-- Returns the model and roughly how tall it is (for placing name tags). mutations is a
+-- list of mutation ids (a single id also works).
+function FreekModel.build(speciesId: string, mutations): (Model, number)
+	local list = Mutations.normalize(mutations)
+	local model, height = buildSingle(speciesId, list[1])
+	local body = model.PrimaryPart
+	for i = 2, #list do
+		local effect = MUTATION_EFFECTS[list[i]]
+		-- Rainbow and Golden already sparkle; don't stack a second set.
+		local sparkling = body and body:FindFirstChildOfClass("Sparkles")
+		if body and effect and not (effect.type == "Sparkles" and sparkling) then
+			addEffect(body, effect)
+		end
+	end
+	return model, height
+end
+
 return FreekModel
 ]]></string>
         </Properties>
@@ -524,7 +548,7 @@ return FreekModel
         <Properties>
           <string name="Name">FreekUtil</string>
           <string name="Source"><![CDATA[-- Helpers shared by server and client for reading a saved Freek record:
---   { species = "Blobby", mutation = "Golden"?, slot = 3?, breeding = true? }
+--   { species = "Blobby", mutations = { "Golden" }?, slot = 3?, breeding = true? }
 
 local Config = require(script.Parent.Config)
 local Freeks = require(script.Parent.Freeks)
@@ -543,7 +567,7 @@ function FreekUtil.income(freek): number
 	if not species then
 		return 0
 	end
-	return species.income * Mutations.mult(freek.mutation)
+	return species.income * Mutations.mult(freek.mutations)
 end
 
 function FreekUtil.sellValue(freek): number
@@ -553,7 +577,8 @@ end
 function FreekUtil.displayName(freek): string
 	local species = Freeks.byId[freek.species]
 	local name = if species then species.name else "???"
-	return if freek.mutation then freek.mutation .. " " .. name else name
+	local mutations = Mutations.normalize(freek.mutations)
+	return if #mutations > 0 then table.concat(mutations, " ") .. " " .. name else name
 end
 
 -- "Rare" or, for Seasonal Freeks, "Rare · Halloween".
@@ -1111,6 +1136,9 @@ return GateTiers
           <string name="Source"><![CDATA[-- Mutations multiply a Freek's income. They only enter the game on the conveyor belt
 -- (chance is per belt Freek, times Belt.MUTATION_FACTOR); after that they're passed on by
 -- breeding (see Breeding.luau). Rarest first.
+--
+-- A Freek can carry several mutations. They're saved as a list ({ "Rainbow", "Golden" }),
+-- or nil for none, and their multipliers stack (Golden + Shadow = x6).
 
 local Mutations = {}
 
@@ -1121,13 +1149,46 @@ Mutations.list = {
 }
 
 Mutations.byId = {}
-for _, mutation in Mutations.list do
+for index, mutation in Mutations.list do
+	mutation.rank = index
 	Mutations.byId[mutation.id] = mutation
 end
 
-function Mutations.mult(id: string?): number
-	local mutation = id and Mutations.byId[id]
-	return if mutation then mutation.mult else 1
+-- A Freek's mutations as a list, rarest first. Accepts a list, a single id (old saves) or nil.
+function Mutations.normalize(value): { string }
+	local list = {}
+	if type(value) == "string" then
+		value = { value }
+	end
+	for _, id in value or {} do
+		if Mutations.byId[id] and not table.find(list, id) then
+			table.insert(list, id)
+		end
+	end
+	table.sort(list, function(a, b)
+		return Mutations.byId[a].rank < Mutations.byId[b].rank
+	end)
+	return list
+end
+
+-- The rarest mutation, which decides how the Freek looks and what colour its name is.
+function Mutations.top(value): string?
+	return Mutations.normalize(value)[1]
+end
+
+-- Combined income multiplier for all of a Freek's mutations.
+function Mutations.mult(value): number
+	local mult = 1
+	for _, id in Mutations.normalize(value) do
+		mult *= Mutations.byId[id].mult
+	end
+	return mult
+end
+
+-- The list to store on a Freek record (nil when there are none).
+function Mutations.pack(value): { string }?
+	local list = Mutations.normalize(value)
+	return if #list > 0 then list else nil
 end
 
 return Mutations
@@ -1756,6 +1817,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
+local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local Carried = require(script.Parent.Carried)
@@ -1790,9 +1852,9 @@ local function snapshot(data)
 end
 
 -- Adds a Freek, puts it in the yard if there's room, and records the discovery.
-local function giveFreek(player: Player, data, species: string, mutation: string?)
+local function giveFreek(player: Player, data, species: string, mutations: { string }?)
 	local uid = HttpService:GenerateGUID(false)
-	data.freeks[uid] = { species = species, mutation = mutation, slot = FreekUtil.freeSlot(data) }
+	data.freeks[uid] = { species = species, mutations = Mutations.pack(mutations), slot = FreekUtil.freeSlot(data) }
 	local isNew = not data.discovered[species]
 	data.discovered[species] = true
 	task.spawn(DiscoveryService.claim, player, species)
@@ -1912,13 +1974,13 @@ function handlers.ClaimBreed(player: Player, data, penIndex: any)
 	end
 	a.breeding, b.breeding = nil, nil
 
-	local species, mutation = Recipes.roll(a, b, rng)
+	local species, mutations = Recipes.roll(a, b, rng)
 	-- Parents go back into the yard first so they keep earning.
 	a.slot = FreekUtil.freeSlot(data)
 	b.slot = FreekUtil.freeSlot(data)
-	local _, isNew = giveFreek(player, data, species, mutation)
+	local _, isNew = giveFreek(player, data, species, mutations)
 
-	local name = FreekUtil.displayName({ species = species, mutation = mutation })
+	local name = FreekUtil.displayName({ species = species, mutations = mutations })
 	if isNew then
 		notify(player, "NEW FREEK! You bred a " .. name .. "!", "discovery")
 	else
@@ -2053,7 +2115,7 @@ local ConveyorService = {}
 local notifyRemote = Remotes.get("Notify")
 local rng = Random.new()
 local folder: Folder
-local items = {} -- [id] = { species, mutation, price, spawnTime, lane, model }
+local items = {} -- [id] = { species, mutations, price, spawnTime, lane, model }
 local nextId = 0
 
 local function notify(player: Player, message: string, kind: string?)
@@ -2210,9 +2272,9 @@ local function buildBelt()
 	folder.Parent = Workspace
 end
 
-local function priceOf(species, mutation: string?): number
+local function priceOf(species, mutations: { string }?): number
 	local base = species.price or math.floor(species.income * Belt.PRICE_SECONDS)
-	return math.floor(base * Mutations.mult(mutation))
+	return math.floor(base * Mutations.mult(mutations))
 end
 
 -- Species that can come out of the machine right now, grouped by rarity.
@@ -2242,10 +2304,11 @@ local function rollRarity(): string
 	return Belt.ODDS[1].rarity
 end
 
-local function rollMutation(): string?
+-- Belt Freeks get at most one mutation; stacking them is done by breeding.
+local function rollMutations(): { string }?
 	for _, mutation in Mutations.list do
 		if rng:NextNumber() < mutation.chance * Belt.MUTATION_FACTOR then
-			return mutation.id
+			return { mutation.id }
 		end
 	end
 	return nil
@@ -2263,20 +2326,20 @@ local function spawnFreek(lane: number)
 		return
 	end
 	local species = pool[rng:NextInteger(1, #pool)]
-	local mutation = rollMutation()
-	local price = priceOf(species, mutation)
+	local mutations = rollMutations()
+	local price = priceOf(species, mutations)
 	local spawnTime = Workspace:GetServerTimeNow()
 
 	nextId += 1
 	local id = tostring(nextId)
-	local model, height = FreekModel.build(species.id, mutation)
+	local model, height = FreekModel.build(species.id, mutations)
 	model.Name = id
 	model:SetAttribute("SpawnTime", spawnTime)
 	model:SetAttribute("Lane", lane)
 	model:PivotTo(Belt.cframeAt(lane, spawnTime, spawnTime))
 
 	local anchor = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
-	local freek = { species = species.id, mutation = mutation }
+	local freek = { species = species.id, mutations = mutations }
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromOffset(180, 50)
 	gui.StudsOffsetWorldSpace = Vector3.new(0, height - (anchor.Position.Y - Belt.Y) + 1.2, 0)
@@ -2288,7 +2351,7 @@ local function spawnFreek(lane: number)
 	name.TextScaled = true
 	name.Font = Enum.Font.FredokaOne
 	name.Text = FreekUtil.displayName(freek)
-	name.TextColor3 = if mutation then Mutations.byId[mutation].color else Rarities.info[species.rarity].color
+	name.TextColor3 = if mutations then Mutations.byId[mutations[1]].color else Rarities.info[species.rarity].color
 	name.TextStrokeTransparency = 0.2
 	name.Parent = gui
 	local cost = name:Clone()
@@ -2312,7 +2375,7 @@ local function spawnFreek(lane: number)
 	model.Parent = folder
 	items[id] = {
 		species = species,
-		mutation = mutation,
+		mutations = mutations,
 		price = price,
 		spawnTime = spawnTime,
 		lane = lane,
@@ -2356,8 +2419,8 @@ local function buy(player: Player, id: string)
 	items[id] = nil
 	item.model:Destroy()
 	data.money -= item.price
-	local name = FreekUtil.displayName({ species = item.species.id, mutation = item.mutation })
-	ActionService.giveFreek(player, data, item.species.id, item.mutation)
+	local name = FreekUtil.displayName({ species = item.species.id, mutations = item.mutations })
+	ActionService.giveFreek(player, data, item.species.id, item.mutations)
 	DataService.changed(player)
 	notify(player, "You bought " .. name .. "! It's heading to your yard.", "success")
 end
@@ -2416,6 +2479,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Mutations = require(ReplicatedStorage.Shared.Mutations)
 
 local STORE_NAME = "BreedAFreek_Players_v1"
 
@@ -2436,7 +2500,7 @@ local function defaultData()
 		version = 1,
 		money = Config.START_MONEY,
 		slots = Config.START_SLOTS,
-		freeks = {}, -- [uid] = { species, mutation?, slot?, breeding? }
+		freeks = {}, -- [uid] = { species, mutations?, slot?, breeding? }
 		breeding = nil, -- { a = uid, b = uid, endsAt = unix seconds }
 		discovered = {}, -- [speciesId] = true for every species this player has owned
 		rebirths = 0,
@@ -2448,6 +2512,13 @@ local function reconcile(data)
 	for key, value in defaultData() do
 		if data[key] == nil then
 			data[key] = value
+		end
+	end
+	-- Old saves stored a single mutation.
+	for _, freek in data.freeks do
+		if freek.mutation then
+			freek.mutations = Mutations.pack(freek.mutation)
+			freek.mutation = nil
 		end
 	end
 	return data
@@ -4400,7 +4471,7 @@ end
 
 -- steal = { uid, ownerUserId } for Freeks on pads, so other players get a Steal prompt.
 local function placeFreek(plot, freek, ground: CFrame, steal)
-	local model, height = FreekModel.build(freek.species, freek.mutation)
+	local model, height = FreekModel.build(freek.species, freek.mutations)
 	model:PivotTo(ground)
 	model.Parent = plot.freeks
 
@@ -4420,9 +4491,8 @@ local function placeFreek(plot, freek, ground: CFrame, steal)
 	name.TextScaled = true
 	name.Font = Enum.Font.FredokaOne
 	name.Text = FreekUtil.displayName(freek)
-	name.TextColor3 = if freek.mutation
-		then Mutations.byId[freek.mutation].color
-		else Rarities.info[species.rarity].color
+	local topMutation = Mutations.top(freek.mutations)
+	name.TextColor3 = if topMutation then Mutations.byId[topMutation].color else Rarities.info[species.rarity].color
 	name.TextStrokeTransparency = 0.2
 	name.Parent = gui
 
@@ -4755,7 +4825,7 @@ local function rebirth(player: Player, data)
 	for uid, freek in data.freeks do
 		local species = FreekUtil.species(freek)
 		if species and species.season then
-			kept[uid] = { species = freek.species, mutation = freek.mutation }
+			kept[uid] = { species = freek.species, mutations = freek.mutations }
 		end
 	end
 	data.freeks = kept
@@ -4808,16 +4878,22 @@ return RebirthService
 -- results out of the game and have to discover them.
 --
 -- Every pair has a result: a species of the baby's rarity (see shared/Breeding) picked by
--- the pair itself, so the same two species always make the same baby. Two Ultras make a
--- Secret. Limited Freeks are only picked while their event is running.
+-- the pair itself, so the same two species always make the same baby. Limited Freeks are
+-- only picked while their event is running.
 --
--- OVERRIDES pins a specific result for a pair if you want a hand-made recipe; it must
--- follow the rarity rule (same rarity as the rarer parent, or Secret for two Ultras).
+-- SECRETS lists the Ultra pairs that make a Secret, the only way to get one. Any other two
+-- Ultras just make an Ultra.
+--
+-- OVERRIDES pins a specific result for any other pair if you want a hand-made recipe; it
+-- must be the same rarity as the rarer parent.
 
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Breeding = require(Shared.Breeding)
 local Freeks = require(Shared.Freeks)
 local Seasons = require(Shared.Seasons)
+
+-- ["UltraA|UltraB"] = "SecretFreek" (names in either order).
+local SECRETS = {}
 
 local OVERRIDES = {
 	-- ["Blobby|Snorp"] = "Oinkle",
@@ -4829,6 +4905,18 @@ local function pairKey(a: string, b: string): string
 	return if a < b then a .. "|" .. b else b .. "|" .. a
 end
 Recipes.pairKey = pairKey
+
+-- Accept keys written in either order.
+local function sortKeys(map)
+	local sorted = {}
+	for key, value in map do
+		local a, b = string.match(key, "^(.-)|(.*)$")
+		sorted[pairKey(a, b)] = value
+	end
+	return sorted
+end
+SECRETS = sortKeys(SECRETS)
+OVERRIDES = sortKeys(OVERRIDES)
 
 -- A stable number for a pair (same pair, same number, every server).
 local function pairHash(key: string): number
@@ -4849,16 +4937,19 @@ local function speciesOfRarity(rarity: string)
 	return list
 end
 
--- Returns the baby's species and mutation (or nil) for two parent records.
-function Recipes.roll(parentA, parentB, rng: Random): (string, string?)
+-- Returns the baby's species and mutations (a list, or nil) for two parent records.
+function Recipes.roll(parentA, parentB, rng: Random): (string, { string }?)
 	local key = pairKey(parentA.species, parentB.species)
 	local rarity, bothUltra = Breeding.babyRarity(parentA, parentB)
-	if bothUltra and rng:NextNumber() < Breeding.SECRET_CHANCE then
-		rarity = "Secret"
+	local mutations = Breeding.rollMutations(parentA, parentB, rng)
+
+	local secret = bothUltra and SECRETS[key]
+	if secret and Freeks.byId[secret] and Seasons.available(Freeks.byId[secret]) then
+		return secret, mutations
 	end
 
 	local species = OVERRIDES[key]
-	if not species or not Seasons.available(Freeks.byId[species]) then
+	if not species or not Freeks.byId[species] or not Seasons.available(Freeks.byId[species]) then
 		local options = speciesOfRarity(rarity)
 		if #options == 0 then
 			-- No species of that rarity exists yet: copy the rarer parent.
@@ -4870,7 +4961,7 @@ function Recipes.roll(parentA, parentB, rng: Random): (string, string?)
 		end
 	end
 
-	return species, Breeding.rollMutation(parentA, parentB, rng)
+	return species, mutations
 end
 
 return Recipes
@@ -5210,7 +5301,7 @@ local PlotService = require(script.Parent.PlotService)
 local StealService = {}
 
 local notifyRemote = Remotes.get("Notify")
--- [carrier Player] = { owner, uid, slot, name, species, mutation, model, normalSpeed }
+-- [carrier Player] = { owner, uid, slot, name, species, mutations, model, normalSpeed }
 local carries = {}
 
 local function notify(player: Player, message: string, kind: string?)
@@ -5237,7 +5328,7 @@ local function pickUp(carrier: Player, carry): boolean
 	if not head or not humanoid or humanoid.Health <= 0 then
 		return false
 	end
-	local model = FreekModel.build(carry.species, carry.mutation)
+	local model = FreekModel.build(carry.species, carry.mutations)
 	pcall(function()
 		model:ScaleTo(0.6)
 	end)
@@ -5334,7 +5425,7 @@ local function deliver(carrier: Player, carry)
 	ownerData.freeks[carry.uid] = nil
 	carrierData.freeks[carry.uid] = {
 		species = freek.species,
-		mutation = freek.mutation,
+		mutations = freek.mutations,
 		slot = FreekUtil.freeSlot(carrierData),
 	}
 	carrierData.discovered[freek.species] = true
@@ -5390,7 +5481,7 @@ local function steal(prompt: ProximityPrompt, thief: Player)
 		slot = freek.slot,
 		name = FreekUtil.displayName(freek),
 		species = freek.species,
-		mutation = freek.mutation,
+		mutations = freek.mutations,
 	}
 	if not pickUp(thief, carry) then
 		return
@@ -5580,7 +5671,7 @@ local function offerView(player: Player, uids)
 	for _, uid in uids do
 		local freek = data and data.freeks[uid]
 		if freek then
-			table.insert(list, { uid = uid, species = freek.species, mutation = freek.mutation })
+			table.insert(list, { uid = uid, species = freek.species, mutations = freek.mutations })
 		end
 	end
 	return list
@@ -6978,8 +7069,9 @@ local function rarityColor(speciesId: string): Color3
 end
 
 local function nameColor(freek): Color3
-	if freek.mutation and Mutations.byId[freek.mutation] then
-		return Mutations.byId[freek.mutation].color
+	local top = Mutations.top(freek.mutations)
+	if top then
+		return Mutations.byId[top].color
 	end
 	return rarityColor(freek.species)
 end
@@ -7145,7 +7237,7 @@ function renderers.Freeks()
 
 		local card = UI.card({
 			species = freek.species,
-			mutation = freek.mutation,
+			mutations = freek.mutations,
 			lines = {
 				{ FreekUtil.displayName(freek), nameColor(freek), 20 },
 				{ FreekUtil.rarityText(freek.species), rarityColor(freek.species), 16 },
@@ -7179,7 +7271,7 @@ function renderers.Breed()
 			})
 			for _, freek in { a, b } do
 				if freek then
-					local view = UI.viewport(freek.species, freek.mutation)
+					local view = UI.viewport(freek.species, freek.mutations)
 					view.Size = UDim2.new(0.5, 0, 1, 0)
 					view.Parent = pair
 				end
@@ -7231,7 +7323,7 @@ function renderers.Breed()
 		end
 	end
 
-	heading("Babies match the rarer parent's rarity. Two Ultras make a Secret!", 1)
+	heading("Babies match the rarer parent's rarity. Some Ultra pairs make a Secret!", 1)
 
 	local selected = {}
 	for _, uid in breedSelection do
@@ -7250,18 +7342,15 @@ function renderers.Breed()
 			.. Format.time(FreekUtil.breedTime(a, b))
 			.. ")"
 
-		-- What this pair will make.
+		-- What this pair will make. Which Ultra pairs make a Secret stays a surprise.
 		local rarity, bothUltra = Breeding.babyRarity(a, b)
-		if bothUltra and Breeding.SECRET_CHANCE >= 1 then
-			rarity = "Secret"
-		end
-		local parts = { "Baby: " .. rarity .. (if bothUltra and Breeding.SECRET_CHANCE < 1 then " or Secret" else "") }
+		local parts = { "Baby: " .. rarity .. (if bothUltra then " (or a Secret?!)" else "") }
 		local odds = Breeding.mutationOdds(a, b)
 		for _, option in odds do
 			table.insert(parts, math.round(option.chance * 100) .. "% " .. option.id)
 		end
 		if #odds == 0 then
-			table.insert(parts, "no mutation")
+			table.insert(parts, "no mutations")
 		end
 		local prediction = heading(table.concat(parts, "  •  "), 2)
 		prediction.TextColor3 = Rarities.info[rarity].color
@@ -7281,7 +7370,7 @@ function renderers.Breed()
 		local isSelected = selected[uid]
 		local card = UI.card({
 			species = freek.species,
-			mutation = freek.mutation,
+			mutations = freek.mutations,
 			background = if isSelected then Color3.fromRGB(90, 40, 80) else nil,
 			border = if isSelected then colors.pink else nil,
 			lines = {
@@ -7366,7 +7455,7 @@ end
 local function tradeCard(item, footer: string, onClick)
 	return UI.card({
 		species = item.species,
-		mutation = item.mutation,
+		mutations = item.mutations,
 		lines = {
 			{ FreekUtil.displayName(item), nameColor(item), 18 },
 			{ Format.money(FreekUtil.income(item)) .. "/s", colors.money, 14 },
@@ -8040,7 +8129,7 @@ function UI.button(text: string, color: Color3, onClick: () -> (), props)
 end
 
 -- A little 3D picture of a Freek. silhouette = true draws it solid black ("???").
-function UI.viewport(speciesId: string, mutation: string?, silhouette: boolean?)
+function UI.viewport(speciesId: string, mutations: { string }?, silhouette: boolean?)
 	local frame = UI.new("ViewportFrame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 0, 100),
@@ -8049,7 +8138,7 @@ function UI.viewport(speciesId: string, mutation: string?, silhouette: boolean?)
 		LightDirection = Vector3.new(-1, -1, -1),
 		ImageColor3 = if silhouette then Color3.new(0, 0, 0) else Color3.new(1, 1, 1),
 	})
-	local model, height = FreekModel.build(speciesId, mutation)
+	local model, height = FreekModel.build(speciesId, mutations)
 	model:PivotTo(CFrame.new())
 	model.Parent = frame
 	local camera = Instance.new("Camera")
@@ -8063,7 +8152,7 @@ function UI.viewport(speciesId: string, mutation: string?, silhouette: boolean?)
 end
 
 -- A card for grids: picture, lines of text, and buttons.
--- opts = { species, mutation?, silhouette?, lines = { {text, color?} }, buttons = { button instances } }
+-- opts = { species, mutations?, silhouette?, lines = { {text, color?} }, buttons = { button instances } }
 function UI.card(opts)
 	-- Clickable cards are buttons; buttons inside them still get their own clicks.
 	local card = UI.new(if opts.onClick then "TextButton" else "Frame", {
@@ -8097,7 +8186,7 @@ function UI.card(opts)
 	end
 
 	if opts.species then
-		add(UI.viewport(opts.species, opts.mutation, opts.silhouette))
+		add(UI.viewport(opts.species, opts.mutations, opts.silhouette))
 	end
 	for _, line in opts.lines or {} do
 		add(UI.label(line[1], {

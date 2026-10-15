@@ -34,7 +34,7 @@ local PlotService = require(script.Parent.PlotService)
 local StealService = {}
 
 local notifyRemote = Remotes.get("Notify")
--- [carrier Player] = { owner, uid, slot, name, species, mutation, model, normalSpeed }
+-- [carrier Player] = { owner, uid, slot, name, species, mutations, model, normalSpeed }
 local carries = {}
 
 local function notify(player: Player, message: string, kind: string?)
@@ -61,7 +61,7 @@ local function pickUp(carrier: Player, carry): boolean
 	if not head or not humanoid or humanoid.Health <= 0 then
 		return false
 	end
-	local model = FreekModel.build(carry.species, carry.mutation)
+	local model = FreekModel.build(carry.species, carry.mutations)
 	pcall(function()
 		model:ScaleTo(0.6)
 	end)
@@ -158,7 +158,7 @@ local function deliver(carrier: Player, carry)
 	ownerData.freeks[carry.uid] = nil
 	carrierData.freeks[carry.uid] = {
 		species = freek.species,
-		mutation = freek.mutation,
+		mutations = freek.mutations,
 		slot = FreekUtil.freeSlot(carrierData),
 	}
 	carrierData.discovered[freek.species] = true
@@ -214,7 +214,7 @@ local function steal(prompt: ProximityPrompt, thief: Player)
 		slot = freek.slot,
 		name = FreekUtil.displayName(freek),
 		species = freek.species,
-		mutation = freek.mutation,
+		mutations = freek.mutations,
 	}
 	if not pickUp(thief, carry) then
 		return

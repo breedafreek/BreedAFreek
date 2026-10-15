@@ -161,8 +161,9 @@ local function rarityColor(speciesId: string): Color3
 end
 
 local function nameColor(freek): Color3
-	if freek.mutation and Mutations.byId[freek.mutation] then
-		return Mutations.byId[freek.mutation].color
+	local top = Mutations.top(freek.mutations)
+	if top then
+		return Mutations.byId[top].color
 	end
 	return rarityColor(freek.species)
 end
@@ -328,7 +329,7 @@ function renderers.Freeks()
 
 		local card = UI.card({
 			species = freek.species,
-			mutation = freek.mutation,
+			mutations = freek.mutations,
 			lines = {
 				{ FreekUtil.displayName(freek), nameColor(freek), 20 },
 				{ FreekUtil.rarityText(freek.species), rarityColor(freek.species), 16 },
@@ -362,7 +363,7 @@ function renderers.Breed()
 			})
 			for _, freek in { a, b } do
 				if freek then
-					local view = UI.viewport(freek.species, freek.mutation)
+					local view = UI.viewport(freek.species, freek.mutations)
 					view.Size = UDim2.new(0.5, 0, 1, 0)
 					view.Parent = pair
 				end
@@ -414,7 +415,7 @@ function renderers.Breed()
 		end
 	end
 
-	heading("Babies match the rarer parent's rarity. Two Ultras make a Secret!", 1)
+	heading("Babies match the rarer parent's rarity. Some Ultra pairs make a Secret!", 1)
 
 	local selected = {}
 	for _, uid in breedSelection do
@@ -433,18 +434,15 @@ function renderers.Breed()
 			.. Format.time(FreekUtil.breedTime(a, b))
 			.. ")"
 
-		-- What this pair will make.
+		-- What this pair will make. Which Ultra pairs make a Secret stays a surprise.
 		local rarity, bothUltra = Breeding.babyRarity(a, b)
-		if bothUltra and Breeding.SECRET_CHANCE >= 1 then
-			rarity = "Secret"
-		end
-		local parts = { "Baby: " .. rarity .. (if bothUltra and Breeding.SECRET_CHANCE < 1 then " or Secret" else "") }
+		local parts = { "Baby: " .. rarity .. (if bothUltra then " (or a Secret?!)" else "") }
 		local odds = Breeding.mutationOdds(a, b)
 		for _, option in odds do
 			table.insert(parts, math.round(option.chance * 100) .. "% " .. option.id)
 		end
 		if #odds == 0 then
-			table.insert(parts, "no mutation")
+			table.insert(parts, "no mutations")
 		end
 		local prediction = heading(table.concat(parts, "  •  "), 2)
 		prediction.TextColor3 = Rarities.info[rarity].color
@@ -464,7 +462,7 @@ function renderers.Breed()
 		local isSelected = selected[uid]
 		local card = UI.card({
 			species = freek.species,
-			mutation = freek.mutation,
+			mutations = freek.mutations,
 			background = if isSelected then Color3.fromRGB(90, 40, 80) else nil,
 			border = if isSelected then colors.pink else nil,
 			lines = {
@@ -549,7 +547,7 @@ end
 local function tradeCard(item, footer: string, onClick)
 	return UI.card({
 		species = item.species,
-		mutation = item.mutation,
+		mutations = item.mutations,
 		lines = {
 			{ FreekUtil.displayName(item), nameColor(item), 18 },
 			{ Format.money(FreekUtil.income(item)) .. "/s", colors.money, 14 },

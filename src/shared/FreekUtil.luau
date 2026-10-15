@@ -1,5 +1,5 @@
 -- Helpers shared by server and client for reading a saved Freek record:
---   { species = "Blobby", mutation = "Golden"?, slot = 3?, breeding = true? }
+--   { species = "Blobby", mutations = { "Golden" }?, slot = 3?, breeding = true? }
 
 local Config = require(script.Parent.Config)
 local Freeks = require(script.Parent.Freeks)
@@ -18,7 +18,7 @@ function FreekUtil.income(freek): number
 	if not species then
 		return 0
 	end
-	return species.income * Mutations.mult(freek.mutation)
+	return species.income * Mutations.mult(freek.mutations)
 end
 
 function FreekUtil.sellValue(freek): number
@@ -28,7 +28,8 @@ end
 function FreekUtil.displayName(freek): string
 	local species = Freeks.byId[freek.species]
 	local name = if species then species.name else "???"
-	return if freek.mutation then freek.mutation .. " " .. name else name
+	local mutations = Mutations.normalize(freek.mutations)
+	return if #mutations > 0 then table.concat(mutations, " ") .. " " .. name else name
 end
 
 -- "Rare" or, for Seasonal Freeks, "Rare · Halloween".

@@ -8,6 +8,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
+local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local Carried = require(script.Parent.Carried)
@@ -42,9 +43,9 @@ local function snapshot(data)
 end
 
 -- Adds a Freek, puts it in the yard if there's room, and records the discovery.
-local function giveFreek(player: Player, data, species: string, mutation: string?)
+local function giveFreek(player: Player, data, species: string, mutations: { string }?)
 	local uid = HttpService:GenerateGUID(false)
-	data.freeks[uid] = { species = species, mutation = mutation, slot = FreekUtil.freeSlot(data) }
+	data.freeks[uid] = { species = species, mutations = Mutations.pack(mutations), slot = FreekUtil.freeSlot(data) }
 	local isNew = not data.discovered[species]
 	data.discovered[species] = true
 	task.spawn(DiscoveryService.claim, player, species)
@@ -164,13 +165,13 @@ function handlers.ClaimBreed(player: Player, data, penIndex: any)
 	end
 	a.breeding, b.breeding = nil, nil
 
-	local species, mutation = Recipes.roll(a, b, rng)
+	local species, mutations = Recipes.roll(a, b, rng)
 	-- Parents go back into the yard first so they keep earning.
 	a.slot = FreekUtil.freeSlot(data)
 	b.slot = FreekUtil.freeSlot(data)
-	local _, isNew = giveFreek(player, data, species, mutation)
+	local _, isNew = giveFreek(player, data, species, mutations)
 
-	local name = FreekUtil.displayName({ species = species, mutation = mutation })
+	local name = FreekUtil.displayName({ species = species, mutations = mutations })
 	if isNew then
 		notify(player, "NEW FREEK! You bred a " .. name .. "!", "discovery")
 	else

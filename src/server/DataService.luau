@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Mutations = require(ReplicatedStorage.Shared.Mutations)
 
 local STORE_NAME = "BreedAFreek_Players_v1"
 
@@ -30,7 +31,7 @@ local function defaultData()
 		version = 1,
 		money = Config.START_MONEY,
 		slots = Config.START_SLOTS,
-		freeks = {}, -- [uid] = { species, mutation?, slot?, breeding? }
+		freeks = {}, -- [uid] = { species, mutations?, slot?, breeding? }
 		breeding = nil, -- { a = uid, b = uid, endsAt = unix seconds }
 		discovered = {}, -- [speciesId] = true for every species this player has owned
 		rebirths = 0,
@@ -42,6 +43,13 @@ local function reconcile(data)
 	for key, value in defaultData() do
 		if data[key] == nil then
 			data[key] = value
+		end
+	end
+	-- Old saves stored a single mutation.
+	for _, freek in data.freeks do
+		if freek.mutation then
+			freek.mutations = Mutations.pack(freek.mutation)
+			freek.mutation = nil
 		end
 	end
 	return data

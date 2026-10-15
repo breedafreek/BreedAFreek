@@ -33,7 +33,7 @@ local ConveyorService = {}
 local notifyRemote = Remotes.get("Notify")
 local rng = Random.new()
 local folder: Folder
-local items = {} -- [id] = { species, mutation, price, spawnTime, lane, model }
+local items = {} -- [id] = { species, mutations, price, spawnTime, lane, model }
 local nextId = 0
 
 local function notify(player: Player, message: string, kind: string?)
@@ -190,9 +190,9 @@ local function buildBelt()
 	folder.Parent = Workspace
 end
 
-local function priceOf(species, mutation: string?): number
+local function priceOf(species, mutations: { string }?): number
 	local base = species.price or math.floor(species.income * Belt.PRICE_SECONDS)
-	return math.floor(base * Mutations.mult(mutation))
+	return math.floor(base * Mutations.mult(mutations))
 end
 
 -- Species that can come out of the machine right now, grouped by rarity.
@@ -222,10 +222,11 @@ local function rollRarity(): string
 	return Belt.ODDS[1].rarity
 end
 
-local function rollMutation(): string?
+-- Belt Freeks get at most one mutation; stacking them is done by breeding.
+local function rollMutations(): { string }?
 	for _, mutation in Mutations.list do
 		if rng:NextNumber() < mutation.chance * Belt.MUTATION_FACTOR then
-			return mutation.id
+			return { mutation.id }
 		end
 	end
 	return nil
@@ -243,20 +244,20 @@ local function spawnFreek(lane: number)
 		return
 	end
 	local species = pool[rng:NextInteger(1, #pool)]
-	local mutation = rollMutation()
-	local price = priceOf(species, mutation)
+	local mutations = rollMutations()
+	local price = priceOf(species, mutations)
 	local spawnTime = Workspace:GetServerTimeNow()
 
 	nextId += 1
 	local id = tostring(nextId)
-	local model, height = FreekModel.build(species.id, mutation)
+	local model, height = FreekModel.build(species.id, mutations)
 	model.Name = id
 	model:SetAttribute("SpawnTime", spawnTime)
 	model:SetAttribute("Lane", lane)
 	model:PivotTo(Belt.cframeAt(lane, spawnTime, spawnTime))
 
 	local anchor = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
-	local freek = { species = species.id, mutation = mutation }
+	local freek = { species = species.id, mutations = mutations }
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromOffset(180, 50)
 	gui.StudsOffsetWorldSpace = Vector3.new(0, height - (anchor.Position.Y - Belt.Y) + 1.2, 0)
@@ -268,7 +269,7 @@ local function spawnFreek(lane: number)
 	name.TextScaled = true
 	name.Font = Enum.Font.FredokaOne
 	name.Text = FreekUtil.displayName(freek)
-	name.TextColor3 = if mutation then Mutations.byId[mutation].color else Rarities.info[species.rarity].color
+	name.TextColor3 = if mutations then Mutations.byId[mutations[1]].color else Rarities.info[species.rarity].color
 	name.TextStrokeTransparency = 0.2
 	name.Parent = gui
 	local cost = name:Clone()
@@ -292,7 +293,7 @@ local function spawnFreek(lane: number)
 	model.Parent = folder
 	items[id] = {
 		species = species,
-		mutation = mutation,
+		mutations = mutations,
 		price = price,
 		spawnTime = spawnTime,
 		lane = lane,
@@ -336,8 +337,8 @@ local function buy(player: Player, id: string)
 	items[id] = nil
 	item.model:Destroy()
 	data.money -= item.price
-	local name = FreekUtil.displayName({ species = item.species.id, mutation = item.mutation })
-	ActionService.giveFreek(player, data, item.species.id, item.mutation)
+	local name = FreekUtil.displayName({ species = item.species.id, mutations = item.mutations })
+	ActionService.giveFreek(player, data, item.species.id, item.mutations)
 	DataService.changed(player)
 	notify(player, "You bought " .. name .. "! It's heading to your yard.", "success")
 end

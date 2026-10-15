@@ -2,16 +2,22 @@
 -- results out of the game and have to discover them.
 --
 -- Every pair has a result: a species of the baby's rarity (see shared/Breeding) picked by
--- the pair itself, so the same two species always make the same baby. Two Ultras make a
--- Secret. Limited Freeks are only picked while their event is running.
+-- the pair itself, so the same two species always make the same baby. Limited Freeks are
+-- only picked while their event is running.
 --
--- OVERRIDES pins a specific result for a pair if you want a hand-made recipe; it must
--- follow the rarity rule (same rarity as the rarer parent, or Secret for two Ultras).
+-- SECRETS lists the Ultra pairs that make a Secret, the only way to get one. Any other two
+-- Ultras just make an Ultra.
+--
+-- OVERRIDES pins a specific result for any other pair if you want a hand-made recipe; it
+-- must be the same rarity as the rarer parent.
 
 local Shared = game:GetService("ReplicatedStorage").Shared
 local Breeding = require(Shared.Breeding)
 local Freeks = require(Shared.Freeks)
 local Seasons = require(Shared.Seasons)
+
+-- ["UltraA|UltraB"] = "SecretFreek" (names in either order).
+local SECRETS = {}
 
 local OVERRIDES = {
 	-- ["Blobby|Snorp"] = "Oinkle",
@@ -23,6 +29,18 @@ local function pairKey(a: string, b: string): string
 	return if a < b then a .. "|" .. b else b .. "|" .. a
 end
 Recipes.pairKey = pairKey
+
+-- Accept keys written in either order.
+local function sortKeys(map)
+	local sorted = {}
+	for key, value in map do
+		local a, b = string.match(key, "^(.-)|(.*)$")
+		sorted[pairKey(a, b)] = value
+	end
+	return sorted
+end
+SECRETS = sortKeys(SECRETS)
+OVERRIDES = sortKeys(OVERRIDES)
 
 -- A stable number for a pair (same pair, same number, every server).
 local function pairHash(key: string): number
@@ -43,16 +61,19 @@ local function speciesOfRarity(rarity: string)
 	return list
 end
 
--- Returns the baby's species and mutation (or nil) for two parent records.
-function Recipes.roll(parentA, parentB, rng: Random): (string, string?)
+-- Returns the baby's species and mutations (a list, or nil) for two parent records.
+function Recipes.roll(parentA, parentB, rng: Random): (string, { string }?)
 	local key = pairKey(parentA.species, parentB.species)
 	local rarity, bothUltra = Breeding.babyRarity(parentA, parentB)
-	if bothUltra and rng:NextNumber() < Breeding.SECRET_CHANCE then
-		rarity = "Secret"
+	local mutations = Breeding.rollMutations(parentA, parentB, rng)
+
+	local secret = bothUltra and SECRETS[key]
+	if secret and Freeks.byId[secret] and Seasons.available(Freeks.byId[secret]) then
+		return secret, mutations
 	end
 
 	local species = OVERRIDES[key]
-	if not species or not Seasons.available(Freeks.byId[species]) then
+	if not species or not Freeks.byId[species] or not Seasons.available(Freeks.byId[species]) then
 		local options = speciesOfRarity(rarity)
 		if #options == 0 then
 			-- No species of that rarity exists yet: copy the rarer parent.
@@ -64,7 +85,7 @@ function Recipes.roll(parentA, parentB, rng: Random): (string, string?)
 		end
 	end
 
-	return species, Breeding.rollMutation(parentA, parentB, rng)
+	return species, mutations
 end
 
 return Recipes

@@ -465,7 +465,7 @@ end
 
 -- steal = { uid, ownerUserId } for Freeks on pads, so other players get a Steal prompt.
 local function placeFreek(plot, freek, ground: CFrame, steal)
-	local model, height = FreekModel.build(freek.species, freek.mutation)
+	local model, height = FreekModel.build(freek.species, freek.mutations)
 	model:PivotTo(ground)
 	model.Parent = plot.freeks
 
@@ -485,9 +485,8 @@ local function placeFreek(plot, freek, ground: CFrame, steal)
 	name.TextScaled = true
 	name.Font = Enum.Font.FredokaOne
 	name.Text = FreekUtil.displayName(freek)
-	name.TextColor3 = if freek.mutation
-		then Mutations.byId[freek.mutation].color
-		else Rarities.info[species.rarity].color
+	local topMutation = Mutations.top(freek.mutations)
+	name.TextColor3 = if topMutation then Mutations.byId[topMutation].color else Rarities.info[species.rarity].color
 	name.TextStrokeTransparency = 0.2
 	name.Parent = gui
 

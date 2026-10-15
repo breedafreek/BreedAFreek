@@ -133,7 +133,7 @@ function UI.button(text: string, color: Color3, onClick: () -> (), props)
 end
 
 -- A little 3D picture of a Freek. silhouette = true draws it solid black ("???").
-function UI.viewport(speciesId: string, mutation: string?, silhouette: boolean?)
+function UI.viewport(speciesId: string, mutations: { string }?, silhouette: boolean?)
 	local frame = UI.new("ViewportFrame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 0, 100),
@@ -142,7 +142,7 @@ function UI.viewport(speciesId: string, mutation: string?, silhouette: boolean?)
 		LightDirection = Vector3.new(-1, -1, -1),
 		ImageColor3 = if silhouette then Color3.new(0, 0, 0) else Color3.new(1, 1, 1),
 	})
-	local model, height = FreekModel.build(speciesId, mutation)
+	local model, height = FreekModel.build(speciesId, mutations)
 	model:PivotTo(CFrame.new())
 	model.Parent = frame
 	local camera = Instance.new("Camera")
@@ -156,7 +156,7 @@ function UI.viewport(speciesId: string, mutation: string?, silhouette: boolean?)
 end
 
 -- A card for grids: picture, lines of text, and buttons.
--- opts = { species, mutation?, silhouette?, lines = { {text, color?} }, buttons = { button instances } }
+-- opts = { species, mutations?, silhouette?, lines = { {text, color?} }, buttons = { button instances } }
 function UI.card(opts)
 	-- Clickable cards are buttons; buttons inside them still get their own clicks.
 	local card = UI.new(if opts.onClick then "TextButton" else "Frame", {
@@ -190,7 +190,7 @@ function UI.card(opts)
 	end
 
 	if opts.species then
-		add(UI.viewport(opts.species, opts.mutation, opts.silhouette))
+		add(UI.viewport(opts.species, opts.mutations, opts.silhouette))
 	end
 	for _, line in opts.lines or {} do
 		add(UI.label(line[1], {

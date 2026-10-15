@@ -20,6 +20,7 @@ local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Freeks = require(script.Parent.Freeks)
+local Mutations = require(script.Parent.Mutations)
 
 local FreekModel = {}
 
@@ -166,8 +167,15 @@ local function buildFromParts(species, mutationId: string?): (Model, number)
 	return model, top
 end
 
--- Returns the model and roughly how tall it is (for placing name tags).
-function FreekModel.build(speciesId: string, mutationId: string?): (Model, number)
+-- Effects that show a mutation, for Freeks that carry more than one (the rarest sets the
+-- colours, the rest add their effect on top).
+local MUTATION_EFFECTS = {
+	Rainbow = { type = "Sparkles", color = Color3.new(1, 1, 1) },
+	Golden = { type = "Sparkles", color = Color3.fromRGB(255, 220, 80) },
+	Shadow = { type = "Smoke", color = Color3.fromRGB(60, 30, 90), size = 1.5 },
+}
+
+local function buildSingle(speciesId: string, mutationId: string?): (Model, number)
 	local species = Freeks.byId[speciesId] or Freeks.list[1]
 	local look = species.look
 	local s = look.size or 3
@@ -282,6 +290,23 @@ function FreekModel.build(speciesId: string, mutationId: string?): (Model, numbe
 	end
 
 	return model, s * 1.6
+end
+
+-- Returns the model and roughly how tall it is (for placing name tags). mutations is a
+-- list of mutation ids (a single id also works).
+function FreekModel.build(speciesId: string, mutations): (Model, number)
+	local list = Mutations.normalize(mutations)
+	local model, height = buildSingle(speciesId, list[1])
+	local body = model.PrimaryPart
+	for i = 2, #list do
+		local effect = MUTATION_EFFECTS[list[i]]
+		-- Rainbow and Golden already sparkle; don't stack a second set.
+		local sparkling = body and body:FindFirstChildOfClass("Sparkles")
+		if body and effect and not (effect.type == "Sparkles" and sparkling) then
+			addEffect(body, effect)
+		end
+	end
+	return model, height
 end
 
 return FreekModel
