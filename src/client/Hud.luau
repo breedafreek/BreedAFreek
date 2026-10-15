@@ -13,7 +13,6 @@ local Format = require(ReplicatedStorage.Shared.Format)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Luck = require(ReplicatedStorage.Shared.Luck)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
-local Icons = require(script.Parent.Icons)
 local UI = require(script.Parent.UI)
 
 local colors = UI.colors
@@ -65,64 +64,61 @@ end
 --------------------------------------------------------------------------------
 
 function Hud.money(screen: ScreenGui)
-	-- Bottom left, like the big simulators: a 3D cash stack and a huge green number,
-	-- with the income and any rebirth boost in a pill above it.
-	local holder = UI.new("Frame", {
+	local pill = UI.glass({
 		Name = "Money",
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 10, 1, -10),
-		Size = UDim2.fromOffset(330, 96),
-		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(12, 12),
+		Size = UDim2.fromOffset(250, 62),
+		BackgroundColor3 = Color3.fromRGB(40, 165, 75),
 		Parent = screen,
-	})
-	local icon = UI.modelIcon(Icons.build("Money"), UDim2.fromOffset(70, 70), math.rad(-25))
-	icon.AnchorPoint = Vector2.new(0, 1)
-	icon.Position = UDim2.new(0, 0, 1, 4)
-	icon.Parent = holder
-	local amount = text("$0", 44, {
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 72, 1, -4),
-		Size = UDim2.new(1, -72, 0, 50),
-		FontFace = UI.fonts.heavy,
-		TextColor3 = colors.money,
-		Parent = holder,
-	})
-	amount:FindFirstChildOfClass("UIStroke").Thickness = 3.5
-	local pill = UI.new("Frame", {
-		Position = UDim2.fromOffset(4, 0),
-		Size = UDim2.fromOffset(0, 30),
-		AutomaticSize = Enum.AutomaticSize.X,
-		BackgroundColor3 = UI.OUTLINE,
-		BackgroundTransparency = 0.35,
-		Parent = holder,
+	}, { UI.corner(20) })
+
+	UI.new("Frame", {
+		Name = "Coin",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 10, 0.5, 0),
+		Size = UDim2.fromOffset(40, 40),
+		BackgroundColor3 = colors.gold,
+		Parent = pill,
 	}, {
-		UI.corner(15),
-		UI.stroke(nil, 2.5),
-		UI.new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) }),
-		UI.new("UIListLayout", {
-			FillDirection = Enum.FillDirection.Horizontal,
-			VerticalAlignment = Enum.VerticalAlignment.Center,
-			Padding = UDim.new(0, 10),
-			SortOrder = Enum.SortOrder.LayoutOrder,
+		UI.corner(20),
+		UI.new("UIGradient", {
+			Color = ColorSequence.new(Color3.fromRGB(255, 226, 120), Color3.fromRGB(235, 150, 30)),
+			Rotation = 90,
+		}),
+		UI.stroke(nil, 3),
+		text("$", 24, {
+			Size = UDim2.fromScale(1, 1),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			FontFace = UI.fonts.heavy,
+			TextColor3 = Color3.fromRGB(120, 70, 10),
 		}),
 	})
-	local income = text("+$0/s", 18, {
-		Size = UDim2.fromOffset(0, 26),
-		AutomaticSize = Enum.AutomaticSize.X,
+
+	local amount = text("$0", 30, {
+		Position = UDim2.fromOffset(60, 4),
+		Size = UDim2.new(1, -116, 0, 32),
 		FontFace = UI.fonts.heavy,
+		TextColor3 = colors.money,
+		Parent = pill,
+	})
+	local income = text("+$0/s", 15, {
+		Position = UDim2.fromOffset(60, 35),
+		Size = UDim2.new(1, -116, 0, 18),
 		TextColor3 = Color3.fromRGB(255, 240, 150),
-		LayoutOrder = 1,
 		Parent = pill,
 	})
-	local boost = text("", 18, {
-		Size = UDim2.fromOffset(0, 26),
-		AutomaticSize = Enum.AutomaticSize.X,
+	local boost = UI.new("TextLabel", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -10, 0.5, 0),
+		Size = UDim2.fromOffset(46, 22),
+		BackgroundColor3 = colors.gold,
+		BackgroundTransparency = 0.75,
 		FontFace = UI.fonts.heavy,
-		TextColor3 = Color3.fromRGB(255, 120, 200),
+		TextSize = 14,
+		TextColor3 = colors.gold,
 		Visible = false,
-		LayoutOrder = 2,
 		Parent = pill,
-	})
+	}, { UI.corner(11) })
 
 	-- The number glides to its new value instead of jumping.
 	local shown = player:GetAttribute("Money") or 0
@@ -142,7 +138,7 @@ function Hud.money(screen: ScreenGui)
 
 	return function(rebirths: number)
 		boost.Visible = rebirths > 0
-		boost.Text = "Rebirth Boost x" .. tostring(Config.incomeMultiplier(rebirths))
+		boost.Text = "x" .. tostring(Config.incomeMultiplier(rebirths))
 	end
 end
 
@@ -153,7 +149,7 @@ end
 function Hud.eventChip(screen: ScreenGui)
 	local chip = UI.glass({
 		Name = "Event",
-		Position = UDim2.fromOffset(12, 8),
+		Position = UDim2.fromOffset(12, 80),
 		Size = UDim2.fromOffset(0, 28),
 		AutomaticSize = Enum.AutomaticSize.X,
 		Visible = false,
@@ -193,7 +189,7 @@ end
 function Hud.luckChip(screen: ScreenGui)
 	local chip = UI.glass({
 		Name = "LuckyEvent",
-		Position = UDim2.fromOffset(12, 42),
+		Position = UDim2.fromOffset(12, 114),
 		Size = UDim2.fromOffset(0, 30),
 		AutomaticSize = Enum.AutomaticSize.X,
 		Visible = false,
@@ -231,70 +227,69 @@ end
 -- Menu tabs
 --------------------------------------------------------------------------------
 
--- The menu: big 3D icons with outlined labels, down the left and right edges of the
--- screen (no tiles behind them). entries = { { name, label, side } } where side is
--- "left" or "right". Returns setActive(name or nil).
+-- entries = { { name, icon, color } }. Returns setActive(name or nil).
 function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
-	local ICON = 74
-	local ITEM = 96
-	local function column(side: string)
-		local count = 0
-		for _, entry in entries do
-			if entry[3] == side then
-				count += 1
-			end
-		end
-		local height = count * ITEM + (count - 1) * 4
-		local frame = UI.new("Frame", {
-			Name = "Menu" .. side,
-			AnchorPoint = Vector2.new(if side == "left" then 0 else 1, 0.5),
-			Position = if side == "left" then UDim2.new(0, 6, 0.5, -10) else UDim2.new(1, -6, 0.56, 0),
-			Size = UDim2.fromOffset(ICON + 16, height),
-			BackgroundTransparency = 1,
-			Parent = screen,
-		}, {
-			UI.new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
-		})
-		fitHeight(frame, height, 200)
-		return frame
-	end
-	local columns = { left = column("left"), right = column("right") }
+	local TILE = 64
+	local GAP = 8
+	local height = #entries * TILE + (#entries - 1) * GAP + 16
+	-- Starts below the money pill and event chip, and shrinks to fit above the hotbar.
+	local rail = UI.new("Frame", {
+		Name = "Menu",
+		Position = UDim2.fromOffset(12, 118),
+		Size = UDim2.fromOffset(TILE + 16, height),
+		BackgroundTransparency = 1,
+		Parent = screen,
+	}, {
+		UI.new("UIPadding", {
+			PaddingTop = UDim.new(0, 8),
+			PaddingBottom = UDim.new(0, 8),
+			PaddingLeft = UDim.new(0, 8),
+			PaddingRight = UDim.new(0, 8),
+		}),
+		UI.new("UIListLayout", { Padding = UDim.new(0, GAP), SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
+	fitHeight(rail, height, 118 + 24)
 
-	local labels = {}
+	local tiles = {}
 	for i, entry in entries do
-		local name, title, side = entry[1], entry[2], entry[3]
-		local button = UI.new("TextButton", {
+		local name, icon, color = entry[1], entry[2], entry[3]
+		local tile = UI.new("TextButton", {
 			Name = name,
 			Text = "",
 			AutoButtonColor = false,
-			BackgroundTransparency = 1,
-			Size = UDim2.fromOffset(ICON + 16, ITEM),
+			BackgroundColor3 = color,
+			Size = UDim2.fromOffset(TILE, TILE),
 			LayoutOrder = i,
-			Parent = columns[side],
+			Parent = rail,
+		}, {
+			UI.corner(18),
+			UI.gradient(),
+			text(icon, 30, {
+				Position = UDim2.fromOffset(0, 3),
+				Size = UDim2.new(1, 0, 0, 36),
+				TextXAlignment = Enum.TextXAlignment.Center,
+			}),
+			text(name, 14, {
+				Position = UDim2.new(0, 0, 1, -21),
+				Size = UDim2.new(1, 0, 0, 17),
+				TextXAlignment = Enum.TextXAlignment.Center,
+				FontFace = UI.fonts.heavy,
+			}),
 		})
-		local icon = UI.modelIcon(Icons.build(name), UDim2.fromOffset(ICON, ICON), math.rad(-20))
-		icon.AnchorPoint = Vector2.new(0.5, 0)
-		icon.Position = UDim2.new(0.5, 0, 0, 0)
-		icon.Parent = button
-		local label = text(title, 20, {
-			AnchorPoint = Vector2.new(0.5, 1),
-			Position = UDim2.new(0.5, 0, 1, 0),
-			Size = UDim2.new(1, 8, 0, 24),
-			TextXAlignment = Enum.TextXAlignment.Center,
-			FontFace = UI.fonts.heavy,
-			Parent = button,
-		})
-		label:FindFirstChildOfClass("UIStroke").Thickness = 2.6
-		labels[name] = label
-		hoverGrow(button)
-		button.Activated:Connect(function()
+		-- Thick dark outline; turns white on the open tab.
+		local ring = UI.stroke(nil, 3.5)
+		ring.Parent = tile
+		tiles[name] = ring
+		hoverGrow(tile)
+		tile.Activated:Connect(function()
 			onSelect(name)
 		end)
 	end
 
 	return function(active: string?)
-		for name, label in labels do
-			label.TextColor3 = if name == active then colors.gold else colors.text
+		for name, ring in tiles do
+			ring.Color = if name == active then Color3.new(1, 1, 1) else UI.OUTLINE
+			ring.Thickness = if name == active then 4.5 else 3.5
 		end
 	end
 end

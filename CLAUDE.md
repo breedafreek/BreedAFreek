@@ -9,31 +9,19 @@ The game imitates the bright, chunky cartoon look of the big Roblox simulators (
 Brainrot, Grow a Garden, Pet Simulator). Every new screen, label, model and effect must
 match it.
 
-**UI (built in code with `src/client/UI.luau` helpers; always use them).** The look is
-today's big simulators (wooden shop windows, 3D icons):
+**UI (built in code with `src/client/UI.luau` helpers; always use them):**
 - Fonts: **Luckiest Guy** (`UI.fonts.heavy`) for titles, buttons and big numbers;
   **Fredoka One** (`UI.fonts.bold`) for everything else. Never Builder Sans/Gotham.
-- Windows (`UI.wood`): a chunky wooden frame (wood grain, dark brown outline) around a
-  cream parchment page. The tab's 3D icon breaks out of the top-left corner, the title is
-  big white Luckiest Guy with a thick outline, a cream subtitle sits under it on the top
-  plank, and the close button is a red rounded square with an X on the right.
-- On the parchment: brown captions (`UI.colors.caption`, no outline) for sentences, and
-  big `UI.section("Weapons", color)` headers ("— WEAPONS —") between groups.
-- Cards (`UI.card`): bright saturated fill with a darker border of the same hue. Freek
-  cards take their rarity colour; others take a fitting colour (`opts.color`). Text on
-  cards is white or bright with a dark outline. `opts.ribbon = { "POPULAR", color }` adds
-  a tag on the top edge.
-- Buttons (`UI.button`): glossy two-tone fill (`UI.glossy`), thick dark outline,
-  Luckiest Guy text, squish when pressed. Green = buy/go, red = close/danger,
-  gray = owned/disabled.
-- Icons are 3D models from `src/client/Icons.luau` shown with `UI.modelIcon` (never
-  emoji tiles). The menu is those icons with outlined labels down the left and right
-  screen edges, no tile behind them.
-- HUD: money is a big green number with a 3D cash icon at the bottom left; small panels
-  (`UI.glass`) are wood. Colours are saturated and cheerful: money green (#6EEB8C),
-  prices gold (#FFD73C), rarities `Rarities.info[r].color`.
-- Render UI to check it before calling it done (dump the real PlayerGui from an emulator
-  run and draw it), not a hand-made mockup.
+- Every piece of text has a dark outline (`UI.textStroke`, colour `UI.OUTLINE`
+  #141630). Text is white or a bright colour, never dark-on-light.
+- Panels (`UI.glass`): bright saturated fill (default blue #3E80F5), thick dark outline
+  (3–3.5 px), rounded corners (14–22), shaded top-to-bottom with `UI.gradient()`.
+  No dark/frosted/transparent panels.
+- Buttons (`UI.button`): bright fill, thick dark outline, Luckiest Guy text, squish when
+  pressed. Green = buy/go, red = close/danger, gray = disabled.
+- Windows have a gold title ribbon across the top edge and a round red X.
+- Colours: saturated and cheerful. Money is green (#6EEB8C), prices gold (#FFD73C),
+  rarities use `Rarities.info[r].color`.
 
 **World:**
 - Floating text uses `src/server/FreekTag.luau` style: Luckiest Guy / Fredoka One with a

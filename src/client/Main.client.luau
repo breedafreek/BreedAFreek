@@ -63,7 +63,6 @@ local Ambient = require(script.Parent.Ambient)
 local BarnFX = require(script.Parent.BarnFX)
 local Hatch = require(script.Parent.Hatch)
 local Hud = require(script.Parent.Hud)
-local Icons = require(script.Parent.Icons)
 local UI = require(script.Parent.UI)
 
 local player = Players.LocalPlayer
@@ -95,60 +94,48 @@ Hud.leaderboard(screen)
 Hud.vipChatTag()
 local toast = Hud.toasts(screen)
 
--- Windows are wooden frames around a parchment page, with the tab's 3D icon breaking out
--- of the top-left corner, a big outlined title and a subtitle on the top plank.
-local window, page = UI.wood({
+local window = UI.glass({
 	Name = "Window",
 	Visible = false,
 	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.fromScale(0.5, 0.53),
-	Size = UDim2.fromScale(0.64, 0.76),
+	Position = UDim2.fromScale(0.53, 0.52),
+	Size = UDim2.fromScale(0.66, 0.74),
+	BackgroundTransparency = 0.05,
 	ZIndex = 5, -- above the leaderboard and other HUD pieces
 	Parent = screen,
 }, {
-	UI.new("UISizeConstraint", { MaxSize = Vector2.new(880, 620) }),
+	UI.corner(22),
+	UI.new("UISizeConstraint", { MaxSize = Vector2.new(860, 600) }),
 })
-local windowIcon = UI.new("Frame", {
-	BackgroundTransparency = 1,
-	Position = UDim2.fromOffset(-26, -34),
-	Size = UDim2.fromOffset(100, 100),
-	ZIndex = 8,
+-- The title sits on a bright ribbon across the top of the window.
+local titleRibbon = UI.glass({
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.new(0.5, 0, 0, 2),
+	Size = UDim2.fromOffset(300, 48),
+	BackgroundColor3 = Color3.fromRGB(255, 190, 40),
+	ZIndex = 6,
 	Parent = window,
-})
+}, { UI.corner(24) })
 local windowTitle = UI.label("", {
-	Position = UDim2.fromOffset(80, 4),
-	Size = UDim2.new(1, -170, 0, 40),
-	TextXAlignment = Enum.TextXAlignment.Left,
+	Size = UDim2.new(1, -20, 1, -8),
+	Position = UDim2.fromOffset(10, 4),
+	TextXAlignment = Enum.TextXAlignment.Center,
 	FontFace = UI.fonts.heavy,
 	ZIndex = 7,
-	Parent = window,
-})
-windowTitle:FindFirstChildOfClass("UIStroke").Thickness = 3.5
-local windowSubtitle = UI.label("", {
-	Position = UDim2.fromOffset(82, 42),
-	Size = UDim2.new(1, -170, 0, 18),
-	TextXAlignment = Enum.TextXAlignment.Left,
-	TextColor3 = Color3.fromRGB(255, 225, 160),
-	ZIndex = 7,
-	Parent = window,
+	Parent = titleRibbon,
 })
 local body = UI.new("ScrollingFrame", {
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
-	Position = UDim2.fromOffset(10, 10),
-	Size = UDim2.new(1, -20, 1, -20),
-	ScrollBarImageColor3 = UI.colors.woodDark,
-	ZIndex = 3,
+	Position = UDim2.fromOffset(12, 40),
+	Size = UDim2.new(1, -24, 1, -52),
 	CanvasSize = UDim2.new(),
 	AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	ScrollBarThickness = 8,
-	Parent = page,
+	Parent = window,
 }, {
 	UI.new("UIListLayout", { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }),
-	UI.new(
-		"UIPadding",
-		{ PaddingTop = UDim.new(0, 12), PaddingBottom = UDim.new(0, 10), PaddingRight = UDim.new(0, 8) }
-	),
+	UI.new("UIPadding", { PaddingBottom = UDim.new(0, 10), PaddingRight = UDim.new(0, 8) }),
 })
 
 --------------------------------------------------------------------------------
@@ -181,17 +168,7 @@ local function render()
 end
 
 local setActiveTab = function(_name: string?) end
-local TAB_TITLES = { Luck = "Eggs", Book = "Freek Book" }
-local TAB_SUBTITLES = {
-	Shop = "Barn slots & weapons",
-	Luck = "Monster Eggs & the Lucky Wheel",
-	Freeks = "Every Freek you own",
-	Fuse = "Fuse two Freeks into a hybrid",
-	Book = "Every Freek you've found",
-	Trade = "Swap Freeks with other players",
-	Rebirth = "Start over stronger",
-	Store = "Game passes",
-}
+local TAB_ICONS = {}
 
 local function open(name: string)
 	if currentWindow == name then
@@ -202,10 +179,7 @@ local function open(name: string)
 	end
 	currentWindow = name
 	setActiveTab(name)
-	windowTitle.Text = TAB_TITLES[name] or name
-	windowSubtitle.Text = TAB_SUBTITLES[name] or ""
-	windowIcon:ClearAllChildren()
-	UI.modelIcon(Icons.build(name), UDim2.fromScale(1, 1), math.rad(-20)).Parent = windowIcon
+	windowTitle.Text = (TAB_ICONS[name] or "") .. "  " .. name
 	window.Visible = true
 	body.CanvasPosition = Vector2.zero
 	render()
@@ -214,31 +188,22 @@ end
 UI.button("X", colors.red, function()
 	open(currentWindow)
 end, {
-	Size = UDim2.fromOffset(46, 46),
-	Position = UDim2.new(1, -60, 0, 8),
-	ZIndex = 7,
+	Size = UDim2.fromOffset(44, 44),
+	Position = UDim2.new(1, -30, 0, -14),
+	ZIndex = 6,
 	Parent = window,
 })
+	:FindFirstChildOfClass("UICorner").CornerRadius =
+	UDim.new(0, 22)
 
--- A line of brown text on the parchment page.
 local function heading(text: string, order: number)
-	local label = UI.label(text, {
-		Size = UDim2.new(1, 0, 0, 24),
+	return UI.label(text, {
+		Size = UDim2.new(1, 0, 0, 26),
 		TextXAlignment = Enum.TextXAlignment.Left,
-		TextColor3 = UI.colors.caption,
+		TextColor3 = colors.muted,
 		LayoutOrder = order,
 		Parent = body,
 	})
-	label:FindFirstChildOfClass("UIStroke").Enabled = false
-	return label
-end
-
--- A big "— SECTION —" header on the page.
-local function section(text: string, order: number, color: Color3?)
-	local row = UI.section(text, color)
-	row.LayoutOrder = order
-	row.Parent = body
-	return row
 end
 
 local function rarityColor(speciesId: string): Color3
@@ -292,7 +257,7 @@ end
 
 function renderers.Shop()
 	heading("New Freeks fly out of the cannons! Grab one while it wanders and carry it home.", 1)
-	section("Barn", 3, colors.orange)
+	heading("Barn", 3)
 	local yard = UI.grid(220, 120)
 	yard.LayoutOrder = 4
 	yard.Parent = body
@@ -312,7 +277,7 @@ function renderers.Shop()
 		buttons = {
 			UI.button(
 				if maxed then "Maxed out!" else "Buy slot " .. Format.money(price),
-				if maxed or state.money < price then colors.gray else colors.green,
+				if maxed or state.money < price then colors.gray else colors.blue,
 				function()
 					send("BuySlot")
 				end
@@ -321,7 +286,7 @@ function renderers.Shop()
 	}).Parent =
 		yard
 
-	section("Weapons", 5, colors.red)
+	heading("Weapons", 5)
 	local weapons = UI.grid(220, 150)
 	weapons.LayoutOrder = 6
 	weapons.Parent = body
@@ -329,10 +294,9 @@ function renderers.Shop()
 		local weapon = Weapons.list[weaponId]
 		local owned = weaponId == Weapons.STARTER or (state.rebirths or 0) >= (weapon.rebirth or math.huge)
 		local card = UI.card({
-			color = weapon.color:Lerp(Color3.new(0, 0, 0), 0.1),
 			lines = {
-				{ weapon.name, colors.text, 24 },
-				{ weapon.description, Color3.fromRGB(255, 250, 230), 44 },
+				{ weapon.name, weapon.color:Lerp(Color3.new(1, 1, 1), 0.3), 24 },
+				{ weapon.description, colors.muted, 44 },
 			},
 			buttons = {
 				UI.button(
@@ -916,7 +880,7 @@ function renderers.Rebirth()
 	}).Parent =
 		grid
 
-	section("Weapon unlocks", 3, colors.red)
+	heading("Weapon unlocks", 3)
 	local milestones = UI.grid(200, 80)
 	milestones.LayoutOrder = 4
 	milestones.Parent = body
@@ -948,22 +912,18 @@ function renderers.Store()
 		local owned = GamePasses.has(player, key)
 		local label, color
 		if owned then
-			label, color = "Owned", colors.gray
+			label, color = "Owned ✓", colors.green
 		elseif pass.id == 0 then
 			label, color = "Coming soon", colors.gray
 		else
 			label, color = "R$ " .. pass.price, Color3.fromRGB(40, 180, 90)
 		end
 		local card = UI.card({
-			color = pass.color:Lerp(Color3.new(0, 0, 0), 0.1),
-			ribbon = if key == "DoubleCoins"
-				then { "POPULAR", colors.red }
-				elseif key == "VIP" then { "BEST VALUE", colors.orange }
-				else nil,
+			border = if owned then colors.green else nil,
 			lines = {
 				{ pass.icon, colors.text, 40 },
-				{ pass.name, colors.text, 24 },
-				{ pass.description, Color3.fromRGB(255, 250, 225), 50 },
+				{ pass.name, pass.color, 24 },
+				{ pass.description, colors.muted, 50 },
 			},
 			buttons = {
 				UI.button(label, color, function()
@@ -1269,12 +1229,10 @@ function renderers.Luck()
 	for i, slice in Luck.WHEEL do
 		table.insert(prizes, string.format("%s %.0f%%", slice.label, Luck.wheelPercent(i)))
 	end
-	section("Lucky Wheel", 2, colors.gold)
 	local wheelCard = UI.card({
-		color = Color3.fromRGB(150, 85, 235),
 		lines = {
-			{ "🎡 Free spin every day!", colors.gold, 28 },
-			{ table.concat(prizes, "  ·  "), Color3.fromRGB(245, 235, 255), 40 },
+			{ "🎡 Lucky Wheel", colors.gold, 28 },
+			{ table.concat(prizes, "  ·  "), colors.muted, 40 },
 		},
 		buttons = {
 			UI.button(
@@ -1290,18 +1248,17 @@ function renderers.Luck()
 		},
 	})
 	wheelCard.Size = UDim2.new(1, 0, 0, 150)
-	wheelCard.LayoutOrder = 3
+	wheelCard.LayoutOrder = 2
 	wheelCard.Parent = body
 
 	-- Monster Crates (Robux): the only place to get the Monster line.
 	local restricted = player:GetAttribute("CratesRestricted")
-	section("Monster Eggs", 4, colors.orange)
 	local grid = UI.grid(250, 470)
-	grid.LayoutOrder = 5
+	grid.LayoutOrder = 3
 	grid.Parent = body
 	for i, crate in Luck.CRATES do
 		local odds = Luck.oddsList(crate)
-		local lines = { { crate.name, colors.text, 24 } }
+		local lines = { { crate.name, crate.color, 24 } }
 		for _, entry in odds do
 			local species = Freeks.byId[entry.species]
 			local percent = if entry.percent < 1
@@ -1339,31 +1296,25 @@ function renderers.Luck()
 				end, { Size = UDim2.new(1, 0, 0, 36) })
 			)
 		end
-		local card = UI.card({
-			egg = crate.id,
-			lines = lines,
-			buttons = buttons,
-			color = crate.color:Lerp(Color3.new(0, 0, 0), 0.08),
-			ribbon = if crate.id == "MegaMonster"
-				then { "POPULAR", colors.red }
-				elseif crate.id == "LegendaryMonster" then { "BEST VALUE", colors.orange }
-				else nil,
-		})
+		local card = UI.card({ egg = crate.id, lines = lines, buttons = buttons, border = crate.color })
 		card.LayoutOrder = i
 		card.Parent = grid
 	end
 end
 
 local MENU = {
-	{ "Shop", "Shop", "left" },
-	{ "Freeks", "Freeks", "left" },
-	{ "Fuse", "Fuse", "left" },
-	{ "Book", "Book", "left" },
-	{ "Luck", "Eggs", "right" },
-	{ "Store", "Passes", "right" },
-	{ "Rebirth", "Rebirth", "right" },
-	{ "Trade", "Trade", "right" },
+	{ "Shop", "🛒", colors.green },
+	{ "Luck", "🍀", Color3.fromRGB(90, 220, 120) },
+	{ "Freeks", "🐷", colors.blue },
+	{ "Fuse", "🧪", colors.pink },
+	{ "Book", "📖", colors.orange },
+	{ "Trade", "🤝", colors.purple },
+	{ "Rebirth", "⭐", Color3.fromRGB(230, 170, 30) },
+	{ "Store", "💎", Color3.fromRGB(40, 180, 160) },
 }
+for _, entry in MENU do
+	TAB_ICONS[entry[1]] = entry[2]
+end
 setActiveTab = Hud.menu(screen, MENU, open)
 
 --------------------------------------------------------------------------------

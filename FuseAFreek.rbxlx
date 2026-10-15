@@ -11967,7 +11967,6 @@ local Format = require(ReplicatedStorage.Shared.Format)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Luck = require(ReplicatedStorage.Shared.Luck)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
-local Icons = require(script.Parent.Icons)
 local UI = require(script.Parent.UI)
 
 local colors = UI.colors
@@ -12019,64 +12018,61 @@ end
 --------------------------------------------------------------------------------
 
 function Hud.money(screen: ScreenGui)
-	-- Bottom left, like the big simulators: a 3D cash stack and a huge green number,
-	-- with the income and any rebirth boost in a pill above it.
-	local holder = UI.new("Frame", {
+	local pill = UI.glass({
 		Name = "Money",
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 10, 1, -10),
-		Size = UDim2.fromOffset(330, 96),
-		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(12, 12),
+		Size = UDim2.fromOffset(250, 62),
+		BackgroundColor3 = Color3.fromRGB(40, 165, 75),
 		Parent = screen,
-	})
-	local icon = UI.modelIcon(Icons.build("Money"), UDim2.fromOffset(70, 70), math.rad(-25))
-	icon.AnchorPoint = Vector2.new(0, 1)
-	icon.Position = UDim2.new(0, 0, 1, 4)
-	icon.Parent = holder
-	local amount = text("$0", 44, {
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 72, 1, -4),
-		Size = UDim2.new(1, -72, 0, 50),
-		FontFace = UI.fonts.heavy,
-		TextColor3 = colors.money,
-		Parent = holder,
-	})
-	amount:FindFirstChildOfClass("UIStroke").Thickness = 3.5
-	local pill = UI.new("Frame", {
-		Position = UDim2.fromOffset(4, 0),
-		Size = UDim2.fromOffset(0, 30),
-		AutomaticSize = Enum.AutomaticSize.X,
-		BackgroundColor3 = UI.OUTLINE,
-		BackgroundTransparency = 0.35,
-		Parent = holder,
+	}, { UI.corner(20) })
+
+	UI.new("Frame", {
+		Name = "Coin",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 10, 0.5, 0),
+		Size = UDim2.fromOffset(40, 40),
+		BackgroundColor3 = colors.gold,
+		Parent = pill,
 	}, {
-		UI.corner(15),
-		UI.stroke(nil, 2.5),
-		UI.new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) }),
-		UI.new("UIListLayout", {
-			FillDirection = Enum.FillDirection.Horizontal,
-			VerticalAlignment = Enum.VerticalAlignment.Center,
-			Padding = UDim.new(0, 10),
-			SortOrder = Enum.SortOrder.LayoutOrder,
+		UI.corner(20),
+		UI.new("UIGradient", {
+			Color = ColorSequence.new(Color3.fromRGB(255, 226, 120), Color3.fromRGB(235, 150, 30)),
+			Rotation = 90,
+		}),
+		UI.stroke(nil, 3),
+		text("$", 24, {
+			Size = UDim2.fromScale(1, 1),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			FontFace = UI.fonts.heavy,
+			TextColor3 = Color3.fromRGB(120, 70, 10),
 		}),
 	})
-	local income = text("+$0/s", 18, {
-		Size = UDim2.fromOffset(0, 26),
-		AutomaticSize = Enum.AutomaticSize.X,
+
+	local amount = text("$0", 30, {
+		Position = UDim2.fromOffset(60, 4),
+		Size = UDim2.new(1, -116, 0, 32),
 		FontFace = UI.fonts.heavy,
+		TextColor3 = colors.money,
+		Parent = pill,
+	})
+	local income = text("+$0/s", 15, {
+		Position = UDim2.fromOffset(60, 35),
+		Size = UDim2.new(1, -116, 0, 18),
 		TextColor3 = Color3.fromRGB(255, 240, 150),
-		LayoutOrder = 1,
 		Parent = pill,
 	})
-	local boost = text("", 18, {
-		Size = UDim2.fromOffset(0, 26),
-		AutomaticSize = Enum.AutomaticSize.X,
+	local boost = UI.new("TextLabel", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -10, 0.5, 0),
+		Size = UDim2.fromOffset(46, 22),
+		BackgroundColor3 = colors.gold,
+		BackgroundTransparency = 0.75,
 		FontFace = UI.fonts.heavy,
-		TextColor3 = Color3.fromRGB(255, 120, 200),
+		TextSize = 14,
+		TextColor3 = colors.gold,
 		Visible = false,
-		LayoutOrder = 2,
 		Parent = pill,
-	})
+	}, { UI.corner(11) })
 
 	-- The number glides to its new value instead of jumping.
 	local shown = player:GetAttribute("Money") or 0
@@ -12096,7 +12092,7 @@ function Hud.money(screen: ScreenGui)
 
 	return function(rebirths: number)
 		boost.Visible = rebirths > 0
-		boost.Text = "Rebirth Boost x" .. tostring(Config.incomeMultiplier(rebirths))
+		boost.Text = "x" .. tostring(Config.incomeMultiplier(rebirths))
 	end
 end
 
@@ -12107,7 +12103,7 @@ end
 function Hud.eventChip(screen: ScreenGui)
 	local chip = UI.glass({
 		Name = "Event",
-		Position = UDim2.fromOffset(12, 8),
+		Position = UDim2.fromOffset(12, 80),
 		Size = UDim2.fromOffset(0, 28),
 		AutomaticSize = Enum.AutomaticSize.X,
 		Visible = false,
@@ -12147,7 +12143,7 @@ end
 function Hud.luckChip(screen: ScreenGui)
 	local chip = UI.glass({
 		Name = "LuckyEvent",
-		Position = UDim2.fromOffset(12, 42),
+		Position = UDim2.fromOffset(12, 114),
 		Size = UDim2.fromOffset(0, 30),
 		AutomaticSize = Enum.AutomaticSize.X,
 		Visible = false,
@@ -12185,70 +12181,69 @@ end
 -- Menu tabs
 --------------------------------------------------------------------------------
 
--- The menu: big 3D icons with outlined labels, down the left and right edges of the
--- screen (no tiles behind them). entries = { { name, label, side } } where side is
--- "left" or "right". Returns setActive(name or nil).
+-- entries = { { name, icon, color } }. Returns setActive(name or nil).
 function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
-	local ICON = 74
-	local ITEM = 96
-	local function column(side: string)
-		local count = 0
-		for _, entry in entries do
-			if entry[3] == side then
-				count += 1
-			end
-		end
-		local height = count * ITEM + (count - 1) * 4
-		local frame = UI.new("Frame", {
-			Name = "Menu" .. side,
-			AnchorPoint = Vector2.new(if side == "left" then 0 else 1, 0.5),
-			Position = if side == "left" then UDim2.new(0, 6, 0.5, -10) else UDim2.new(1, -6, 0.56, 0),
-			Size = UDim2.fromOffset(ICON + 16, height),
-			BackgroundTransparency = 1,
-			Parent = screen,
-		}, {
-			UI.new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
-		})
-		fitHeight(frame, height, 200)
-		return frame
-	end
-	local columns = { left = column("left"), right = column("right") }
+	local TILE = 64
+	local GAP = 8
+	local height = #entries * TILE + (#entries - 1) * GAP + 16
+	-- Starts below the money pill and event chip, and shrinks to fit above the hotbar.
+	local rail = UI.new("Frame", {
+		Name = "Menu",
+		Position = UDim2.fromOffset(12, 118),
+		Size = UDim2.fromOffset(TILE + 16, height),
+		BackgroundTransparency = 1,
+		Parent = screen,
+	}, {
+		UI.new("UIPadding", {
+			PaddingTop = UDim.new(0, 8),
+			PaddingBottom = UDim.new(0, 8),
+			PaddingLeft = UDim.new(0, 8),
+			PaddingRight = UDim.new(0, 8),
+		}),
+		UI.new("UIListLayout", { Padding = UDim.new(0, GAP), SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
+	fitHeight(rail, height, 118 + 24)
 
-	local labels = {}
+	local tiles = {}
 	for i, entry in entries do
-		local name, title, side = entry[1], entry[2], entry[3]
-		local button = UI.new("TextButton", {
+		local name, icon, color = entry[1], entry[2], entry[3]
+		local tile = UI.new("TextButton", {
 			Name = name,
 			Text = "",
 			AutoButtonColor = false,
-			BackgroundTransparency = 1,
-			Size = UDim2.fromOffset(ICON + 16, ITEM),
+			BackgroundColor3 = color,
+			Size = UDim2.fromOffset(TILE, TILE),
 			LayoutOrder = i,
-			Parent = columns[side],
+			Parent = rail,
+		}, {
+			UI.corner(18),
+			UI.gradient(),
+			text(icon, 30, {
+				Position = UDim2.fromOffset(0, 3),
+				Size = UDim2.new(1, 0, 0, 36),
+				TextXAlignment = Enum.TextXAlignment.Center,
+			}),
+			text(name, 14, {
+				Position = UDim2.new(0, 0, 1, -21),
+				Size = UDim2.new(1, 0, 0, 17),
+				TextXAlignment = Enum.TextXAlignment.Center,
+				FontFace = UI.fonts.heavy,
+			}),
 		})
-		local icon = UI.modelIcon(Icons.build(name), UDim2.fromOffset(ICON, ICON), math.rad(-20))
-		icon.AnchorPoint = Vector2.new(0.5, 0)
-		icon.Position = UDim2.new(0.5, 0, 0, 0)
-		icon.Parent = button
-		local label = text(title, 20, {
-			AnchorPoint = Vector2.new(0.5, 1),
-			Position = UDim2.new(0.5, 0, 1, 0),
-			Size = UDim2.new(1, 8, 0, 24),
-			TextXAlignment = Enum.TextXAlignment.Center,
-			FontFace = UI.fonts.heavy,
-			Parent = button,
-		})
-		label:FindFirstChildOfClass("UIStroke").Thickness = 2.6
-		labels[name] = label
-		hoverGrow(button)
-		button.Activated:Connect(function()
+		-- Thick dark outline; turns white on the open tab.
+		local ring = UI.stroke(nil, 3.5)
+		ring.Parent = tile
+		tiles[name] = ring
+		hoverGrow(tile)
+		tile.Activated:Connect(function()
 			onSelect(name)
 		end)
 	end
 
 	return function(active: string?)
-		for name, label in labels do
-			label.TextColor3 = if name == active then colors.gold else colors.text
+		for name, ring in tiles do
+			ring.Color = if name == active then Color3.new(1, 1, 1) else UI.OUTLINE
+			ring.Thickness = if name == active then 4.5 else 3.5
 		end
 	end
 end
@@ -12573,298 +12568,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="53">
-          <Properties>
-            <string name="Name">Icons</string>
-            <string name="Source"><![CDATA[-- Chunky 3D icons for the menu buttons and window titles, built from parts and shown in
--- ViewportFrames (like the rendered icons in the big simulators). Icons.build(name)
--- returns a Model; UI.modelIcon frames it.
-
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local EggModel = require(ReplicatedStorage.Shared.EggModel)
-local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
-
-local Icons = {}
-
-local function rgb(r, g, b)
-	return Color3.fromRGB(r, g, b)
-end
-
-local function part(model: Model, props)
-	local p = Instance.new(props.ClassName or "Part")
-	p.Anchored = true
-	p.TopSurface = Enum.SurfaceType.Smooth
-	p.BottomSurface = Enum.SurfaceType.Smooth
-	p.Material = Enum.Material.SmoothPlastic
-	for key, value in props do
-		if key ~= "ClassName" then
-			p[key] = value
-		end
-	end
-	p.Parent = model
-	return p
-end
-
--- A ball, or a squashed ball (an ellipsoid, made with a sphere mesh) when the size isn't
--- the same every way.
-local function ball(model, position: Vector3, size: Vector3 | number, color: Color3, material: Enum.Material?)
-	local vector = if typeof(size) == "number" then Vector3.one * size else size
-	local round = vector.X == vector.Y and vector.Y == vector.Z
-	local p = part(model, {
-		Shape = if round then Enum.PartType.Ball else Enum.PartType.Block,
-		Size = vector,
-		CFrame = CFrame.new(position),
-		Color = color,
-		Material = material,
-	})
-	if not round then
-		local mesh = Instance.new("SpecialMesh")
-		mesh.MeshType = Enum.MeshType.Sphere
-		mesh.Parent = p
-	end
-	return p
-end
-
--- A thick arc of blocks around the Z axis (for handles and swirls).
-local function arc(
-	model,
-	center: CFrame,
-	radius: number,
-	from: number,
-	to: number,
-	thickness: number,
-	color: Color3,
-	steps: number?
-)
-	local n = steps or 10
-	local last
-	for i = 0, n do
-		local a = from + (to - from) * i / n
-		local point = (center * CFrame.new(math.cos(a) * radius, math.sin(a) * radius, 0)).Position
-		if last then
-			part(model, {
-				Size = Vector3.new(thickness, thickness, (point - last).Magnitude + thickness * 0.6),
-				CFrame = CFrame.lookAt((point + last) / 2, point),
-				Color = color,
-			})
-		end
-		last = point
-	end
-	return last
-end
-
-local BUILDERS = {}
-
--- A red shopping basket with a handle.
-function BUILDERS.Shop(model)
-	local red, dark = rgb(235, 55, 55), rgb(170, 30, 35)
-	part(model, { Size = Vector3.new(4.4, 2.6, 3), CFrame = CFrame.new(0, 0, 0), Color = red })
-	part(model, { Size = Vector3.new(4.9, 0.6, 3.4), CFrame = CFrame.new(0, 1.4, 0), Color = rgb(255, 120, 110) })
-	for _, x in { -1.4, 0, 1.4 } do
-		part(model, { Size = Vector3.new(0.35, 1.8, 0.2), CFrame = CFrame.new(x, -0.1, -1.55), Color = dark })
-	end
-	arc(model, CFrame.new(0, 1.6, 0), 1.9, 0, math.pi, 0.45, rgb(90, 90, 100), 10)
-end
-
--- A pumpkin Monster Egg.
-function BUILDERS.Eggs(model)
-	local egg = EggModel.build("Monster")
-	for _, p in egg:GetChildren() do
-		p.Parent = model
-	end
-	egg:Destroy()
-end
-
--- Oinkle, the first Freek.
-function BUILDERS.Freeks(model)
-	local freek = FreekModel.build("Oinkle")
-	for _, p in freek:GetDescendants() do
-		if p:IsA("BasePart") then
-			p.Parent = model
-		end
-	end
-	freek:Destroy()
-end
-
--- A round potion flask with bubbling pink liquid.
-function BUILDERS.Fuse(model)
-	ball(model, Vector3.new(0, 0, 0), 3.6, rgb(200, 235, 255), Enum.Material.Glass).Transparency = 0.65
-	ball(model, Vector3.new(0, -0.25, 0), Vector3.new(3.1, 2.6, 3.1), rgb(255, 40, 160), Enum.Material.Neon)
-	part(model, {
-		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(1.6, 1.2, 1.2),
-		CFrame = CFrame.new(0, 2.1, 0) * CFrame.Angles(0, 0, math.pi / 2),
-		Color = rgb(200, 235, 255),
-		Material = Enum.Material.Glass,
-		Transparency = 0.35,
-	})
-	part(model, {
-		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(0.8, 1.35, 1.35),
-		CFrame = CFrame.new(0, 3.05, 0) * CFrame.Angles(0, 0, math.pi / 2),
-		Color = rgb(150, 95, 50),
-	})
-	for _, b in { { -0.6, 1.4, 0.5 }, { 0.5, 1.9, 0.4 }, { 0.1, 2.7, 0.3 } } do
-		ball(model, Vector3.new(b[1], b[2], -0.6), b[3], rgb(255, 170, 230), Enum.Material.Neon)
-	end
-end
-
--- The Freek Book: a chunky blue book with gold corners and a star.
-function BUILDERS.Book(model)
-	local tilt = CFrame.Angles(0, math.rad(-20), math.rad(8))
-	local function piece(size, offset, color, material)
-		part(model, { Size = size, CFrame = tilt * CFrame.new(offset), Color = color, Material = material })
-	end
-	piece(Vector3.new(3.4, 4.2, 1.1), Vector3.new(0, 0, 0), rgb(60, 120, 235))
-	piece(Vector3.new(3.1, 3.9, 0.9), Vector3.new(0.25, 0, 0), rgb(255, 245, 220))
-	piece(Vector3.new(0.5, 4.3, 1.2), Vector3.new(-1.6, 0, 0), rgb(40, 85, 190))
-	for _, y in { -1.9, 1.9 } do
-		piece(Vector3.new(0.7, 0.6, 1.25), Vector3.new(1.5, y, 0), rgb(255, 200, 60), Enum.Material.Foil)
-	end
-	part(model, {
-		Size = Vector3.new(1.3, 1.3, 0.3),
-		CFrame = tilt * CFrame.new(0.1, 0.2, -0.6) * CFrame.Angles(0, 0, math.rad(45)),
-		Color = rgb(255, 210, 60),
-		Material = Enum.Material.Neon,
-	})
-end
-
--- A flat triangular arrowhead: its base centred on `base`, pointing along `direction`,
--- `width` across (along `across`) and `length` long, `thickness` deep.
-local function arrowHead(
-	model,
-	base: Vector3,
-	direction: Vector3,
-	across: Vector3,
-	length: number,
-	width: number,
-	thickness: number,
-	color: Color3
-)
-	for _, side in { 1, -1 } do
-		local w = across * side
-		-- A wedge's right angle sits at its bottom back edge: put that on the base centre,
-		-- run its height along the arrow and its depth out to the side.
-		local right = direction:Cross(-w)
-		local center = base + direction * (length / 2) + w * (width / 4)
-		part(model, {
-			ClassName = "WedgePart",
-			Size = Vector3.new(thickness, length, width / 2),
-			CFrame = CFrame.fromMatrix(center, right, direction),
-			Color = color,
-		})
-	end
-end
-
--- Two fat arrows passing each other.
-function BUILDERS.Trade(model)
-	local function arrow(y: number, direction: number, color: Color3)
-		part(model, {
-			Size = Vector3.new(2.6, 1, 0.9),
-			CFrame = CFrame.new(-direction * 0.7, y, 0),
-			Color = color,
-		})
-		arrowHead(
-			model,
-			Vector3.new(direction * 0.55, y, 0),
-			Vector3.new(direction, 0, 0),
-			Vector3.yAxis,
-			1.6,
-			2.4,
-			0.9,
-			color
-		)
-	end
-	arrow(0.85, 1, rgb(80, 210, 100))
-	arrow(-0.85, -1, rgb(255, 160, 50))
-end
-
--- Two curved arrows chasing each other round a circle (pink and blue).
-function BUILDERS.Rebirth(model)
-	for k, color in { rgb(255, 90, 170), rgb(80, 170, 255) } do
-		local start = (k - 1) * math.pi + 0.5
-		local stop = start + math.pi - 1.1
-		local tip = arc(model, CFrame.new(), 1.9, start, stop, 0.85, color, 8)
-		local direction = Vector3.new(-math.sin(stop), math.cos(stop), 0)
-		local outward = Vector3.new(math.cos(stop), math.sin(stop), 0)
-		arrowHead(model, tip, direction, outward, 1.3, 2.2, 0.85, color)
-	end
-	ball(model, Vector3.zero, 1.1, rgb(255, 220, 80), Enum.Material.Neon)
-end
-
--- A lucky four-leaf clover (game passes).
-function BUILDERS.Store(model)
-	local green, dark = rgb(90, 210, 80), rgb(50, 150, 55)
-	for k = 0, 3 do
-		local angle = k * math.pi / 2 + math.pi / 4
-		local out = Vector3.new(math.cos(angle), math.sin(angle), 0)
-		local side = Vector3.new(-out.Y, out.X, 0)
-		-- Each leaf is a heart: two round lobes and a point toward the middle.
-		for _, s in { 1, -1 } do
-			ball(model, out * 1.45 + side * s * 0.55, Vector3.new(1.55, 1.55, 0.7), green)
-		end
-		ball(model, out * 0.75, Vector3.new(1.2, 1.2, 0.7), green)
-		part(model, {
-			Size = Vector3.new(0.15, 1.7, 0.75),
-			CFrame = CFrame.lookAt(out * 1.05, out * 1.05 + Vector3.new(0, 0, -1), out),
-			Color = dark,
-		})
-	end
-	ball(model, Vector3.zero, Vector3.new(0.9, 0.9, 0.8), dark)
-	part(model, {
-		Size = Vector3.new(0.4, 2.2, 0.4),
-		CFrame = CFrame.new(0.5, -1.6, 0) * CFrame.Angles(0, 0, math.rad(-20)),
-		Color = dark,
-	})
-end
-
--- A stack of cash with gold coins.
-function BUILDERS.Money(model)
-	for i = 0, 2 do
-		part(model, {
-			Size = Vector3.new(3.4, 0.6, 1.8),
-			CFrame = CFrame.new(-0.2 + i * 0.15, i * 0.62, 0) * CFrame.Angles(0, math.rad(i * 6), 0),
-			Color = rgb(90, 200, 90),
-		})
-		part(model, {
-			Size = Vector3.new(0.6, 0.66, 1.86),
-			CFrame = CFrame.new(-0.2 + i * 0.15, i * 0.62, 0) * CFrame.Angles(0, math.rad(i * 6), 0),
-			Color = rgb(255, 240, 200),
-		})
-	end
-	for i, offset in { Vector3.new(1.7, -0.1, -0.9), Vector3.new(2.1, 0.35, -0.5) } do
-		part(model, {
-			Shape = Enum.PartType.Cylinder,
-			Size = Vector3.new(0.35, 1.5, 1.5),
-			CFrame = CFrame.new(offset) * CFrame.Angles(math.rad(70), 0, math.rad(90 + i * 10)),
-			Color = rgb(255, 205, 50),
-			Material = Enum.Material.Foil,
-		})
-	end
-end
-
-BUILDERS.Luck = BUILDERS.Eggs
-
-function Icons.build(name: string): Model
-	local model = Instance.new("Model")
-	model.Name = name .. "Icon"
-	local builder = BUILDERS[name]
-	if builder then
-		builder(model)
-	end
-	local first = model:FindFirstChildWhichIsA("BasePart")
-	if first then
-		model.PrimaryPart = first
-	end
-	return model
-end
-
-return Icons
-]]></string>
-          </Properties>
-        </Item>
-        <Item class="LocalScript" referent="54">
+        <Item class="LocalScript" referent="53">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -12932,7 +12636,6 @@ local Ambient = require(script.Parent.Ambient)
 local BarnFX = require(script.Parent.BarnFX)
 local Hatch = require(script.Parent.Hatch)
 local Hud = require(script.Parent.Hud)
-local Icons = require(script.Parent.Icons)
 local UI = require(script.Parent.UI)
 
 local player = Players.LocalPlayer
@@ -12964,60 +12667,48 @@ Hud.leaderboard(screen)
 Hud.vipChatTag()
 local toast = Hud.toasts(screen)
 
--- Windows are wooden frames around a parchment page, with the tab's 3D icon breaking out
--- of the top-left corner, a big outlined title and a subtitle on the top plank.
-local window, page = UI.wood({
+local window = UI.glass({
 	Name = "Window",
 	Visible = false,
 	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.fromScale(0.5, 0.53),
-	Size = UDim2.fromScale(0.64, 0.76),
+	Position = UDim2.fromScale(0.53, 0.52),
+	Size = UDim2.fromScale(0.66, 0.74),
+	BackgroundTransparency = 0.05,
 	ZIndex = 5, -- above the leaderboard and other HUD pieces
 	Parent = screen,
 }, {
-	UI.new("UISizeConstraint", { MaxSize = Vector2.new(880, 620) }),
+	UI.corner(22),
+	UI.new("UISizeConstraint", { MaxSize = Vector2.new(860, 600) }),
 })
-local windowIcon = UI.new("Frame", {
-	BackgroundTransparency = 1,
-	Position = UDim2.fromOffset(-26, -34),
-	Size = UDim2.fromOffset(100, 100),
-	ZIndex = 8,
+-- The title sits on a bright ribbon across the top of the window.
+local titleRibbon = UI.glass({
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.new(0.5, 0, 0, 2),
+	Size = UDim2.fromOffset(300, 48),
+	BackgroundColor3 = Color3.fromRGB(255, 190, 40),
+	ZIndex = 6,
 	Parent = window,
-})
+}, { UI.corner(24) })
 local windowTitle = UI.label("", {
-	Position = UDim2.fromOffset(80, 4),
-	Size = UDim2.new(1, -170, 0, 40),
-	TextXAlignment = Enum.TextXAlignment.Left,
+	Size = UDim2.new(1, -20, 1, -8),
+	Position = UDim2.fromOffset(10, 4),
+	TextXAlignment = Enum.TextXAlignment.Center,
 	FontFace = UI.fonts.heavy,
 	ZIndex = 7,
-	Parent = window,
-})
-windowTitle:FindFirstChildOfClass("UIStroke").Thickness = 3.5
-local windowSubtitle = UI.label("", {
-	Position = UDim2.fromOffset(82, 42),
-	Size = UDim2.new(1, -170, 0, 18),
-	TextXAlignment = Enum.TextXAlignment.Left,
-	TextColor3 = Color3.fromRGB(255, 225, 160),
-	ZIndex = 7,
-	Parent = window,
+	Parent = titleRibbon,
 })
 local body = UI.new("ScrollingFrame", {
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
-	Position = UDim2.fromOffset(10, 10),
-	Size = UDim2.new(1, -20, 1, -20),
-	ScrollBarImageColor3 = UI.colors.woodDark,
-	ZIndex = 3,
+	Position = UDim2.fromOffset(12, 40),
+	Size = UDim2.new(1, -24, 1, -52),
 	CanvasSize = UDim2.new(),
 	AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	ScrollBarThickness = 8,
-	Parent = page,
+	Parent = window,
 }, {
 	UI.new("UIListLayout", { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }),
-	UI.new(
-		"UIPadding",
-		{ PaddingTop = UDim.new(0, 12), PaddingBottom = UDim.new(0, 10), PaddingRight = UDim.new(0, 8) }
-	),
+	UI.new("UIPadding", { PaddingBottom = UDim.new(0, 10), PaddingRight = UDim.new(0, 8) }),
 })
 
 --------------------------------------------------------------------------------
@@ -13050,17 +12741,7 @@ local function render()
 end
 
 local setActiveTab = function(_name: string?) end
-local TAB_TITLES = { Luck = "Eggs", Book = "Freek Book" }
-local TAB_SUBTITLES = {
-	Shop = "Barn slots & weapons",
-	Luck = "Monster Eggs & the Lucky Wheel",
-	Freeks = "Every Freek you own",
-	Fuse = "Fuse two Freeks into a hybrid",
-	Book = "Every Freek you've found",
-	Trade = "Swap Freeks with other players",
-	Rebirth = "Start over stronger",
-	Store = "Game passes",
-}
+local TAB_ICONS = {}
 
 local function open(name: string)
 	if currentWindow == name then
@@ -13071,10 +12752,7 @@ local function open(name: string)
 	end
 	currentWindow = name
 	setActiveTab(name)
-	windowTitle.Text = TAB_TITLES[name] or name
-	windowSubtitle.Text = TAB_SUBTITLES[name] or ""
-	windowIcon:ClearAllChildren()
-	UI.modelIcon(Icons.build(name), UDim2.fromScale(1, 1), math.rad(-20)).Parent = windowIcon
+	windowTitle.Text = (TAB_ICONS[name] or "") .. "  " .. name
 	window.Visible = true
 	body.CanvasPosition = Vector2.zero
 	render()
@@ -13083,31 +12761,22 @@ end
 UI.button("X", colors.red, function()
 	open(currentWindow)
 end, {
-	Size = UDim2.fromOffset(46, 46),
-	Position = UDim2.new(1, -60, 0, 8),
-	ZIndex = 7,
+	Size = UDim2.fromOffset(44, 44),
+	Position = UDim2.new(1, -30, 0, -14),
+	ZIndex = 6,
 	Parent = window,
 })
+	:FindFirstChildOfClass("UICorner").CornerRadius =
+	UDim.new(0, 22)
 
--- A line of brown text on the parchment page.
 local function heading(text: string, order: number)
-	local label = UI.label(text, {
-		Size = UDim2.new(1, 0, 0, 24),
+	return UI.label(text, {
+		Size = UDim2.new(1, 0, 0, 26),
 		TextXAlignment = Enum.TextXAlignment.Left,
-		TextColor3 = UI.colors.caption,
+		TextColor3 = colors.muted,
 		LayoutOrder = order,
 		Parent = body,
 	})
-	label:FindFirstChildOfClass("UIStroke").Enabled = false
-	return label
-end
-
--- A big "— SECTION —" header on the page.
-local function section(text: string, order: number, color: Color3?)
-	local row = UI.section(text, color)
-	row.LayoutOrder = order
-	row.Parent = body
-	return row
 end
 
 local function rarityColor(speciesId: string): Color3
@@ -13161,7 +12830,7 @@ end
 
 function renderers.Shop()
 	heading("New Freeks fly out of the cannons! Grab one while it wanders and carry it home.", 1)
-	section("Barn", 3, colors.orange)
+	heading("Barn", 3)
 	local yard = UI.grid(220, 120)
 	yard.LayoutOrder = 4
 	yard.Parent = body
@@ -13181,7 +12850,7 @@ function renderers.Shop()
 		buttons = {
 			UI.button(
 				if maxed then "Maxed out!" else "Buy slot " .. Format.money(price),
-				if maxed or state.money < price then colors.gray else colors.green,
+				if maxed or state.money < price then colors.gray else colors.blue,
 				function()
 					send("BuySlot")
 				end
@@ -13190,7 +12859,7 @@ function renderers.Shop()
 	}).Parent =
 		yard
 
-	section("Weapons", 5, colors.red)
+	heading("Weapons", 5)
 	local weapons = UI.grid(220, 150)
 	weapons.LayoutOrder = 6
 	weapons.Parent = body
@@ -13198,10 +12867,9 @@ function renderers.Shop()
 		local weapon = Weapons.list[weaponId]
 		local owned = weaponId == Weapons.STARTER or (state.rebirths or 0) >= (weapon.rebirth or math.huge)
 		local card = UI.card({
-			color = weapon.color:Lerp(Color3.new(0, 0, 0), 0.1),
 			lines = {
-				{ weapon.name, colors.text, 24 },
-				{ weapon.description, Color3.fromRGB(255, 250, 230), 44 },
+				{ weapon.name, weapon.color:Lerp(Color3.new(1, 1, 1), 0.3), 24 },
+				{ weapon.description, colors.muted, 44 },
 			},
 			buttons = {
 				UI.button(
@@ -13785,7 +13453,7 @@ function renderers.Rebirth()
 	}).Parent =
 		grid
 
-	section("Weapon unlocks", 3, colors.red)
+	heading("Weapon unlocks", 3)
 	local milestones = UI.grid(200, 80)
 	milestones.LayoutOrder = 4
 	milestones.Parent = body
@@ -13817,22 +13485,18 @@ function renderers.Store()
 		local owned = GamePasses.has(player, key)
 		local label, color
 		if owned then
-			label, color = "Owned", colors.gray
+			label, color = "Owned ✓", colors.green
 		elseif pass.id == 0 then
 			label, color = "Coming soon", colors.gray
 		else
 			label, color = "R$ " .. pass.price, Color3.fromRGB(40, 180, 90)
 		end
 		local card = UI.card({
-			color = pass.color:Lerp(Color3.new(0, 0, 0), 0.1),
-			ribbon = if key == "DoubleCoins"
-				then { "POPULAR", colors.red }
-				elseif key == "VIP" then { "BEST VALUE", colors.orange }
-				else nil,
+			border = if owned then colors.green else nil,
 			lines = {
 				{ pass.icon, colors.text, 40 },
-				{ pass.name, colors.text, 24 },
-				{ pass.description, Color3.fromRGB(255, 250, 225), 50 },
+				{ pass.name, pass.color, 24 },
+				{ pass.description, colors.muted, 50 },
 			},
 			buttons = {
 				UI.button(label, color, function()
@@ -14138,12 +13802,10 @@ function renderers.Luck()
 	for i, slice in Luck.WHEEL do
 		table.insert(prizes, string.format("%s %.0f%%", slice.label, Luck.wheelPercent(i)))
 	end
-	section("Lucky Wheel", 2, colors.gold)
 	local wheelCard = UI.card({
-		color = Color3.fromRGB(150, 85, 235),
 		lines = {
-			{ "🎡 Free spin every day!", colors.gold, 28 },
-			{ table.concat(prizes, "  ·  "), Color3.fromRGB(245, 235, 255), 40 },
+			{ "🎡 Lucky Wheel", colors.gold, 28 },
+			{ table.concat(prizes, "  ·  "), colors.muted, 40 },
 		},
 		buttons = {
 			UI.button(
@@ -14159,18 +13821,17 @@ function renderers.Luck()
 		},
 	})
 	wheelCard.Size = UDim2.new(1, 0, 0, 150)
-	wheelCard.LayoutOrder = 3
+	wheelCard.LayoutOrder = 2
 	wheelCard.Parent = body
 
 	-- Monster Crates (Robux): the only place to get the Monster line.
 	local restricted = player:GetAttribute("CratesRestricted")
-	section("Monster Eggs", 4, colors.orange)
 	local grid = UI.grid(250, 470)
-	grid.LayoutOrder = 5
+	grid.LayoutOrder = 3
 	grid.Parent = body
 	for i, crate in Luck.CRATES do
 		local odds = Luck.oddsList(crate)
-		local lines = { { crate.name, colors.text, 24 } }
+		local lines = { { crate.name, crate.color, 24 } }
 		for _, entry in odds do
 			local species = Freeks.byId[entry.species]
 			local percent = if entry.percent < 1
@@ -14208,31 +13869,25 @@ function renderers.Luck()
 				end, { Size = UDim2.new(1, 0, 0, 36) })
 			)
 		end
-		local card = UI.card({
-			egg = crate.id,
-			lines = lines,
-			buttons = buttons,
-			color = crate.color:Lerp(Color3.new(0, 0, 0), 0.08),
-			ribbon = if crate.id == "MegaMonster"
-				then { "POPULAR", colors.red }
-				elseif crate.id == "LegendaryMonster" then { "BEST VALUE", colors.orange }
-				else nil,
-		})
+		local card = UI.card({ egg = crate.id, lines = lines, buttons = buttons, border = crate.color })
 		card.LayoutOrder = i
 		card.Parent = grid
 	end
 end
 
 local MENU = {
-	{ "Shop", "Shop", "left" },
-	{ "Freeks", "Freeks", "left" },
-	{ "Fuse", "Fuse", "left" },
-	{ "Book", "Book", "left" },
-	{ "Luck", "Eggs", "right" },
-	{ "Store", "Passes", "right" },
-	{ "Rebirth", "Rebirth", "right" },
-	{ "Trade", "Trade", "right" },
+	{ "Shop", "🛒", colors.green },
+	{ "Luck", "🍀", Color3.fromRGB(90, 220, 120) },
+	{ "Freeks", "🐷", colors.blue },
+	{ "Fuse", "🧪", colors.pink },
+	{ "Book", "📖", colors.orange },
+	{ "Trade", "🤝", colors.purple },
+	{ "Rebirth", "⭐", Color3.fromRGB(230, 170, 30) },
+	{ "Store", "💎", Color3.fromRGB(40, 180, 160) },
 }
+for _, entry in MENU do
+	TAB_ICONS[entry[1]] = entry[2]
+end
 setActiveTab = Hud.menu(screen, MENU, open)
 
 --------------------------------------------------------------------------------
@@ -14647,19 +14302,15 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="55">
+        <Item class="ModuleScript" referent="54">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).
--- Style: the look of today's big Roblox simulators: windows are chunky wooden frames
--- around a cream parchment page, with a big outlined title and a 3D icon breaking out of
--- the corner; cards are bright and saturated with a darker border of the same hue;
--- buttons are glossy with a thick dark outline and squish when pressed; Luckiest Guy for
--- titles and buttons, Fredoka One for the rest, and text outlined in dark navy.
+-- Style: bright cartoon look like the big Roblox simulators: saturated panels with a thick
+-- dark outline, chunky shaded buttons that squish when pressed, Luckiest Guy titles,
+-- Fredoka One text, and every bit of text outlined in dark navy.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Rarities = require(ReplicatedStorage.Shared.Rarities)
-local Freeks = require(ReplicatedStorage.Shared.Freeks)
 
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local EggModel = require(ReplicatedStorage.Shared.EggModel)
@@ -14676,14 +14327,8 @@ UI.fonts = {
 UI.OUTLINE = Color3.fromRGB(20, 22, 48)
 
 UI.colors = {
-	panel = Color3.fromRGB(176, 108, 52), -- small HUD panels (wood)
-	card = Color3.fromRGB(60, 140, 245), -- default card (bright blue)
-	wood = Color3.fromRGB(176, 108, 52),
-	woodDark = Color3.fromRGB(120, 68, 30),
-	woodOutline = Color3.fromRGB(58, 30, 12),
-	parchment = Color3.fromRGB(255, 241, 208),
-	parchmentEdge = Color3.fromRGB(205, 160, 100),
-	caption = Color3.fromRGB(125, 76, 34), -- brown captions on parchment
+	panel = Color3.fromRGB(62, 128, 245), -- windows and HUD panels
+	card = Color3.fromRGB(110, 170, 255),
 	text = Color3.fromRGB(255, 255, 255),
 	muted = Color3.fromRGB(220, 232, 255),
 	green = Color3.fromRGB(60, 200, 110),
@@ -14752,25 +14397,7 @@ function UI.gradient(_color: Color3?, lighten: number?)
 	})
 end
 
--- Glossy two-tone shading for buttons: bright top half, a darker lip along the bottom.
-function UI.glossy()
-	return UI.new("UIGradient", {
-		Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
-			ColorSequenceKeypoint.new(0.5, Color3.new(0.95, 0.95, 0.95)),
-			ColorSequenceKeypoint.new(0.56, Color3.new(0.84, 0.84, 0.84)),
-			ColorSequenceKeypoint.new(1, Color3.new(0.72, 0.72, 0.72)),
-		}),
-		Rotation = 90,
-	})
-end
-
--- A darker shade of a colour, for card borders and the like.
-function UI.darker(color: Color3, amount: number?): Color3
-	return color:Lerp(Color3.new(0, 0, 0), amount or 0.45)
-end
-
--- A small panel: wood by default, thick dark outline, shaded top to bottom.
+-- A bright cartoon panel with a thick outline (the name is from the old glass style).
 function UI.glass(props, children)
 	local frame = UI.new("Frame", {
 		BackgroundColor3 = UI.colors.panel,
@@ -14821,7 +14448,7 @@ function UI.button(text: string, color: Color3, onClick: () -> (), props)
 		Size = UDim2.new(1, 0, 0, 30),
 	}, {
 		UI.corner(12),
-		UI.glossy(),
+		UI.gradient(),
 		UI.stroke(nil, 3),
 		scale,
 		UI.new("UIPadding", {
@@ -14896,32 +14523,16 @@ end
 -- opts = { species, mutations?, silhouette?, lines = { {text, color?} }, buttons = { button instances } }
 function UI.card(opts)
 	-- Clickable cards are buttons; buttons inside them still get their own clicks.
-	-- Cards are bright: a Freek's card takes its rarity colour, others the given colour.
-	local color = opts.background or opts.color
-	if not color and opts.species then
-		local species = Freeks.byId[opts.species]
-		local info = species and Rarities.info[species.rarity]
-		color = info and info.color:Lerp(Color3.new(0, 0, 0), 0.12)
-	end
-	color = color or UI.colors.card
 	local card = UI.new(if opts.onClick then "TextButton" else "Frame", {
-		BackgroundColor3 = color,
+		BackgroundColor3 = opts.background or UI.colors.card,
 	}, {
 		UI.corner(14),
-		if opts.border then UI.stroke(opts.border, 4) else UI.stroke(UI.darker(color, 0.55), 3.5),
+		if opts.border then UI.stroke(opts.border, 3.5) else UI.stroke(nil, 3),
 		UI.gradient(),
-	})
-	-- The content sits in its own frame so tags (ribbons) can hang off the card's edge.
-	local content = UI.new("Frame", {
-		Name = "Content",
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		Parent = card,
-	}, {
 		UI.new("UIPadding", {
 			PaddingLeft = UDim.new(0, 8),
 			PaddingRight = UDim.new(0, 8),
-			PaddingTop = UDim.new(0, if opts.ribbon then 12 else 8),
+			PaddingTop = UDim.new(0, 8),
 			PaddingBottom = UDim.new(0, 8),
 		}),
 		UI.new("UIListLayout", {
@@ -14930,9 +14541,6 @@ function UI.card(opts)
 			HorizontalAlignment = Enum.HorizontalAlignment.Center,
 		}),
 	})
-	if opts.ribbon then
-		UI.ribbon(card, opts.ribbon[1], opts.ribbon[2])
-	end
 
 	if opts.onClick then
 		card.Text = ""
@@ -14943,7 +14551,7 @@ function UI.card(opts)
 	local function add(child)
 		order += 1
 		child.LayoutOrder = order
-		child.Parent = content
+		child.Parent = card
 	end
 
 	if opts.egg then
@@ -14966,180 +14574,6 @@ function UI.card(opts)
 	end
 
 	return card
-end
-
--- A section header like "— WEAPONS —": big outlined text between two rounded bars.
-function UI.section(text: string, color: Color3?)
-	local tint = color or UI.colors.green
-	local row = UI.new("Frame", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 44),
-	}, {
-		UI.new("UIListLayout", {
-			FillDirection = Enum.FillDirection.Horizontal,
-			HorizontalAlignment = Enum.HorizontalAlignment.Center,
-			VerticalAlignment = Enum.VerticalAlignment.Center,
-			Padding = UDim.new(0, 12),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		}),
-	})
-	local function bar(order: number)
-		UI.new("Frame", {
-			BackgroundColor3 = tint,
-			Size = UDim2.fromOffset(46, 10),
-			LayoutOrder = order,
-			Parent = row,
-		}, { UI.corner(5), UI.stroke(nil, 2.5) })
-	end
-	bar(1)
-	UI.label(string.upper(text), {
-		FontFace = UI.fonts.heavy,
-		TextColor3 = tint,
-		TextScaled = false,
-		TextSize = 34,
-		Size = UDim2.fromOffset(0, 40),
-		AutomaticSize = Enum.AutomaticSize.X,
-		LayoutOrder = 2,
-		Parent = row,
-	})
-		:FindFirstChildOfClass("UIStroke").Thickness =
-		3
-	bar(3)
-	return row
-end
-
--- A little tag on the top edge of a card or panel ("POPULAR", "BEST VALUE", "NEW!").
-function UI.ribbon(parent: GuiObject, text: string, color: Color3?)
-	local tag = UI.label(text, {
-		Name = "Ribbon",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0, 0),
-		Size = UDim2.fromOffset(0, 22),
-		AutomaticSize = Enum.AutomaticSize.X,
-		TextScaled = false,
-		TextSize = 15,
-		FontFace = UI.fonts.heavy,
-		BackgroundTransparency = 0,
-		BackgroundColor3 = color or UI.colors.red,
-		ZIndex = parent.ZIndex + 3,
-		Parent = parent,
-	})
-	UI.corner(8).Parent = tag
-	UI.stroke(nil, 2.5).Parent = tag
-	UI.glossy().Parent = tag
-	UI.new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }).Parent = tag
-	return tag
-end
-
--- A wooden window: a chunky plank frame (with wood grain) around a cream parchment page.
--- Returns the frame and the page; put content in the page.
-function UI.wood(props, children)
-	local frame = UI.new("Frame", {
-		BackgroundColor3 = UI.colors.wood,
-	}, {
-		UI.corner(20),
-		UI.stroke(UI.colors.woodOutline, 4),
-		UI.gradient(),
-	})
-	-- Wood grain: thin darker streaks (only the frame's edges show round the page).
-	local streaks = { { 0.02, 0.5, 0.45 }, { 0.6, 0.1, 0.35 }, { 0.97, 0.15, 0.6 }, { 0.985, 0.55, 0.3 } }
-	for _, streak in streaks do
-		UI.new("Frame", {
-			Name = "Grain",
-			BackgroundColor3 = UI.colors.woodDark,
-			BackgroundTransparency = 0.55,
-			BorderSizePixel = 0,
-			Position = UDim2.new(streak[2], 0, streak[1], -1),
-			Size = UDim2.new(streak[3], 0, 0, 3),
-			Parent = frame,
-		}, { UI.corner(2) })
-	end
-	local page = UI.new("Frame", {
-		Name = "Page",
-		BackgroundColor3 = UI.colors.parchment,
-		Position = UDim2.fromOffset(18, 64),
-		Size = UDim2.new(1, -36, 1, -82),
-		ZIndex = 2,
-		Parent = frame,
-	}, {
-		UI.corner(12),
-		UI.stroke(UI.colors.parchmentEdge, 3),
-		UI.new("UIGradient", {
-			Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.new(0.93, 0.9, 0.84)),
-			Rotation = 90,
-		}),
-	})
-	for key, value in props or {} do
-		if key ~= "Parent" then
-			frame[key] = value
-		end
-	end
-	for _, child in children or {} do
-		child.Parent = frame
-	end
-	if props and props.Parent then
-		frame.Parent = props.Parent
-	end
-	return frame, page
-end
-
--- The box round everything you can see in a model, in world space. Unlike
--- Model:GetBoundingBox it counts stretched SpecialMeshes (like the eggs).
-local function visibleBounds(model: Model): (Vector3, Vector3)
-	local lo, hi
-	for _, p in model:GetDescendants() do
-		if p:IsA("BasePart") and p.Transparency < 1 then
-			local size = p.Size
-			local mesh = p:FindFirstChildOfClass("SpecialMesh")
-			if mesh then
-				size *= mesh.Scale
-			end
-			local half = size / 2
-			for _, corner in
-				{
-					Vector3.new(1, 1, 1),
-					Vector3.new(1, 1, -1),
-					Vector3.new(1, -1, 1),
-					Vector3.new(1, -1, -1),
-					Vector3.new(-1, 1, 1),
-					Vector3.new(-1, 1, -1),
-					Vector3.new(-1, -1, 1),
-					Vector3.new(-1, -1, -1),
-				}
-			do
-				local point = p.CFrame:PointToWorldSpace(half * corner)
-				lo = if lo then lo:Min(point) else point
-				hi = if hi then hi:Max(point) else point
-			end
-		end
-	end
-	return lo or Vector3.zero, hi or Vector3.zero
-end
-
--- A 3D icon: a model in a ViewportFrame, framed to fit, seen a little from the side.
-function UI.modelIcon(model: Model, size: UDim2?, turn: number?)
-	local frame = UI.new("ViewportFrame", {
-		BackgroundTransparency = 1,
-		Size = size or UDim2.fromOffset(72, 72),
-		Ambient = Color3.fromRGB(200, 200, 200),
-		LightColor = Color3.fromRGB(255, 250, 240),
-		LightDirection = Vector3.new(-1, -1.4, 1),
-	})
-	local pivot = model:GetPivot()
-	model:PivotTo(CFrame.Angles(0, turn or 0, 0) * pivot.Rotation)
-	local lo, hi = visibleBounds(model)
-	local center = (lo + hi) / 2
-	model.Parent = frame
-	local camera = Instance.new("Camera")
-	camera.FieldOfView = 30
-	-- Back off until the box fits (the camera looks along +Z at the model's front).
-	local extent = hi - lo
-	local fit = math.max(extent.X, extent.Y) / 2
-	local distance = fit / math.tan(math.rad(15)) + extent.Z / 2
-	camera.CFrame = CFrame.lookAt(center + Vector3.new(0, fit * 0.2, -distance), center)
-	camera.Parent = frame
-	frame.CurrentCamera = camera
-	return frame
 end
 
 -- A grid that grows to fit its cards.
