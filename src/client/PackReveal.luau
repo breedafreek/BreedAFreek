@@ -108,6 +108,163 @@ local function faceText(
 	return label
 end
 
+-- The back of the card, like a premium collector card: deep purple with a sunburst,
+-- a gold inner border and corner gems, a raised gold medallion holding a big googly eye
+-- (every Freek's trademark), a red FUSE A FREEK ribbon, and a holographic glint (returned,
+-- so it can be swept across). Built round the card's centre; the back faces -Z.
+local function buildCardBack(card: Model): BasePart
+	local half = Vector2.new(CARD_SIZE.X / 2, CARD_SIZE.Y / 2)
+	local back = -CARD_SIZE.Z / 2
+	local center = Vector2.new(0, 0.5)
+	-- Sunburst: rays from the medallion out to just inside the edge.
+	for k = 0, 23 do
+		local angle = k / 24 * math.pi * 2
+		local dir = Vector2.new(math.cos(angle), math.sin(angle))
+		local reachX = if math.abs(dir.X) > 1e-3
+			then (half.X - 0.45 - center.X * dir.X) / math.abs(dir.X)
+			else math.huge
+		local reachY = if math.abs(dir.Y) > 1e-3
+			then (half.Y - 0.45 - center.Y * math.sign(dir.Y)) / math.abs(dir.Y)
+			else math.huge
+		local length = math.min(reachX, reachY) - 1.8
+		if length > 0.3 then
+			local mid = center + dir * (1.8 + length / 2)
+			newPart(card, {
+				Name = "Ray",
+				Size = Vector3.new(length, if k % 2 == 0 then 0.42 else 0.22, 0.03),
+				CFrame = CFrame.new(mid.X, mid.Y, back - 0.02) * CFrame.Angles(0, 0, angle),
+				Color = if k % 2 == 0 then Color3.fromRGB(95, 60, 190) else Color3.fromRGB(70, 40, 150),
+			})
+		end
+	end
+	-- Gold inner border.
+	local inset = 0.4
+	for _, bar in
+		{
+			{ Vector3.new(CARD_SIZE.X - inset * 2, 0.14, 0.04), Vector3.new(0, half.Y - inset, 0) },
+			{ Vector3.new(CARD_SIZE.X - inset * 2, 0.14, 0.04), Vector3.new(0, -half.Y + inset, 0) },
+			{ Vector3.new(0.14, CARD_SIZE.Y - inset * 2, 0.04), Vector3.new(half.X - inset, 0, 0) },
+			{ Vector3.new(0.14, CARD_SIZE.Y - inset * 2, 0.04), Vector3.new(-half.X + inset, 0, 0) },
+		}
+	do
+		newPart(card, {
+			Name = "InnerBorder",
+			Size = bar[1],
+			CFrame = CFrame.new(bar[2].X, bar[2].Y, back - 0.04),
+			Color = GOLD,
+			Material = Enum.Material.Foil,
+		})
+	end
+	-- Corner gems: a gold diamond with a glowing pink dot.
+	for _, corner in { Vector2.new(1, 1), Vector2.new(-1, 1), Vector2.new(1, -1), Vector2.new(-1, -1) } do
+		local spot = Vector2.new(corner.X * (half.X - inset), corner.Y * (half.Y - inset))
+		newPart(card, {
+			Name = "CornerGem",
+			Size = Vector3.new(0.6, 0.6, 0.08),
+			CFrame = CFrame.new(spot.X, spot.Y, back - 0.07) * CFrame.Angles(0, 0, math.rad(45)),
+			Color = GOLD,
+			Material = Enum.Material.Foil,
+		})
+		newPart(card, {
+			Name = "CornerDot",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * 0.28,
+			CFrame = CFrame.new(spot.X, spot.Y, back - 0.12),
+			Color = Color3.fromRGB(255, 110, 220),
+			Material = Enum.Material.Neon,
+		})
+	end
+	-- The medallion: a gold ring round a deep blue disc, with a big googly eye popping out.
+	local function disc(name: string, diameter: number, depth: number, z: number, color: Color3, material)
+		return newPart(card, {
+			Name = name,
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(depth, diameter, diameter),
+			CFrame = CFrame.new(center.X, center.Y, z) * CFrame.Angles(0, math.pi / 2, 0),
+			Color = color,
+			Material = material or Enum.Material.SmoothPlastic,
+		})
+	end
+	disc("MedallionRing", 3.9, 0.3, back - 0.12, GOLD, Enum.Material.Foil)
+	disc("MedallionDisc", 3.3, 0.3, back - 0.2, Color3.fromRGB(28, 36, 100))
+	for k = 0, 11 do
+		local angle = k / 12 * math.pi * 2
+		newPart(card, {
+			Name = "MedallionStud",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * 0.22,
+			CFrame = CFrame.new(center.X + math.cos(angle) * 1.78, center.Y + math.sin(angle) * 1.78, back - 0.3),
+			Color = Color3.fromRGB(255, 240, 180),
+			Material = Enum.Material.Neon,
+		})
+	end
+	newPart(card, {
+		Name = "Eye",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.one * 2.3,
+		CFrame = CFrame.new(center.X, center.Y, back - 0.35),
+		Color = Color3.new(1, 1, 1),
+	})
+	newPart(card, {
+		Name = "Pupil",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.one * 1.05,
+		CFrame = CFrame.new(center.X - 0.25, center.Y + 0.2, back - 1.08),
+		Color = Color3.fromRGB(15, 15, 25),
+	})
+	newPart(card, {
+		Name = "Glint",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.one * 0.32,
+		CFrame = CFrame.new(center.X - 0.45, center.Y + 0.45, back - 1.52),
+		Color = Color3.new(1, 1, 1),
+		Material = Enum.Material.Neon,
+	})
+	-- The ribbon under the medallion, with folded-back ends.
+	local ribbonY = center.Y - 2.65
+	local ribbon = newPart(card, {
+		Name = "Ribbon",
+		Size = Vector3.new(4.6, 0.95, 0.12),
+		CFrame = CFrame.new(0, ribbonY, back - 0.18),
+		Color = Color3.fromRGB(225, 45, 65),
+	})
+	for _, side in { -1, 1 } do
+		newPart(card, {
+			Name = "RibbonEnd",
+			Size = Vector3.new(0.9, 0.75, 0.1),
+			CFrame = CFrame.new(side * 2.55, ribbonY - 0.18, back - 0.1) * CFrame.Angles(0, 0, math.rad(side * -12)),
+			Color = Color3.fromRGB(160, 25, 45),
+		})
+	end
+	faceText(
+		ribbon,
+		Enum.NormalId.Front,
+		"FUSE A FREEK",
+		Color3.new(1, 1, 1),
+		UDim2.fromScale(0.04, 0.08),
+		UDim2.fromScale(0.92, 0.84),
+		true
+	)
+	-- A small title along the top.
+	local title = newPart(card, {
+		Name = "BackTitle",
+		Size = Vector3.new(4.2, 0.55, 0.02),
+		CFrame = CFrame.new(0, half.Y - 1.05, back - 0.05),
+		Transparency = 1,
+	})
+	faceText(title, Enum.NormalId.Front, "✦ FREEK CARD ✦", GOLD, UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), true)
+	-- The holographic glint (moved by the reveal).
+	return newPart(card, {
+		Name = "Shine",
+		Size = Vector3.new(0.55, CARD_SIZE.Y - 1.4, 0.02),
+		CFrame = CFrame.new(0, 0, back - 0.62),
+		Color = Color3.new(1, 1, 1),
+		Material = Enum.Material.Neon,
+		Transparency = 1,
+		CastShadow = false,
+	})
+end
+
 -- Hides the rest of the HUD while the reveal plays; returns a function that brings it back.
 local function hideHud(playerGui: Instance, keep: Instance): () -> ()
 	local hidden = {}
@@ -551,7 +708,7 @@ function PackReveal.play(result, done: () -> ())
 		Name = "CardBody",
 		Size = CARD_SIZE,
 		CFrame = CFrame.new(),
-		Color = Color3.fromRGB(28, 30, 70),
+		Color = Color3.fromRGB(34, 16, 72),
 	})
 	card.PrimaryPart = body
 	local rimParts = {}
@@ -574,29 +731,8 @@ function PackReveal.play(result, done: () -> ())
 			})
 		)
 	end
-	-- The back (facing the camera to start with): the game's emblem.
-	newPart(card, {
-		Name = "Emblem",
-		Size = Vector3.new(3.2, 3.2, 0.1),
-		CFrame = CFrame.new(0, 0.4, -CARD_SIZE.Z / 2 - 0.05) * CFrame.Angles(0, 0, math.rad(45)),
-		Color = Color3.fromRGB(62, 128, 245),
-	})
-	local emblemText = newPart(card, {
-		Name = "EmblemText",
-		Size = Vector3.new(2.4, 2.4, 0.05),
-		CFrame = CFrame.new(0, 0.4, -CARD_SIZE.Z / 2 - 0.12),
-		Transparency = 1,
-	})
-	faceText(emblemText, Enum.NormalId.Front, "F", GOLD, UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), true)
-	faceText(
-		body,
-		Enum.NormalId.Front,
-		"FUSE A FREEK",
-		Color3.new(1, 1, 1),
-		UDim2.fromScale(0.08, 0.84),
-		UDim2.fromScale(0.84, 0.1),
-		true
-	)
+	-- The back (facing the camera to start with): see buildCardBack.
+	local shine = buildCardBack(card)
 	-- The front (hidden until the flip): rarity colours, series and rarity.
 	local face = newPart(card, {
 		Name = "CardFace",
@@ -634,6 +770,12 @@ function PackReveal.play(result, done: () -> ())
 				* CFrame.Angles(0, cardSpin + math.sin(t * 0.9) * 0.12, 0)
 				* (extra or CFrame.new())
 		)
+		-- A holographic glint sweeps across the back every couple of seconds.
+		local sweep = (t * 0.9) % 2.2 - 1.1 -- -1.1 .. 1.1, then a pause off the edge
+		local x = sweep * CARD_SIZE.X
+		local inside = math.abs(x) < CARD_SIZE.X / 2 - 1.6
+		shine.CFrame = body.CFrame * CFrame.new(x, 0, -CARD_SIZE.Z / 2 - 0.62) * CFrame.Angles(0, 0, math.rad(20))
+		shine.Transparency = if inside then 0.55 + 0.4 * (math.abs(x) / (CARD_SIZE.X / 2 - 1.6)) ^ 2 else 1
 	end
 	moveCamera(Vector3.new(0, 7.5, -20), CARD_HOME)
 	camTime = 0.6
