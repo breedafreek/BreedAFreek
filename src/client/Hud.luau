@@ -29,7 +29,7 @@ local function text(value: string, size: number, props)
 		TextColor3 = colors.text,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
+	}, { UI.textStroke(if size >= 22 then 2.5 else 1.8) })
 	for key, v in props or {} do
 		label[key] = v
 	end
@@ -67,9 +67,10 @@ function Hud.money(screen: ScreenGui)
 	local pill = UI.glass({
 		Name = "Money",
 		Position = UDim2.fromOffset(12, 12),
-		Size = UDim2.fromOffset(236, 60),
+		Size = UDim2.fromOffset(250, 62),
+		BackgroundColor3 = Color3.fromRGB(40, 165, 75),
 		Parent = screen,
-	}, { UI.corner(18) })
+	}, { UI.corner(20) })
 
 	UI.new("Frame", {
 		Name = "Coin",
@@ -84,7 +85,7 @@ function Hud.money(screen: ScreenGui)
 			Color = ColorSequence.new(Color3.fromRGB(255, 226, 120), Color3.fromRGB(235, 150, 30)),
 			Rotation = 90,
 		}),
-		UI.stroke(Color3.fromRGB(255, 240, 190), 1.5, 0.2),
+		UI.stroke(nil, 3),
 		text("$", 24, {
 			Size = UDim2.fromScale(1, 1),
 			TextXAlignment = Enum.TextXAlignment.Center,
@@ -93,16 +94,17 @@ function Hud.money(screen: ScreenGui)
 		}),
 	})
 
-	local amount = text("$0", 26, {
-		Position = UDim2.fromOffset(60, 7),
-		Size = UDim2.new(1, -116, 0, 28),
+	local amount = text("$0", 30, {
+		Position = UDim2.fromOffset(60, 4),
+		Size = UDim2.new(1, -116, 0, 32),
 		FontFace = UI.fonts.heavy,
+		TextColor3 = colors.money,
 		Parent = pill,
 	})
 	local income = text("+$0/s", 15, {
 		Position = UDim2.fromOffset(60, 35),
 		Size = UDim2.new(1, -116, 0, 18),
-		TextColor3 = colors.money,
+		TextColor3 = Color3.fromRGB(255, 240, 150),
 		Parent = pill,
 	})
 	local boost = UI.new("TextLabel", {
@@ -231,13 +233,13 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 	local GAP = 8
 	local height = #entries * TILE + (#entries - 1) * GAP + 16
 	-- Starts below the money pill and event chip, and shrinks to fit above the hotbar.
-	local rail = UI.glass({
+	local rail = UI.new("Frame", {
 		Name = "Menu",
 		Position = UDim2.fromOffset(12, 118),
 		Size = UDim2.fromOffset(TILE + 16, height),
+		BackgroundTransparency = 1,
 		Parent = screen,
 	}, {
-		UI.corner(20),
 		UI.new("UIPadding", {
 			PaddingTop = UDim.new(0, 8),
 			PaddingBottom = UDim.new(0, 8),
@@ -260,21 +262,22 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 			LayoutOrder = i,
 			Parent = rail,
 		}, {
-			UI.corner(16),
-			UI.gradient(color, 0.22),
-			text(icon, 26, {
-				Position = UDim2.fromOffset(0, 6),
-				Size = UDim2.new(1, 0, 0, 32),
+			UI.corner(18),
+			UI.gradient(),
+			text(icon, 30, {
+				Position = UDim2.fromOffset(0, 3),
+				Size = UDim2.new(1, 0, 0, 36),
 				TextXAlignment = Enum.TextXAlignment.Center,
 			}),
-			text(name, 12, {
-				Position = UDim2.new(0, 0, 1, -22),
-				Size = UDim2.new(1, 0, 0, 16),
+			text(name, 14, {
+				Position = UDim2.new(0, 0, 1, -21),
+				Size = UDim2.new(1, 0, 0, 17),
 				TextXAlignment = Enum.TextXAlignment.Center,
 				FontFace = UI.fonts.heavy,
 			}),
 		})
-		local ring = UI.stroke(Color3.new(1, 1, 1), 2.5, 1)
+		-- Thick dark outline; turns white on the open tab.
+		local ring = UI.stroke(nil, 3.5)
 		ring.Parent = tile
 		tiles[name] = ring
 		hoverGrow(tile)
@@ -285,7 +288,8 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 
 	return function(active: string?)
 		for name, ring in tiles do
-			TweenService:Create(ring, TweenInfo.new(0.15), { Transparency = if name == active then 0 else 1 }):Play()
+			ring.Color = if name == active then Color3.new(1, 1, 1) else UI.OUTLINE
+			ring.Thickness = if name == active then 4.5 else 3.5
 		end
 	end
 end
@@ -550,8 +554,8 @@ end
 local TOAST_COLORS = {
 	error = colors.red,
 	success = colors.green,
-	money = colors.money,
-	discovery = colors.gold,
+	money = Color3.fromRGB(40, 165, 75),
+	discovery = Color3.fromRGB(255, 160, 30),
 }
 
 -- Returns toast(message, kind?).
@@ -574,11 +578,12 @@ function Hud.toasts(screen: ScreenGui)
 		local accent = TOAST_COLORS[kind or ""] or colors.blue
 		local big = kind == "discovery"
 		local frame = UI.glass({
-			Size = UDim2.fromOffset(0, if big then 44 else 36),
+			Size = UDim2.fromOffset(0, if big then 48 else 38),
 			AutomaticSize = Enum.AutomaticSize.X,
+			BackgroundColor3 = accent,
 			Parent = holder,
 		}, {
-			UI.corner(18),
+			UI.corner(20),
 			UI.new("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 16) }),
 			UI.new("UIListLayout", {
 				FillDirection = Enum.FillDirection.Horizontal,
@@ -586,15 +591,11 @@ function Hud.toasts(screen: ScreenGui)
 				Padding = UDim.new(0, 10),
 			}),
 		})
-		UI.new("Frame", {
-			BackgroundColor3 = accent,
-			Size = UDim2.fromOffset(4, if big then 24 else 18),
-			Parent = frame,
-		}, { UI.corner(2) })
-		local label = text(message, if big then 17 else 15, {
-			Size = UDim2.fromOffset(0, 24),
+		local label = text(message, if big then 22 else 17, {
+			Size = UDim2.fromOffset(0, 28),
 			AutomaticSize = Enum.AutomaticSize.X,
-			TextColor3 = if big then accent:Lerp(Color3.new(1, 1, 1), 0.3) else colors.text,
+			FontFace = if big then UI.fonts.heavy else UI.fonts.bold,
+			TextColor3 = colors.text,
 			Parent = frame,
 		})
 		label.TextTruncate = Enum.TextTruncate.None

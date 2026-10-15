@@ -105,18 +105,28 @@ local window = UI.glass({
 	UI.corner(22),
 	UI.new("UISizeConstraint", { MaxSize = Vector2.new(860, 600) }),
 })
-local windowTitle = UI.label("", {
-	Size = UDim2.new(1, -70, 0, 34),
-	Position = UDim2.fromOffset(20, 12),
-	TextXAlignment = Enum.TextXAlignment.Left,
-	FontFace = UI.fonts.heavy,
+-- The title sits on a bright ribbon across the top of the window.
+local titleRibbon = UI.glass({
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.new(0.5, 0, 0, 2),
+	Size = UDim2.fromOffset(300, 48),
+	BackgroundColor3 = Color3.fromRGB(255, 190, 40),
+	ZIndex = 6,
 	Parent = window,
+}, { UI.corner(24) })
+local windowTitle = UI.label("", {
+	Size = UDim2.new(1, -20, 1, -8),
+	Position = UDim2.fromOffset(10, 4),
+	TextXAlignment = Enum.TextXAlignment.Center,
+	FontFace = UI.fonts.heavy,
+	ZIndex = 7,
+	Parent = titleRibbon,
 })
 local body = UI.new("ScrollingFrame", {
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
-	Position = UDim2.fromOffset(12, 56),
-	Size = UDim2.new(1, -24, 1, -68),
+	Position = UDim2.fromOffset(12, 40),
+	Size = UDim2.new(1, -24, 1, -52),
 	CanvasSize = UDim2.new(),
 	AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	ScrollBarThickness = 8,
@@ -173,15 +183,16 @@ local function open(name: string)
 	render()
 end
 
-UI.button("✕", colors.gray, function()
+UI.button("X", colors.red, function()
 	open(currentWindow)
 end, {
-	Size = UDim2.fromOffset(36, 36),
-	Position = UDim2.new(1, -50, 0, 12),
+	Size = UDim2.fromOffset(44, 44),
+	Position = UDim2.new(1, -30, 0, -14),
+	ZIndex = 6,
 	Parent = window,
 })
 	:FindFirstChildOfClass("UICorner").CornerRadius =
-	UDim.new(0, 18)
+	UDim.new(0, 22)
 
 local function heading(text: string, order: number)
 	return UI.label(text, {

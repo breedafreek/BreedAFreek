@@ -1,5 +1,7 @@
 -- Small helpers for building the UI in code (so there's nothing to set up in Studio).
--- Style: dark frosted-glass panels, rounded corners, Builder Sans, soft gradient buttons.
+-- Style: bright cartoon look like the big Roblox simulators: saturated panels with a thick
+-- dark outline, chunky shaded buttons that squish when pressed, Luckiest Guy titles,
+-- Fredoka One text, and every bit of text outlined in dark navy.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -7,18 +9,20 @@ local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 
 local UI = {}
 
-local FAMILY = "rbxasset://fonts/families/BuilderSans.json"
 UI.fonts = {
-	regular = Font.new(FAMILY, Enum.FontWeight.Medium),
-	bold = Font.new(FAMILY, Enum.FontWeight.Bold),
-	heavy = Font.new(FAMILY, Enum.FontWeight.ExtraBold),
+	regular = Font.fromEnum(Enum.Font.FredokaOne),
+	bold = Font.fromEnum(Enum.Font.FredokaOne),
+	heavy = Font.fromEnum(Enum.Font.LuckiestGuy),
 }
 
+-- The dark outline around panels, buttons and text.
+UI.OUTLINE = Color3.fromRGB(20, 22, 48)
+
 UI.colors = {
-	panel = Color3.fromRGB(22, 19, 34), -- glass panels
-	card = Color3.fromRGB(40, 34, 60),
+	panel = Color3.fromRGB(62, 128, 245), -- windows and HUD panels
+	card = Color3.fromRGB(110, 170, 255),
 	text = Color3.fromRGB(255, 255, 255),
-	muted = Color3.fromRGB(170, 164, 192),
+	muted = Color3.fromRGB(220, 232, 255),
 	green = Color3.fromRGB(60, 200, 110),
 	blue = Color3.fromRGB(70, 140, 255),
 	pink = Color3.fromRGB(255, 95, 170),
@@ -30,7 +34,7 @@ UI.colors = {
 	purple = Color3.fromRGB(160, 110, 240),
 }
 
-UI.GLASS_TRANSPARENCY = 0.12
+UI.GLASS_TRANSPARENCY = 0
 
 -- UI.new("Frame", { Size = ... }, { children... })
 function UI.new(className: string, props, children)
@@ -53,30 +57,44 @@ function UI.corner(radius: number?)
 	return UI.new("UICorner", { CornerRadius = UDim.new(0, radius or 10) })
 end
 
--- A thin outline; defaults to the faint white edge used on glass panels.
+-- An outline around a frame; defaults to the thick dark cartoon outline.
 function UI.stroke(color: Color3?, thickness: number?, transparency: number?)
 	return UI.new("UIStroke", {
-		Color = color or Color3.new(1, 1, 1),
-		Thickness = thickness or 1.5,
-		Transparency = transparency or (if color then 0 else 0.86),
+		Color = color or UI.OUTLINE,
+		Thickness = thickness or 3,
+		Transparency = transparency or 0,
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		LineJoinMode = Enum.LineJoinMode.Round,
 	})
 end
 
--- Vertical gradient from a lighter version of color at the top to color at the bottom.
-function UI.gradient(color: Color3, lighten: number?)
+-- An outline around text (the chunky cartoon text look).
+function UI.textStroke(thickness: number?)
+	return UI.new("UIStroke", {
+		Color = UI.OUTLINE,
+		Thickness = thickness or 2,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual,
+		LineJoinMode = Enum.LineJoinMode.Round,
+	})
+end
+
+-- Shading from light at the top to darker at the bottom. It multiplies whatever colour the
+-- frame is, so it works on any button or panel. (color/lighten are kept for old callers.)
+function UI.gradient(_color: Color3?, lighten: number?)
+	local top = 1
+	local bottom = 0.78 - (lighten or 0) * 0.3
 	return UI.new("UIGradient", {
-		Color = ColorSequence.new(color:Lerp(Color3.new(1, 1, 1), lighten or 0.18), color),
+		Color = ColorSequence.new(Color3.new(top, top, top), Color3.new(bottom, bottom, bottom)),
 		Rotation = 90,
 	})
 end
 
--- A frosted-glass panel.
+-- A bright cartoon panel with a thick outline (the name is from the old glass style).
 function UI.glass(props, children)
 	local frame = UI.new("Frame", {
 		BackgroundColor3 = UI.colors.panel,
 		BackgroundTransparency = UI.GLASS_TRANSPARENCY,
-	}, { UI.corner(14), UI.stroke() })
+	}, { UI.corner(16), UI.stroke(nil, 3.5), UI.gradient() })
 	for key, value in props or {} do
 		if key ~= "Parent" then
 			frame[key] = value
@@ -99,25 +117,32 @@ function UI.label(text: string, props)
 		TextColor3 = UI.colors.text,
 		TextScaled = true,
 		Size = UDim2.new(1, 0, 0, 24),
-	})
+	}, { UI.textStroke(1.6) })
 	for key, value in props or {} do
 		label[key] = value
 	end
 	return label
 end
 
+-- A chunky cartoon button: bright shaded fill, thick dark outline, outlined text, and a
+-- squish when pressed.
 function UI.button(text: string, color: Color3, onClick: () -> (), props)
+	local scale = UI.new("UIScale")
 	local button = UI.new("TextButton", {
 		BackgroundColor3 = color,
 		FontFace = UI.fonts.heavy,
 		Text = text,
 		TextColor3 = UI.colors.text,
+		TextStrokeColor3 = UI.OUTLINE,
+		TextStrokeTransparency = 0,
 		TextScaled = true,
-		AutoButtonColor = true,
+		AutoButtonColor = false,
 		Size = UDim2.new(1, 0, 0, 30),
 	}, {
-		UI.corner(10),
-		UI.gradient(color),
+		UI.corner(12),
+		UI.gradient(),
+		UI.stroke(nil, 3),
+		scale,
 		UI.new("UIPadding", {
 			PaddingLeft = UDim.new(0, 8),
 			PaddingRight = UDim.new(0, 8),
@@ -128,6 +153,15 @@ function UI.button(text: string, color: Color3, onClick: () -> (), props)
 	for key, value in props or {} do
 		button[key] = value
 	end
+	button.MouseButton1Down:Connect(function()
+		scale.Scale = 0.92
+	end)
+	button.MouseButton1Up:Connect(function()
+		scale.Scale = 1
+	end)
+	button.MouseLeave:Connect(function()
+		scale.Scale = 1
+	end)
 	button.Activated:Connect(onClick)
 	return button
 end
@@ -162,8 +196,9 @@ function UI.card(opts)
 	local card = UI.new(if opts.onClick then "TextButton" else "Frame", {
 		BackgroundColor3 = opts.background or UI.colors.card,
 	}, {
-		UI.corner(12),
-		if opts.border then UI.stroke(opts.border, 2.5) else UI.stroke(),
+		UI.corner(14),
+		if opts.border then UI.stroke(opts.border, 3.5) else UI.stroke(nil, 3),
+		UI.gradient(),
 		UI.new("UIPadding", {
 			PaddingLeft = UDim.new(0, 8),
 			PaddingRight = UDim.new(0, 8),

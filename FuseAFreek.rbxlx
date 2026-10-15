@@ -4465,6 +4465,7 @@ local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
 local ActionService = require(script.Parent.ActionService)
 local Decor = require(script.Parent.Decor)
+local FreekTag = require(script.Parent.FreekTag)
 local PlotService = require(script.Parent.PlotService)
 local StealService = require(script.Parent.StealService)
 
@@ -4779,27 +4780,7 @@ local function fire(cannon: number)
 
 	local anchor = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
 	local freek = { species = species.id, mutations = mutations }
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromOffset(180, 50)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, height - (anchor.Position.Y - path.muzzle.Y) + 1.2, 0)
-	gui.MaxDistance = 90
-	gui.LightInfluence = 0
-	local name = Instance.new("TextLabel")
-	name.Size = UDim2.fromScale(1, 0.55)
-	name.BackgroundTransparency = 1
-	name.TextScaled = true
-	name.Font = Enum.Font.FredokaOne
-	name.Text = FreekUtil.displayName(freek)
-	name.TextColor3 = if mutations then Mutations.byId[mutations[1]].color else Rarities.info[species.rarity].color
-	name.TextStrokeTransparency = 0.2
-	name.Parent = gui
-	local cost = name:Clone()
-	cost.Size = UDim2.fromScale(1, 0.45)
-	cost.Position = UDim2.fromScale(0, 0.55)
-	cost.Text = Format.money(price) .. "  ·  " .. Format.money(FreekUtil.income(freek)) .. "/s"
-	cost.TextColor3 = Color3.fromRGB(140, 255, 140)
-	cost.Parent = gui
-	gui.Parent = anchor
+	FreekTag.add(anchor, freek, height - (anchor.Position.Y - path.muzzle.Y) + 1.6, 90, price)
 
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "GrabPrompt"
@@ -5994,6 +5975,82 @@ return Environment
       </Item>
       <Item class="ModuleScript" referent="32">
         <Properties>
+          <string name="Name">FreekTag</string>
+          <string name="Source"><![CDATA[-- The floating tag over a Freek, in the chunky cartoon style: rarity on top (in its colour),
+-- the name big and bold (in its mutation's colour if it has one), the price in gold for
+-- Freeks that are for sale, and the money it makes in green. Everything is outlined.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Format = require(ReplicatedStorage.Shared.Format)
+local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local Mutations = require(ReplicatedStorage.Shared.Mutations)
+local Rarities = require(ReplicatedStorage.Shared.Rarities)
+
+local FreekTag = {}
+
+local OUTLINE = Color3.fromRGB(20, 22, 48)
+
+local function line(parent: Instance, text: string, color: Color3, top: number, height: number, font: Enum.Font)
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Position = UDim2.fromScale(0, top)
+	label.Size = UDim2.fromScale(1, height)
+	label.TextScaled = true
+	label.Font = font
+	label.Text = text
+	label.TextColor3 = color
+	label.Parent = parent
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = OUTLINE
+	stroke.Thickness = 2.5
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
+	stroke.Parent = label
+	return label
+end
+
+-- Adds the tag to anchor, `above` studs over it. price is shown when the Freek is for sale.
+function FreekTag.add(anchor: BasePart, freek, above: number, maxDistance: number, price: number?): BillboardGui
+	local species = FreekUtil.species(freek)
+	local rarity = species and species.rarity or "Common"
+	local top = Mutations.top(freek.mutations)
+	local lines = if price then 4 else 3
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromOffset(200, lines * 21)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, above, 0)
+	gui.MaxDistance = maxDistance
+	gui.LightInfluence = 0
+	local h = 1 / lines
+	line(gui, string.upper(rarity), Rarities.info[rarity].color, 0, h * 0.85, Enum.Font.LuckiestGuy)
+	line(
+		gui,
+		FreekUtil.displayName(freek),
+		if top then Mutations.byId[top].color else Color3.new(1, 1, 1),
+		h * 0.85,
+		h * 1.3,
+		Enum.Font.FredokaOne
+	)
+	if price then
+		line(gui, Format.money(price), Color3.fromRGB(255, 215, 60), h * 2.15, h * 0.95, Enum.Font.LuckiestGuy)
+	end
+	line(
+		gui,
+		Format.money(FreekUtil.income(freek)) .. "/s",
+		Color3.fromRGB(110, 240, 120),
+		if price then h * 3.1 else h * 2.15,
+		h * 0.9,
+		Enum.Font.LuckiestGuy
+	)
+	gui.Parent = anchor
+	return gui
+end
+
+return FreekTag
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="33">
+        <Properties>
           <string name="Name">HalloweenDecor</string>
           <string name="Source"><![CDATA[-- Halloween props: ghosts, bats, cobwebs, tombstones, dead trees, a witch's cauldron,
 -- witch hats, string lights and creeping fog.
@@ -6452,7 +6509,7 @@ return HalloweenDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">LuckService</string>
           <string name="Source"><![CDATA[-- Monster Crates, the daily Lucky Wheel and Lucky Hour events (rules and odds in
@@ -6737,7 +6794,7 @@ return LuckService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="34">
+      <Item class="Script" referent="35">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -6798,7 +6855,7 @@ print("[Fuse a Freek] Server started")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -6890,7 +6947,7 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the map and gives every player a barn (see Barn.luau) with Freek pads and Fusion
@@ -6911,13 +6968,12 @@ local GateTiers = require(ReplicatedStorage.Shared.GateTiers)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
-local Mutations = require(ReplicatedStorage.Shared.Mutations)
-local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local Barn = require(script.Parent.Barn)
 local DataService = require(script.Parent.DataService)
 local Decor = require(script.Parent.Decor)
+local FreekTag = require(script.Parent.FreekTag)
 
 local PLOT_SIZE = Barn.SIZE
 local ROW_SPACING = 70 -- between barn centres along the town square
@@ -6953,8 +7009,12 @@ local function billboard(parent: Instance, size: UDim2, offset: Vector3, maxDist
 	label.TextScaled = true
 	label.Font = Enum.Font.FredokaOne
 	label.TextColor3 = Color3.new(1, 1, 1)
-	label.TextStrokeTransparency = 0.3
 	label.Parent = gui
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(20, 22, 48)
+	stroke.Thickness = 3
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
+	stroke.Parent = label
 	gui.Parent = parent
 	return gui, label
 end
@@ -7007,6 +7067,9 @@ local function setSign(plot, text: string)
 	plot.signText = text
 	for _, label in plot.signLabels do
 		label.Text = text
+	end
+	if plot.nameTag then
+		plot.nameTag.Text = string.upper(text)
 	end
 end
 
@@ -7278,6 +7341,21 @@ local function buildPlot(index: number)
 	})
 	local _, gateLabel = billboard(gateGuiPart, UDim2.fromScale(12, 2.5), Vector3.zero, 120)
 
+	-- The owner's name floating high over the barn, big and outlined, seen from anywhere.
+	local nameAnchor = part({
+		Name = "NameTag",
+		Size = Vector3.one,
+		CFrame = origin * CFrame.new(0, 44, 0),
+		Transparency = 1,
+		CanCollide = false,
+		CanQuery = false,
+		Parent = folder,
+	})
+	local _, nameTag = billboard(nameAnchor, UDim2.fromScale(34, 6), Vector3.zero, 600)
+	nameTag.Font = Enum.Font.LuckiestGuy
+	nameTag.TextColor3 = Color3.fromRGB(255, 225, 90)
+	nameTag:FindFirstChildOfClass("UIStroke").Thickness = 4
+
 	-- The padlock post just inside the gate: the only place the owner can lock it from.
 	local lockSpot = origin * CFrame.new(GATE_WIDTH / 2 + 1.5, 1, -half + 4)
 	local metal = Color3.fromRGB(55, 55, 65)
@@ -7354,6 +7432,7 @@ local function buildPlot(index: number)
 		freeks = freekFolder,
 		barn = barn,
 		gateLabel = gateLabel,
+		nameTag = nameTag,
 		lockLight = lockLight,
 		lockPrompt = lockPrompt,
 		lockedUntil = math.huge,
@@ -7371,37 +7450,12 @@ local function placeFreek(plot, freek, ground: CFrame, steal)
 	model:SetAttribute("Ground", ground)
 	model.Parent = plot.freeks
 
-	local species = FreekUtil.species(freek)
 	local anchor = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
 	if not anchor then
 		return
 	end
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromOffset(170, 46)
-	gui.MaxDistance = 70
-	gui.LightInfluence = 0
-
-	local name = Instance.new("TextLabel")
-	name.Size = UDim2.fromScale(1, 0.6)
-	name.BackgroundTransparency = 1
-	name.TextScaled = true
-	name.Font = Enum.Font.FredokaOne
-	name.Text = FreekUtil.displayName(freek)
-	local topMutation = Mutations.top(freek.mutations)
-	name.TextColor3 = if topMutation then Mutations.byId[topMutation].color else Rarities.info[species.rarity].color
-	name.TextStrokeTransparency = 0.2
-	name.Parent = gui
-
-	local income = name:Clone()
-	income.Size = UDim2.fromScale(1, 0.4)
-	income.Position = UDim2.fromScale(0, 0.6)
-	income.Text = Format.money(FreekUtil.income(freek)) .. "/s"
-	income.TextColor3 = Color3.fromRGB(140, 255, 140)
-	income.Parent = gui
-
 	-- The tag hangs off the body, so measure the offset from the body's center, not the feet.
-	gui.StudsOffsetWorldSpace = Vector3.new(0, height - (anchor.Position.Y - ground.Position.Y) + 1, 0)
-	gui.Parent = anchor
+	FreekTag.add(anchor, freek, height - (anchor.Position.Y - ground.Position.Y) + 1.4, 70)
 
 	if steal then
 		local prompt = Instance.new("ProximityPrompt")
@@ -7671,7 +7725,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">RebirthService</string>
           <string name="Source"><![CDATA[-- Rebirth: pay Config.rebirthCost to start over with a permanent income bonus.
@@ -7767,7 +7821,7 @@ return RebirthService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">Recipes</string>
           <string name="Source"><![CDATA[-- Decides what two Freeks fuse into. Server-only so players can't read the Secret recipes
@@ -7818,7 +7872,7 @@ return Recipes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -8112,7 +8166,7 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Stealing Freeks from other players' yards.
@@ -8543,7 +8597,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
@@ -8827,7 +8881,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- Weapons: giving them out, buying them, and what happens when they hit.
@@ -9156,19 +9210,19 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="43">
+  <Item class="StarterPlayer" referent="44">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="44">
+    <Item class="StarterPlayerScripts" referent="45">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="45">
+      <Item class="Folder" referent="46">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="46">
+        <Item class="ModuleScript" referent="47">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -9242,7 +9296,7 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="47">
+        <Item class="ModuleScript" referent="48">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, event chip, menu tabs, leaderboard,
@@ -9276,7 +9330,7 @@ local function text(value: string, size: number, props)
 		TextColor3 = colors.text,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
+	}, { UI.textStroke(if size >= 22 then 2.5 else 1.8) })
 	for key, v in props or {} do
 		label[key] = v
 	end
@@ -9314,9 +9368,10 @@ function Hud.money(screen: ScreenGui)
 	local pill = UI.glass({
 		Name = "Money",
 		Position = UDim2.fromOffset(12, 12),
-		Size = UDim2.fromOffset(236, 60),
+		Size = UDim2.fromOffset(250, 62),
+		BackgroundColor3 = Color3.fromRGB(40, 165, 75),
 		Parent = screen,
-	}, { UI.corner(18) })
+	}, { UI.corner(20) })
 
 	UI.new("Frame", {
 		Name = "Coin",
@@ -9331,7 +9386,7 @@ function Hud.money(screen: ScreenGui)
 			Color = ColorSequence.new(Color3.fromRGB(255, 226, 120), Color3.fromRGB(235, 150, 30)),
 			Rotation = 90,
 		}),
-		UI.stroke(Color3.fromRGB(255, 240, 190), 1.5, 0.2),
+		UI.stroke(nil, 3),
 		text("$", 24, {
 			Size = UDim2.fromScale(1, 1),
 			TextXAlignment = Enum.TextXAlignment.Center,
@@ -9340,16 +9395,17 @@ function Hud.money(screen: ScreenGui)
 		}),
 	})
 
-	local amount = text("$0", 26, {
-		Position = UDim2.fromOffset(60, 7),
-		Size = UDim2.new(1, -116, 0, 28),
+	local amount = text("$0", 30, {
+		Position = UDim2.fromOffset(60, 4),
+		Size = UDim2.new(1, -116, 0, 32),
 		FontFace = UI.fonts.heavy,
+		TextColor3 = colors.money,
 		Parent = pill,
 	})
 	local income = text("+$0/s", 15, {
 		Position = UDim2.fromOffset(60, 35),
 		Size = UDim2.new(1, -116, 0, 18),
-		TextColor3 = colors.money,
+		TextColor3 = Color3.fromRGB(255, 240, 150),
 		Parent = pill,
 	})
 	local boost = UI.new("TextLabel", {
@@ -9478,13 +9534,13 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 	local GAP = 8
 	local height = #entries * TILE + (#entries - 1) * GAP + 16
 	-- Starts below the money pill and event chip, and shrinks to fit above the hotbar.
-	local rail = UI.glass({
+	local rail = UI.new("Frame", {
 		Name = "Menu",
 		Position = UDim2.fromOffset(12, 118),
 		Size = UDim2.fromOffset(TILE + 16, height),
+		BackgroundTransparency = 1,
 		Parent = screen,
 	}, {
-		UI.corner(20),
 		UI.new("UIPadding", {
 			PaddingTop = UDim.new(0, 8),
 			PaddingBottom = UDim.new(0, 8),
@@ -9507,21 +9563,22 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 			LayoutOrder = i,
 			Parent = rail,
 		}, {
-			UI.corner(16),
-			UI.gradient(color, 0.22),
-			text(icon, 26, {
-				Position = UDim2.fromOffset(0, 6),
-				Size = UDim2.new(1, 0, 0, 32),
+			UI.corner(18),
+			UI.gradient(),
+			text(icon, 30, {
+				Position = UDim2.fromOffset(0, 3),
+				Size = UDim2.new(1, 0, 0, 36),
 				TextXAlignment = Enum.TextXAlignment.Center,
 			}),
-			text(name, 12, {
-				Position = UDim2.new(0, 0, 1, -22),
-				Size = UDim2.new(1, 0, 0, 16),
+			text(name, 14, {
+				Position = UDim2.new(0, 0, 1, -21),
+				Size = UDim2.new(1, 0, 0, 17),
 				TextXAlignment = Enum.TextXAlignment.Center,
 				FontFace = UI.fonts.heavy,
 			}),
 		})
-		local ring = UI.stroke(Color3.new(1, 1, 1), 2.5, 1)
+		-- Thick dark outline; turns white on the open tab.
+		local ring = UI.stroke(nil, 3.5)
 		ring.Parent = tile
 		tiles[name] = ring
 		hoverGrow(tile)
@@ -9532,7 +9589,8 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 
 	return function(active: string?)
 		for name, ring in tiles do
-			TweenService:Create(ring, TweenInfo.new(0.15), { Transparency = if name == active then 0 else 1 }):Play()
+			ring.Color = if name == active then Color3.new(1, 1, 1) else UI.OUTLINE
+			ring.Thickness = if name == active then 4.5 else 3.5
 		end
 	end
 end
@@ -9797,8 +9855,8 @@ end
 local TOAST_COLORS = {
 	error = colors.red,
 	success = colors.green,
-	money = colors.money,
-	discovery = colors.gold,
+	money = Color3.fromRGB(40, 165, 75),
+	discovery = Color3.fromRGB(255, 160, 30),
 }
 
 -- Returns toast(message, kind?).
@@ -9821,11 +9879,12 @@ function Hud.toasts(screen: ScreenGui)
 		local accent = TOAST_COLORS[kind or ""] or colors.blue
 		local big = kind == "discovery"
 		local frame = UI.glass({
-			Size = UDim2.fromOffset(0, if big then 44 else 36),
+			Size = UDim2.fromOffset(0, if big then 48 else 38),
 			AutomaticSize = Enum.AutomaticSize.X,
+			BackgroundColor3 = accent,
 			Parent = holder,
 		}, {
-			UI.corner(18),
+			UI.corner(20),
 			UI.new("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 16) }),
 			UI.new("UIListLayout", {
 				FillDirection = Enum.FillDirection.Horizontal,
@@ -9833,15 +9892,11 @@ function Hud.toasts(screen: ScreenGui)
 				Padding = UDim.new(0, 10),
 			}),
 		})
-		UI.new("Frame", {
-			BackgroundColor3 = accent,
-			Size = UDim2.fromOffset(4, if big then 24 else 18),
-			Parent = frame,
-		}, { UI.corner(2) })
-		local label = text(message, if big then 17 else 15, {
-			Size = UDim2.fromOffset(0, 24),
+		local label = text(message, if big then 22 else 17, {
+			Size = UDim2.fromOffset(0, 28),
 			AutomaticSize = Enum.AutomaticSize.X,
-			TextColor3 = if big then accent:Lerp(Color3.new(1, 1, 1), 0.3) else colors.text,
+			FontFace = if big then UI.fonts.heavy else UI.fonts.bold,
+			TextColor3 = colors.text,
 			Parent = frame,
 		})
 		label.TextTruncate = Enum.TextTruncate.None
@@ -9860,7 +9915,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="48">
+        <Item class="LocalScript" referent="49">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -9970,18 +10025,28 @@ local window = UI.glass({
 	UI.corner(22),
 	UI.new("UISizeConstraint", { MaxSize = Vector2.new(860, 600) }),
 })
-local windowTitle = UI.label("", {
-	Size = UDim2.new(1, -70, 0, 34),
-	Position = UDim2.fromOffset(20, 12),
-	TextXAlignment = Enum.TextXAlignment.Left,
-	FontFace = UI.fonts.heavy,
+-- The title sits on a bright ribbon across the top of the window.
+local titleRibbon = UI.glass({
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.new(0.5, 0, 0, 2),
+	Size = UDim2.fromOffset(300, 48),
+	BackgroundColor3 = Color3.fromRGB(255, 190, 40),
+	ZIndex = 6,
 	Parent = window,
+}, { UI.corner(24) })
+local windowTitle = UI.label("", {
+	Size = UDim2.new(1, -20, 1, -8),
+	Position = UDim2.fromOffset(10, 4),
+	TextXAlignment = Enum.TextXAlignment.Center,
+	FontFace = UI.fonts.heavy,
+	ZIndex = 7,
+	Parent = titleRibbon,
 })
 local body = UI.new("ScrollingFrame", {
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
-	Position = UDim2.fromOffset(12, 56),
-	Size = UDim2.new(1, -24, 1, -68),
+	Position = UDim2.fromOffset(12, 40),
+	Size = UDim2.new(1, -24, 1, -52),
 	CanvasSize = UDim2.new(),
 	AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	ScrollBarThickness = 8,
@@ -10038,15 +10103,16 @@ local function open(name: string)
 	render()
 end
 
-UI.button("✕", colors.gray, function()
+UI.button("X", colors.red, function()
 	open(currentWindow)
 end, {
-	Size = UDim2.fromOffset(36, 36),
-	Position = UDim2.new(1, -50, 0, 12),
+	Size = UDim2.fromOffset(44, 44),
+	Position = UDim2.new(1, -30, 0, -14),
+	ZIndex = 6,
 	Parent = window,
 })
 	:FindFirstChildOfClass("UICorner").CornerRadius =
-	UDim.new(0, 18)
+	UDim.new(0, 22)
 
 local function heading(text: string, order: number)
 	return UI.label(text, {
@@ -11543,11 +11609,13 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="49">
+        <Item class="ModuleScript" referent="50">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).
--- Style: dark frosted-glass panels, rounded corners, Builder Sans, soft gradient buttons.
+-- Style: bright cartoon look like the big Roblox simulators: saturated panels with a thick
+-- dark outline, chunky shaded buttons that squish when pressed, Luckiest Guy titles,
+-- Fredoka One text, and every bit of text outlined in dark navy.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -11555,18 +11623,20 @@ local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 
 local UI = {}
 
-local FAMILY = "rbxasset://fonts/families/BuilderSans.json"
 UI.fonts = {
-	regular = Font.new(FAMILY, Enum.FontWeight.Medium),
-	bold = Font.new(FAMILY, Enum.FontWeight.Bold),
-	heavy = Font.new(FAMILY, Enum.FontWeight.ExtraBold),
+	regular = Font.fromEnum(Enum.Font.FredokaOne),
+	bold = Font.fromEnum(Enum.Font.FredokaOne),
+	heavy = Font.fromEnum(Enum.Font.LuckiestGuy),
 }
 
+-- The dark outline around panels, buttons and text.
+UI.OUTLINE = Color3.fromRGB(20, 22, 48)
+
 UI.colors = {
-	panel = Color3.fromRGB(22, 19, 34), -- glass panels
-	card = Color3.fromRGB(40, 34, 60),
+	panel = Color3.fromRGB(62, 128, 245), -- windows and HUD panels
+	card = Color3.fromRGB(110, 170, 255),
 	text = Color3.fromRGB(255, 255, 255),
-	muted = Color3.fromRGB(170, 164, 192),
+	muted = Color3.fromRGB(220, 232, 255),
 	green = Color3.fromRGB(60, 200, 110),
 	blue = Color3.fromRGB(70, 140, 255),
 	pink = Color3.fromRGB(255, 95, 170),
@@ -11578,7 +11648,7 @@ UI.colors = {
 	purple = Color3.fromRGB(160, 110, 240),
 }
 
-UI.GLASS_TRANSPARENCY = 0.12
+UI.GLASS_TRANSPARENCY = 0
 
 -- UI.new("Frame", { Size = ... }, { children... })
 function UI.new(className: string, props, children)
@@ -11601,30 +11671,44 @@ function UI.corner(radius: number?)
 	return UI.new("UICorner", { CornerRadius = UDim.new(0, radius or 10) })
 end
 
--- A thin outline; defaults to the faint white edge used on glass panels.
+-- An outline around a frame; defaults to the thick dark cartoon outline.
 function UI.stroke(color: Color3?, thickness: number?, transparency: number?)
 	return UI.new("UIStroke", {
-		Color = color or Color3.new(1, 1, 1),
-		Thickness = thickness or 1.5,
-		Transparency = transparency or (if color then 0 else 0.86),
+		Color = color or UI.OUTLINE,
+		Thickness = thickness or 3,
+		Transparency = transparency or 0,
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		LineJoinMode = Enum.LineJoinMode.Round,
 	})
 end
 
--- Vertical gradient from a lighter version of color at the top to color at the bottom.
-function UI.gradient(color: Color3, lighten: number?)
+-- An outline around text (the chunky cartoon text look).
+function UI.textStroke(thickness: number?)
+	return UI.new("UIStroke", {
+		Color = UI.OUTLINE,
+		Thickness = thickness or 2,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual,
+		LineJoinMode = Enum.LineJoinMode.Round,
+	})
+end
+
+-- Shading from light at the top to darker at the bottom. It multiplies whatever colour the
+-- frame is, so it works on any button or panel. (color/lighten are kept for old callers.)
+function UI.gradient(_color: Color3?, lighten: number?)
+	local top = 1
+	local bottom = 0.78 - (lighten or 0) * 0.3
 	return UI.new("UIGradient", {
-		Color = ColorSequence.new(color:Lerp(Color3.new(1, 1, 1), lighten or 0.18), color),
+		Color = ColorSequence.new(Color3.new(top, top, top), Color3.new(bottom, bottom, bottom)),
 		Rotation = 90,
 	})
 end
 
--- A frosted-glass panel.
+-- A bright cartoon panel with a thick outline (the name is from the old glass style).
 function UI.glass(props, children)
 	local frame = UI.new("Frame", {
 		BackgroundColor3 = UI.colors.panel,
 		BackgroundTransparency = UI.GLASS_TRANSPARENCY,
-	}, { UI.corner(14), UI.stroke() })
+	}, { UI.corner(16), UI.stroke(nil, 3.5), UI.gradient() })
 	for key, value in props or {} do
 		if key ~= "Parent" then
 			frame[key] = value
@@ -11647,25 +11731,32 @@ function UI.label(text: string, props)
 		TextColor3 = UI.colors.text,
 		TextScaled = true,
 		Size = UDim2.new(1, 0, 0, 24),
-	})
+	}, { UI.textStroke(1.6) })
 	for key, value in props or {} do
 		label[key] = value
 	end
 	return label
 end
 
+-- A chunky cartoon button: bright shaded fill, thick dark outline, outlined text, and a
+-- squish when pressed.
 function UI.button(text: string, color: Color3, onClick: () -> (), props)
+	local scale = UI.new("UIScale")
 	local button = UI.new("TextButton", {
 		BackgroundColor3 = color,
 		FontFace = UI.fonts.heavy,
 		Text = text,
 		TextColor3 = UI.colors.text,
+		TextStrokeColor3 = UI.OUTLINE,
+		TextStrokeTransparency = 0,
 		TextScaled = true,
-		AutoButtonColor = true,
+		AutoButtonColor = false,
 		Size = UDim2.new(1, 0, 0, 30),
 	}, {
-		UI.corner(10),
-		UI.gradient(color),
+		UI.corner(12),
+		UI.gradient(),
+		UI.stroke(nil, 3),
+		scale,
 		UI.new("UIPadding", {
 			PaddingLeft = UDim.new(0, 8),
 			PaddingRight = UDim.new(0, 8),
@@ -11676,6 +11767,15 @@ function UI.button(text: string, color: Color3, onClick: () -> (), props)
 	for key, value in props or {} do
 		button[key] = value
 	end
+	button.MouseButton1Down:Connect(function()
+		scale.Scale = 0.92
+	end)
+	button.MouseButton1Up:Connect(function()
+		scale.Scale = 1
+	end)
+	button.MouseLeave:Connect(function()
+		scale.Scale = 1
+	end)
 	button.Activated:Connect(onClick)
 	return button
 end
@@ -11710,8 +11810,9 @@ function UI.card(opts)
 	local card = UI.new(if opts.onClick then "TextButton" else "Frame", {
 		BackgroundColor3 = opts.background or UI.colors.card,
 	}, {
-		UI.corner(12),
-		if opts.border then UI.stroke(opts.border, 2.5) else UI.stroke(),
+		UI.corner(14),
+		if opts.border then UI.stroke(opts.border, 3.5) else UI.stroke(nil, 3),
+		UI.gradient(),
 		UI.new("UIPadding", {
 			PaddingLeft = UDim.new(0, 8),
 			PaddingRight = UDim.new(0, 8),

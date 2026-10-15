@@ -27,6 +27,7 @@ local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
 local ActionService = require(script.Parent.ActionService)
 local Decor = require(script.Parent.Decor)
+local FreekTag = require(script.Parent.FreekTag)
 local PlotService = require(script.Parent.PlotService)
 local StealService = require(script.Parent.StealService)
 
@@ -341,27 +342,7 @@ local function fire(cannon: number)
 
 	local anchor = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
 	local freek = { species = species.id, mutations = mutations }
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromOffset(180, 50)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, height - (anchor.Position.Y - path.muzzle.Y) + 1.2, 0)
-	gui.MaxDistance = 90
-	gui.LightInfluence = 0
-	local name = Instance.new("TextLabel")
-	name.Size = UDim2.fromScale(1, 0.55)
-	name.BackgroundTransparency = 1
-	name.TextScaled = true
-	name.Font = Enum.Font.FredokaOne
-	name.Text = FreekUtil.displayName(freek)
-	name.TextColor3 = if mutations then Mutations.byId[mutations[1]].color else Rarities.info[species.rarity].color
-	name.TextStrokeTransparency = 0.2
-	name.Parent = gui
-	local cost = name:Clone()
-	cost.Size = UDim2.fromScale(1, 0.45)
-	cost.Position = UDim2.fromScale(0, 0.55)
-	cost.Text = Format.money(price) .. "  ·  " .. Format.money(FreekUtil.income(freek)) .. "/s"
-	cost.TextColor3 = Color3.fromRGB(140, 255, 140)
-	cost.Parent = gui
-	gui.Parent = anchor
+	FreekTag.add(anchor, freek, height - (anchor.Position.Y - path.muzzle.Y) + 1.6, 90, price)
 
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "GrabPrompt"

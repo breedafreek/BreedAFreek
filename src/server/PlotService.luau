@@ -16,13 +16,12 @@ local GateTiers = require(ReplicatedStorage.Shared.GateTiers)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
-local Mutations = require(ReplicatedStorage.Shared.Mutations)
-local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local Barn = require(script.Parent.Barn)
 local DataService = require(script.Parent.DataService)
 local Decor = require(script.Parent.Decor)
+local FreekTag = require(script.Parent.FreekTag)
 
 local PLOT_SIZE = Barn.SIZE
 local ROW_SPACING = 70 -- between barn centres along the town square
@@ -58,8 +57,12 @@ local function billboard(parent: Instance, size: UDim2, offset: Vector3, maxDist
 	label.TextScaled = true
 	label.Font = Enum.Font.FredokaOne
 	label.TextColor3 = Color3.new(1, 1, 1)
-	label.TextStrokeTransparency = 0.3
 	label.Parent = gui
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(20, 22, 48)
+	stroke.Thickness = 3
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
+	stroke.Parent = label
 	gui.Parent = parent
 	return gui, label
 end
@@ -112,6 +115,9 @@ local function setSign(plot, text: string)
 	plot.signText = text
 	for _, label in plot.signLabels do
 		label.Text = text
+	end
+	if plot.nameTag then
+		plot.nameTag.Text = string.upper(text)
 	end
 end
 
@@ -383,6 +389,21 @@ local function buildPlot(index: number)
 	})
 	local _, gateLabel = billboard(gateGuiPart, UDim2.fromScale(12, 2.5), Vector3.zero, 120)
 
+	-- The owner's name floating high over the barn, big and outlined, seen from anywhere.
+	local nameAnchor = part({
+		Name = "NameTag",
+		Size = Vector3.one,
+		CFrame = origin * CFrame.new(0, 44, 0),
+		Transparency = 1,
+		CanCollide = false,
+		CanQuery = false,
+		Parent = folder,
+	})
+	local _, nameTag = billboard(nameAnchor, UDim2.fromScale(34, 6), Vector3.zero, 600)
+	nameTag.Font = Enum.Font.LuckiestGuy
+	nameTag.TextColor3 = Color3.fromRGB(255, 225, 90)
+	nameTag:FindFirstChildOfClass("UIStroke").Thickness = 4
+
 	-- The padlock post just inside the gate: the only place the owner can lock it from.
 	local lockSpot = origin * CFrame.new(GATE_WIDTH / 2 + 1.5, 1, -half + 4)
 	local metal = Color3.fromRGB(55, 55, 65)
@@ -459,6 +480,7 @@ local function buildPlot(index: number)
 		freeks = freekFolder,
 		barn = barn,
 		gateLabel = gateLabel,
+		nameTag = nameTag,
 		lockLight = lockLight,
 		lockPrompt = lockPrompt,
 		lockedUntil = math.huge,
@@ -476,37 +498,12 @@ local function placeFreek(plot, freek, ground: CFrame, steal)
 	model:SetAttribute("Ground", ground)
 	model.Parent = plot.freeks
 
-	local species = FreekUtil.species(freek)
 	local anchor = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
 	if not anchor then
 		return
 	end
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromOffset(170, 46)
-	gui.MaxDistance = 70
-	gui.LightInfluence = 0
-
-	local name = Instance.new("TextLabel")
-	name.Size = UDim2.fromScale(1, 0.6)
-	name.BackgroundTransparency = 1
-	name.TextScaled = true
-	name.Font = Enum.Font.FredokaOne
-	name.Text = FreekUtil.displayName(freek)
-	local topMutation = Mutations.top(freek.mutations)
-	name.TextColor3 = if topMutation then Mutations.byId[topMutation].color else Rarities.info[species.rarity].color
-	name.TextStrokeTransparency = 0.2
-	name.Parent = gui
-
-	local income = name:Clone()
-	income.Size = UDim2.fromScale(1, 0.4)
-	income.Position = UDim2.fromScale(0, 0.6)
-	income.Text = Format.money(FreekUtil.income(freek)) .. "/s"
-	income.TextColor3 = Color3.fromRGB(140, 255, 140)
-	income.Parent = gui
-
 	-- The tag hangs off the body, so measure the offset from the body's center, not the feet.
-	gui.StudsOffsetWorldSpace = Vector3.new(0, height - (anchor.Position.Y - ground.Position.Y) + 1, 0)
-	gui.Parent = anchor
+	FreekTag.add(anchor, freek, height - (anchor.Position.Y - ground.Position.Y) + 1.4, 70)
 
 	if steal then
 		local prompt = Instance.new("ProximityPrompt")
