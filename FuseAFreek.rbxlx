@@ -7048,7 +7048,9 @@ local function buildMap()
 	})
 	local _, title = billboard(post, UDim2.fromScale(40, 8), Vector3.zero, 400)
 	title.Text = "FUSE A FREEK"
+	title.Font = Enum.Font.LuckiestGuy
 	title.TextColor3 = Color3.fromRGB(255, 230, 90)
+	title:FindFirstChildOfClass("UIStroke").Thickness = 5
 end
 
 -- Each yard gets its own accent colour for pedestal rims and its sign trim.
