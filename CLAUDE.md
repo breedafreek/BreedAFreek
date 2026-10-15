@@ -28,6 +28,12 @@ match it.
   thick dark `UIStroke`. Freeks show rarity, name, price (if for sale) and $/s.
 - Models are built from simple parts (balls, blocks, cylinders, wedges) with bold, flat,
   saturated colours, big googly eyes and chunky proportions. Neon for glowing bits.
+- **Freeks are voxel style**: they are designed as part lists in `Freeks.luau`, and
+  `FreekModel` (`STYLE = "voxel"`, grid `VOXEL` studs) rebuilds them out of cubes, with
+  faces as flat pixel blocks. Design new Freeks the same way and check them rendered.
+- Freeks animate with `src/shared/FreekAnimator.luau` (idle: breathe, blink, look around,
+  wag, ear twitch, wave, hop; walking: per-species gait). Tag new moving parts (swing
+  hinges, `rig = "ear" | "arm"`, a part named "Head") so they join in.
 - Seasonal themes (currently Halloween) dress things up: pumpkins, purples, oranges,
   cobwebs, glowing eyes, bats.
 

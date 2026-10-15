@@ -36,6 +36,11 @@ local FreekModel = {}
 
 FreekModel.RAINBOW_TAG = "RainbowFreek"
 
+-- "voxel": designed Freeks are rebuilt out of cubes on a VOXEL-stud grid (see voxelize);
+-- "smooth": the round parts as designed.
+FreekModel.STYLE = "voxel"
+FreekModel.VOXEL = 0.35
+
 local function newPart(props): Part
 	local part = Instance.new("Part")
 	part.Anchored = true
@@ -267,6 +272,166 @@ function tagRig(model: Model, specs, parts)
 	end
 end
 
+-- Voxel style. Every big part is filled with cubes on one grid shared by the whole Freek
+-- (so curves become steps, like voxel art), merged into as few blocks as possible. Small
+-- details (eyes, noses, smiles, whiskers) become single flat blocks, like pixels. Each
+-- block keeps its part's colour, material, tags and rig attributes, so mutations and
+-- animations work the same. Body and Head stay as invisible anchors.
+local function inside(shape: string, half: Vector3, p: Vector3): boolean
+	local x, y, z = p.X / half.X, p.Y / half.Y, p.Z / half.Z
+	if math.abs(x) > 1 or math.abs(y) > 1 or math.abs(z) > 1 then
+		return false
+	end
+	if shape == "Ball" or shape == "Ellipsoid" then
+		return x * x + y * y + z * z <= 1
+	elseif shape == "Cylinder" then
+		return y * y + z * z <= 1
+	elseif shape == "Wedge" then
+		return y <= z -- the slope rises from the bottom front to the top back
+	end
+	return true
+end
+
+local function copyLook(from: BasePart, to: BasePart)
+	to.Color = from.Color
+	to.Material = from.Material
+	to.Transparency = from.Transparency
+	to.CastShadow = from.CastShadow
+	for name, value in from:GetAttributes() do
+		if name ~= "VoxShape" and name ~= "VoxDetail" then
+			to:SetAttribute(name, value)
+		end
+	end
+	if CollectionService:HasTag(from, FreekModel.RAINBOW_TAG) then
+		CollectionService:AddTag(to, FreekModel.RAINBOW_TAG)
+	end
+end
+
+-- Runs on the finished model (after a hybrid's halves are joined), using the VoxShape and
+-- VoxDetail attributes buildFromParts leaves on each designed part.
+local function voxelize(model: Model)
+	local g = FreekModel.VOXEL
+	local head = model:FindFirstChild("Head")
+	local body = model.PrimaryPart
+	local todo = {}
+	for _, part in model:GetChildren() do
+		if not part:IsA("BasePart") then
+			continue
+		end
+		local shape = part:GetAttribute("VoxShape")
+		if part.Name == "Sheen" then
+			part:Destroy() -- no gloss on voxels
+		elseif part.Name == "Sparkle" then
+			table.insert(todo, { part = part, shape = "Ball", detail = true })
+		elseif shape then
+			table.insert(todo, { part = part, shape = shape, detail = part:GetAttribute("VoxDetail") == true })
+		end
+	end
+	for _, job in todo do
+		local part, shape = job.part, job.shape
+		local keep = part == body or part == head
+		local size = part.Size
+		if shape == "Ball" then
+			size = Vector3.one * math.min(size.X, size.Y, size.Z)
+		elseif shape == "Cylinder" then
+			local d = math.min(size.Y, size.Z)
+			size = Vector3.new(size.X, d, d)
+		end
+		local blocks = {}
+		local small = math.max(size.X, size.Y, size.Z) < g * 2.5 or job.detail
+		if not small then
+			-- Fill: every grid cell whose centre is inside the part (thin parts count as
+			-- one cell thick), then merge runs along X, and equal runs along Z.
+			local half = Vector3.new(
+				math.max(size.X / 2, g * 0.51),
+				math.max(size.Y / 2, g * 0.51),
+				math.max(size.Z / 2, g * 0.51)
+			)
+			local cf = part.CFrame
+			local corner = Vector3.zero
+			for _, sx in { -1, 1 } do
+				for _, sy in { -1, 1 } do
+					for _, sz in { -1, 1 } do
+						local w = cf:VectorToWorldSpace(Vector3.new(sx * half.X, sy * half.Y, sz * half.Z))
+						corner = Vector3.new(
+							math.max(corner.X, math.abs(w.X)),
+							math.max(corner.Y, math.abs(w.Y)),
+							math.max(corner.Z, math.abs(w.Z))
+						)
+					end
+				end
+			end
+			local center = cf.Position
+			local lo = (center - corner) / g
+			local hi = (center + corner) / g
+			for iy = math.floor(lo.Y), math.ceil(hi.Y) do
+				local rows = {}
+				for iz = math.floor(lo.Z), math.ceil(hi.Z) do
+					local first, last
+					for ix = math.floor(lo.X), math.ceil(hi.X) do
+						local cell = Vector3.new(ix + 0.5, iy + 0.5, iz + 0.5) * g
+						if inside(shape, half, cf:PointToObjectSpace(cell)) then
+							first = first or ix
+							last = ix
+						end
+					end
+					if first then
+						local prev = rows[#rows]
+						if prev and prev.first == first and prev.last == last and prev.z1 == iz - 1 then
+							prev.z1 = iz
+						else
+							table.insert(rows, { first = first, last = last, z0 = iz, z1 = iz })
+						end
+					end
+				end
+				for _, row in rows do
+					table.insert(blocks, {
+						size = Vector3.new(row.last - row.first + 1, 1, row.z1 - row.z0 + 1) * g,
+						cframe = CFrame.new(
+							Vector3.new((row.first + row.last + 1) / 2, iy + 0.5, (row.z0 + row.z1 + 1) / 2) * g
+						),
+					})
+				end
+			end
+		end
+		if #blocks == 0 then
+			-- A pixel: one block the size of the part's middle, turned the same way. The
+			-- stepped voxels stand out past the round surface it sat on, so it moves out
+			-- from the middle of the head (or body) by half a voxel to stay on top.
+			local flat = if shape == "Ball" or shape == "Ellipsoid" then size * Vector3.new(0.85, 0.85, 1) else size
+			local host = if part:GetAttribute("OnHead") and head then head else body
+			local out = part.CFrame.Position - host.CFrame.Position
+			local push = if out.Magnitude > 0.01 then out.Unit * g * 0.55 else Vector3.zero
+			table.insert(blocks, { size = flat, cframe = part.CFrame + push })
+		end
+		for k, block in blocks do
+			local cube = newPart({
+				Name = if part.Name == "Sparkle" then "Sparkle" else "Voxel",
+				Size = block.size,
+				CFrame = block.cframe,
+			})
+			copyLook(part, cube)
+			cube.Parent = model
+			if k == 1 and not keep then
+				for _, child in part:GetChildren() do
+					if not child:IsA("DataModelMesh") then
+						child.Parent = cube
+					end
+				end
+			end
+		end
+		if keep then
+			part.Transparency = 1
+			local mesh = part:FindFirstChildOfClass("SpecialMesh")
+			if mesh then
+				mesh:Destroy()
+			end
+		else
+			part:Destroy()
+		end
+	end
+end
+
 local function buildFromParts(species, mutationId: string?): (Model, number)
 	local look = species.look
 	local model = Instance.new("Model")
@@ -304,6 +469,10 @@ local function buildFromParts(species, mutationId: string?): (Model, number)
 			part.Material = Enum.Material[spec.material]
 		end
 		part.Transparency = spec.transparency or 0
+		part:SetAttribute("VoxShape", shape)
+		if spec.detail then
+			part:SetAttribute("VoxDetail", true)
+		end
 		if spec.swing then
 			part:SetAttribute("SwingHinge", vector(spec.swing.hinge))
 			part:SetAttribute("SwingPhase", spec.swing.phase or 0)
@@ -549,6 +718,9 @@ end
 function FreekModel.build(speciesId: string, mutations): (Model, number)
 	local list = Mutations.normalize(mutations)
 	local model, height = buildSingle(speciesId, list[1])
+	if FreekModel.STYLE == "voxel" and model.PrimaryPart then
+		voxelize(model)
+	end
 	local species = Freeks.byId[speciesId]
 	model:SetAttribute("Walk", species and species.walk or "waddle")
 	-- Stream the whole Freek to clients at once. Otherwise a client can get the model
