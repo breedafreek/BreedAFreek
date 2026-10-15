@@ -9,6 +9,38 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 print("[Fuse a Freek] Client starting")
+
+-- If the game hasn't loaded after a few seconds, show what the server is stuck on.
+local clientReady = false
+task.delay(8, function()
+	if clientReady then
+		return
+	end
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "LoadingProblem"
+	gui.DisplayOrder = 100
+	gui.ResetOnSpawn = false
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(0.8, 0, 0.6, 0)
+	label.Position = UDim2.fromScale(0.1, 0.2)
+	label.BackgroundColor3 = Color3.fromRGB(40, 0, 0)
+	label.BackgroundTransparency = 0.15
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextWrapped = true
+	label.TextSize = 16
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Top
+	label.Font = Enum.Font.Code
+	label.Parent = gui
+	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+	while not clientReady do
+		label.Text = "The game didn't finish loading. Send this to the developer:\n\nServer: "
+			.. tostring(ReplicatedStorage:GetAttribute("ServerStartup") or "no status (server script never ran)")
+		task.wait(1)
+	end
+	gui:Destroy()
+end)
+
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Belt = require(Shared.Belt)
 local Breeding = require(Shared.Breeding)
@@ -1079,6 +1111,7 @@ end)
 print("[Fuse a Freek] Client UI built, loading your data...")
 state = Remotes.get("GetState"):InvokeServer()
 print("[Fuse a Freek] Client ready")
+clientReady = true
 if state then
 	setRebirthBoost(state.rebirths or 0)
 end
