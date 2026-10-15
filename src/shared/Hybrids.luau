@@ -9,8 +9,8 @@
 -- Everything else about a hybrid comes from its id, so nothing needs to be listed by hand:
 --   name    the two main species' names mashed together (Chuckles + Flexo = "Chuxo")
 --   rarity  the rarest species in it (fusing never raises rarity)
---   look    built by FreekModel from the two main species: left side from one, right side
---           from the other, body colours blended
+--   look    built by FreekModel from the two main species: the first one's body (legs,
+--           arms, tail) wearing the second one's head, body colours blended
 -- Each hybrid Freek also stores its own income (see Breeding.babyIncome).
 --
 -- Freeks.byId[id] works for hybrid ids too (Freeks.luau asks this module).

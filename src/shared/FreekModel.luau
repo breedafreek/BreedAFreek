@@ -218,6 +218,34 @@ function tagRig(model: Model, specs, parts)
 		end
 	end
 
+	-- A Freek with no separate head wears its face on its body: mark the face (the front
+	-- details and anything small on the front of the upper body) so a hybrid can swap it.
+	if not headCenter then
+		local center = body.CFrame.Position
+		local half = body.Size / 2
+		for i, spec in specs do
+			local part = parts[i]
+			local offset = part.CFrame.Position - center
+			if
+				i > 1
+				and not spec.swing
+				and offset.Z < -half.Z * 0.4
+				and offset.Y > -half.Y * 0.6
+				and math.max(part.Size.X, part.Size.Y) < math.max(half.X, half.Y) * 1.3
+			then
+				part:SetAttribute("Face", true)
+			end
+		end
+		for _, part in model:GetChildren() do
+			if part.Name == "Sparkle" then
+				local offset = part.CFrame.Position - center
+				if offset.Z < -half.Z * 0.4 then
+					part:SetAttribute("Face", true)
+				end
+			end
+		end
+	end
+
 	-- Eyes: big white detail balls on the head (or on the upper body of a head-less Freek).
 	local all = model:GetChildren()
 	local eyes = 0
@@ -490,11 +518,63 @@ local function buildSingle(speciesId: string, mutationId: string?): (Model, numb
 	return model, s * 1.6
 end
 
--- A hybrid: one body with the colours of both parents blended, the first parent's lower
--- half (legs, feet, snout, mouth) and the second parent's upper half (eyes, ears, antennae).
+-- A hybrid: the first parent's whole body (legs, arms, tail, anything it holds) wearing
+-- the second parent's whole head (ears, eyes, hair, hats), resized to fit and set where
+-- the first parent's head was, so every piece stays joined up. A round Freek with no
+-- separate head (its face is on its body) gets the new head on top, and loses its old
+-- face; given as the head, its whole round body becomes the head.
+
+-- The parts that make up a Freek's head, where it is and how big.
+local function headOf(model: Model): ({ BasePart }, Vector3, number, BasePart)
+	local body = model.PrimaryPart :: BasePart
+	local head = model:FindFirstChild("Head")
+	local list = {}
+	if head and head:IsA("BasePart") then
+		-- Everything tagged OnHead, plus anything else on top of the head (a big afro, a
+		-- hat), but never limbs, tails or things like a collar.
+		local center = head.CFrame.Position
+		local radius = math.max(head.Size.X, head.Size.Y, head.Size.Z) / 2
+		for _, part in model:GetChildren() do
+			if part:IsA("BasePart") and part ~= body then
+				local offset = part.CFrame.Position - center
+				local around = offset.Magnitude <= radius * 2.1
+					and offset.Y >= radius * 0.2
+					and offset.Z <= radius * 1.4
+					and not part:GetAttribute("SwingHinge")
+					and part:GetAttribute("Rig") ~= "arm"
+					and not part:GetAttribute("NotOnHead")
+				if part == head or part:GetAttribute("OnHead") or around then
+					table.insert(list, part)
+				end
+			end
+		end
+		return list, center, radius, head
+	end
+	-- No head: the round body is the head, with its face and whatever sits on top (horns,
+	-- hats), but not its arms, legs, wings or tail.
+	local center = body.CFrame.Position
+	for _, part in model:GetChildren() do
+		if
+			part:IsA("BasePart")
+			and (
+				part == body
+				or part:GetAttribute("Face")
+				or (
+					part.CFrame.Position.Y > center.Y
+					and not part:GetAttribute("SwingHinge")
+					and part:GetAttribute("Rig") == nil
+				)
+			)
+		then
+			table.insert(list, part)
+		end
+	end
+	return list, center, math.max(body.Size.X, body.Size.Y, body.Size.Z) / 2, body
+end
+
 function buildHybrid(species, mutationId: string?): (Model, number)
 	local model, height = buildSingle(species.look.hybrid.a, mutationId)
-	local other, otherHeight = buildSingle(species.look.hybrid.b, mutationId)
+	local other = buildSingle(species.look.hybrid.b, mutationId)
 	model.Name = species.name
 	local body, otherBody = model.PrimaryPart, other.PrimaryPart
 	if not body or not otherBody then
@@ -502,46 +582,61 @@ function buildHybrid(species, mutationId: string?): (Model, number)
 		return model, height
 	end
 
-	-- Scale the second parent so the bodies match, and centre it on the first one's body.
-	local scale = body.Size.Magnitude / otherBody.Size.Magnitude
-	local otherCenter = otherBody.CFrame.Position
-	for _, part in other:GetDescendants() do
-		if part:IsA("BasePart") then
-			local offset = (part.CFrame.Position - otherCenter) * scale
-			part.Size *= scale
-			part.CFrame = CFrame.new(body.CFrame.Position + offset) * part.CFrame.Rotation
-			local eye = part:GetAttribute("Eye")
-			if eye then
-				part:SetAttribute("Eye", eye + 100) -- keep the parents' eye numbers apart
-			end
-			for _, name in { "SwingHinge", "RigPivot" } do
-				local point = part:GetAttribute(name)
-				if typeof(point) == "Vector3" then
-					part:SetAttribute(name, body.CFrame.Position + (point - otherCenter) * scale)
-				end
-			end
-		end
-	end
-
-	local center = body.CFrame.Position
-	local function fromSecond(part: BasePart): boolean
-		return part.CFrame.Position.Y > center.Y
-	end
-	for _, part in model:GetDescendants() do
-		if part:IsA("BasePart") and part ~= body and fromSecond(part) then
+	-- Where the new head goes: in place of the first parent's head, or on top of its body.
+	local target, targetRadius
+	local oldHead = model:FindFirstChild("Head")
+	if oldHead and oldHead:IsA("BasePart") then
+		local parts
+		parts, target, targetRadius = headOf(model)
+		for _, part in parts do
 			part:Destroy()
 		end
-	end
-	for _, part in other:GetDescendants() do
-		if part:IsA("BasePart") and part ~= otherBody and fromSecond(part) then
-			part.Parent = model
+	else
+		-- Its face and whatever sat on top (ear tufts, a hat) make way for the new head.
+		for _, part in (headOf(model)) do
+			if part ~= body then
+				part:Destroy()
+			end
 		end
+		local size = body.Size
+		targetRadius = math.max(size.X, size.Z) * 0.32
+		target = body.CFrame.Position + Vector3.new(0, size.Y / 2 + targetRadius * 0.6, 0)
 	end
+
+	-- Move the second parent's head over, resized to fit.
+	local headParts, center, radius, anchor = headOf(other)
+	local scale = targetRadius / radius
+	for _, part in headParts do
+		local offset = (part.CFrame.Position - center) * scale
+		part.Size *= scale
+		part.CFrame = CFrame.new(target + offset) * part.CFrame.Rotation
+		local eye = part:GetAttribute("Eye")
+		if eye then
+			part:SetAttribute("Eye", eye + 100) -- keep the parents' eye numbers apart
+		end
+		for _, name in { "SwingHinge", "RigPivot" } do
+			local point = part:GetAttribute(name)
+			if typeof(point) == "Vector3" then
+				part:SetAttribute(name, target + (point - center) * scale)
+			end
+		end
+		part:SetAttribute("OnHead", true)
+		part.Parent = model
+	end
+	anchor.Name = "Head" -- so it turns and looks around like any head
 	if not mutationId then
 		body.Color = body.Color:Lerp(otherBody.Color, 0.5)
 	end
 	other:Destroy()
-	return model, math.max(height, otherHeight * scale)
+
+	local top = 0
+	local ground = model:GetPivot().Position.Y
+	for _, part in model:GetChildren() do
+		if part:IsA("BasePart") then
+			top = math.max(top, part.CFrame.Position.Y + part.Size.Y / 2 - ground)
+		end
+	end
+	return model, top
 end
 
 -- Returns the model and roughly how tall it is (for placing name tags). mutations is a
