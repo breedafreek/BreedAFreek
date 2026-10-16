@@ -5036,7 +5036,7 @@ GamePasses.list = {
 		color = Color3.fromRGB(255, 200, 60),
 	},
 	FastBreeding = {
-		id = 0,
+		id = 2037644787,
 		name = "Fast Fusing",
 		icon = "⚡",
 		price = 999,
