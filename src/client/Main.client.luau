@@ -1097,7 +1097,7 @@ local function starterBanner(order: number)
 		x,
 		colors.gold
 	)
-	local pill = UI.pricePill(if starter.productId ~= 0 then "R$ " .. starter.robux else "Coming soon", function()
+	local pill = UI.pricePill(if starter.passId ~= 0 then "R$ " .. starter.robux else "Coming soon", function()
 		send("BuyStarter")
 	end)
 	bannerButton(frame, pill)

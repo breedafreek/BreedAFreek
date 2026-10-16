@@ -8,7 +8,7 @@ local Config = {
 	-- Who can open the admin panel (events, cannon spawns, announcements). Usernames are
 	-- checked as well as user ids; anyone can use it in Studio for testing.
 	ADMIN_NAMES = { "FuseAFreek" },
-	ADMIN_USER_IDS = {} :: { number },
+	ADMIN_USER_IDS = { 11813437895 } :: { number }, -- the FuseAFreek account
 	START_SLOTS = 4, -- yard slots a new player gets
 	MAX_SLOTS = 12, -- most yard slots you can buy with coins
 	PASS_SLOTS = 3, -- extra slots from the three Extra Yard Slot game passes (15 pads per yard)

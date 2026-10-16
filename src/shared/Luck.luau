@@ -50,11 +50,12 @@ Luck.CRATES = {
 Luck.STUDIO_FREE_CRATES = true
 
 -- The Starter Pack: a one-time offer for a player's first STARTER.hours after they first
--- join (a Developer Product at this price). The eggs are saved to hatch from the Luck tab.
+-- join. It's a game pass (passId); its contents are given once, the first time the server
+-- sees the player owns it. The eggs are saved to hatch from the Luck tab.
 Luck.STARTER = {
 	name = "Starter Pack",
 	robux = 499,
-	productId = 0,
+	passId = 2040722277,
 	hours = 12,
 	coins = 50000,
 	crates = { LegendaryMonster = 3 },

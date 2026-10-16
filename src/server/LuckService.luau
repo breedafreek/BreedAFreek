@@ -184,10 +184,10 @@ local function buyStarter(player: Player, data)
 	if data.starterBought or not player:GetAttribute("StarterEnds") then
 		return notify(player, "The Starter Pack offer is over.", "error")
 	end
-	if Luck.STARTER.productId == 0 then
+	if Luck.STARTER.passId == 0 then
 		return notify(player, "The Starter Pack is coming soon!", "error")
 	end
-	MarketplaceService:PromptProductPurchase(player, Luck.STARTER.productId)
+	MarketplaceService:PromptGamePassPurchase(player, Luck.STARTER.passId)
 end
 
 local function buyBundle(player: Player, _data, bundleId: any)
@@ -204,19 +204,38 @@ local function buyBundle(player: Player, _data, bundleId: any)
 	MarketplaceService:PromptProductPurchase(player, bundle.productId)
 end
 
--- Gives what a Starter Pack or bundle contains (eggs are saved to hatch from Luck).
-local function grantPack(player: Player, data, productId: number): boolean
-	local starter = Luck.STARTER
-	if starter.productId ~= 0 and productId == starter.productId then
-		data.money += starter.coins
-		for crateId, count in starter.crates do
-			data.crates[crateId] = (data.crates[crateId] or 0) + count
-		end
-		data.starterBought = true
-		markStarter(player, data)
-		notify(player, "🎁 Starter Pack unlocked! Your eggs are waiting in the 🍀 Luck tab.", "discovery")
-		return true
+-- Gives the Starter Pack's contents, once ever (the eggs wait in the Luck tab).
+local function grantStarter(player: Player, data)
+	if data.starterBought then
+		return
 	end
+	local starter = Luck.STARTER
+	data.money += starter.coins
+	for crateId, count in starter.crates do
+		data.crates[crateId] = (data.crates[crateId] or 0) + count
+	end
+	data.starterBought = true
+	markStarter(player, data)
+	notify(player, "🎁 Starter Pack unlocked! Your eggs are waiting in the 🍀 Luck tab.", "discovery")
+	DataService.changed(player)
+	task.spawn(DataService.save, player)
+end
+
+-- Owns the Starter Pack pass (bought here or on the website) but hasn't had it yet: give it.
+local function checkStarterPass(player: Player, data)
+	if data.starterBought or Luck.STARTER.passId == 0 then
+		return
+	end
+	local ok, owns = pcall(function()
+		return MarketplaceService:UserOwnsGamePassAsync(player.UserId, Luck.STARTER.passId)
+	end)
+	if ok and owns then
+		grantStarter(player, data)
+	end
+end
+
+-- Gives what a bundle contains (eggs are saved to hatch from Luck).
+local function grantPack(player: Player, data, productId: number): boolean
 	local bundle = Luck.bundleByProduct[productId]
 	if bundle then
 		data.crates[bundle.crate] = (data.crates[bundle.crate] or 0) + bundle.count
@@ -227,9 +246,7 @@ local function grantPack(player: Player, data, productId: number): boolean
 end
 
 local function isOurs(productId: number): boolean
-	return Luck.crateByProduct[productId] ~= nil
-		or Luck.bundleByProduct[productId] ~= nil
-		or (Luck.STARTER.productId ~= 0 and productId == Luck.STARTER.productId)
+	return Luck.crateByProduct[productId] ~= nil or Luck.bundleByProduct[productId] ~= nil
 end
 
 local function processReceipt(receipt)
@@ -466,7 +483,16 @@ function LuckService.init()
 	ActionService.register("SpinWheel", spin)
 	ActionService.register("BuyStarter", buyStarter)
 	ActionService.register("BuyBundle", buyBundle)
-	DataService.onLoaded(markStarter)
+	DataService.onLoaded(function(player, data)
+		markStarter(player, data)
+		checkStarterPass(player, data)
+	end)
+	MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, passId, purchased)
+		local data = DataService.get(player)
+		if purchased and data and passId == Luck.STARTER.passId then
+			grantStarter(player, data)
+		end
+	end)
 	-- The offer ends while they're playing: take the countdown down.
 	task.spawn(function()
 		while true do
