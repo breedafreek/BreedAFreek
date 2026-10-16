@@ -45,7 +45,7 @@ GamePasses.list = {
 		color = Color3.fromRGB(90, 200, 255),
 	},
 	LongerLock = {
-		id = 0,
+		id = 2039660564,
 		name = "Longer Gate Lock",
 		icon = "🔒",
 		price = 499,
