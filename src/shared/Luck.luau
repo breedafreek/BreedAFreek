@@ -66,7 +66,7 @@ Luck.BUNDLES = {
 		id = "LegendaryTen",
 		name = "10x Legendary Monster Eggs",
 		robux = 2800,
-		productId = 0,
+		productId = 3718869744,
 		crate = "LegendaryMonster",
 		count = 10,
 	},
