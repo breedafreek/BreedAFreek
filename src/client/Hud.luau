@@ -943,11 +943,11 @@ function Hud.leaderboard(screen: ScreenGui)
 	-- tall it is.
 	local STACK = { "StarterOffer", "AdminButton" }
 	local function stackBelow()
-		local count = 0
+		local shown = 0
 		for _ in rows do
-			count += 1
+			shown += 1
 		end
-		local height = 26 + 8 + (if list.Visible then count * ROW + math.max(count - 1, 0) * 6 else 0)
+		local height = 26 + 8 + (if list.Visible then shown * ROW + math.max(shown - 1, 0) * 6 else 0)
 		local y = board.Position.Y.Offset + height + 16
 		for _, name in STACK do
 			local button = screen:FindFirstChild(name)
