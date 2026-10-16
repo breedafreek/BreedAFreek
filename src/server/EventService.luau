@@ -143,10 +143,16 @@ function EventService.init()
 	end)
 	store = ok and result or nil
 
-	pcall(function()
-		MessagingService:SubscribeAsync(TOPIC, function(packet)
-			apply(packet.Data)
+	-- Listening to other servers can take a while (or fail in Studio): never wait for it.
+	task.spawn(function()
+		local subscribed, err = pcall(function()
+			MessagingService:SubscribeAsync(TOPIC, function(packet)
+				apply(packet.Data)
+			end)
 		end)
+		if not subscribed then
+			warn("[EventService] Not listening to other servers: " .. tostring(err))
+		end
 	end)
 
 	-- Pick up an admin event another server started before this one existed.

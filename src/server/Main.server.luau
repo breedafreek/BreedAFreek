@@ -15,6 +15,8 @@ local function setStatus(text: string)
 	ReplicatedStorage:SetAttribute("ServerStartup", table.concat(lines, "\n"))
 end
 
+local STARTUP_WAIT = 10 -- seconds to wait for each service before moving on
+
 local SERVICES = {
 	"Environment",
 	"PlotService",
@@ -35,21 +37,27 @@ local SERVICES = {
 }
 
 for _, name in SERVICES do
-	-- Startup shouldn't wait on anything; if a service hangs, say which one.
+	-- Startup shouldn't wait on anything. Each service starts in its own thread; if one is
+	-- still starting after STARTUP_WAIT seconds, say which and carry on, so a stuck service
+	-- can never stop players' data loading.
 	local done = false
 	setStatus("Starting " .. name .. "...")
-	task.delay(5, function()
-		if not done then
-			warn("[Fuse a Freek] " .. name .. " is stuck starting up (still waiting after 5 seconds)")
+	task.spawn(function()
+		local ok, err = xpcall(function()
+			require(Server[name]).init()
+		end, debug.traceback)
+		done = true
+		if not ok then
+			warn("[Fuse a Freek] " .. name .. " failed to start:\n" .. tostring(err))
+			table.insert(problems, name .. " failed: " .. tostring(err))
 		end
 	end)
-	local ok, err = xpcall(function()
-		require(Server[name]).init()
-	end, debug.traceback)
-	done = true
-	if not ok then
-		warn("[Fuse a Freek] " .. name .. " failed to start:\n" .. tostring(err))
-		table.insert(problems, name .. " failed: " .. tostring(err))
+	local started = os.clock()
+	while not done and os.clock() - started < STARTUP_WAIT do
+		task.wait()
+	end
+	if not done then
+		warn("[Fuse a Freek] " .. name .. " is slow to start (still going after " .. STARTUP_WAIT .. "s); carrying on")
 	end
 end
 setStatus("Server started")
