@@ -58,7 +58,9 @@ end
 
 local function setupTerrain()
 	local terrain = Workspace.Terrain
-	-- Grass everywhere, with the top of the terrain at y = 0.
+	-- Clear any terrain above ground level (a place template's own terrain would bury the
+	-- walkways and everything standing on them), then grass everywhere with its top at y = 0.
+	terrain:FillBlock(CFrame.new(0, 64, 0), Vector3.new(2048, 128, 2048), Enum.Material.Air)
 	terrain:FillBlock(CFrame.new(0, -4, 0), Vector3.new(600, 8, 600), Enum.Material.Grass)
 	terrain:SetMaterialColor(Enum.Material.Grass, Color3.fromRGB(95, 175, 80))
 	terrain:SetMaterialColor(Enum.Material.Pavement, Color3.fromRGB(196, 190, 180))
