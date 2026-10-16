@@ -63,6 +63,8 @@ local Weapons = require(Shared.Weapons)
 local Ambient = require(script.Parent.Ambient)
 local BarnFX = require(script.Parent.BarnFX)
 local AdminPanel = require(script.Parent.AdminPanel)
+local ItemPictures = require(script.Parent.ItemPictures)
+local LuckyWheel = require(script.Parent.LuckyWheel)
 local EventFX = require(script.Parent.EventFX)
 local Hud = require(script.Parent.Hud)
 local PackReveal = require(script.Parent.PackReveal)
@@ -100,48 +102,115 @@ Hud.leaderboard(screen)
 Hud.vipChatTag()
 local toast = Hud.toasts(screen)
 
-local window = UI.glass({
+-- Windows: a light body under a header bar in the window's own colour, with a slanted
+-- title tab in the game's purple-to-pink sticking out over the top-left corner and a red
+-- square X (the clean simulator style of Pet Simulator and PLS DONATE).
+local window = UI.new("Frame", {
 	Name = "Window",
 	Visible = false,
 	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.fromScale(0.53, 0.52),
+	Position = UDim2.fromScale(0.53, 0.53),
 	Size = UDim2.fromScale(0.66, 0.74),
-	BackgroundTransparency = 0.05,
+	BackgroundColor3 = colors.sheet,
 	ZIndex = 5, -- above the leaderboard and other HUD pieces
 	Parent = screen,
 }, {
 	UI.corner(22),
+	UI.stroke(nil, 4),
+	UI.new("UIGradient", {
+		Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(220, 215, 235)),
+		Rotation = 90,
+	}),
 	UI.new("UISizeConstraint", { MaxSize = Vector2.new(860, 600) }),
 })
--- The title sits on a bright ribbon across the top of the window.
-local titleRibbon = UI.glass({
-	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.new(0.5, 0, 0, 2),
-	Size = UDim2.fromOffset(300, 48),
-	BackgroundColor3 = Color3.fromRGB(255, 190, 40),
+local header = UI.new("Frame", {
+	Name = "Header",
+	Size = UDim2.new(1, 0, 0, 58),
+	BackgroundColor3 = colors.green,
+	ZIndex = 5,
+	Parent = window,
+}, {
+	UI.corner(20),
+	UI.new("UIGradient", {
+		Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(190, 190, 200)),
+		Rotation = 90,
+	}),
+})
+-- Square off the header's bottom corners, with a dark line under it.
+local headerFill = UI.new("Frame", {
+	Position = UDim2.new(0, 0, 1, -20),
+	Size = UDim2.new(1, 0, 0, 20),
+	BackgroundColor3 = colors.green,
+	BorderSizePixel = 0,
+	ZIndex = 5,
+	Parent = header,
+}, {
+	UI.new("UIGradient", {
+		Color = ColorSequence.new(Color3.fromRGB(215, 215, 222), Color3.fromRGB(190, 190, 200)),
+		Rotation = 90,
+	}),
+})
+UI.new("Frame", {
+	Position = UDim2.new(0, 0, 1, 0),
+	Size = UDim2.new(1, 0, 0, 4),
+	BackgroundColor3 = UI.OUTLINE,
+	BorderSizePixel = 0,
+	ZIndex = 5,
+	Parent = header,
+})
+local titleRibbon = UI.new("Frame", {
+	Name = "TitleTab",
+	Position = UDim2.fromOffset(18, -22),
+	Size = UDim2.fromOffset(0, 58),
+	AutomaticSize = Enum.AutomaticSize.X,
+	Rotation = -4,
+	BackgroundColor3 = Color3.new(1, 1, 1),
 	ZIndex = 6,
 	Parent = window,
-}, { UI.corner(24) })
-local windowTitle = UI.label("", {
-	Size = UDim2.new(1, -20, 1, -8),
-	Position = UDim2.fromOffset(10, 4),
-	TextXAlignment = Enum.TextXAlignment.Center,
+}, {
+	UI.corner(14),
+	UI.stroke(nil, 4),
+	UI.new("UIGradient", {
+		Color = ColorSequence.new(colors.fusion, colors.fusion2),
+		Rotation = 0,
+	}),
+	UI.new("UIPadding", { PaddingLeft = UDim.new(0, 18), PaddingRight = UDim.new(0, 22) }),
+	UI.new("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+	}),
+})
+local windowTitle = UI.new("TextLabel", {
+	Size = UDim2.fromOffset(0, 46),
+	AutomaticSize = Enum.AutomaticSize.X,
+	BackgroundTransparency = 1,
 	FontFace = UI.fonts.heavy,
+	TextSize = 36,
+	TextColor3 = Color3.new(1, 1, 1),
 	ZIndex = 7,
 	Parent = titleRibbon,
-})
+}, { UI.textStroke(3) })
+local function paintHeader(color: Color3)
+	header.BackgroundColor3 = color
+	headerFill.BackgroundColor3 = color
+end
 local body = UI.new("ScrollingFrame", {
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
-	Position = UDim2.fromOffset(12, 40),
-	Size = UDim2.new(1, -24, 1, -52),
+	Position = UDim2.fromOffset(14, 70),
+	Size = UDim2.new(1, -28, 1, -82),
 	CanvasSize = UDim2.new(),
 	AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	ScrollBarThickness = 8,
 	Parent = window,
 }, {
 	UI.new("UIListLayout", { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }),
-	UI.new("UIPadding", { PaddingBottom = UDim.new(0, 10), PaddingRight = UDim.new(0, 8) }),
+	UI.new("UIPadding", {
+		PaddingTop = UDim.new(0, 10),
+		PaddingBottom = UDim.new(0, 10),
+		PaddingLeft = UDim.new(0, 4),
+		PaddingRight = UDim.new(0, 8),
+	}),
 })
 
 --------------------------------------------------------------------------------
@@ -175,6 +244,7 @@ end
 
 local setActiveTab = function(_name: string?) end
 local TAB_ICONS = {}
+local TAB_COLORS = {}
 
 local function open(name: string)
 	if currentWindow == name then
@@ -185,7 +255,8 @@ local function open(name: string)
 	end
 	currentWindow = name
 	setActiveTab(name)
-	windowTitle.Text = (TAB_ICONS[name] or "") .. "  " .. name
+	windowTitle.Text = (TAB_ICONS[name] or "") .. " " .. string.upper(name)
+	paintHeader(TAB_COLORS[name] or colors.blue)
 	window.Visible = true
 	body.CanvasPosition = Vector2.zero
 	render()
@@ -194,19 +265,21 @@ end
 UI.button("X", colors.red, function()
 	open(currentWindow)
 end, {
-	Size = UDim2.fromOffset(44, 44),
-	Position = UDim2.new(1, -30, 0, -14),
-	ZIndex = 6,
+	AnchorPoint = Vector2.new(1, 0.5),
+	Size = UDim2.fromOffset(50, 50),
+	Position = UDim2.new(1, 12, 0, 6),
+	ZIndex = 7,
 	Parent = window,
 })
-	:FindFirstChildOfClass("UICorner").CornerRadius =
-	UDim.new(0, 22)
 
+-- A line of text over the cards: short ones are bold section titles, long ones are hints.
 local function heading(text: string, order: number)
+	local title = #text <= 24
 	return UI.label(text, {
-		Size = UDim2.new(1, 0, 0, 26),
+		Size = UDim2.new(1, 0, 0, if title then 32 else 26),
 		TextXAlignment = Enum.TextXAlignment.Left,
-		TextColor3 = colors.muted,
+		FontFace = if title then UI.fonts.heavy else UI.fonts.bold,
+		TextColor3 = if title then Color3.new(1, 1, 1) else colors.muted,
 		LayoutOrder = order,
 		Parent = body,
 	})
@@ -282,13 +355,11 @@ function renderers.Shop()
 			},
 		},
 		buttons = {
-			UI.button(
-				if maxed then "Maxed out!" else "Buy slot " .. Format.money(price),
-				if maxed or state.money < price then colors.gray else colors.blue,
-				function()
+			if maxed
+				then UI.button("Maxed out!", colors.gray, function() end)
+				else UI.pricePill("BUY " .. Format.money(price), function()
 					send("BuySlot")
-				end
-			),
+				end, { Size = UDim2.new(1, 0, 0, 36) }),
 		},
 	}).Parent =
 		yard
@@ -910,39 +981,118 @@ function renderers.Rebirth()
 	end
 end
 
+-- What each pass gives, shown as a badge on its card.
+local PASS_BADGES = {
+	DoubleCoins = "x2",
+	FastBreeding = "2x FAST",
+	LongerLock = "+2 MIN",
+	ExtraPen = "+1",
+	ExtraSlot1 = "+1",
+	ExtraSlot2 = "+1",
+	ExtraSlot3 = "+1",
+}
+
+-- The price pill (or Owned / Coming soon) for a game pass.
+local function passButton(key: string, size: UDim2)
+	local pass = GamePasses.list[key]
+	local owned = GamePasses.has(player, key)
+	local function buy()
+		if not owned and pass.id ~= 0 then
+			MarketplaceService:PromptGamePassPurchase(player, pass.id)
+		end
+	end
+	if owned then
+		return UI.button("OWNED ✓", colors.green, buy, { Size = size })
+	elseif pass.id == 0 then
+		return UI.button("Coming soon", colors.gray, buy, { Size = size })
+	end
+	return UI.pricePill("R$ " .. pass.price, buy, { Size = size })
+end
+
 function renderers.Store()
-	heading("Game passes are one-time purchases. Their perks last forever.", 1)
-	local grid = UI.grid(250, 280)
+	-- VIP, big and rainbow across the top (like the VIP banners in PLS DONATE).
+	local banner = UI.new("Frame", {
+		Size = UDim2.new(1, -8, 0, 150),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		LayoutOrder = 1,
+		Parent = body,
+	}, {
+		UI.corner(18),
+		UI.stroke(nil, 4),
+		UI.new("UIGradient", {
+			Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 80, 120)),
+				ColorSequenceKeypoint.new(0.3, Color3.fromRGB(255, 170, 40)),
+				ColorSequenceKeypoint.new(0.6, Color3.fromRGB(190, 90, 255)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 160, 255)),
+			}),
+			Rotation = 15,
+		}),
+	})
+	UI.new("Frame", {
+		Position = UDim2.fromOffset(6, 5),
+		Size = UDim2.new(1, -12, 0.4, 0),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 0.8,
+		Parent = banner,
+	}, { UI.corner(14) })
+	local crown = ItemPictures.view("VIP", 140)
+	crown.Position = UDim2.fromOffset(10, 5)
+	crown.Size = UDim2.fromOffset(150, 140)
+	crown.Parent = banner
+	UI.label("VIP", {
+		Position = UDim2.fromOffset(170, 14),
+		Size = UDim2.new(1, -400, 0, 48),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = colors.gold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = banner,
+	}).UIStroke.Thickness =
+		3
+	UI.label(
+		"👑 Gold VIP badge on the leaderboard and in chat\n💰 +10% coins forever\n🎡 Spin the Lucky Wheel more often",
+		{
+			Position = UDim2.fromOffset(172, 64),
+			Size = UDim2.new(1, -400, 0, 72),
+			TextScaled = false,
+			TextSize = 17,
+			TextWrapped = true,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Top,
+			Parent = banner,
+		}
+	)
+	local vipButton = passButton("VIP", UDim2.fromOffset(200, 52))
+	vipButton.AnchorPoint = Vector2.new(1, 0.5)
+	vipButton.Position = UDim2.new(1, -20, 0.5, 8)
+	vipButton.Parent = banner
+	UI.tag(banner, if GamePasses.has(player, "VIP") then "YOURS!" else "BEST!", colors.red).Position =
+		UDim2.new(1, -16, 0, 8)
+
+	-- The other passes as bright cards.
+	local grid = UI.grid(220, 270)
 	grid.LayoutOrder = 2
 	grid.Parent = body
-	for i, key in GamePasses.order do
-		local pass = GamePasses.list[key]
-		local owned = GamePasses.has(player, key)
-		local label, color
-		if owned then
-			label, color = "Owned ✓", colors.green
-		elseif pass.id == 0 then
-			label, color = "Coming soon", colors.gray
-		else
-			label, color = "R$ " .. pass.price, Color3.fromRGB(40, 180, 90)
+	local i = 0
+	for _, key in GamePasses.order do
+		if key ~= "VIP" then
+			i += 1
+			local pass = GamePasses.list[key]
+			local owned = GamePasses.has(player, key)
+			local card = UI.card({
+				accent = pass.color,
+				border = if owned then colors.money else nil,
+				picture = key,
+				lines = {
+					{ pass.name, nil, 24 },
+					{ pass.description, colors.text, 40 },
+				},
+				buttons = { passButton(key, UDim2.new(1, 0, 0, 40)) },
+				tag = PASS_BADGES[key] and { PASS_BADGES[key], UI.OUTLINE },
+			})
+			card.LayoutOrder = i
+			card.Parent = grid
 		end
-		local card = UI.card({
-			border = if owned then colors.green else nil,
-			picture = key,
-			lines = {
-				{ pass.name, pass.color, 24 },
-				{ pass.description, colors.muted, 50 },
-			},
-			buttons = {
-				UI.button(label, color, function()
-					if not owned and pass.id ~= 0 then
-						MarketplaceService:PromptGamePassPurchase(player, pass.id)
-					end
-				end, { Size = UDim2.new(1, 0, 0, 36) }),
-			},
-		})
-		card.LayoutOrder = i
-		card.Parent = grid
 	end
 end
 
@@ -1035,87 +1185,25 @@ local function freekPrize(box: Frame, freek, rarity: string, isNew: boolean, clo
 end
 
 -- The Lucky Wheel spins and lands on the prize the server rolled.
-local function buildWheel(parent: Instance, radius: number)
-	local wheel = UI.new("Frame", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(radius * 2, radius * 2),
-		BackgroundColor3 = Color3.fromRGB(30, 25, 45),
-		ZIndex = 52,
-		Parent = parent,
-	}, { UI.corner(radius), UI.stroke(colors.gold, 5) })
-	local count = #Luck.WHEEL
-	for i, slice in Luck.WHEEL do
-		local angle = math.rad((i - 1) * 360 / count)
-		local petal = UI.new("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromOffset(
-				radius + math.sin(angle) * radius * 0.5,
-				radius - math.cos(angle) * radius * 0.5
-			),
-			Size = UDim2.fromOffset(radius * 0.62, radius * 0.92),
-			Rotation = math.deg(angle),
-			BackgroundColor3 = slice.color,
-			ZIndex = 53,
-			Parent = wheel,
-		}, { UI.corner(math.floor(radius * 0.2)) })
-		UI.label(slice.label .. "\n" .. string.format("%.0f%%", Luck.wheelPercent(i)), {
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0, 8),
-			Size = UDim2.new(1, -6, 0, 40),
-			TextColor3 = Color3.fromRGB(25, 20, 35),
-			TextSize = 13,
-			TextWrapped = true,
-			ZIndex = 54,
-			Parent = petal,
-		})
-	end
-	UI.new("Frame", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(radius * 0.4, radius * 0.4),
-		BackgroundColor3 = colors.gold,
-		ZIndex = 55,
-		Parent = wheel,
-	}, { UI.corner(radius), UI.stroke(Color3.new(1, 1, 1), 3) })
-	return wheel
-end
-
 local function revealWheel(result, done)
 	local shade, box = overlay()
 	local function close()
 		shade:Destroy()
 		done()
 	end
-	box.Size = UDim2.fromOffset(380, 420)
-	local wheel = buildWheel(box, 165)
-	UI.label("▼", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0.5, -205),
-		Size = UDim2.fromOffset(60, 50),
-		TextSize = 46,
-		TextColor3 = colors.gold,
-		ZIndex = 60,
-		Parent = box,
-	})
-	local count = #Luck.WHEEL
-	local target = -((result.slice - 1) * 360 / count) - 360 * 6 + (math.random() - 0.5) * (300 / count)
-	local spinTween = TweenService:Create(
-		wheel,
-		TweenInfo.new(4.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
-		{ Rotation = target }
-	)
-	spinTween:Play()
-	spinTween.Completed:Connect(function()
-		task.wait(0.6)
-		wheel.Parent = nil
+	box.Size = UDim2.fromOffset(420, 460)
+	local wheel = LuckyWheel.build(box, 400, { hubText = "🎡", zIndex = 52 })
+	wheel.spinTo(result.slice, function()
+		task.wait(0.7)
+		wheel.frame:Destroy()
+		box.Size = UDim2.fromOffset(360, 420)
 		local slice = Luck.WHEEL[result.slice]
 		if result.freek then
 			freekPrize(box, result.freek, result.rarity, result.isNew, close)
 		elseif result.crate then
 			prizeCard(
 				box,
-				if slice.crate == "Diamond" then "JACKPOT!" else "You won!",
+				if slice.crate == "LegendaryMonster" then "JACKPOT!" else "You won!",
 				nil,
 				slice.color,
 				"A " .. Luck.crateById[result.crate].name .. "!\nHatch it from the 🍀 Luck tab.",
@@ -1159,48 +1247,92 @@ local function spinCooldown(): number
 end
 
 function renderers.Luck()
-	heading(
-		"Monster Eggs hatch Freeks you can't get anywhere else. Every chance is shown. Spin the wheel free every day!",
-		1
-	)
-
-	-- The Lucky Wheel.
+	-- The Lucky Wheel: a big purple-to-pink card with the wheel and a SPIN button.
 	local left = (state.lastSpin or 0) + spinCooldown() - Workspace:GetServerTimeNow()
 	local ready = left <= 0
-	local prizes = {}
-	for i, slice in Luck.WHEEL do
-		table.insert(prizes, string.format("%s %.0f%%", slice.label, Luck.wheelPercent(i)))
+	local function spin()
+		if ready then
+			send("SpinWheel")
+		end
 	end
-	local wheelCard = UI.card({
-		lines = {
-			{ "🎡 Lucky Wheel", colors.gold, 28 },
-			{ table.concat(prizes, "  ·  "), colors.muted, 40 },
-		},
-		buttons = {
-			UI.button(
-				if ready then "SPIN! (free)" else "Next spin in " .. Format.time(left),
-				if ready then colors.green else colors.gray,
-				function()
-					if ready then
-						send("SpinWheel")
-					end
-				end,
-				{ Size = UDim2.new(1, 0, 0, 44) }
-			),
-		},
+	local wheelCard = UI.new("Frame", {
+		Size = UDim2.new(1, -8, 0, 300),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		LayoutOrder = 1,
+		Parent = body,
+	}, {
+		UI.corner(18),
+		UI.stroke(nil, 4),
+		UI.new("UIGradient", {
+			Color = ColorSequence.new(colors.fusion, colors.fusion2),
+			Rotation = 20,
+		}),
 	})
-	wheelCard.Size = UDim2.new(1, 0, 0, 150)
-	wheelCard.LayoutOrder = 2
-	wheelCard.Parent = body
+	UI.new("Frame", {
+		Position = UDim2.fromOffset(6, 5),
+		Size = UDim2.new(1, -12, 0.35, 0),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 0.82,
+		Parent = wheelCard,
+	}, { UI.corner(14) })
+	local wheelHolder = UI.new("Frame", {
+		Position = UDim2.fromOffset(10, 10),
+		Size = UDim2.fromOffset(280, 280),
+		BackgroundTransparency = 1,
+		Parent = wheelCard,
+	})
+	LuckyWheel.build(wheelHolder, 280, { hubText = if ready then "SPIN!" else "⏳", onHub = spin })
+	UI.label("LUCKY WHEEL", {
+		Position = UDim2.fromOffset(310, 22),
+		Size = UDim2.new(1, -330, 0, 52),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = colors.gold,
+		Parent = wheelCard,
+	}).UIStroke.Thickness =
+		3
+	UI.label(if ready then "Your free spin is ready!" else "Free spin every day!", {
+		Position = UDim2.fromOffset(310, 80),
+		Size = UDim2.new(1, -330, 0, 30),
+		Parent = wheelCard,
+	})
+	UI.label("Win coins, Golden and Rainbow Freeks, Monster Eggs and the JACKPOT!", {
+		Position = UDim2.fromOffset(310, 114),
+		Size = UDim2.new(1, -330, 0, 48),
+		TextScaled = false,
+		TextSize = 17,
+		TextWrapped = true,
+		TextColor3 = Color3.fromRGB(255, 235, 255),
+		Parent = wheelCard,
+	})
+	local spinButton = UI.button(
+		if ready then "SPIN!" else "Next spin in " .. Format.time(left),
+		if ready then colors.green else colors.gray,
+		spin,
+		{
+			Position = UDim2.fromOffset(330, 190),
+			Size = UDim2.new(1, -370, 0, 64),
+			Parent = wheelCard,
+		}
+	)
+	if ready then
+		UI.tag(spinButton, "FREE", colors.red)
+	end
 
-	-- Monster Crates (Robux): the only place to get the Monster line.
+	-- Monster Eggs (Robux): the only place to get the Monster line. Every chance is shown.
+	UI.label("🥚 MONSTER EGGS · Freeks you can't get anywhere else", {
+		Size = UDim2.new(1, 0, 0, 30),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		FontFace = UI.fonts.heavy,
+		LayoutOrder = 2,
+		Parent = body,
+	})
 	local restricted = player:GetAttribute("CratesRestricted")
-	local grid = UI.grid(250, 470)
+	local grid = UI.grid(250, 480)
 	grid.LayoutOrder = 3
 	grid.Parent = body
 	for i, crate in Luck.CRATES do
 		local odds = Luck.oddsList(crate)
-		local lines = { { crate.name, crate.color, 24 } }
+		local lines = { { crate.name, nil, 24 } }
 		for _, entry in odds do
 			local species = Freeks.byId[entry.species]
 			local percent = if entry.percent < 1
@@ -1208,37 +1340,44 @@ function renderers.Luck()
 				else string.format("%.0f", entry.percent)
 			table.insert(lines, {
 				string.format("%s · %s  %s%%", species.name, species.rarity, percent),
-				Rarities.info[species.rarity].color,
-				16,
+				Rarities.info[species.rarity].color:Lerp(Color3.new(1, 1, 1), 0.35),
+				17,
 			})
 		end
-		local label, color
-		if restricted then
-			label, color = "Not available in your region", colors.gray
-		elseif crate.productId ~= 0 then
-			label, color = "R$ " .. crate.robux, Color3.fromRGB(40, 180, 90)
-		elseif RunService:IsStudio() and Luck.STUDIO_FREE_CRATES then
-			label, color = "R$ " .. crate.robux .. " (free in Studio)", Color3.fromRGB(40, 180, 90)
-		else
-			label, color = "Coming soon", colors.gray
+		local buy = function()
+			if not restricted then
+				send("BuyCrate", crate.id)
+			end
 		end
-		local buttons = {
-			UI.button(label, color, function()
-				if not restricted then
-					send("BuyCrate", crate.id)
-				end
-			end, { Size = UDim2.new(1, 0, 0, 38) }),
-		}
+		local button
+		if restricted then
+			button = UI.button("Not available in your region", colors.gray, buy, { Size = UDim2.new(1, 0, 0, 40) })
+		elseif crate.productId ~= 0 or (RunService:IsStudio() and Luck.STUDIO_FREE_CRATES) then
+			button = UI.pricePill(
+				"R$ " .. crate.robux .. (if crate.productId == 0 then " (free in Studio)" else ""),
+				buy,
+				{ Size = UDim2.new(1, 0, 0, 40) }
+			)
+		else
+			button = UI.button("Coming soon", colors.gray, buy, { Size = UDim2.new(1, 0, 0, 40) })
+		end
+		local buttons = { button }
 		local owned = state.crates and state.crates[crate.id] or 0
 		if owned > 0 then
 			table.insert(
 				buttons,
-				UI.button("Hatch yours (" .. owned .. ")", colors.pink, function()
+				UI.button("HATCH YOURS (" .. owned .. ")", colors.green, function()
 					send("OpenCrate", crate.id)
-				end, { Size = UDim2.new(1, 0, 0, 36) })
+				end, { Size = UDim2.new(1, 0, 0, 38) })
 			)
 		end
-		local card = UI.card({ egg = crate.id, lines = lines, buttons = buttons, border = crate.color })
+		local card = UI.card({
+			egg = crate.id,
+			accent = crate.color,
+			lines = lines,
+			buttons = buttons,
+			tag = if i == #Luck.CRATES then { "BEST", colors.red } else nil,
+		})
 		card.LayoutOrder = i
 		card.Parent = grid
 	end
@@ -1256,6 +1395,7 @@ local MENU = {
 }
 for _, entry in MENU do
 	TAB_ICONS[entry[1]] = entry[2]
+	TAB_COLORS[entry[1]] = entry[3]
 end
 setActiveTab = Hud.menu(screen, MENU, open)
 

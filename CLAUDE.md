@@ -14,12 +14,19 @@ match it.
   **Fredoka One** (`UI.fonts.bold`) for everything else. Never Builder Sans/Gotham.
 - Every piece of text has a dark outline (`UI.textStroke`, colour `UI.OUTLINE`
   #141630). Text is white or a bright colour, never dark-on-light.
-- Panels (`UI.glass`): bright saturated fill (default blue #3E80F5), thick dark outline
-  (3–3.5 px), rounded corners (14–22), shaded top-to-bottom with `UI.gradient()`.
-  No dark/frosted/transparent panels.
+- Windows: a light lavender body (`UI.colors.sheet`) under a header bar in the window's
+  own colour, a slanted purple-to-pink title tab (`UI.colors.fusion` to `fusion2`) sticking
+  out over the top-left corner, and a red X. Like Pet Simulator / PLS DONATE shops.
+- Cards (`UI.card`): bright glossy gradient in the card's colour (`accent`, or rarity
+  colour for Freeks), white title on top, a big 3D picture (Freek/egg/item viewport) on a
+  glowing disc, `UI.tag` corner tags ("NEW", "x2"), and black price pills
+  (`UI.pricePill`) for prices. Big offers get a wide banner card (Store VIP).
+- HUD panels (`UI.glass`): bright saturated fill, thick dark outline (3–3.5 px), rounded
+  corners, shaded top-to-bottom. No dark/frosted/transparent panels.
 - Buttons (`UI.button`): bright fill, thick dark outline, Luckiest Guy text, squish when
   pressed. Green = buy/go, red = close/danger, gray = disabled.
-- Windows have a gold title ribbon across the top edge and a round red X.
+- No uploaded images: pictures are our own 3D models in ViewportFrames (ItemPictures,
+  UI.viewport) and emoji icons.
 - Colours: saturated and cheerful. Money is green (#6EEB8C), prices gold (#FFD73C),
   rarities use `Rarities.info[r].color`.
 

@@ -1,11 +1,15 @@
 -- Small helpers for building the UI in code (so there's nothing to set up in Studio).
--- Style: bright cartoon look like the big Roblox simulators: saturated panels with a thick
--- dark outline, chunky shaded buttons that squish when pressed, Luckiest Guy titles,
--- Fredoka One text, and every bit of text outlined in dark navy.
+-- Style: the clean cartoon look of the big Roblox simulators (Pet Simulator, PLS DONATE,
+-- Grow a Garden) in Fuse a Freek colours: light windows with a coloured header and a
+-- slanted title tab, bright glossy gradient cards with a big 3D picture, black price
+-- pills, chunky shaded buttons that squish when pressed, Luckiest Guy titles, Fredoka One
+-- text, and every bit of text outlined in dark navy.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
+local Freeks = require(ReplicatedStorage.Shared.Freeks)
+local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local EggModel = require(ReplicatedStorage.Shared.EggModel)
 local ItemPictures = require(script.Parent.ItemPictures)
 
@@ -34,7 +38,30 @@ UI.colors = {
 	money = Color3.fromRGB(110, 235, 140),
 	gold = Color3.fromRGB(255, 200, 60),
 	purple = Color3.fromRGB(160, 110, 240),
+	sheet = Color3.fromRGB(236, 230, 255), -- window bodies
+	ink = Color3.fromRGB(28, 26, 48), -- price pills
+	fusion = Color3.fromRGB(170, 80, 255), -- the game's own purple-to-pink
+	fusion2 = Color3.fromRGB(255, 80, 190),
 }
+
+-- Bright card colours, picked by name so a card keeps its colour between refreshes.
+local CARD_COLORS = {
+	Color3.fromRGB(255, 95, 170),
+	Color3.fromRGB(70, 200, 110),
+	Color3.fromRGB(70, 150, 255),
+	Color3.fromRGB(255, 160, 50),
+	Color3.fromRGB(165, 95, 245),
+	Color3.fromRGB(40, 195, 190),
+	Color3.fromRGB(240, 80, 80),
+	Color3.fromRGB(250, 200, 50),
+}
+function UI.cardColor(name: string): Color3
+	local sum = 0
+	for i = 1, #name do
+		sum += string.byte(name, i) * i
+	end
+	return CARD_COLORS[sum % #CARD_COLORS + 1]
+end
 
 UI.GLASS_TRANSPARENCY = 0
 
@@ -215,18 +242,99 @@ end
 
 -- A card for grids: picture, lines of text, and buttons.
 -- opts = { species, mutations?, silhouette?, lines = { {text, color?} }, buttons = { button instances } }
+-- A black price pill (like PLS DONATE): coin or Robux icon and the price in white.
+function UI.pricePill(text: string, onClick: () -> (), props)
+	local pill = UI.button(text, UI.colors.ink, onClick, props)
+	pill.TextColor3 = Color3.new(1, 1, 1)
+	local corner = pill:FindFirstChildOfClass("UICorner")
+	if corner then
+		corner.CornerRadius = UDim.new(1, 0)
+	end
+	local shade = pill:FindFirstChildOfClass("UIGradient")
+	if shade then
+		shade:Destroy() -- flat and glossy black
+	end
+	return pill
+end
+
+-- A little slanted tag on a card's corner: "NEW", "BEST", "x2"...
+function UI.tag(parent: GuiObject, text: string, color: Color3?)
+	local tag = UI.new("TextLabel", {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, 6, 0, -8),
+		Size = UDim2.fromOffset(64, 26),
+		Rotation = 10,
+		BackgroundColor3 = color or UI.colors.red,
+		FontFace = UI.fonts.heavy,
+		Text = text,
+		TextScaled = true,
+		TextColor3 = Color3.new(1, 1, 1),
+		ZIndex = (parent.ZIndex or 1) + 5,
+		Parent = parent,
+	}, {
+		UI.corner(8),
+		UI.stroke(nil, 2.5),
+		UI.textStroke(1.6),
+		UI.new("UIPadding", {
+			PaddingLeft = UDim.new(0, 4),
+			PaddingRight = UDim.new(0, 4),
+			PaddingTop = UDim.new(0, 3),
+			PaddingBottom = UDim.new(0, 3),
+		}),
+	})
+	return tag
+end
+
+-- A bright glossy card (like Pet Simulator's shop): a gradient in the card's colour with a
+-- shine across the top, the title in white, a big picture on a glowing disc, then text
+-- lines and buttons. opts: accent (colour), border (a highlight outline, e.g. owned),
+-- picture/egg/species, lines = { { text, colour?, height? } }, buttons, tag = { text,
+-- colour? }, onClick.
 function UI.card(opts)
+	local title = opts.lines and opts.lines[1] and opts.lines[1][1] or ""
+	local accent = opts.accent
+	if not accent and opts.species then
+		local species = Freeks.byId[opts.species]
+		local rarity = species and species.rarity
+		if rarity and rarity ~= "Common" then
+			accent = Rarities.info[rarity].color
+		end
+	end
+	accent = accent or (if opts.species then Color3.fromRGB(110, 165, 255) else UI.cardColor(title))
+	if opts.background then
+		accent = opts.background
+	end
+
 	-- Clickable cards are buttons; buttons inside them still get their own clicks.
 	local card = UI.new(if opts.onClick then "TextButton" else "Frame", {
-		BackgroundColor3 = opts.background or UI.colors.card,
+		BackgroundColor3 = accent,
 	}, {
-		UI.corner(14),
-		if opts.border then UI.stroke(opts.border, 3.5) else UI.stroke(nil, 3),
-		UI.gradient(),
+		UI.corner(16),
+		if opts.border then UI.stroke(opts.border, 4.5) else UI.stroke(nil, 3.5),
+		UI.new("UIGradient", {
+			Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(165, 165, 175)),
+			Rotation = 90,
+		}),
+	})
+	-- The glossy shine across the top.
+	UI.new("Frame", {
+		Name = "Shine",
+		Position = UDim2.fromOffset(5, 4),
+		Size = UDim2.new(1, -10, 0.38, 0),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 0.8,
+		Parent = card,
+	}, { UI.corner(12) })
+	local content = UI.new("Frame", {
+		Name = "Content",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Parent = card,
+	}, {
 		UI.new("UIPadding", {
 			PaddingLeft = UDim.new(0, 8),
 			PaddingRight = UDim.new(0, 8),
-			PaddingTop = UDim.new(0, 8),
+			PaddingTop = UDim.new(0, 6),
 			PaddingBottom = UDim.new(0, 8),
 		}),
 		UI.new("UIListLayout", {
@@ -245,17 +353,48 @@ function UI.card(opts)
 	local function add(child)
 		order += 1
 		child.LayoutOrder = order
-		child.Parent = card
+		child.Parent = content
 	end
 
-	if opts.picture then
-		add(ItemPictures.view(opts.picture, opts.pictureHeight))
-	elseif opts.egg then
-		add(UI.eggViewport(opts.egg))
-	elseif opts.species then
-		add(UI.viewport(opts.species, opts.mutations, opts.silhouette))
+	-- The title on top, big and white.
+	local lines = opts.lines or {}
+	if lines[1] then
+		add(UI.label(lines[1][1], {
+			FontFace = UI.fonts.heavy,
+			TextColor3 = Color3.new(1, 1, 1),
+			Size = UDim2.new(1, 0, 0, math.max(lines[1][3] or 22, 22)),
+		}))
 	end
-	for _, line in opts.lines or {} do
+
+	-- The picture, on a soft glowing disc.
+	local picture
+	if opts.picture then
+		picture = ItemPictures.view(opts.picture, opts.pictureHeight)
+	elseif opts.egg then
+		picture = UI.eggViewport(opts.egg)
+	elseif opts.species then
+		picture = UI.viewport(opts.species, opts.mutations, opts.silhouette)
+	end
+	if picture then
+		local holder = UI.new("Frame", {
+			BackgroundTransparency = 1,
+			Size = picture.Size,
+		})
+		UI.new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.52),
+			Size = UDim2.fromScale(0.62, 0.95),
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			BackgroundTransparency = 0.72,
+			Parent = holder,
+		}, { UI.corner(999), UI.new("UIAspectRatioConstraint", { AspectRatio = 1 }) })
+		picture.Size = UDim2.fromScale(1, 1)
+		picture.Parent = holder
+		add(holder)
+	end
+
+	for i = 2, #lines do
+		local line = lines[i]
 		add(UI.label(line[1], {
 			TextColor3 = line[2] or UI.colors.text,
 			Size = UDim2.new(1, 0, 0, line[3] or 18),
@@ -263,6 +402,9 @@ function UI.card(opts)
 	end
 	for _, button in opts.buttons or {} do
 		add(button)
+	end
+	if opts.tag then
+		UI.tag(card, opts.tag[1], opts.tag[2])
 	end
 
 	if opts.onClick then
