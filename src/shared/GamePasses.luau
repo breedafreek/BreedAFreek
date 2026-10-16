@@ -80,7 +80,7 @@ GamePasses.list = {
 		slot = true,
 	},
 	ExtraPen = {
-		id = 0,
+		id = 2037308784,
 		name = "Extra Fusion Den",
 		icon = "🐣",
 		price = 399,
