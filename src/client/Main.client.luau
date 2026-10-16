@@ -1530,7 +1530,7 @@ end
 
 local MENU = {
 	{ "Shop", "🛒", colors.green },
-	{ "Luck", "🍀", Color3.fromRGB(90, 220, 120) },
+	{ "Luck", "🍀", Color3.fromRGB(160, 215, 45) },
 	{ "Freeks", "🐷", colors.blue },
 	{ "Fuse", "🧪", colors.pink },
 	{ "Book", "📖", colors.orange },
@@ -1542,7 +1542,35 @@ for _, entry in MENU do
 	TAB_ICONS[entry[1]] = entry[2]
 	TAB_COLORS[entry[1]] = entry[3]
 end
-setActiveTab = Hud.menu(screen, MENU, open)
+local setBadge
+setActiveTab, setBadge = Hud.menu(screen, MENU, open)
+
+-- Alert badges on the side buttons: a free spin, unopened eggs, a finished fusion, enough
+-- coins to rebirth.
+task.spawn(function()
+	while true do
+		if state then
+			local now = Workspace:GetServerTimeNow()
+			local eggs = 0
+			for _, count in state.crates or {} do
+				eggs += count
+			end
+			local spinReady = (state.lastSpin or 0) + spinCooldown() <= now
+			setBadge("Luck", if spinReady then "SPIN!" elseif eggs > 0 then tostring(eggs) else nil)
+			local fused = false
+			for index = 1, #FreekUtil.PEN_KEYS do
+				local breeding = FreekUtil.pen(state, index)
+				if breeding and breeding.endsAt <= now then
+					fused = true
+				end
+			end
+			setBadge("Fuse", if fused then "!" else nil)
+			local canRebirth = (state.money or 0) >= Config.rebirthCost(state.rebirths or 0)
+			setBadge("Rebirth", if canRebirth then "!" else nil, colors.green)
+		end
+		task.wait(0.5)
+	end
+end)
 Hud.starterOffer(screen, function()
 	if currentWindow ~= "Store" then
 		open("Store")
