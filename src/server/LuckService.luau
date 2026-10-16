@@ -168,17 +168,83 @@ local function openOwnedCrate(player: Player, data, crateId: any)
 	openCrate(player, data, crate)
 end
 
+-- Shows the Starter Pack countdown on the player (StarterEnds; nil once bought).
+local function markStarter(player: Player, data)
+	local ends = (data.firstJoin or os.time()) + Luck.STARTER.hours * 3600
+	local offerOpen = not data.starterBought and os.time() < ends
+	-- Server time, so the client's countdown lines up with GetServerTimeNow.
+	local offset = Workspace:GetServerTimeNow() - os.time()
+	player:SetAttribute("StarterEnds", if offerOpen then ends + offset else nil)
+end
+
+local function buyStarter(player: Player, data)
+	if player:GetAttribute("CratesRestricted") then
+		return notify(player, "The Starter Pack isn't available where you live.", "error")
+	end
+	if data.starterBought or not player:GetAttribute("StarterEnds") then
+		return notify(player, "The Starter Pack offer is over.", "error")
+	end
+	if Luck.STARTER.productId == 0 then
+		return notify(player, "The Starter Pack is coming soon!", "error")
+	end
+	MarketplaceService:PromptProductPurchase(player, Luck.STARTER.productId)
+end
+
+local function buyBundle(player: Player, _data, bundleId: any)
+	local bundle = typeof(bundleId) == "string" and Luck.bundleById[bundleId]
+	if not bundle then
+		return
+	end
+	if player:GetAttribute("CratesRestricted") then
+		return notify(player, "Monster Eggs aren't available where you live.", "error")
+	end
+	if bundle.productId == 0 then
+		return notify(player, "This bundle is coming soon!", "error")
+	end
+	MarketplaceService:PromptProductPurchase(player, bundle.productId)
+end
+
+-- Gives what a Starter Pack or bundle contains (eggs are saved to hatch from Luck).
+local function grantPack(player: Player, data, productId: number): boolean
+	local starter = Luck.STARTER
+	if starter.productId ~= 0 and productId == starter.productId then
+		data.money += starter.coins
+		for crateId, count in starter.crates do
+			data.crates[crateId] = (data.crates[crateId] or 0) + count
+		end
+		data.starterBought = true
+		markStarter(player, data)
+		notify(player, "🎁 Starter Pack unlocked! Your eggs are waiting in the 🍀 Luck tab.", "discovery")
+		return true
+	end
+	local bundle = Luck.bundleByProduct[productId]
+	if bundle then
+		data.crates[bundle.crate] = (data.crates[bundle.crate] or 0) + bundle.count
+		notify(player, "🥚 " .. bundle.name .. " added! Hatch them from the 🍀 Luck tab.", "discovery")
+		return true
+	end
+	return false
+end
+
+local function isOurs(productId: number): boolean
+	return Luck.crateByProduct[productId] ~= nil
+		or Luck.bundleByProduct[productId] ~= nil
+		or (Luck.STARTER.productId ~= 0 and productId == Luck.STARTER.productId)
+end
+
 local function processReceipt(receipt)
 	local crate = Luck.crateByProduct[receipt.ProductId]
 	local player = Players:GetPlayerByUserId(receipt.PlayerId)
 	local data = player and DataService.get(player)
-	if not crate or not data then
+	if not isOurs(receipt.ProductId) or not data then
 		-- Not ours, or the player isn't here: Roblox will try again later.
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 	data.receipts = data.receipts or {}
 	if not table.find(data.receipts, receipt.PurchaseId) then
-		if hasRoom(player, data) then
+		if not crate then
+			grantPack(player, data, receipt.ProductId)
+		elseif hasRoom(player, data) then
 			openCrate(player, data, crate)
 		else
 			data.crates[crate.id] = (data.crates[crate.id] or 0) + 1
@@ -398,7 +464,23 @@ function LuckService.init()
 	ActionService.register("BuyCrate", buyCrate)
 	ActionService.register("OpenCrate", openOwnedCrate)
 	ActionService.register("SpinWheel", spin)
+	ActionService.register("BuyStarter", buyStarter)
+	ActionService.register("BuyBundle", buyBundle)
+	DataService.onLoaded(markStarter)
+	-- The offer ends while they're playing: take the countdown down.
+	task.spawn(function()
+		while true do
+			task.wait(30)
+			for _, player in Players:GetPlayers() do
+				local data = DataService.get(player)
+				if data and player:GetAttribute("StarterEnds") then
+					markStarter(player, data)
+				end
+			end
+		end
+	end)
 	MarketplaceService.ProcessReceipt = processReceipt
+	LuckService.processReceipt = processReceipt -- also called directly by tests
 	Players.PlayerAdded:Connect(checkPolicy)
 	for _, player in Players:GetPlayers() do
 		task.spawn(checkPolicy, player)

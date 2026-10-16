@@ -1009,9 +1009,146 @@ local function passButton(key: string, size: UDim2)
 	return UI.pricePill("R$ " .. pass.price, buy, { Size = size })
 end
 
+-- A wide glossy banner card (Starter Pack, egg bundles, VIP): returns the frame.
+local function banner(order: number, colorA: Color3, colorB: Color3, height: number)
+	local frame = UI.new("Frame", {
+		Size = UDim2.new(1, -8, 0, height),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		LayoutOrder = order,
+		Parent = body,
+	}, {
+		UI.corner(18),
+		UI.stroke(nil, 4),
+		UI.new("UIGradient", { Color = ColorSequence.new(colorA, colorB), Rotation = 15 }),
+	})
+	UI.new("Frame", {
+		Position = UDim2.fromOffset(6, 5),
+		Size = UDim2.new(1, -12, 0.4, 0),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 0.8,
+		Parent = frame,
+	}, { UI.corner(14) })
+	return frame
+end
+
+-- A row of egg pictures inside a banner.
+local function eggRow(parent: Instance, crateId: string, count: number, x: number, size: number)
+	for k = 1, count do
+		local view = UI.eggViewport(crateId, size)
+		view.Position = UDim2.fromOffset(x + (k - 1) * size * 0.62, 18)
+		view.Size = UDim2.fromOffset(size, size)
+		view.ZIndex = 3
+		view.Parent = parent
+	end
+end
+
+local function bannerText(parent: Instance, title: string, lines: string, x: number, color: Color3)
+	local titleLabel = UI.label(title, {
+		Position = UDim2.fromOffset(x, 12),
+		Size = UDim2.new(1, -x - 230, 0, 44),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = color,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = parent,
+	})
+	titleLabel.UIStroke.Thickness = 3
+	return UI.label(lines, {
+		Position = UDim2.fromOffset(x + 2, 58),
+		Size = UDim2.new(1, -x - 232, 0, 70),
+		TextScaled = false,
+		TextSize = 18,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Parent = parent,
+	})
+end
+
+local function bannerButton(parent: Instance, button: GuiButton)
+	button.AnchorPoint = Vector2.new(1, 0.5)
+	button.Position = UDim2.new(1, -20, 0.5, 6)
+	button.Size = UDim2.fromOffset(190, 54)
+	button.Parent = parent
+	return button
+end
+
+-- The Starter Pack banner, with its countdown (only while the offer is open).
+local function starterBanner(order: number)
+	local ends = player:GetAttribute("StarterEnds")
+	if not ends or ends <= Workspace:GetServerTimeNow() or player:GetAttribute("CratesRestricted") then
+		return
+	end
+	local starter = Luck.STARTER
+	local frame = banner(order, Color3.fromRGB(70, 225, 120), Color3.fromRGB(30, 160, 200), 150)
+	local eggs = 0
+	for crateId, count in starter.crates do
+		eggRow(frame, crateId, count, 10 + eggs * 70, 110)
+		eggs += count
+	end
+	local x = 10 + eggs * 70 + 60
+	local eggWord = {}
+	for crateId, count in starter.crates do
+		table.insert(eggWord, count .. " " .. Luck.crateById[crateId].name .. if count > 1 then "s" else "")
+	end
+	local info = bannerText(
+		frame,
+		"STARTER PACK",
+		"💰 " .. Format.money(starter.coins) .. " coins\n🥚 " .. table.concat(eggWord, " + ") .. "\n⏰ ",
+		x,
+		colors.gold
+	)
+	local pill = UI.pricePill(if starter.productId ~= 0 then "R$ " .. starter.robux else "Coming soon", function()
+		send("BuyStarter")
+	end)
+	bannerButton(frame, pill)
+	UI.tag(frame, "LIMITED", colors.red).Position = UDim2.new(1, -16, 0, 8)
+	-- Count down live while the window is open.
+	local base = info.Text
+	task.spawn(function()
+		while info.Parent do
+			local left = math.max(0, ends - Workspace:GetServerTimeNow())
+			info.Text = base
+				.. string.format("Only %d:%02d:%02d left!", left // 3600, (left % 3600) // 60, math.floor(left % 60))
+			task.wait(1)
+		end
+	end)
+end
+
+-- An egg bundle banner.
+local function bundleBanner(order: number, bundle)
+	local crate = Luck.crateById[bundle.crate]
+	local frame = banner(order, crate.color, Color3.fromRGB(255, 100, 60), 150)
+	eggRow(frame, crate.id, 4, 10, 110)
+	local restricted = player:GetAttribute("CratesRestricted")
+	bannerText(
+		frame,
+		string.upper(bundle.name),
+		"Save "
+			.. Luck.bundleSaving(bundle)
+			.. "% on "
+			.. crate.name
+			.. "s!\nThey wait in the Luck tab to hatch whenever you like.",
+		350,
+		Color3.new(1, 1, 1)
+	)
+	local button
+	if restricted then
+		button = UI.button("Not available in your region", colors.gray, function() end)
+	elseif bundle.productId ~= 0 then
+		button = UI.pricePill("R$ " .. bundle.robux, function()
+			send("BuyBundle", bundle.id)
+		end)
+	else
+		button = UI.button("Coming soon", colors.gray, function() end)
+	end
+	bannerButton(frame, button)
+	UI.tag(frame, "-" .. Luck.bundleSaving(bundle) .. "%", colors.red).Position = UDim2.new(1, -16, 0, 8)
+end
+
 function renderers.Store()
+	starterBanner(0)
 	-- VIP, big and rainbow across the top (like the VIP banners in PLS DONATE).
-	local banner = UI.new("Frame", {
+	local vipBanner = UI.new("Frame", {
 		Size = UDim2.new(1, -8, 0, 150),
 		BackgroundColor3 = Color3.new(1, 1, 1),
 		LayoutOrder = 1,
@@ -1034,19 +1171,19 @@ function renderers.Store()
 		Size = UDim2.new(1, -12, 0.4, 0),
 		BackgroundColor3 = Color3.new(1, 1, 1),
 		BackgroundTransparency = 0.8,
-		Parent = banner,
+		Parent = vipBanner,
 	}, { UI.corner(14) })
 	local crown = ItemPictures.view("VIP", 140)
 	crown.Position = UDim2.fromOffset(10, 5)
 	crown.Size = UDim2.fromOffset(150, 140)
-	crown.Parent = banner
+	crown.Parent = vipBanner
 	UI.label("VIP", {
 		Position = UDim2.fromOffset(170, 14),
 		Size = UDim2.new(1, -400, 0, 48),
 		FontFace = UI.fonts.heavy,
 		TextColor3 = colors.gold,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = banner,
+		Parent = vipBanner,
 	}).UIStroke.Thickness =
 		3
 	UI.label(
@@ -1059,14 +1196,14 @@ function renderers.Store()
 			TextWrapped = true,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextYAlignment = Enum.TextYAlignment.Top,
-			Parent = banner,
+			Parent = vipBanner,
 		}
 	)
 	local vipButton = passButton("VIP", UDim2.fromOffset(200, 52))
 	vipButton.AnchorPoint = Vector2.new(1, 0.5)
 	vipButton.Position = UDim2.new(1, -20, 0.5, 8)
-	vipButton.Parent = banner
-	UI.tag(banner, if GamePasses.has(player, "VIP") then "YOURS!" else "BEST!", colors.red).Position =
+	vipButton.Parent = vipBanner
+	UI.tag(vipBanner, if GamePasses.has(player, "VIP") then "YOURS!" else "BEST!", colors.red).Position =
 		UDim2.new(1, -16, 0, 8)
 
 	-- The other passes as bright cards.
@@ -1093,6 +1230,11 @@ function renderers.Store()
 			card.LayoutOrder = i
 			card.Parent = grid
 		end
+	end
+
+	-- Egg bundles.
+	for k, bundle in Luck.BUNDLES do
+		bundleBanner(10 + k, bundle)
 	end
 end
 
@@ -1381,6 +1523,9 @@ function renderers.Luck()
 		card.LayoutOrder = i
 		card.Parent = grid
 	end
+	for k, bundle in Luck.BUNDLES do
+		bundleBanner(10 + k, bundle)
+	end
 end
 
 local MENU = {
@@ -1398,6 +1543,11 @@ for _, entry in MENU do
 	TAB_COLORS[entry[1]] = entry[3]
 end
 setActiveTab = Hud.menu(screen, MENU, open)
+Hud.starterOffer(screen, function()
+	if currentWindow ~= "Store" then
+		open("Store")
+	end
+end)
 
 --------------------------------------------------------------------------------
 -- Live updates

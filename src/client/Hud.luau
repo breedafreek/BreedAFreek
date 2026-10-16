@@ -340,6 +340,57 @@ function Hud.eventBanner(screen: ScreenGui)
 	end)
 end
 
+-- The Starter Pack offer button with its countdown (only during a player's first hours,
+-- until they buy it). Tapping it opens the Store.
+function Hud.starterOffer(screen: ScreenGui, onOpen: () -> ())
+	local button = UI.button("", colors.green, onOpen, {
+		Name = "StarterOffer",
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -12, 0.5, -70),
+		Size = UDim2.fromOffset(170, 74),
+		Visible = false,
+		ZIndex = 10,
+		Parent = screen,
+	})
+	button:FindFirstChildOfClass("UIPadding"):Destroy()
+	local gradient = button:FindFirstChildOfClass("UIGradient")
+	if gradient then
+		gradient.Color = ColorSequence.new(Color3.fromRGB(80, 230, 120), Color3.fromRGB(30, 170, 150))
+	end
+	text("🎁 STARTER PACK", 18, {
+		Position = UDim2.fromOffset(0, 8),
+		Size = UDim2.new(1, 0, 0, 24),
+		FontFace = UI.fonts.heavy,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 11,
+		Parent = button,
+	})
+	local timer = text("", 22, {
+		Position = UDim2.fromOffset(0, 36),
+		Size = UDim2.new(1, 0, 0, 28),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = colors.gold,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 11,
+		Parent = button,
+	})
+	UI.tag(button, "LIMITED", colors.red).Size = UDim2.fromOffset(84, 24)
+	local scale = UI.new("UIScale", { Parent = button })
+	task.spawn(function()
+		while true do
+			local ends = player:GetAttribute("StarterEnds")
+			local left = if ends then ends - Workspace:GetServerTimeNow() else 0
+			button.Visible = left > 0 and not player:GetAttribute("CratesRestricted")
+			if button.Visible then
+				local h, m, sec = left // 3600, (left % 3600) // 60, math.floor(left % 60)
+				timer.Text = string.format("⏰ %d:%02d:%02d", h, m, sec)
+				scale.Scale = 1 + (math.sin(os.clock() * 4) + 1) * 0.02
+			end
+			task.wait(0.1)
+		end
+	end)
+end
+
 --------------------------------------------------------------------------------
 -- Menu tabs
 --------------------------------------------------------------------------------

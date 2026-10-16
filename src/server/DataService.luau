@@ -41,6 +41,8 @@ local function defaultData()
 		receipts = {}, -- recent Robux purchase IDs, so a purchase is never granted twice
 		lastSpin = 0, -- os.time() of the last Lucky Wheel spin
 		lastSeen = os.time(),
+		firstJoin = os.time(), -- when they first played (starts the Starter Pack countdown)
+		starterBought = false,
 	}
 end
 

@@ -22,7 +22,7 @@ Luck.CRATES = {
 		id = "Monster",
 		name = "Monster Egg",
 		robux = 49,
-		productId = 0,
+		productId = 3718866310,
 		color = Color3.fromRGB(255, 140, 30),
 		odds = { BooBoo = 45, Zomboy = 35, Mumbles = 15, CountFangula = 4.5, Howlz = 0.5 },
 		mutation = 1,
@@ -31,7 +31,7 @@ Luck.CRATES = {
 		id = "MegaMonster",
 		name = "Mega Monster Egg",
 		robux = 149,
-		productId = 0,
+		productId = 3718866430,
 		color = Color3.fromRGB(160, 110, 240),
 		odds = { BooBoo = 20, Zomboy = 25, Mumbles = 35, CountFangula = 15, Howlz = 4.5, Blinky = 0.5 },
 		mutation = 2,
@@ -40,7 +40,7 @@ Luck.CRATES = {
 		id = "LegendaryMonster",
 		name = "Legendary Monster Egg",
 		robux = 399,
-		productId = 0,
+		productId = 3718866530,
 		color = Color3.fromRGB(255, 200, 60),
 		odds = { Mumbles = 30, CountFangula = 45, Howlz = 20, Blinky = 5 },
 		mutation = 3,
@@ -49,6 +49,29 @@ Luck.CRATES = {
 -- Opens crates for free in Studio when they have no product ID yet (for testing).
 Luck.STUDIO_FREE_CRATES = true
 
+-- The Starter Pack: a one-time offer for a player's first STARTER.hours after they first
+-- join (a Developer Product at this price). The eggs are saved to hatch from the Luck tab.
+Luck.STARTER = {
+	name = "Starter Pack",
+	robux = 499,
+	productId = 0,
+	hours = 12,
+	coins = 50000,
+	crates = { LegendaryMonster = 3 },
+}
+
+-- Egg bundles (Developer Products): several eggs at once, cheaper than one by one.
+Luck.BUNDLES = {
+	{
+		id = "LegendaryTen",
+		name = "10x Legendary Monster Eggs",
+		robux = 2800,
+		productId = 0,
+		crate = "LegendaryMonster",
+		count = 10,
+	},
+}
+
 Luck.crateById = {}
 Luck.crateByProduct = {}
 for _, crate in Luck.CRATES do
@@ -56,6 +79,20 @@ for _, crate in Luck.CRATES do
 	if crate.productId ~= 0 then
 		Luck.crateByProduct[crate.productId] = crate
 	end
+end
+Luck.bundleById = {}
+Luck.bundleByProduct = {}
+for _, bundle in Luck.BUNDLES do
+	Luck.bundleById[bundle.id] = bundle
+	if bundle.productId ~= 0 then
+		Luck.bundleByProduct[bundle.productId] = bundle
+	end
+end
+
+-- How much cheaper a bundle is than buying its eggs one by one (percent).
+function Luck.bundleSaving(bundle): number
+	local single = Luck.crateById[bundle.crate].robux * bundle.count
+	return math.floor((1 - bundle.robux / single) * 100 + 0.5)
 end
 
 -- The crate's odds right now (Crate Luck makes the rarest ones likelier), as weights.

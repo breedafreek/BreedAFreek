@@ -5438,7 +5438,7 @@ Luck.CRATES = {
 		id = "Monster",
 		name = "Monster Egg",
 		robux = 49,
-		productId = 0,
+		productId = 3718866310,
 		color = Color3.fromRGB(255, 140, 30),
 		odds = { BooBoo = 45, Zomboy = 35, Mumbles = 15, CountFangula = 4.5, Howlz = 0.5 },
 		mutation = 1,
@@ -5447,7 +5447,7 @@ Luck.CRATES = {
 		id = "MegaMonster",
 		name = "Mega Monster Egg",
 		robux = 149,
-		productId = 0,
+		productId = 3718866430,
 		color = Color3.fromRGB(160, 110, 240),
 		odds = { BooBoo = 20, Zomboy = 25, Mumbles = 35, CountFangula = 15, Howlz = 4.5, Blinky = 0.5 },
 		mutation = 2,
@@ -5456,7 +5456,7 @@ Luck.CRATES = {
 		id = "LegendaryMonster",
 		name = "Legendary Monster Egg",
 		robux = 399,
-		productId = 0,
+		productId = 3718866530,
 		color = Color3.fromRGB(255, 200, 60),
 		odds = { Mumbles = 30, CountFangula = 45, Howlz = 20, Blinky = 5 },
 		mutation = 3,
@@ -5465,6 +5465,29 @@ Luck.CRATES = {
 -- Opens crates for free in Studio when they have no product ID yet (for testing).
 Luck.STUDIO_FREE_CRATES = true
 
+-- The Starter Pack: a one-time offer for a player's first STARTER.hours after they first
+-- join (a Developer Product at this price). The eggs are saved to hatch from the Luck tab.
+Luck.STARTER = {
+	name = "Starter Pack",
+	robux = 499,
+	productId = 0,
+	hours = 12,
+	coins = 50000,
+	crates = { LegendaryMonster = 3 },
+}
+
+-- Egg bundles (Developer Products): several eggs at once, cheaper than one by one.
+Luck.BUNDLES = {
+	{
+		id = "LegendaryTen",
+		name = "10x Legendary Monster Eggs",
+		robux = 2800,
+		productId = 0,
+		crate = "LegendaryMonster",
+		count = 10,
+	},
+}
+
 Luck.crateById = {}
 Luck.crateByProduct = {}
 for _, crate in Luck.CRATES do
@@ -5472,6 +5495,20 @@ for _, crate in Luck.CRATES do
 	if crate.productId ~= 0 then
 		Luck.crateByProduct[crate.productId] = crate
 	end
+end
+Luck.bundleById = {}
+Luck.bundleByProduct = {}
+for _, bundle in Luck.BUNDLES do
+	Luck.bundleById[bundle.id] = bundle
+	if bundle.productId ~= 0 then
+		Luck.bundleByProduct[bundle.productId] = bundle
+	end
+end
+
+-- How much cheaper a bundle is than buying its eggs one by one (percent).
+function Luck.bundleSaving(bundle): number
+	local single = Luck.crateById[bundle.crate].robux * bundle.count
+	return math.floor((1 - bundle.robux / single) * 100 + 0.5)
 end
 
 -- The crate's odds right now (Crate Luck makes the rarest ones likelier), as weights.
@@ -9513,6 +9550,8 @@ local function defaultData()
 		receipts = {}, -- recent Robux purchase IDs, so a purchase is never granted twice
 		lastSpin = 0, -- os.time() of the last Lucky Wheel spin
 		lastSeen = os.time(),
+		firstJoin = os.time(), -- when they first played (starts the Starter Pack countdown)
+		starterBought = false,
 	}
 end
 
@@ -11436,17 +11475,83 @@ local function openOwnedCrate(player: Player, data, crateId: any)
 	openCrate(player, data, crate)
 end
 
+-- Shows the Starter Pack countdown on the player (StarterEnds; nil once bought).
+local function markStarter(player: Player, data)
+	local ends = (data.firstJoin or os.time()) + Luck.STARTER.hours * 3600
+	local offerOpen = not data.starterBought and os.time() < ends
+	-- Server time, so the client's countdown lines up with GetServerTimeNow.
+	local offset = Workspace:GetServerTimeNow() - os.time()
+	player:SetAttribute("StarterEnds", if offerOpen then ends + offset else nil)
+end
+
+local function buyStarter(player: Player, data)
+	if player:GetAttribute("CratesRestricted") then
+		return notify(player, "The Starter Pack isn't available where you live.", "error")
+	end
+	if data.starterBought or not player:GetAttribute("StarterEnds") then
+		return notify(player, "The Starter Pack offer is over.", "error")
+	end
+	if Luck.STARTER.productId == 0 then
+		return notify(player, "The Starter Pack is coming soon!", "error")
+	end
+	MarketplaceService:PromptProductPurchase(player, Luck.STARTER.productId)
+end
+
+local function buyBundle(player: Player, _data, bundleId: any)
+	local bundle = typeof(bundleId) == "string" and Luck.bundleById[bundleId]
+	if not bundle then
+		return
+	end
+	if player:GetAttribute("CratesRestricted") then
+		return notify(player, "Monster Eggs aren't available where you live.", "error")
+	end
+	if bundle.productId == 0 then
+		return notify(player, "This bundle is coming soon!", "error")
+	end
+	MarketplaceService:PromptProductPurchase(player, bundle.productId)
+end
+
+-- Gives what a Starter Pack or bundle contains (eggs are saved to hatch from Luck).
+local function grantPack(player: Player, data, productId: number): boolean
+	local starter = Luck.STARTER
+	if starter.productId ~= 0 and productId == starter.productId then
+		data.money += starter.coins
+		for crateId, count in starter.crates do
+			data.crates[crateId] = (data.crates[crateId] or 0) + count
+		end
+		data.starterBought = true
+		markStarter(player, data)
+		notify(player, "🎁 Starter Pack unlocked! Your eggs are waiting in the 🍀 Luck tab.", "discovery")
+		return true
+	end
+	local bundle = Luck.bundleByProduct[productId]
+	if bundle then
+		data.crates[bundle.crate] = (data.crates[bundle.crate] or 0) + bundle.count
+		notify(player, "🥚 " .. bundle.name .. " added! Hatch them from the 🍀 Luck tab.", "discovery")
+		return true
+	end
+	return false
+end
+
+local function isOurs(productId: number): boolean
+	return Luck.crateByProduct[productId] ~= nil
+		or Luck.bundleByProduct[productId] ~= nil
+		or (Luck.STARTER.productId ~= 0 and productId == Luck.STARTER.productId)
+end
+
 local function processReceipt(receipt)
 	local crate = Luck.crateByProduct[receipt.ProductId]
 	local player = Players:GetPlayerByUserId(receipt.PlayerId)
 	local data = player and DataService.get(player)
-	if not crate or not data then
+	if not isOurs(receipt.ProductId) or not data then
 		-- Not ours, or the player isn't here: Roblox will try again later.
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 	data.receipts = data.receipts or {}
 	if not table.find(data.receipts, receipt.PurchaseId) then
-		if hasRoom(player, data) then
+		if not crate then
+			grantPack(player, data, receipt.ProductId)
+		elseif hasRoom(player, data) then
 			openCrate(player, data, crate)
 		else
 			data.crates[crate.id] = (data.crates[crate.id] or 0) + 1
@@ -11666,7 +11771,23 @@ function LuckService.init()
 	ActionService.register("BuyCrate", buyCrate)
 	ActionService.register("OpenCrate", openOwnedCrate)
 	ActionService.register("SpinWheel", spin)
+	ActionService.register("BuyStarter", buyStarter)
+	ActionService.register("BuyBundle", buyBundle)
+	DataService.onLoaded(markStarter)
+	-- The offer ends while they're playing: take the countdown down.
+	task.spawn(function()
+		while true do
+			task.wait(30)
+			for _, player in Players:GetPlayers() do
+				local data = DataService.get(player)
+				if data and player:GetAttribute("StarterEnds") then
+					markStarter(player, data)
+				end
+			end
+		end
+	end)
 	MarketplaceService.ProcessReceipt = processReceipt
+	LuckService.processReceipt = processReceipt -- also called directly by tests
 	Players.PlayerAdded:Connect(checkPolicy)
 	for _, player in Players:GetPlayers() do
 		task.spawn(checkPolicy, player)
@@ -15247,6 +15368,57 @@ function Hud.eventBanner(screen: ScreenGui)
 	end)
 end
 
+-- The Starter Pack offer button with its countdown (only during a player's first hours,
+-- until they buy it). Tapping it opens the Store.
+function Hud.starterOffer(screen: ScreenGui, onOpen: () -> ())
+	local button = UI.button("", colors.green, onOpen, {
+		Name = "StarterOffer",
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -12, 0.5, -70),
+		Size = UDim2.fromOffset(170, 74),
+		Visible = false,
+		ZIndex = 10,
+		Parent = screen,
+	})
+	button:FindFirstChildOfClass("UIPadding"):Destroy()
+	local gradient = button:FindFirstChildOfClass("UIGradient")
+	if gradient then
+		gradient.Color = ColorSequence.new(Color3.fromRGB(80, 230, 120), Color3.fromRGB(30, 170, 150))
+	end
+	text("🎁 STARTER PACK", 18, {
+		Position = UDim2.fromOffset(0, 8),
+		Size = UDim2.new(1, 0, 0, 24),
+		FontFace = UI.fonts.heavy,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 11,
+		Parent = button,
+	})
+	local timer = text("", 22, {
+		Position = UDim2.fromOffset(0, 36),
+		Size = UDim2.new(1, 0, 0, 28),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = colors.gold,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 11,
+		Parent = button,
+	})
+	UI.tag(button, "LIMITED", colors.red).Size = UDim2.fromOffset(84, 24)
+	local scale = UI.new("UIScale", { Parent = button })
+	task.spawn(function()
+		while true do
+			local ends = player:GetAttribute("StarterEnds")
+			local left = if ends then ends - Workspace:GetServerTimeNow() else 0
+			button.Visible = left > 0 and not player:GetAttribute("CratesRestricted")
+			if button.Visible then
+				local h, m, sec = left // 3600, (left % 3600) // 60, math.floor(left % 60)
+				timer.Text = string.format("⏰ %d:%02d:%02d", h, m, sec)
+				scale.Scale = 1 + (math.sin(os.clock() * 4) + 1) * 0.02
+			end
+			task.wait(0.1)
+		end
+	end)
+end
+
 --------------------------------------------------------------------------------
 -- Menu tabs
 --------------------------------------------------------------------------------
@@ -17245,9 +17417,146 @@ local function passButton(key: string, size: UDim2)
 	return UI.pricePill("R$ " .. pass.price, buy, { Size = size })
 end
 
+-- A wide glossy banner card (Starter Pack, egg bundles, VIP): returns the frame.
+local function banner(order: number, colorA: Color3, colorB: Color3, height: number)
+	local frame = UI.new("Frame", {
+		Size = UDim2.new(1, -8, 0, height),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		LayoutOrder = order,
+		Parent = body,
+	}, {
+		UI.corner(18),
+		UI.stroke(nil, 4),
+		UI.new("UIGradient", { Color = ColorSequence.new(colorA, colorB), Rotation = 15 }),
+	})
+	UI.new("Frame", {
+		Position = UDim2.fromOffset(6, 5),
+		Size = UDim2.new(1, -12, 0.4, 0),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 0.8,
+		Parent = frame,
+	}, { UI.corner(14) })
+	return frame
+end
+
+-- A row of egg pictures inside a banner.
+local function eggRow(parent: Instance, crateId: string, count: number, x: number, size: number)
+	for k = 1, count do
+		local view = UI.eggViewport(crateId, size)
+		view.Position = UDim2.fromOffset(x + (k - 1) * size * 0.62, 18)
+		view.Size = UDim2.fromOffset(size, size)
+		view.ZIndex = 3
+		view.Parent = parent
+	end
+end
+
+local function bannerText(parent: Instance, title: string, lines: string, x: number, color: Color3)
+	local titleLabel = UI.label(title, {
+		Position = UDim2.fromOffset(x, 12),
+		Size = UDim2.new(1, -x - 230, 0, 44),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = color,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = parent,
+	})
+	titleLabel.UIStroke.Thickness = 3
+	return UI.label(lines, {
+		Position = UDim2.fromOffset(x + 2, 58),
+		Size = UDim2.new(1, -x - 232, 0, 70),
+		TextScaled = false,
+		TextSize = 18,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Parent = parent,
+	})
+end
+
+local function bannerButton(parent: Instance, button: GuiButton)
+	button.AnchorPoint = Vector2.new(1, 0.5)
+	button.Position = UDim2.new(1, -20, 0.5, 6)
+	button.Size = UDim2.fromOffset(190, 54)
+	button.Parent = parent
+	return button
+end
+
+-- The Starter Pack banner, with its countdown (only while the offer is open).
+local function starterBanner(order: number)
+	local ends = player:GetAttribute("StarterEnds")
+	if not ends or ends <= Workspace:GetServerTimeNow() or player:GetAttribute("CratesRestricted") then
+		return
+	end
+	local starter = Luck.STARTER
+	local frame = banner(order, Color3.fromRGB(70, 225, 120), Color3.fromRGB(30, 160, 200), 150)
+	local eggs = 0
+	for crateId, count in starter.crates do
+		eggRow(frame, crateId, count, 10 + eggs * 70, 110)
+		eggs += count
+	end
+	local x = 10 + eggs * 70 + 60
+	local eggWord = {}
+	for crateId, count in starter.crates do
+		table.insert(eggWord, count .. " " .. Luck.crateById[crateId].name .. if count > 1 then "s" else "")
+	end
+	local info = bannerText(
+		frame,
+		"STARTER PACK",
+		"💰 " .. Format.money(starter.coins) .. " coins\n🥚 " .. table.concat(eggWord, " + ") .. "\n⏰ ",
+		x,
+		colors.gold
+	)
+	local pill = UI.pricePill(if starter.productId ~= 0 then "R$ " .. starter.robux else "Coming soon", function()
+		send("BuyStarter")
+	end)
+	bannerButton(frame, pill)
+	UI.tag(frame, "LIMITED", colors.red).Position = UDim2.new(1, -16, 0, 8)
+	-- Count down live while the window is open.
+	local base = info.Text
+	task.spawn(function()
+		while info.Parent do
+			local left = math.max(0, ends - Workspace:GetServerTimeNow())
+			info.Text = base
+				.. string.format("Only %d:%02d:%02d left!", left // 3600, (left % 3600) // 60, math.floor(left % 60))
+			task.wait(1)
+		end
+	end)
+end
+
+-- An egg bundle banner.
+local function bundleBanner(order: number, bundle)
+	local crate = Luck.crateById[bundle.crate]
+	local frame = banner(order, crate.color, Color3.fromRGB(255, 100, 60), 150)
+	eggRow(frame, crate.id, 4, 10, 110)
+	local restricted = player:GetAttribute("CratesRestricted")
+	bannerText(
+		frame,
+		string.upper(bundle.name),
+		"Save "
+			.. Luck.bundleSaving(bundle)
+			.. "% on "
+			.. crate.name
+			.. "s!\nThey wait in the Luck tab to hatch whenever you like.",
+		350,
+		Color3.new(1, 1, 1)
+	)
+	local button
+	if restricted then
+		button = UI.button("Not available in your region", colors.gray, function() end)
+	elseif bundle.productId ~= 0 then
+		button = UI.pricePill("R$ " .. bundle.robux, function()
+			send("BuyBundle", bundle.id)
+		end)
+	else
+		button = UI.button("Coming soon", colors.gray, function() end)
+	end
+	bannerButton(frame, button)
+	UI.tag(frame, "-" .. Luck.bundleSaving(bundle) .. "%", colors.red).Position = UDim2.new(1, -16, 0, 8)
+end
+
 function renderers.Store()
+	starterBanner(0)
 	-- VIP, big and rainbow across the top (like the VIP banners in PLS DONATE).
-	local banner = UI.new("Frame", {
+	local vipBanner = UI.new("Frame", {
 		Size = UDim2.new(1, -8, 0, 150),
 		BackgroundColor3 = Color3.new(1, 1, 1),
 		LayoutOrder = 1,
@@ -17270,19 +17579,19 @@ function renderers.Store()
 		Size = UDim2.new(1, -12, 0.4, 0),
 		BackgroundColor3 = Color3.new(1, 1, 1),
 		BackgroundTransparency = 0.8,
-		Parent = banner,
+		Parent = vipBanner,
 	}, { UI.corner(14) })
 	local crown = ItemPictures.view("VIP", 140)
 	crown.Position = UDim2.fromOffset(10, 5)
 	crown.Size = UDim2.fromOffset(150, 140)
-	crown.Parent = banner
+	crown.Parent = vipBanner
 	UI.label("VIP", {
 		Position = UDim2.fromOffset(170, 14),
 		Size = UDim2.new(1, -400, 0, 48),
 		FontFace = UI.fonts.heavy,
 		TextColor3 = colors.gold,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = banner,
+		Parent = vipBanner,
 	}).UIStroke.Thickness =
 		3
 	UI.label(
@@ -17295,14 +17604,14 @@ function renderers.Store()
 			TextWrapped = true,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextYAlignment = Enum.TextYAlignment.Top,
-			Parent = banner,
+			Parent = vipBanner,
 		}
 	)
 	local vipButton = passButton("VIP", UDim2.fromOffset(200, 52))
 	vipButton.AnchorPoint = Vector2.new(1, 0.5)
 	vipButton.Position = UDim2.new(1, -20, 0.5, 8)
-	vipButton.Parent = banner
-	UI.tag(banner, if GamePasses.has(player, "VIP") then "YOURS!" else "BEST!", colors.red).Position =
+	vipButton.Parent = vipBanner
+	UI.tag(vipBanner, if GamePasses.has(player, "VIP") then "YOURS!" else "BEST!", colors.red).Position =
 		UDim2.new(1, -16, 0, 8)
 
 	-- The other passes as bright cards.
@@ -17329,6 +17638,11 @@ function renderers.Store()
 			card.LayoutOrder = i
 			card.Parent = grid
 		end
+	end
+
+	-- Egg bundles.
+	for k, bundle in Luck.BUNDLES do
+		bundleBanner(10 + k, bundle)
 	end
 end
 
@@ -17617,6 +17931,9 @@ function renderers.Luck()
 		card.LayoutOrder = i
 		card.Parent = grid
 	end
+	for k, bundle in Luck.BUNDLES do
+		bundleBanner(10 + k, bundle)
+	end
 end
 
 local MENU = {
@@ -17634,6 +17951,11 @@ for _, entry in MENU do
 	TAB_COLORS[entry[1]] = entry[3]
 end
 setActiveTab = Hud.menu(screen, MENU, open)
+Hud.starterOffer(screen, function()
+	if currentWindow ~= "Store" then
+		open("Store")
+	end
+end)
 
 --------------------------------------------------------------------------------
 -- Live updates
