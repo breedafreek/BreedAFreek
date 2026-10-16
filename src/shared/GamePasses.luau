@@ -88,7 +88,7 @@ GamePasses.list = {
 		color = Color3.fromRGB(255, 130, 190),
 	},
 	VIP = {
-		id = 0,
+		id = 2040272321,
 		name = "VIP",
 		icon = "👑",
 		price = 299,
