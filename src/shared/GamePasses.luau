@@ -29,7 +29,7 @@ GamePasses.order = {
 
 GamePasses.list = {
 	DoubleCoins = {
-		id = 0,
+		id = 2037836799,
 		name = "2x Coins",
 		icon = "💰",
 		price = 499,
