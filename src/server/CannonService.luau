@@ -14,12 +14,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local Drops = require(ReplicatedStorage.Shared.Drops)
+local Events = require(ReplicatedStorage.Shared.Events)
 local Format = require(ReplicatedStorage.Shared.Format)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
-local Luck = require(ReplicatedStorage.Shared.Luck)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -543,7 +543,12 @@ end
 local function eligibleByRarity()
 	local groups = {}
 	for _, species in Freeks.list do
-		if Seasons.available(species) and species.rarity ~= "Secret" and not species.exclusive then
+		if
+			Seasons.available(species)
+			and species.rarity ~= "Secret"
+			and not species.exclusive
+			and not species.event
+		then
 			groups[species.rarity] = groups[species.rarity] or {}
 			table.insert(groups[species.rarity], species)
 		end
@@ -551,10 +556,9 @@ local function eligibleByRarity()
 	return groups
 end
 
--- Lucky Skies (see Luck.luau) makes Rare and better more likely.
+-- Lucky Skies (see Luck.luau) and big events (Events.luau) make Rare and better more likely.
 local function rollRarity(): string
-	local event = Luck.current()
-	local boost = event and event.rareBoost or 1
+	local boost = Events.boost("rareBoost")
 	local function weightOf(entry)
 		return if Rarities.rank[entry.rarity] >= Rarities.rank.Rare then entry.weight * boost else entry.weight
 	end
@@ -574,8 +578,7 @@ end
 
 -- Cannon Freeks get at most one mutation; stacking them is done by fusing.
 local function rollMutations(): { string }?
-	local event = Luck.current()
-	local boost = event and event.mutationBoost or 1 -- Rainbow Hour
+	local boost = Events.boost("mutationBoost") -- Rainbow Hour, Monster Storm
 	for _, mutation in Mutations.list do
 		if rng:NextNumber() < mutation.chance * Drops.MUTATION_FACTOR * boost then
 			return { mutation.id }
@@ -584,19 +587,31 @@ local function rollMutations(): { string }?
 	return nil
 end
 
-local function fire(cannon: number)
-	local groups = eligibleByRarity()
-	local rarity = rollRarity()
-	-- Nothing of that rarity exists yet: fall back down the tiers.
-	while not groups[rarity] and Rarities.rank[rarity] > 1 do
-		rarity = Rarities.order[Rarities.rank[rarity] - 1]
+-- Fires a random Freek (or the given one, from the admin panel) from cannon `cannon`.
+local function fire(cannon: number, forcedSpecies: string?, forcedMutations: { string }?)
+	local species
+	local big = Events.current()
+	if forcedSpecies then
+		species = Freeks.byId[forcedSpecies]
+	elseif big and big.eventFreek and Freeks.byId[big.eventFreek] and rng:NextNumber() < big.eventChance then
+		species = Freeks.byId[big.eventFreek] -- the event-only Freek!
+	else
+		local groups = eligibleByRarity()
+		local rarity = rollRarity()
+		-- Nothing of that rarity exists yet: fall back down the tiers.
+		while not groups[rarity] and Rarities.rank[rarity] > 1 do
+			rarity = Rarities.order[Rarities.rank[rarity] - 1]
+		end
+		local pool = groups[rarity]
+		if not pool then
+			return
+		end
+		species = pool[rng:NextInteger(1, #pool)]
 	end
-	local pool = groups[rarity]
-	if not pool then
+	if not species then
 		return
 	end
-	local species = pool[rng:NextInteger(1, #pool)]
-	local mutations = rollMutations()
+	local mutations = if forcedSpecies then forcedMutations else rollMutations()
 	local price = priceOf(species, mutations)
 	-- A moment of warning so every client has the Freek before it leaves the barrel.
 	local launch = Workspace:GetServerTimeNow() + 0.5
@@ -690,6 +705,11 @@ local function grab(player: Player, data, id: any)
 	end
 end
 
+-- Fires a chosen Freek from a random cannon right away (the admin panel's "admin abuse").
+function CannonService.fireNow(speciesId: string, mutations: { string }?)
+	fire(rng:NextInteger(1, Drops.CANNON_COUNT), speciesId, mutations)
+end
+
 function CannonService.init()
 	local world = Instance.new("Model")
 	world.Name = "Cannons"
@@ -715,8 +735,8 @@ function CannonService.init()
 		while true do
 			cannon = cannon % Drops.CANNON_COUNT + 1
 			fire(cannon)
-			local event = Luck.current()
-			task.wait(Drops.FIRE_INTERVAL / Drops.CANNON_COUNT / (event and event.fireRate or 1)) -- Rapid Fire
+			-- Rapid Fire and big events speed the cannons up.
+			task.wait(Drops.FIRE_INTERVAL / Drops.CANNON_COUNT / Events.boost("fireRate"))
 		end
 	end)
 

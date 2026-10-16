@@ -405,6 +405,43 @@ list.bolts = {
 	end,
 }
 
+-- Stormy: a crackling neon lightning bolt clipped on top.
+list.lightning = {
+	slot = "top",
+	build = function()
+		local bolt = rgb(255, 230, 60)
+		return {
+			{
+				shape = "Block",
+				size = { 0.18, 0.42, 0.12 },
+				pos = { 0.5, 1.12, -0.1 },
+				rot = { 0, 0, 28 },
+				color = bolt,
+				material = "Neon",
+				detail = true,
+			},
+			{
+				shape = "Block",
+				size = { 0.18, 0.42, 0.12 },
+				pos = { 0.42, 0.84, -0.1 },
+				rot = { 0, 0, -30 },
+				color = bolt,
+				material = "Neon",
+				detail = true,
+			},
+			{
+				shape = "Block",
+				size = { 0.18, 0.36, 0.12 },
+				pos = { 0.5, 0.58, -0.1 },
+				rot = { 0, 0, 28 },
+				color = bolt,
+				material = "Neon",
+				detail = true,
+			},
+		}
+	end,
+}
+
 -- Neck accessories (the origin is the neck, under a radius-1 head).
 
 -- Woofles: a red collar with a gold tag.
@@ -632,6 +669,10 @@ local Config = {
 	-- TESTING ONLY: every player is topped up to this many coins when they join (and after
 	-- a rebirth). Set to nil before the game launches!
 	TEST_MONEY = 1_000_000,
+	-- Who can open the admin panel (events, cannon spawns, announcements). Usernames are
+	-- checked as well as user ids; anyone can use it in Studio for testing.
+	ADMIN_NAMES = { "FuseAFreek" },
+	ADMIN_USER_IDS = {} :: { number },
 	START_SLOTS = 4, -- yard slots a new player gets
 	MAX_SLOTS = 12, -- most yard slots you can buy with coins
 	PASS_SLOTS = 3, -- extra slots from the three Extra Yard Slot game passes (15 pads per yard)
@@ -1144,6 +1185,206 @@ return EggModel
       </Item>
       <Item class="ModuleScript" referent="9">
         <Properties>
+          <string name="Name">Events</string>
+          <string name="Source"><![CDATA[-- Scheduled events, like the "admin abuse" events of the big Roblox games.
+--
+--   * Big events (Monster Storm) run on a weekly timetable, the same moment in every server:
+--     the cannons go wild, rare Freeks come out much more often and an event-only Freek
+--     can drop.
+--   * Weather rolls in for a few minutes at half past most hours. While it lasts, Freeks
+--     standing in a barn can catch its mutation (Blood Moon -> Shadow, and so on).
+--
+-- The timetable is worked out from the clock alone, so every server agrees without talking.
+-- The admin panel can also start any event early, in one server or all of them (see
+-- server/EventService). The server publishes what's running as ReplicatedStorage
+-- attributes; Events.current() and Events.weather() read them on either side.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local Luck = require(script.Parent.Luck)
+
+local Events = {}
+
+-- Big events.
+Events.BIG = {
+	MonsterStorm = {
+		name = "Monster Storm",
+		icon = "⛈️",
+		description = "The cannons go wild! Rare Freeks everywhere and Stormy can drop!",
+		color = Color3.fromRGB(170, 110, 255),
+		fireRate = 3,
+		rareBoost = 4,
+		mutationBoost = 2,
+		eventFreek = "Stormy", -- the event-only Freek
+		eventChance = 0.1, -- chance each shot is the event Freek
+	},
+}
+
+-- Weather: each one can give Freeks in barns its mutation.
+Events.WEATHER = {
+	BloodMoon = {
+		name = "Blood Moon",
+		icon = "🌕",
+		description = "Freeks in barns can turn Shadow!",
+		color = Color3.fromRGB(255, 70, 80),
+		mutation = "Shadow",
+		chance = 0.02, -- per Freek, every WEATHER_TICK seconds
+	},
+	GoldRush = {
+		name = "Gold Rush",
+		icon = "✨",
+		description = "Freeks in barns can turn Golden!",
+		color = Color3.fromRGB(255, 205, 60),
+		mutation = "Golden",
+		chance = 0.012,
+	},
+	RainbowRain = {
+		name = "Rainbow Rain",
+		icon = "🌈",
+		description = "Freeks in barns can turn Rainbow!",
+		color = Color3.fromRGB(255, 120, 230),
+		mutation = "Rainbow",
+		chance = 0.004,
+	},
+}
+Events.WEATHER_TICK = 20
+
+-- The weekly timetable, in UTC (weekday 1 = Sunday). 19:00 UTC on Saturday is 3pm US
+-- Eastern in summer time (2pm in winter).
+Events.SCHEDULE = {
+	{ id = "MonsterStorm", weekday = 7, hour = 19, minute = 0, minutes = 30 }, -- Saturday
+	{ id = "MonsterStorm", weekday = 3, hour = 22, minute = 0, minutes = 30 }, -- Tuesday
+}
+
+-- Weather comes at WEATHER_MINUTE past the hour for WEATHER_MINUTES, picked from this
+-- list (weights; "" = clear skies that hour).
+Events.WEATHER_MINUTE = 30
+Events.WEATHER_MINUTES = 10
+Events.WEATHER_ODDS = {
+	{ id = "BloodMoon", weight = 4 },
+	{ id = "GoldRush", weight = 3 },
+	{ id = "RainbowRain", weight = 1 },
+	{ id = "", weight = 4 },
+}
+
+local DAY = 24 * 60 * 60
+
+-- Every scheduled big event in the next week from time t (and any running now), soonest
+-- first: { id, starts, ends }.
+function Events.upcoming(t: number)
+	local list = {}
+	local midnight = t - t % DAY
+	for day = -1, 7 do
+		local dayStart = midnight + day * DAY
+		local weekday = (os.date("!*t", dayStart) :: any).wday
+		for _, slot in Events.SCHEDULE do
+			if slot.weekday == weekday then
+				local starts = dayStart + slot.hour * 3600 + slot.minute * 60
+				local ends = starts + slot.minutes * 60
+				if ends > t then
+					table.insert(list, { id = slot.id, starts = starts, ends = ends })
+				end
+			end
+		end
+	end
+	table.sort(list, function(a, b)
+		return a.starts < b.starts
+	end)
+	return list
+end
+
+-- The scheduled big event running at time t, if any.
+function Events.scheduledAt(t: number)
+	local first = Events.upcoming(t)[1]
+	if first and first.starts <= t then
+		return first
+	end
+	return nil
+end
+
+-- The weather the timetable gives the hour containing t: { id, starts, ends } or nil.
+function Events.weatherFor(hourIndex: number)
+	local x = math.sin(hourIndex * 12.9898 + 78.233) * 43758.5453
+	local roll = x - math.floor(x)
+	local total = 0
+	for _, entry in Events.WEATHER_ODDS do
+		total += entry.weight
+	end
+	roll *= total
+	for _, entry in Events.WEATHER_ODDS do
+		roll -= entry.weight
+		if roll <= 0 then
+			if entry.id == "" then
+				return nil
+			end
+			local starts = hourIndex * 3600 + Events.WEATHER_MINUTE * 60
+			return { id = entry.id, starts = starts, ends = starts + Events.WEATHER_MINUTES * 60 }
+		end
+	end
+	return nil
+end
+
+function Events.scheduledWeatherAt(t: number)
+	local weather = Events.weatherFor(math.floor(t / 3600))
+	if weather and weather.starts <= t and t < weather.ends then
+		return weather
+	end
+	return nil
+end
+
+-- The next scheduled weather after t (looks a day ahead).
+function Events.nextWeather(t: number)
+	local hour = math.floor(t / 3600)
+	for k = 0, 24 do
+		local weather = Events.weatherFor(hour + k)
+		if weather and weather.ends > t then
+			return weather
+		end
+	end
+	return nil
+end
+
+-- What's running now, from the attributes the server publishes.
+function Events.current()
+	local id = ReplicatedStorage:GetAttribute("Event")
+	local ends = ReplicatedStorage:GetAttribute("EventEnds") or 0
+	if id and Events.BIG[id] and Workspace:GetServerTimeNow() < ends then
+		return Events.BIG[id], ends, id
+	end
+	return nil, 0, nil
+end
+
+function Events.weather()
+	local id = ReplicatedStorage:GetAttribute("Weather")
+	local ends = ReplicatedStorage:GetAttribute("WeatherEnds") or 0
+	if id and Events.WEATHER[id] and Workspace:GetServerTimeNow() < ends then
+		return Events.WEATHER[id], ends, id
+	end
+	return nil, 0, nil
+end
+
+-- A boost from everything running now (a Lucky Hour and a big event multiply together):
+-- "fireRate", "rareBoost", "mutationBoost" or "crateLuck".
+function Events.boost(key: string): number
+	local total = 1
+	local lucky = Luck.current()
+	if lucky and lucky[key] then
+		total *= lucky[key]
+	end
+	local big = Events.current()
+	if big and big[key] then
+		total *= big[key]
+	end
+	return total
+end
+
+return Events
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="10">
+        <Properties>
           <string name="Name">Format</string>
           <string name="Source"><![CDATA[local Format = {}
 
@@ -1186,7 +1427,7 @@ return Format
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="10">
+      <Item class="ModuleScript" referent="11">
         <Properties>
           <string name="Name">FreekAnimator</string>
           <string name="Source"><![CDATA[-- Brings Freek models to life: idle animations for Freeks standing in barns and on the
@@ -1675,7 +1916,7 @@ return FreekAnimator
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="11">
+      <Item class="ModuleScript" referent="12">
         <Properties>
           <string name="Name">FreekModel</string>
           <string name="Source"><![CDATA[-- Builds the 3D model for a Freek out of plain parts.
@@ -2605,7 +2846,7 @@ return FreekModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">FreekUtil</string>
           <string name="Source"><![CDATA[-- Helpers shared by server and client for reading a saved Freek record:
@@ -2716,7 +2957,7 @@ return FreekUtil
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">Freeks</string>
           <string name="Source"><![CDATA[-- Every Freek species in the game.
@@ -2729,6 +2970,7 @@ return FreekUtil
 -- walk     how it moves around the town square: waddle, trot, prowl, slither, flap, stomp,
 --          bounce, strut, catwalk, shamble or float (see the client)
 -- exclusive only from Monster Crates (never from cannons, the wheel or anywhere else)
+-- event       only from the cannons while that event runs (see Events.luau)
 -- look     how the model is built: either a placeholder (shape "Ball" or "Block", size in
 --          studs, eyes 1-3, antennae 0-3) or a part list (see FreekModel), e.g. from human()
 --
@@ -4615,6 +4857,101 @@ Freeks.list = {
 			}
 		end)(),
 	},
+	-- Event Freeks: only from the cannons during their event (see Events.luau).
+	{
+		id = "Stormy",
+		signature = "lightning",
+		name = "Stormy",
+		rarity = "Mystic",
+		event = "MonsterStorm",
+		walk = "float",
+		income = 2000,
+		look = (function()
+			-- A grumpy-cute storm cloud: puffy grey-blue cloud body, big yellow eyes under
+			-- cross brows, a crackling lightning bolt underneath and raindrops falling.
+			local list, add = newParts()
+			local cloud, dark, light = rgb(125, 140, 180), rgb(90, 100, 140), rgb(170, 185, 220)
+			local c, r = { 0, 3.1, 0 }, 1.3
+			add({ name = "Body", shape = "Ellipsoid", size = { 3.2, 2.4, 2.6 }, pos = c, color = cloud })
+			for _, puff in
+				{
+					{ -0.95, 4.0, 0.15, 1.6, light },
+					{ 0.25, 4.35, 0.2, 1.9, light },
+					{ 1.15, 3.95, 0.1, 1.5, light },
+					{ -1.65, 3.0, 0.1, 1.5, cloud },
+					{ 1.7, 3.05, 0.1, 1.45, cloud },
+					{ -0.85, 2.1, 0.1, 1.35, dark },
+					{ 0.8, 2.05, 0.15, 1.4, dark },
+				}
+			do
+				add({ shape = "Ball", size = puff[4], pos = { puff[1], puff[2], puff[3] }, color = puff[5] })
+			end
+			cuteEyes(add, c, r, 0.5, 0.12, 0.66, rgb(255, 215, 50))
+			for _, side in { -1, 1 } do
+				-- Cross little brows.
+				add({
+					shape = "Ellipsoid",
+					size = { 0.42, 0.12, 0.1 },
+					pos = onBall(c, r, side * 0.5, 0.62, -0.05),
+					rot = { 0, 0, side * 18 },
+					color = rgb(45, 50, 80),
+					detail = true,
+				})
+			end
+			blush(add, c, r, 0.85, -0.2, 0.38)
+			openMouth(add, c, r, -0.48, 0.42)
+			-- Puffy little arms that flutter.
+			for _, side in { -1, 1 } do
+				add({
+					shape = "Ball",
+					size = 0.8,
+					pos = { side * 2.35, 2.75, -0.1 },
+					color = light,
+					swing = {
+						hinge = { side * 2.0, 2.95, -0.1 },
+						phase = if side < 0 then 0 else 0.5,
+						axis = "Z",
+						amount = side * 0.8,
+					},
+				})
+			end
+			-- The lightning bolt crackling underneath.
+			local bolt = rgb(255, 230, 60)
+			for _, piece in
+				{
+					{ 0.25, 1.35, -0.3, 25 },
+					{ -0.05, 0.85, -0.3, -30 },
+					{ 0.2, 0.35, -0.3, 25 },
+				}
+			do
+				add({
+					shape = "Block",
+					size = { 0.28, 0.75, 0.2 },
+					pos = { piece[1], piece[2], piece[3] },
+					rot = { 0, 0, piece[4] },
+					color = bolt,
+					material = "Neon",
+					detail = true,
+				})
+			end
+			-- Raindrops.
+			for _, drop in { { -1.2, 1.2, 0.3 }, { -0.6, 0.6, -0.4 }, { 0.9, 1.0, 0.2 }, { 1.3, 0.45, -0.3 } } do
+				add({
+					shape = "Ellipsoid",
+					size = { 0.18, 0.3, 0.18 },
+					pos = drop,
+					color = rgb(120, 200, 255),
+					transparency = 0.15,
+					detail = true,
+				})
+			end
+			Accessories.put(add, "lightning", c, r)
+			return {
+				parts = list,
+				effects = { { type = "Glow", part = 1, color = rgb(255, 230, 120), size = 12 } },
+			}
+		end)(),
+	},
 }
 
 -- Every Freek belongs to a series (shown first when a Monster Egg hatches).
@@ -4629,7 +4966,10 @@ local HUMAN_LINE = { Chuckles = true, Nerdle = true, Flexo = true, Glamora = tru
 local base = {}
 for i, species in Freeks.list do
 	species.order = i
-	species.series = if species.exclusive then "Monster" elseif HUMAN_LINE[species.id] then "Human" else "Animal"
+	species.series = if species.exclusive or species.event
+		then "Monster"
+		elseif HUMAN_LINE[species.id] then "Human"
+		else "Animal"
 	base[species.id] = species
 end
 
@@ -4654,7 +4994,7 @@ return Freeks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">GamePasses</string>
           <string name="Source"><![CDATA[-- Game passes: one-time Robux purchases with permanent perks.
@@ -4806,7 +5146,7 @@ return GamePasses
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">GateTiers</string>
           <string name="Source"><![CDATA[-- The frame around each barn's doors upgrades with rebirths: Iron, then Bronze, Silver,
@@ -4886,7 +5226,7 @@ return GateTiers
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">Hybrids</string>
           <string name="Source"><![CDATA[-- Hybrids: what you get when two different Freeks fuse.
@@ -5071,7 +5411,7 @@ return Hybrids
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">Luck</string>
           <string name="Source"><![CDATA[-- Luck: Monster Eggs, the daily Lucky Wheel and Lucky Hour events. Shared so the client
@@ -5239,7 +5579,7 @@ return Luck
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">Mutations</string>
           <string name="Source"><![CDATA[-- Mutations multiply a Freek's income. They only enter the game from the cannons (chance
@@ -5304,7 +5644,7 @@ return Mutations
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
@@ -5334,7 +5674,7 @@ return Rarities
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">Remotes</string>
           <string name="Source"><![CDATA[-- One place that names every remote. The server creates them; clients wait for them.
@@ -5348,6 +5688,7 @@ return Rarities
 -- LuckResult      server -> client   ({ kind = "crate" | "wheel", ... }) what a crate/spin gave
 -- GetState        client -> server   returns snapshot once data has loaded
 -- GetDiscoveries  client -> server   returns { [speciesId] = discovery }
+-- Admin           client -> server   (command, args) admin panel; returns (ok, message)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -5362,6 +5703,7 @@ local KINDS = {
 	LuckResult = "RemoteEvent",
 	GetState = "RemoteFunction",
 	GetDiscoveries = "RemoteFunction",
+	Admin = "RemoteFunction",
 }
 
 local Remotes = {}
@@ -5393,7 +5735,7 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">Seasons</string>
           <string name="Source"><![CDATA[-- Limited events for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred
@@ -5530,7 +5872,7 @@ return Seasons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="22">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">WeaponModel</string>
           <string name="Source"><![CDATA[-- Builds the Tool for a weapon from its part list in Weapons.luau.
@@ -5616,7 +5958,7 @@ return WeaponModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="24">
         <Properties>
           <string name="Name">Weapons</string>
           <string name="Source"><![CDATA[-- Weapons. Everyone has the STARTER weapon; the rest unlock at a number of rebirths
@@ -5907,15 +6249,15 @@ return Weapons
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="24">
+  <Item class="ServerScriptService" referent="25">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="25">
+    <Item class="Folder" referent="26">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -6155,7 +6497,147 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
+        <Properties>
+          <string name="Name">AdminService</string>
+          <string name="Source"><![CDATA[-- The admin panel's server side. Only admins (Config.ADMIN_NAMES / ADMIN_USER_IDS, or
+-- anyone in Studio) get the IsAdmin attribute, and every command checks again here, so a
+-- hacked client can't use it.
+--
+-- Commands (Admin remote, returns ok, message):
+--   "event"    { id, minutes, everywhere }  start an event now (big, weather or Lucky Hour)
+--   "stop"     { everywhere }               end whatever is running
+--   "spawn"    { species, mutation }         fire that Freek from a cannon in this server
+--   "announce" { text, everywhere }          a message on everyone's screen
+--   "money"    { amount }                    give yourself coins (for testing)
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local TextService = game:GetService("TextService")
+local Workspace = game:GetService("Workspace")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Events = require(ReplicatedStorage.Shared.Events)
+local Freeks = require(ReplicatedStorage.Shared.Freeks)
+local Luck = require(ReplicatedStorage.Shared.Luck)
+local Mutations = require(ReplicatedStorage.Shared.Mutations)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+
+local CannonService = require(script.Parent.CannonService)
+local DataService = require(script.Parent.DataService)
+local EventService = require(script.Parent.EventService)
+
+local AdminService = {}
+
+function AdminService.isAdmin(player: Player): boolean
+	if RunService:IsStudio() then
+		return true
+	end
+	return table.find(Config.ADMIN_NAMES, player.Name) ~= nil or table.find(Config.ADMIN_USER_IDS, player.UserId) ~= nil
+end
+
+-- Filters announcement text the way Roblox requires for text everyone sees.
+local function filter(player: Player, text: string): string?
+	local ok, result = pcall(function()
+		return TextService:FilterStringAsync(text, player.UserId):GetNonChatStringForBroadcastAsync()
+	end)
+	if ok then
+		return result
+	end
+	return if RunService:IsStudio() then text else nil
+end
+
+local commands = {}
+
+function commands.event(_player: Player, args)
+	local id = args.id
+	if not (Events.BIG[id] or Events.WEATHER[id] or Luck.EVENTS[id]) then
+		return false, "Unknown event"
+	end
+	local minutes = math.clamp(tonumber(args.minutes) or 15, 1, 180)
+	local ends = Workspace:GetServerTimeNow() + minutes * 60
+	EventService.send({ type = "event", id = id, ends = ends }, args.everywhere == true)
+	return true, "Started for " .. minutes .. " min" .. (if args.everywhere then " in every server" else " here")
+end
+
+function commands.stop(_player: Player, args)
+	-- Keep it ended until whatever's running now would have finished.
+	local ends = math.max(
+		ReplicatedStorage:GetAttribute("EventEnds") or 0,
+		ReplicatedStorage:GetAttribute("WeatherEnds") or 0,
+		Workspace:GetServerTimeNow() + 5
+	)
+	EventService.send({ type = "end", ends = ends }, args.everywhere == true)
+	return true, "Events ended" .. (if args.everywhere then " in every server" else " here")
+end
+
+function commands.spawn(_player: Player, args)
+	local species = Freeks.byId[args.species]
+	if not species or species.look.hybrid then
+		return false, "Unknown Freek"
+	end
+	local mutation = args.mutation
+	local mutations = if mutation and Mutations.byId[mutation] then { mutation } else nil
+	CannonService.fireNow(species.id, mutations)
+	return true, "Fired " .. (if mutation then mutation .. " " else "") .. species.name .. "!"
+end
+
+function commands.announce(player: Player, args)
+	local text = type(args.text) == "string" and string.sub(args.text, 1, 120) or ""
+	if text == "" then
+		return false, "Type a message first"
+	end
+	local filtered = filter(player, text)
+	if not filtered then
+		return false, "Couldn't check that message, try again"
+	end
+	EventService.send({ type = "announce", text = filtered }, args.everywhere == true)
+	return true, "Sent"
+end
+
+function commands.money(player: Player, args)
+	local data = DataService.get(player)
+	if not data then
+		return false, "Your data isn't loaded yet"
+	end
+	local amount = math.clamp(tonumber(args.amount) or 0, 0, 1e12)
+	data.money += amount
+	DataService.changed(player)
+	return true, "Added coins"
+end
+
+function AdminService.init()
+	local remote = Remotes.get("Admin")
+	remote.OnServerInvoke = function(player: Player, command: any, args: any)
+		if not AdminService.isAdmin(player) then
+			return false, "Not allowed"
+		end
+		local handler = type(command) == "string" and commands[command]
+		if not handler then
+			return false, "Unknown command"
+		end
+		local ok, result, message = pcall(handler, player, type(args) == "table" and args or {})
+		if not ok then
+			warn("[AdminService] " .. tostring(result))
+			return false, "Something went wrong"
+		end
+		return result, message
+	end
+	local function mark(player: Player)
+		player:SetAttribute("IsAdmin", AdminService.isAdmin(player) or nil)
+	end
+	Players.PlayerAdded:Connect(mark)
+	for _, player in Players:GetPlayers() do
+		mark(player)
+	end
+end
+
+return AdminService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">Barn</string>
           <string name="Source"><![CDATA[-- Each player's yard is a big red barn: plank floor, red walls with white trim, a gambrel
@@ -6858,7 +7340,7 @@ return Barn
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">BarnUpgrades</string>
           <string name="Source"><![CDATA[-- The barn gets cooler with every rebirth. Each level keeps everything from the levels
@@ -8181,7 +8663,7 @@ return BarnUpgrades
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">CannonService</string>
           <string name="Source"><![CDATA[-- Runs the Freek cannons (see shared/Drops.luau): builds the glass bubble over the map,
@@ -8200,12 +8682,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local Drops = require(ReplicatedStorage.Shared.Drops)
+local Events = require(ReplicatedStorage.Shared.Events)
 local Format = require(ReplicatedStorage.Shared.Format)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
-local Luck = require(ReplicatedStorage.Shared.Luck)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -8729,7 +9211,12 @@ end
 local function eligibleByRarity()
 	local groups = {}
 	for _, species in Freeks.list do
-		if Seasons.available(species) and species.rarity ~= "Secret" and not species.exclusive then
+		if
+			Seasons.available(species)
+			and species.rarity ~= "Secret"
+			and not species.exclusive
+			and not species.event
+		then
 			groups[species.rarity] = groups[species.rarity] or {}
 			table.insert(groups[species.rarity], species)
 		end
@@ -8737,10 +9224,9 @@ local function eligibleByRarity()
 	return groups
 end
 
--- Lucky Skies (see Luck.luau) makes Rare and better more likely.
+-- Lucky Skies (see Luck.luau) and big events (Events.luau) make Rare and better more likely.
 local function rollRarity(): string
-	local event = Luck.current()
-	local boost = event and event.rareBoost or 1
+	local boost = Events.boost("rareBoost")
 	local function weightOf(entry)
 		return if Rarities.rank[entry.rarity] >= Rarities.rank.Rare then entry.weight * boost else entry.weight
 	end
@@ -8760,8 +9246,7 @@ end
 
 -- Cannon Freeks get at most one mutation; stacking them is done by fusing.
 local function rollMutations(): { string }?
-	local event = Luck.current()
-	local boost = event and event.mutationBoost or 1 -- Rainbow Hour
+	local boost = Events.boost("mutationBoost") -- Rainbow Hour, Monster Storm
 	for _, mutation in Mutations.list do
 		if rng:NextNumber() < mutation.chance * Drops.MUTATION_FACTOR * boost then
 			return { mutation.id }
@@ -8770,19 +9255,31 @@ local function rollMutations(): { string }?
 	return nil
 end
 
-local function fire(cannon: number)
-	local groups = eligibleByRarity()
-	local rarity = rollRarity()
-	-- Nothing of that rarity exists yet: fall back down the tiers.
-	while not groups[rarity] and Rarities.rank[rarity] > 1 do
-		rarity = Rarities.order[Rarities.rank[rarity] - 1]
+-- Fires a random Freek (or the given one, from the admin panel) from cannon `cannon`.
+local function fire(cannon: number, forcedSpecies: string?, forcedMutations: { string }?)
+	local species
+	local big = Events.current()
+	if forcedSpecies then
+		species = Freeks.byId[forcedSpecies]
+	elseif big and big.eventFreek and Freeks.byId[big.eventFreek] and rng:NextNumber() < big.eventChance then
+		species = Freeks.byId[big.eventFreek] -- the event-only Freek!
+	else
+		local groups = eligibleByRarity()
+		local rarity = rollRarity()
+		-- Nothing of that rarity exists yet: fall back down the tiers.
+		while not groups[rarity] and Rarities.rank[rarity] > 1 do
+			rarity = Rarities.order[Rarities.rank[rarity] - 1]
+		end
+		local pool = groups[rarity]
+		if not pool then
+			return
+		end
+		species = pool[rng:NextInteger(1, #pool)]
 	end
-	local pool = groups[rarity]
-	if not pool then
+	if not species then
 		return
 	end
-	local species = pool[rng:NextInteger(1, #pool)]
-	local mutations = rollMutations()
+	local mutations = if forcedSpecies then forcedMutations else rollMutations()
 	local price = priceOf(species, mutations)
 	-- A moment of warning so every client has the Freek before it leaves the barrel.
 	local launch = Workspace:GetServerTimeNow() + 0.5
@@ -8876,6 +9373,11 @@ local function grab(player: Player, data, id: any)
 	end
 end
 
+-- Fires a chosen Freek from a random cannon right away (the admin panel's "admin abuse").
+function CannonService.fireNow(speciesId: string, mutations: { string }?)
+	fire(rng:NextInteger(1, Drops.CANNON_COUNT), speciesId, mutations)
+end
+
 function CannonService.init()
 	local world = Instance.new("Model")
 	world.Name = "Cannons"
@@ -8901,8 +9403,8 @@ function CannonService.init()
 		while true do
 			cannon = cannon % Drops.CANNON_COUNT + 1
 			fire(cannon)
-			local event = Luck.current()
-			task.wait(Drops.FIRE_INTERVAL / Drops.CANNON_COUNT / (event and event.fireRate or 1)) -- Rapid Fire
+			-- Rapid Fire and big events speed the cannons up.
+			task.wait(Drops.FIRE_INTERVAL / Drops.CANNON_COUNT / Events.boost("fireRate"))
 		end
 	end)
 
@@ -8925,7 +9427,7 @@ return CannonService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="32">
         <Properties>
           <string name="Name">Carried</string>
           <string name="Source"><![CDATA[-- Which Freeks are being carried off by a thief right now. Kept in memory only: if the
@@ -8965,7 +9467,7 @@ return Carried
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="31">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -9237,7 +9739,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="32">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">Decor</string>
           <string name="Source"><![CDATA[-- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
@@ -9615,7 +10117,7 @@ return Decor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Discovery Book: the first player in the whole game to get each species has their
@@ -9763,7 +10265,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the Freeks in their yard, plus offline earnings
@@ -9844,7 +10346,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">Environment</string>
           <string name="Source"><![CDATA[-- Lighting, sky, terrain and the scenery around the yards and conveyor.
@@ -9993,7 +10495,239 @@ return Environment
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="38">
+        <Properties>
+          <string name="Name">EventService</string>
+          <string name="Source"><![CDATA[-- Runs the scheduled events (see shared/Events.luau) and the ones the admin starts.
+--
+-- Every second it works out what should be running and publishes it as ReplicatedStorage
+-- attributes (Event/EventEnds, Weather/WeatherEnds, NextEvent/NextEventAt,
+-- NextWeather/NextWeatherAt), announcing each start and end. While weather runs, Freeks
+-- standing in barns can catch its mutation.
+--
+-- Admin events reach every server at once through MessagingService, and are also saved in
+-- a DataStore so servers that start up later still join in.
+
+local DataStoreService = game:GetService("DataStoreService")
+local MessagingService = game:GetService("MessagingService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local Events = require(ReplicatedStorage.Shared.Events)
+local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local Luck = require(ReplicatedStorage.Shared.Luck)
+local Mutations = require(ReplicatedStorage.Shared.Mutations)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+
+local DataService = require(script.Parent.DataService)
+
+local EventService = {}
+
+local TOPIC = "FuseAFreekAdmin"
+local STORE_KEY = "AdminEvents"
+
+local notifyRemote = Remotes.get("Notify")
+local rng = Random.new()
+local store -- the DataStore, if this server can use one
+
+-- What the admin has started: { big = { id, ends }, weather = { id, ends } }.
+local overrides = { big = nil, weather = nil }
+
+local function now(): number
+	return Workspace:GetServerTimeNow()
+end
+
+local function announce(message: string)
+	for _, player in Players:GetPlayers() do
+		notifyRemote:FireClient(player, message, "discovery")
+	end
+end
+
+-- Applies an admin message (from this server or another one).
+local function apply(message)
+	if type(message) ~= "table" then
+		return
+	end
+	if message.type == "event" then
+		local kind = if Events.BIG[message.id]
+			then "big"
+			elseif Events.WEATHER[message.id] then "weather"
+			elseif Luck.EVENTS[message.id] then "lucky"
+			else nil
+		if kind == "lucky" then
+			ReplicatedStorage:SetAttribute("LuckyEvent", message.id)
+			ReplicatedStorage:SetAttribute("LuckyEventEnds", message.ends)
+			local event = Luck.EVENTS[message.id]
+			announce(event.icon .. " " .. event.name .. "! " .. event.description)
+		elseif kind then
+			overrides[kind] = { id = message.id, ends = message.ends }
+		end
+	elseif message.type == "end" then
+		-- End everything the admin started, and anything scheduled running right now.
+		overrides.big = { id = nil, ends = message.ends or now() + 60 }
+		overrides.weather = { id = nil, ends = message.ends or now() + 60 }
+		ReplicatedStorage:SetAttribute("LuckyEvent", nil)
+	elseif message.type == "announce" and type(message.text) == "string" then
+		announce("📣 " .. message.text)
+	end
+end
+
+-- Sends an admin message to this server and, if `everywhere`, every other server too.
+function EventService.send(message, everywhere: boolean)
+	apply(message)
+	if not everywhere then
+		return
+	end
+	task.spawn(function()
+		local ok, err = pcall(function()
+			MessagingService:PublishAsync(TOPIC, message)
+		end)
+		if not ok then
+			warn("[EventService] Couldn't reach other servers: " .. tostring(err))
+		end
+		if store and message.type ~= "announce" then
+			pcall(function()
+				store:SetAsync(STORE_KEY, message)
+			end)
+		end
+	end)
+end
+
+-- What's running (or nil): an admin override beats the timetable while it lasts.
+local function pick(kind: string, scheduled)
+	local override = overrides[kind]
+	if override and now() < override.ends then
+		if override.id then
+			return { id = override.id, ends = override.ends }
+		end
+		return nil -- the admin ended it
+	end
+	return scheduled
+end
+
+-- Weather mutations: every Freek standing on a pad has a chance to catch it.
+local function weatherTick(weather)
+	for _, player in Players:GetPlayers() do
+		local data = DataService.get(player)
+		if data then
+			local changed = false
+			for _, freek in data.freeks do
+				local mutations = Mutations.normalize(freek.mutations)
+				if freek.slot and not table.find(mutations, weather.mutation) and rng:NextNumber() < weather.chance then
+					table.insert(mutations, weather.mutation)
+					freek.mutations = Mutations.pack(mutations)
+					changed = true
+					notifyRemote:FireClient(
+						player,
+						weather.icon
+							.. " Your "
+							.. FreekUtil.displayName(freek)
+							.. " caught the "
+							.. weather.name
+							.. "!",
+						"discovery"
+					)
+				end
+			end
+			if changed then
+				DataService.changed(player)
+			end
+		end
+	end
+end
+
+function EventService.init()
+	local ok, result = pcall(function()
+		return DataStoreService:GetDataStore("FuseAFreekEvents")
+	end)
+	store = ok and result or nil
+
+	pcall(function()
+		MessagingService:SubscribeAsync(TOPIC, function(packet)
+			apply(packet.Data)
+		end)
+	end)
+
+	-- Pick up an admin event another server started before this one existed.
+	task.spawn(function()
+		if store then
+			local loaded, message = pcall(function()
+				return store:GetAsync(STORE_KEY)
+			end)
+			if loaded and type(message) == "table" and (message.ends or 0) > now() then
+				apply(message)
+			end
+		end
+	end)
+
+	local running = { big = nil, weather = nil }
+	local nextTick = 0
+	task.spawn(function()
+		while true do
+			local t = now()
+			local unix = os.time()
+			local offset = t - unix -- server time vs. the UTC clock the timetable uses
+			local scheduledBig = Events.scheduledAt(unix)
+			local scheduledWeather = Events.scheduledWeatherAt(unix)
+			local big = pick("big", scheduledBig and { id = scheduledBig.id, ends = scheduledBig.ends + offset })
+			local weather = pick(
+				"weather",
+				scheduledWeather and { id = scheduledWeather.id, ends = scheduledWeather.ends + offset }
+			)
+
+			for kind, state in { big = big, weather = weather } do
+				local before = running[kind]
+				local id = state and state.id
+				local list = if kind == "big" then Events.BIG else Events.WEATHER
+				if id ~= (before and before.id) then
+					if before and before.id then
+						announce(list[before.id].name .. " is over!")
+					end
+					if id then
+						local event = list[id]
+						announce(event.icon .. " " .. string.upper(event.name) .. "! " .. event.description)
+					end
+				end
+				running[kind] = state
+			end
+			ReplicatedStorage:SetAttribute("Event", big and big.id)
+			ReplicatedStorage:SetAttribute("EventEnds", big and big.ends or 0)
+			ReplicatedStorage:SetAttribute("Weather", weather and weather.id)
+			ReplicatedStorage:SetAttribute("WeatherEnds", weather and weather.ends or 0)
+
+			-- What's coming next, for the countdowns.
+			local upcoming = Events.upcoming(unix)
+			local nextBig
+			for _, slot in upcoming do
+				if slot.starts > unix then
+					nextBig = slot
+					break
+				end
+			end
+			ReplicatedStorage:SetAttribute("NextEvent", nextBig and nextBig.id)
+			ReplicatedStorage:SetAttribute("NextEventAt", nextBig and nextBig.starts + offset or 0)
+			local nextWeather = Events.nextWeather(unix)
+			if nextWeather and nextWeather.starts <= unix then
+				nextWeather = Events.nextWeather(nextWeather.ends + 1)
+			end
+			ReplicatedStorage:SetAttribute("NextWeather", nextWeather and nextWeather.id)
+			ReplicatedStorage:SetAttribute("NextWeatherAt", nextWeather and nextWeather.starts + offset or 0)
+
+			if weather and Events.WEATHER[weather.id] and t >= nextTick then
+				nextTick = t + Events.WEATHER_TICK
+				weatherTick(Events.WEATHER[weather.id])
+			end
+			task.wait(1)
+		end
+	end)
+end
+
+return EventService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">FreekTag</string>
           <string name="Source"><![CDATA[-- The floating tag over a Freek, in the chunky cartoon style: rarity on top (in its colour),
@@ -10069,7 +10803,7 @@ return FreekTag
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">HalloweenDecor</string>
           <string name="Source"><![CDATA[-- Halloween props: ghosts, bats, cobwebs, tombstones, dead trees, a witch's cauldron,
@@ -10529,7 +11263,7 @@ return HalloweenDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">LuckService</string>
           <string name="Source"><![CDATA[-- Monster Crates, the daily Lucky Wheel and Lucky Hour events (rules and odds in
@@ -10610,6 +11344,7 @@ local function pickSpecies(rarity: string)
 			if
 				species.rarity == Rarities.order[rank]
 				and not species.exclusive
+				and not species.event
 				and species.rarity ~= "Secret"
 				and Seasons.available(species)
 			then
@@ -10943,7 +11678,7 @@ return LuckService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="39">
+      <Item class="Script" referent="42">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -10977,6 +11712,8 @@ local SERVICES = {
 	"PassService",
 	"CannonService",
 	"LuckService",
+	"EventService",
+	"AdminService",
 	"SeasonalService", -- after the map and yards exist
 	"DataService",
 }
@@ -11004,7 +11741,7 @@ print("[Fuse a Freek] Server started")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -11096,7 +11833,7 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the map and gives every player a barn (see Barn.luau) with Freek pads and Fusion
@@ -11974,7 +12711,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="45">
         <Properties>
           <string name="Name">RebirthService</string>
           <string name="Source"><![CDATA[-- Rebirth: pay Config.rebirthCost to start over with a permanent income bonus.
@@ -12070,7 +12807,7 @@ return RebirthService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">Recipes</string>
           <string name="Source"><![CDATA[-- Decides what two Freeks fuse into. Server-only so players can't read the Secret recipes
@@ -12121,7 +12858,7 @@ return Recipes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="44">
+      <Item class="ModuleScript" referent="47">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -12416,7 +13153,7 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="45">
+      <Item class="ModuleScript" referent="48">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Stealing Freeks from other players' yards.
@@ -12847,7 +13584,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="46">
+      <Item class="ModuleScript" referent="49">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- Player-to-player Freek trades within one server.
@@ -13131,7 +13868,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="47">
+      <Item class="ModuleScript" referent="50">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- Weapons: giving them out, buying them, and what happens when they hit.
@@ -13460,19 +14197,398 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="48">
+  <Item class="StarterPlayer" referent="51">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="49">
+    <Item class="StarterPlayerScripts" referent="52">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="50">
+      <Item class="Folder" referent="53">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="51">
+        <Item class="ModuleScript" referent="54">
+          <Properties>
+            <string name="Name">AdminPanel</string>
+            <string name="Source"><![CDATA[-- The admin panel (only for admins: the server sets IsAdmin and checks every command).
+-- Start or end events in this server or all of them, fire any Freek from a cannon,
+-- announce something to everyone, see the coming timetable, and get test coins.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local Events = require(ReplicatedStorage.Shared.Events)
+local Freeks = require(ReplicatedStorage.Shared.Freeks)
+local Luck = require(ReplicatedStorage.Shared.Luck)
+local Mutations = require(ReplicatedStorage.Shared.Mutations)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local UI = require(script.Parent.UI)
+
+local AdminPanel = {}
+
+local player = Players.LocalPlayer
+local colors = UI.colors
+
+-- Every event the panel can start, in the order its buttons appear.
+local EVENT_BUTTONS = {
+	{ id = "MonsterStorm", def = Events.BIG.MonsterStorm },
+	{ id = "BloodMoon", def = Events.WEATHER.BloodMoon },
+	{ id = "GoldRush", def = Events.WEATHER.GoldRush },
+	{ id = "RainbowRain", def = Events.WEATHER.RainbowRain },
+	{ id = "Rainbow", def = Luck.EVENTS.Rainbow },
+	{ id = "LuckySkies", def = Luck.EVENTS.LuckySkies },
+	{ id = "RapidFire", def = Luck.EVENTS.RapidFire },
+	{ id = "CrateLuck", def = Luck.EVENTS.CrateLuck },
+}
+local DURATIONS = { 5, 15, 30, 60 }
+
+local function heading(text: string, parent: Instance, order: number)
+	return UI.label(text, {
+		Size = UDim2.new(1, 0, 0, 24),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = colors.gold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = order,
+		Parent = parent,
+	})
+end
+
+local function row(parent: Instance, order: number, height: number)
+	return UI.new("Frame", {
+		Size = UDim2.new(1, 0, 0, height),
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		Parent = parent,
+	}, {
+		UI.new("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			Padding = UDim.new(0, 6),
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+end
+
+function AdminPanel.start(screen: ScreenGui)
+	local remote = Remotes.get("Admin")
+	local window
+	local status
+
+	local function run(command: string, args)
+		status.Text = "..."
+		status.TextColor3 = colors.text
+		task.spawn(function()
+			local ok, result, message = pcall(function()
+				return remote:InvokeServer(command, args)
+			end)
+			if not ok then
+				status.Text = "Couldn't reach the server"
+				status.TextColor3 = colors.red
+				return
+			end
+			status.Text = tostring(message or (if result then "Done" else "Failed"))
+			status.TextColor3 = if result then colors.money else Color3.fromRGB(255, 140, 140)
+		end)
+	end
+
+	-- The window, in the game's style: blue panel, gold title ribbon, round red X.
+	window = UI.glass({
+		Name = "AdminPanel",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.52),
+		Size = UDim2.fromOffset(600, 520),
+		Visible = false,
+		ZIndex = 20,
+		Parent = screen,
+	}, { UI.corner(22) })
+	local fit = UI.new("UIScale", { Parent = window })
+	local function refit()
+		local camera = Workspace.CurrentCamera
+		if camera then
+			fit.Scale = math.clamp(math.min(camera.ViewportSize.X / 640, camera.ViewportSize.Y / 600), 0.5, 1)
+		end
+	end
+	refit()
+	Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(refit)
+	local ribbon = UI.glass({
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0, 2),
+		Size = UDim2.fromOffset(280, 48),
+		BackgroundColor3 = Color3.fromRGB(255, 190, 40),
+		ZIndex = 21,
+		Parent = window,
+	}, { UI.corner(24) })
+	UI.label("ADMIN PANEL", {
+		Size = UDim2.new(1, -20, 1, -8),
+		Position = UDim2.fromOffset(10, 4),
+		FontFace = UI.fonts.heavy,
+		ZIndex = 22,
+		Parent = ribbon,
+	})
+	local close = UI.button("X", colors.red, function()
+		window.Visible = false
+	end, {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(1, -6, 0, 6),
+		Size = UDim2.fromOffset(44, 44),
+		ZIndex = 22,
+		Parent = window,
+	})
+	close:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(1, 0)
+
+	local body = UI.new("ScrollingFrame", {
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(16, 34),
+		Size = UDim2.new(1, -32, 1, -78),
+		CanvasSize = UDim2.new(),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 6,
+		ZIndex = 21,
+		Parent = window,
+	}, {
+		UI.new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }),
+		UI.new("UIPadding", { PaddingRight = UDim.new(0, 6), PaddingTop = UDim.new(0, 6) }),
+	})
+	status = UI.label("Pick an event, or fire a Freek!", {
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -12),
+		Size = UDim2.new(1, -32, 0, 26),
+		ZIndex = 22,
+		Parent = window,
+	})
+
+	-- Everywhere or just this server, used by events and announcements.
+	local everywhere = true
+
+	-- Events --------------------------------------------------------------------
+	heading("⚡ START AN EVENT", body, 1)
+	local chosenEvent = EVENT_BUTTONS[1].id
+	local eventButtons = {}
+	local grid = UI.new("Frame", {
+		Size = UDim2.new(1, 0, 0, 82),
+		BackgroundTransparency = 1,
+		LayoutOrder = 2,
+		Parent = body,
+	}, {
+		UI.new("UIGridLayout", {
+			CellSize = UDim2.new(0.25, -6, 0, 38),
+			CellPadding = UDim2.fromOffset(6, 6),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	local function paintEvents()
+		for id, button in eventButtons do
+			local entry
+			for _, e in EVENT_BUTTONS do
+				if e.id == id then
+					entry = e
+				end
+			end
+			local picked = id == chosenEvent
+			button.BackgroundColor3 = if picked then entry.def.color else colors.card
+			button:FindFirstChildOfClass("UIStroke").Color = if picked then Color3.new(1, 1, 1) else UI.OUTLINE
+		end
+	end
+	for i, entry in EVENT_BUTTONS do
+		eventButtons[entry.id] = UI.button(entry.def.icon .. " " .. entry.def.name, colors.card, function()
+			chosenEvent = entry.id
+			paintEvents()
+		end, { LayoutOrder = i, ZIndex = 22, Parent = grid })
+	end
+	paintEvents()
+
+	local minutes = 15
+	local timeRow = row(body, 3, 36)
+	UI.label("Length:", {
+		Size = UDim2.fromOffset(70, 30),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 22,
+		Parent = timeRow,
+	})
+	local timeButtons = {}
+	local function paintTimes()
+		for value, button in timeButtons do
+			button.BackgroundColor3 = if value == minutes then colors.orange else colors.card
+		end
+	end
+	for i, value in DURATIONS do
+		timeButtons[value] = UI.button(value .. " min", colors.card, function()
+			minutes = value
+			paintTimes()
+		end, { Size = UDim2.fromOffset(78, 32), LayoutOrder = i, ZIndex = 22, Parent = timeRow })
+	end
+	paintTimes()
+	local whereButton
+	whereButton = UI.button("ALL SERVERS", colors.purple, function()
+		everywhere = not everywhere
+		whereButton.Text = if everywhere then "ALL SERVERS" else "THIS SERVER"
+		whereButton.BackgroundColor3 = if everywhere then colors.purple else colors.blue
+	end, { Size = UDim2.fromOffset(150, 32), LayoutOrder = 10, ZIndex = 22, Parent = timeRow })
+
+	local goRow = row(body, 4, 44)
+	UI.button("▶ START", colors.green, function()
+		run("event", { id = chosenEvent, minutes = minutes, everywhere = everywhere })
+	end, { Size = UDim2.new(0.5, -3, 0, 40), LayoutOrder = 1, ZIndex = 22, Parent = goRow })
+	UI.button("■ END EVENTS", colors.red, function()
+		run("stop", { everywhere = everywhere })
+	end, { Size = UDim2.new(0.5, -3, 0, 40), LayoutOrder = 2, ZIndex = 22, Parent = goRow })
+
+	-- Cannon --------------------------------------------------------------------
+	heading("💥 FIRE A FREEK FROM A CANNON (THIS SERVER)", body, 5)
+	local speciesIds = {}
+	for _, species in Freeks.list do
+		table.insert(speciesIds, species.id)
+	end
+	local mutationIds = { "" }
+	for _, mutation in Mutations.list do
+		table.insert(mutationIds, mutation.id)
+	end
+	local speciesIndex, mutationIndex = 1, 1
+	local cannonRow = row(body, 6, 44)
+	local function cycler(values, getIndex, setIndex, describe, order, width)
+		local label
+		local function show()
+			label.Text = describe(values[getIndex()])
+		end
+		UI.button("<", colors.blue, function()
+			setIndex((getIndex() - 2) % #values + 1)
+			show()
+		end, { Size = UDim2.fromOffset(34, 36), LayoutOrder = order, ZIndex = 22, Parent = cannonRow })
+		label = UI.label("", {
+			Size = UDim2.fromOffset(width, 36),
+			BackgroundTransparency = 0,
+			BackgroundColor3 = colors.card,
+			LayoutOrder = order + 1,
+			ZIndex = 22,
+			Parent = cannonRow,
+		})
+		UI.corner(10).Parent = label
+		UI.stroke(nil, 2.5).Parent = label
+		UI.button(">", colors.blue, function()
+			setIndex(getIndex() % #values + 1)
+			show()
+		end, { Size = UDim2.fromOffset(34, 36), LayoutOrder = order + 2, ZIndex = 22, Parent = cannonRow })
+		show()
+	end
+	cycler(speciesIds, function()
+		return speciesIndex
+	end, function(v)
+		speciesIndex = v
+	end, function(id)
+		local species = Freeks.byId[id]
+		return species and species.name or id
+	end, 1, 130)
+	cycler(mutationIds, function()
+		return mutationIndex
+	end, function(v)
+		mutationIndex = v
+	end, function(id)
+		return if id == "" then "No mutation" else id
+	end, 4, 110)
+	UI.button("FIRE!", colors.orange, function()
+		local mutation = mutationIds[mutationIndex]
+		run("spawn", { species = speciesIds[speciesIndex], mutation = if mutation == "" then nil else mutation })
+	end, { Size = UDim2.fromOffset(84, 40), LayoutOrder = 10, ZIndex = 22, Parent = cannonRow })
+
+	-- Announce ------------------------------------------------------------------
+	heading("📣 ANNOUNCE (USES THE SERVER BUTTON ABOVE)", body, 7)
+	local announceRow = row(body, 8, 44)
+	local box = UI.new("TextBox", {
+		Size = UDim2.new(1, -110, 0, 38),
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		FontFace = UI.fonts.bold,
+		PlaceholderText = "Monster Storm in 5 minutes!",
+		PlaceholderColor3 = Color3.fromRGB(140, 150, 180),
+		Text = "",
+		TextColor3 = UI.OUTLINE,
+		TextSize = 18,
+		ClearTextOnFocus = false,
+		LayoutOrder = 1,
+		ZIndex = 22,
+		Parent = announceRow,
+	}, { UI.corner(10), UI.stroke(nil, 2.5), UI.new("UIPadding", { PaddingLeft = UDim.new(0, 10) }) })
+	UI.button("SEND", colors.green, function()
+		run("announce", { text = box.Text, everywhere = everywhere })
+		box.Text = ""
+	end, { Size = UDim2.fromOffset(100, 40), LayoutOrder = 2, ZIndex = 22, Parent = announceRow })
+
+	-- Timetable and test coins --------------------------------------------------
+	heading("🗓️ COMING UP (YOUR LOCAL TIME)", body, 9)
+	local schedule = UI.label("", {
+		Size = UDim2.new(1, 0, 0, 66),
+		TextScaled = false,
+		TextSize = 16,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		LayoutOrder = 10,
+		ZIndex = 22,
+		Parent = body,
+	})
+	local function refreshSchedule()
+		local lines = {}
+		local t = os.time()
+		for i, slot in Events.upcoming(t) do
+			if i > 3 then
+				break
+			end
+			local def = Events.BIG[slot.id]
+			local when = os.date("%a %I:%M %p", slot.starts)
+			table.insert(
+				lines,
+				def.icon .. " " .. def.name .. " · " .. when .. if slot.starts <= t then "  (LIVE)" else ""
+			)
+		end
+		local weather = Events.nextWeather(t)
+		if weather then
+			local def = Events.WEATHER[weather.id]
+			table.insert(lines, def.icon .. " " .. def.name .. " · " .. os.date("%I:%M %p", weather.starts))
+		end
+		schedule.Text = table.concat(lines, "\n")
+	end
+
+	local coinRow = row(body, 11, 44)
+	for i, amount in { 1e6, 1e9 } do
+		UI.button("+" .. (if amount >= 1e9 then "1B" else "1M") .. " COINS", colors.gold, function()
+			run("money", { amount = amount })
+		end, { Size = UDim2.fromOffset(150, 38), LayoutOrder = i, ZIndex = 22, Parent = coinRow })
+	end
+
+	-- The ADMIN button that opens it, only shown to admins.
+	local toggle = UI.button("🛠️ ADMIN", colors.red, function()
+		window.Visible = not window.Visible
+		if window.Visible then
+			refreshSchedule()
+		end
+	end, {
+		Name = "AdminButton",
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -12, 0.5, 0),
+		Size = UDim2.fromOffset(120, 38),
+		Visible = false,
+		ZIndex = 10,
+		Parent = screen,
+	})
+	local function update()
+		toggle.Visible = player:GetAttribute("IsAdmin") == true
+		if not toggle.Visible then
+			window.Visible = false
+		end
+	end
+	player:GetAttributeChangedSignal("IsAdmin"):Connect(update)
+	update()
+	return window
+end
+
+return AdminPanel
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="55">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -13546,7 +14662,7 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="52">
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">BarnFX</string>
             <string name="Source"><![CDATA[-- Moving bits of the rebirth barn upgrades (BarnUpgrades.luau on the server), animated
@@ -13694,7 +14810,99 @@ return BarnFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="53">
+        <Item class="ModuleScript" referent="57">
+          <Properties>
+            <string name="Name">EventFX</string>
+            <string name="Source"><![CDATA[-- What big events and weather look like (see Events.luau), on each player's own screen:
+-- a colour tint over everything, falling rain or sparkles around the camera, and lightning
+-- flashes during a Monster Storm.
+
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local Events = require(ReplicatedStorage.Shared.Events)
+
+local EventFX = {}
+
+local LOOKS = {
+	MonsterStorm = {
+		tint = Color3.fromRGB(205, 185, 255),
+		brightness = -0.06,
+		rain = Color3.fromRGB(170, 200, 255),
+		lightning = true,
+	},
+	BloodMoon = { tint = Color3.fromRGB(255, 165, 170), brightness = -0.04, rain = Color3.fromRGB(255, 80, 90) },
+	GoldRush = { tint = Color3.fromRGB(255, 238, 180), brightness = 0.03, rain = Color3.fromRGB(255, 215, 80) },
+	RainbowRain = { tint = Color3.fromRGB(255, 225, 255), brightness = 0.02, rain = "rainbow" },
+}
+
+function EventFX.start()
+	local tint = Instance.new("ColorCorrectionEffect")
+	tint.Name = "EventTint"
+	tint.Parent = Lighting
+
+	-- A big invisible sheet over the camera that rain (or sparkles) falls from.
+	local sky = Instance.new("Part")
+	sky.Name = "EventSky"
+	sky.Anchored = true
+	sky.CanCollide = false
+	sky.CanQuery = false
+	sky.CanTouch = false
+	sky.Transparency = 1
+	sky.Size = Vector3.new(120, 1, 120)
+	local rain = Instance.new("ParticleEmitter")
+	rain.Rate = 0
+	rain.Lifetime = NumberRange.new(1.6, 2.2)
+	rain.Speed = NumberRange.new(30, 40)
+	rain.EmissionDirection = Enum.NormalId.Bottom
+	rain.Size = NumberSequence.new(0.35)
+	rain.LightEmission = 0.6
+	rain.Parent = sky
+	sky.Parent = Workspace
+
+	local nextFlash = 0
+	task.spawn(function()
+		while true do
+			local big, _, bigId = Events.current()
+			local weather, _, weatherId = Events.weather()
+			-- A big event's look wins over the weather's.
+			local look = (big and LOOKS[bigId]) or (weather and LOOKS[weatherId])
+			local camera = Workspace.CurrentCamera
+			if camera then
+				sky.CFrame = CFrame.new(camera.CFrame.Position + Vector3.new(0, 40, 0))
+			end
+			local target = if look then look.tint else Color3.new(1, 1, 1)
+			local brightness = if look then look.brightness else 0
+			if look and look.rain == "rainbow" then
+				target = Color3.fromHSV((os.clock() * 0.1) % 1, 0.12, 1)
+			end
+			tint.TintColor = tint.TintColor:Lerp(target, 0.05)
+			if look and look.lightning and os.clock() >= nextFlash then
+				nextFlash = os.clock() + 3 + math.random() * 5
+				tint.Brightness = 0.45 -- the flash, which fades below
+			end
+			tint.Brightness += (brightness - tint.Brightness) * 0.12
+			if look then
+				rain.Rate = if look.lightning then 300 else 120
+				if look.rain == "rainbow" then
+					rain.Color = ColorSequence.new(Color3.fromHSV((os.clock() * 0.3) % 1, 0.6, 1))
+				else
+					rain.Color = ColorSequence.new(look.rain)
+				end
+			else
+				rain.Rate = 0
+			end
+			task.wait(1 / 30)
+		end
+	end)
+end
+
+return EventFX
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="58">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, event chip, menu tabs, leaderboard,
@@ -13708,6 +14916,7 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Events = require(ReplicatedStorage.Shared.Events)
 local Format = require(ReplicatedStorage.Shared.Format)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Luck = require(ReplicatedStorage.Shared.Luck)
@@ -13916,6 +15125,122 @@ function Hud.luckChip(screen: ScreenGui)
 				-- Pulse the outline so it catches the eye.
 				stroke.Color = event.color
 				stroke.Transparency = (math.sin(os.clock() * 4) + 1) * 0.3
+			end
+			task.wait(0.1)
+		end
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- Big events and weather (see Events.luau)
+--------------------------------------------------------------------------------
+
+-- "2d 4h", "3h 12m", "12:05": how long until something, short.
+local function countdown(seconds: number): string
+	seconds = math.max(0, math.floor(seconds))
+	local d, h, m, s = seconds // 86400, (seconds % 86400) // 3600, (seconds % 3600) // 60, seconds % 60
+	if d > 0 then
+		return string.format("%dd %dh", d, h)
+	elseif h > 0 then
+		return string.format("%dh %dm", h, m)
+	end
+	return string.format("%d:%02d", m, s)
+end
+
+-- A banner at the top of the screen: the big event when it's live (big, glowing, with time
+-- left) or a countdown to the next one, and under it the weather or when it's next due.
+function Hud.eventBanner(screen: ScreenGui)
+	local holder = UI.new("Frame", {
+		Name = "EventBanner",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 8),
+		Size = UDim2.fromOffset(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		BackgroundTransparency = 1,
+		Parent = screen,
+	}, {
+		UI.new("UIListLayout", {
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			Padding = UDim.new(0, 5),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	local function pill(order: number, height: number)
+		local frame = UI.glass({
+			Size = UDim2.fromOffset(0, height),
+			AutomaticSize = Enum.AutomaticSize.X,
+			LayoutOrder = order,
+			Parent = holder,
+		}, {
+			UI.corner(height / 2),
+			UI.new("UIPadding", { PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 16) }),
+			UI.new("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				VerticalAlignment = Enum.VerticalAlignment.Center,
+			}),
+		})
+		local label = text("", height * 0.55, {
+			Size = UDim2.fromOffset(0, height),
+			AutomaticSize = Enum.AutomaticSize.X,
+			FontFace = UI.fonts.heavy,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Parent = frame,
+		})
+		return frame, label, frame:FindFirstChildOfClass("UIStroke")
+	end
+	local eventPill, eventLabel, eventStroke = pill(1, 40)
+	local weatherPill, weatherLabel = pill(2, 28)
+	local eventScale = UI.new("UIScale", { Parent = eventPill })
+
+	task.spawn(function()
+		while true do
+			local t = Workspace:GetServerTimeNow()
+			local big, ends = Events.current()
+			if big then
+				-- Live: the event's colour, pulsing, with time left.
+				local pulse = (math.sin(os.clock() * 5) + 1) / 2
+				eventPill.BackgroundColor3 = big.color:Lerp(Color3.fromRGB(60, 20, 110), 0.35 + pulse * 0.2)
+				eventLabel.Text = big.icon .. "  " .. string.upper(big.name) .. " LIVE · " .. countdown(ends - t)
+				eventLabel.TextColor3 = Color3.new(1, 1, 1)
+				if eventStroke then
+					eventStroke.Color = big.color:Lerp(Color3.new(1, 1, 1), pulse * 0.6)
+				end
+				eventScale.Scale = 1 + pulse * 0.04
+			else
+				local id = ReplicatedStorage:GetAttribute("NextEvent")
+				local at = ReplicatedStorage:GetAttribute("NextEventAt") or 0
+				local nextEvent = id and Events.BIG[id]
+				eventPill.Visible = nextEvent ~= nil
+				if nextEvent then
+					eventPill.BackgroundColor3 = colors.panel
+					eventLabel.Text = nextEvent.icon .. "  " .. nextEvent.name .. " in " .. countdown(at - t)
+					eventLabel.TextColor3 = nextEvent.color:Lerp(Color3.new(1, 1, 1), 0.55)
+					if eventStroke then
+						eventStroke.Color = UI.OUTLINE
+					end
+					eventScale.Scale = 0.85
+				end
+			end
+			if big then
+				eventPill.Visible = true
+			end
+
+			local weather, weatherEnds = Events.weather()
+			if weather then
+				weatherPill.BackgroundColor3 = weather.color:Lerp(Color3.new(0, 0, 0), 0.25)
+				weatherLabel.Text = weather.icon .. "  " .. weather.name .. " · " .. countdown(weatherEnds - t)
+				weatherLabel.TextColor3 = Color3.new(1, 1, 1)
+				weatherPill.Visible = true
+			else
+				local id = ReplicatedStorage:GetAttribute("NextWeather")
+				local at = ReplicatedStorage:GetAttribute("NextWeatherAt") or 0
+				local nextWeather = id and Events.WEATHER[id]
+				weatherPill.Visible = nextWeather ~= nil
+				if nextWeather then
+					weatherPill.BackgroundColor3 = colors.panel
+					weatherLabel.Text = nextWeather.icon .. "  " .. nextWeather.name .. " in " .. countdown(at - t)
+					weatherLabel.TextColor3 = nextWeather.color:Lerp(Color3.new(1, 1, 1), 0.5)
+				end
 			end
 			task.wait(0.1)
 		end
@@ -14262,7 +15587,7 @@ function Hud.toasts(screen: ScreenGui)
 	local holder = UI.new("Frame", {
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 12),
+		Position = UDim2.new(0.5, 0, 0, 92), -- under the event banner
 		Size = UDim2.new(0.5, 0, 0, 220),
 		Parent = screen,
 	}, {
@@ -14313,7 +15638,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="54">
+        <Item class="ModuleScript" referent="59">
           <Properties>
             <string name="Name">ItemPictures</string>
             <string name="Source"><![CDATA[-- 3D pictures for shop items (barn slots, weapons, game passes), built from parts like
@@ -14623,7 +15948,7 @@ return ItemPictures
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="55">
+        <Item class="LocalScript" referent="60">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
@@ -14690,6 +16015,8 @@ local Seasons = require(Shared.Seasons)
 local Weapons = require(Shared.Weapons)
 local Ambient = require(script.Parent.Ambient)
 local BarnFX = require(script.Parent.BarnFX)
+local AdminPanel = require(script.Parent.AdminPanel)
+local EventFX = require(script.Parent.EventFX)
 local Hud = require(script.Parent.Hud)
 local PackReveal = require(script.Parent.PackReveal)
 local UI = require(script.Parent.UI)
@@ -14719,6 +16046,9 @@ local screen = UI.new("ScreenGui", {
 local setRebirthBoost = Hud.money(screen)
 Hud.eventChip(screen)
 Hud.luckChip(screen)
+Hud.eventBanner(screen)
+AdminPanel.start(screen)
+EventFX.start()
 Hud.leaderboard(screen)
 Hud.vipChatTag()
 local toast = Hud.toasts(screen)
@@ -16235,7 +17565,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="56">
+        <Item class="ModuleScript" referent="61">
           <Properties>
             <string name="Name">PackReveal</string>
             <string name="Source"><![CDATA[-- Monster Egg opening, done like a card-pack reveal in the big sports games, in 3D.
@@ -17580,7 +18910,7 @@ return PackReveal
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="57">
+        <Item class="ModuleScript" referent="62">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).

@@ -8,6 +8,7 @@
 -- walk     how it moves around the town square: waddle, trot, prowl, slither, flap, stomp,
 --          bounce, strut, catwalk, shamble or float (see the client)
 -- exclusive only from Monster Crates (never from cannons, the wheel or anywhere else)
+-- event       only from the cannons while that event runs (see Events.luau)
 -- look     how the model is built: either a placeholder (shape "Ball" or "Block", size in
 --          studs, eyes 1-3, antennae 0-3) or a part list (see FreekModel), e.g. from human()
 --
@@ -1894,6 +1895,101 @@ Freeks.list = {
 			}
 		end)(),
 	},
+	-- Event Freeks: only from the cannons during their event (see Events.luau).
+	{
+		id = "Stormy",
+		signature = "lightning",
+		name = "Stormy",
+		rarity = "Mystic",
+		event = "MonsterStorm",
+		walk = "float",
+		income = 2000,
+		look = (function()
+			-- A grumpy-cute storm cloud: puffy grey-blue cloud body, big yellow eyes under
+			-- cross brows, a crackling lightning bolt underneath and raindrops falling.
+			local list, add = newParts()
+			local cloud, dark, light = rgb(125, 140, 180), rgb(90, 100, 140), rgb(170, 185, 220)
+			local c, r = { 0, 3.1, 0 }, 1.3
+			add({ name = "Body", shape = "Ellipsoid", size = { 3.2, 2.4, 2.6 }, pos = c, color = cloud })
+			for _, puff in
+				{
+					{ -0.95, 4.0, 0.15, 1.6, light },
+					{ 0.25, 4.35, 0.2, 1.9, light },
+					{ 1.15, 3.95, 0.1, 1.5, light },
+					{ -1.65, 3.0, 0.1, 1.5, cloud },
+					{ 1.7, 3.05, 0.1, 1.45, cloud },
+					{ -0.85, 2.1, 0.1, 1.35, dark },
+					{ 0.8, 2.05, 0.15, 1.4, dark },
+				}
+			do
+				add({ shape = "Ball", size = puff[4], pos = { puff[1], puff[2], puff[3] }, color = puff[5] })
+			end
+			cuteEyes(add, c, r, 0.5, 0.12, 0.66, rgb(255, 215, 50))
+			for _, side in { -1, 1 } do
+				-- Cross little brows.
+				add({
+					shape = "Ellipsoid",
+					size = { 0.42, 0.12, 0.1 },
+					pos = onBall(c, r, side * 0.5, 0.62, -0.05),
+					rot = { 0, 0, side * 18 },
+					color = rgb(45, 50, 80),
+					detail = true,
+				})
+			end
+			blush(add, c, r, 0.85, -0.2, 0.38)
+			openMouth(add, c, r, -0.48, 0.42)
+			-- Puffy little arms that flutter.
+			for _, side in { -1, 1 } do
+				add({
+					shape = "Ball",
+					size = 0.8,
+					pos = { side * 2.35, 2.75, -0.1 },
+					color = light,
+					swing = {
+						hinge = { side * 2.0, 2.95, -0.1 },
+						phase = if side < 0 then 0 else 0.5,
+						axis = "Z",
+						amount = side * 0.8,
+					},
+				})
+			end
+			-- The lightning bolt crackling underneath.
+			local bolt = rgb(255, 230, 60)
+			for _, piece in
+				{
+					{ 0.25, 1.35, -0.3, 25 },
+					{ -0.05, 0.85, -0.3, -30 },
+					{ 0.2, 0.35, -0.3, 25 },
+				}
+			do
+				add({
+					shape = "Block",
+					size = { 0.28, 0.75, 0.2 },
+					pos = { piece[1], piece[2], piece[3] },
+					rot = { 0, 0, piece[4] },
+					color = bolt,
+					material = "Neon",
+					detail = true,
+				})
+			end
+			-- Raindrops.
+			for _, drop in { { -1.2, 1.2, 0.3 }, { -0.6, 0.6, -0.4 }, { 0.9, 1.0, 0.2 }, { 1.3, 0.45, -0.3 } } do
+				add({
+					shape = "Ellipsoid",
+					size = { 0.18, 0.3, 0.18 },
+					pos = drop,
+					color = rgb(120, 200, 255),
+					transparency = 0.15,
+					detail = true,
+				})
+			end
+			Accessories.put(add, "lightning", c, r)
+			return {
+				parts = list,
+				effects = { { type = "Glow", part = 1, color = rgb(255, 230, 120), size = 12 } },
+			}
+		end)(),
+	},
 }
 
 -- Every Freek belongs to a series (shown first when a Monster Egg hatches).
@@ -1908,7 +2004,10 @@ local HUMAN_LINE = { Chuckles = true, Nerdle = true, Flexo = true, Glamora = tru
 local base = {}
 for i, species in Freeks.list do
 	species.order = i
-	species.series = if species.exclusive then "Monster" elseif HUMAN_LINE[species.id] then "Human" else "Animal"
+	species.series = if species.exclusive or species.event
+		then "Monster"
+		elseif HUMAN_LINE[species.id] then "Human"
+		else "Animal"
 	base[species.id] = species
 end
 

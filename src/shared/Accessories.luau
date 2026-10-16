@@ -381,6 +381,43 @@ list.bolts = {
 	end,
 }
 
+-- Stormy: a crackling neon lightning bolt clipped on top.
+list.lightning = {
+	slot = "top",
+	build = function()
+		local bolt = rgb(255, 230, 60)
+		return {
+			{
+				shape = "Block",
+				size = { 0.18, 0.42, 0.12 },
+				pos = { 0.5, 1.12, -0.1 },
+				rot = { 0, 0, 28 },
+				color = bolt,
+				material = "Neon",
+				detail = true,
+			},
+			{
+				shape = "Block",
+				size = { 0.18, 0.42, 0.12 },
+				pos = { 0.42, 0.84, -0.1 },
+				rot = { 0, 0, -30 },
+				color = bolt,
+				material = "Neon",
+				detail = true,
+			},
+			{
+				shape = "Block",
+				size = { 0.18, 0.36, 0.12 },
+				pos = { 0.5, 0.58, -0.1 },
+				rot = { 0, 0, 28 },
+				color = bolt,
+				material = "Neon",
+				detail = true,
+			},
+		}
+	end,
+}
+
 -- Neck accessories (the origin is the neck, under a radius-1 head).
 
 -- Woofles: a red collar with a gold tag.

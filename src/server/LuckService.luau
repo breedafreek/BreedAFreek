@@ -76,6 +76,7 @@ local function pickSpecies(rarity: string)
 			if
 				species.rarity == Rarities.order[rank]
 				and not species.exclusive
+				and not species.event
 				and species.rarity ~= "Secret"
 				and Seasons.available(species)
 			then

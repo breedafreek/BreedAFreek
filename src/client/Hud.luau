@@ -9,6 +9,7 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local Events = require(ReplicatedStorage.Shared.Events)
 local Format = require(ReplicatedStorage.Shared.Format)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Luck = require(ReplicatedStorage.Shared.Luck)
@@ -217,6 +218,122 @@ function Hud.luckChip(screen: ScreenGui)
 				-- Pulse the outline so it catches the eye.
 				stroke.Color = event.color
 				stroke.Transparency = (math.sin(os.clock() * 4) + 1) * 0.3
+			end
+			task.wait(0.1)
+		end
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- Big events and weather (see Events.luau)
+--------------------------------------------------------------------------------
+
+-- "2d 4h", "3h 12m", "12:05": how long until something, short.
+local function countdown(seconds: number): string
+	seconds = math.max(0, math.floor(seconds))
+	local d, h, m, s = seconds // 86400, (seconds % 86400) // 3600, (seconds % 3600) // 60, seconds % 60
+	if d > 0 then
+		return string.format("%dd %dh", d, h)
+	elseif h > 0 then
+		return string.format("%dh %dm", h, m)
+	end
+	return string.format("%d:%02d", m, s)
+end
+
+-- A banner at the top of the screen: the big event when it's live (big, glowing, with time
+-- left) or a countdown to the next one, and under it the weather or when it's next due.
+function Hud.eventBanner(screen: ScreenGui)
+	local holder = UI.new("Frame", {
+		Name = "EventBanner",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 8),
+		Size = UDim2.fromOffset(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		BackgroundTransparency = 1,
+		Parent = screen,
+	}, {
+		UI.new("UIListLayout", {
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			Padding = UDim.new(0, 5),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	local function pill(order: number, height: number)
+		local frame = UI.glass({
+			Size = UDim2.fromOffset(0, height),
+			AutomaticSize = Enum.AutomaticSize.X,
+			LayoutOrder = order,
+			Parent = holder,
+		}, {
+			UI.corner(height / 2),
+			UI.new("UIPadding", { PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 16) }),
+			UI.new("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				VerticalAlignment = Enum.VerticalAlignment.Center,
+			}),
+		})
+		local label = text("", height * 0.55, {
+			Size = UDim2.fromOffset(0, height),
+			AutomaticSize = Enum.AutomaticSize.X,
+			FontFace = UI.fonts.heavy,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Parent = frame,
+		})
+		return frame, label, frame:FindFirstChildOfClass("UIStroke")
+	end
+	local eventPill, eventLabel, eventStroke = pill(1, 40)
+	local weatherPill, weatherLabel = pill(2, 28)
+	local eventScale = UI.new("UIScale", { Parent = eventPill })
+
+	task.spawn(function()
+		while true do
+			local t = Workspace:GetServerTimeNow()
+			local big, ends = Events.current()
+			if big then
+				-- Live: the event's colour, pulsing, with time left.
+				local pulse = (math.sin(os.clock() * 5) + 1) / 2
+				eventPill.BackgroundColor3 = big.color:Lerp(Color3.fromRGB(60, 20, 110), 0.35 + pulse * 0.2)
+				eventLabel.Text = big.icon .. "  " .. string.upper(big.name) .. " LIVE · " .. countdown(ends - t)
+				eventLabel.TextColor3 = Color3.new(1, 1, 1)
+				if eventStroke then
+					eventStroke.Color = big.color:Lerp(Color3.new(1, 1, 1), pulse * 0.6)
+				end
+				eventScale.Scale = 1 + pulse * 0.04
+			else
+				local id = ReplicatedStorage:GetAttribute("NextEvent")
+				local at = ReplicatedStorage:GetAttribute("NextEventAt") or 0
+				local nextEvent = id and Events.BIG[id]
+				eventPill.Visible = nextEvent ~= nil
+				if nextEvent then
+					eventPill.BackgroundColor3 = colors.panel
+					eventLabel.Text = nextEvent.icon .. "  " .. nextEvent.name .. " in " .. countdown(at - t)
+					eventLabel.TextColor3 = nextEvent.color:Lerp(Color3.new(1, 1, 1), 0.55)
+					if eventStroke then
+						eventStroke.Color = UI.OUTLINE
+					end
+					eventScale.Scale = 0.85
+				end
+			end
+			if big then
+				eventPill.Visible = true
+			end
+
+			local weather, weatherEnds = Events.weather()
+			if weather then
+				weatherPill.BackgroundColor3 = weather.color:Lerp(Color3.new(0, 0, 0), 0.25)
+				weatherLabel.Text = weather.icon .. "  " .. weather.name .. " · " .. countdown(weatherEnds - t)
+				weatherLabel.TextColor3 = Color3.new(1, 1, 1)
+				weatherPill.Visible = true
+			else
+				local id = ReplicatedStorage:GetAttribute("NextWeather")
+				local at = ReplicatedStorage:GetAttribute("NextWeatherAt") or 0
+				local nextWeather = id and Events.WEATHER[id]
+				weatherPill.Visible = nextWeather ~= nil
+				if nextWeather then
+					weatherPill.BackgroundColor3 = colors.panel
+					weatherLabel.Text = nextWeather.icon .. "  " .. nextWeather.name .. " in " .. countdown(at - t)
+					weatherLabel.TextColor3 = nextWeather.color:Lerp(Color3.new(1, 1, 1), 0.5)
+				end
 			end
 			task.wait(0.1)
 		end
@@ -563,7 +680,7 @@ function Hud.toasts(screen: ScreenGui)
 	local holder = UI.new("Frame", {
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 12),
+		Position = UDim2.new(0.5, 0, 0, 92), -- under the event banner
 		Size = UDim2.new(0.5, 0, 0, 220),
 		Parent = screen,
 	}, {

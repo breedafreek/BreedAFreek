@@ -9,6 +9,7 @@
 -- LuckResult      server -> client   ({ kind = "crate" | "wheel", ... }) what a crate/spin gave
 -- GetState        client -> server   returns snapshot once data has loaded
 -- GetDiscoveries  client -> server   returns { [speciesId] = discovery }
+-- Admin           client -> server   (command, args) admin panel; returns (ok, message)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -23,6 +24,7 @@ local KINDS = {
 	LuckResult = "RemoteEvent",
 	GetState = "RemoteFunction",
 	GetDiscoveries = "RemoteFunction",
+	Admin = "RemoteFunction",
 }
 
 local Remotes = {}
