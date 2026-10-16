@@ -14,6 +14,7 @@ local Format = require(ReplicatedStorage.Shared.Format)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Luck = require(ReplicatedStorage.Shared.Luck)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
+local ItemPictures = require(script.Parent.ItemPictures)
 local UI = require(script.Parent.UI)
 
 local colors = UI.colors
@@ -489,18 +490,22 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 				Rotation = 90,
 			}),
 		})
-		-- The big icon.
-		local iconLabel = text(icon, 40, {
-			Name = "Icon",
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, 0, 0.44, 0),
-			Size = UDim2.fromOffset(TILE, 46),
-			TextXAlignment = Enum.TextXAlignment.Center,
-			ZIndex = 3,
-			Parent = face,
-		})
-		local iconScale = UI.new("UIScale", { Parent = iconLabel })
-		table.insert(icons, { label = iconLabel, scale = iconScale, phase = i * 0.9 })
+		-- The big picture: a 3D model if there is one, otherwise the emoji.
+		local pictureKey = "Menu" .. name
+		local picture, sway
+		if ItemPictures.has(pictureKey) then
+			picture, sway = ItemPictures.icon(pictureKey)
+		else
+			picture = text(icon, 40, { TextXAlignment = Enum.TextXAlignment.Center })
+		end
+		picture.Name = "Icon"
+		picture.AnchorPoint = Vector2.new(0.5, 0.5)
+		picture.Position = UDim2.new(0.5, 0, 0.44, 0)
+		picture.Size = UDim2.fromOffset(TILE - 6, TILE - 14)
+		picture.ZIndex = 3
+		picture.Parent = face
+		local iconScale = UI.new("UIScale", { Parent = picture })
+		table.insert(icons, { picture = picture, sway = sway, phase = i * 0.9 })
 		-- The name, straddling the bottom edge.
 		local caption = text(string.upper(name), 17, {
 			Name = "Caption",
@@ -563,11 +568,15 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 		tiles[name] = { ring = ring, badge = badge, badgeScale = badgeScale, icon = iconScale }
 	end
 
-	-- Icons wobble gently in a wave; badges throb so they catch the eye.
+	-- Pictures sway gently in a wave; badges throb so they catch the eye.
 	RunService.Heartbeat:Connect(function()
 		local t = os.clock()
 		for _, entry in icons do
-			entry.label.Rotation = math.sin(t * 1.8 + entry.phase) * 6
+			if entry.sway then
+				entry.sway(t * 1.4 + entry.phase)
+			else
+				entry.picture.Rotation = math.sin(t * 1.8 + entry.phase) * 6
+			end
 		end
 		local throb = 1 + math.max(0, math.sin(t * 5)) * 0.15
 		for _, tile in tiles do
