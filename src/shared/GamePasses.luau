@@ -53,7 +53,7 @@ GamePasses.list = {
 		color = Color3.fromRGB(235, 90, 90),
 	},
 	ExtraSlot1 = {
-		id = 0,
+		id = 2036624799,
 		name = "Extra Barn Slot 1",
 		icon = "🧱",
 		price = 299,
@@ -62,7 +62,7 @@ GamePasses.list = {
 		slot = true,
 	},
 	ExtraSlot2 = {
-		id = 0,
+		id = 2040200325,
 		name = "Extra Barn Slot 2",
 		icon = "🧱",
 		price = 299,
@@ -71,7 +71,7 @@ GamePasses.list = {
 		slot = true,
 	},
 	ExtraSlot3 = {
-		id = 0,
+		id = 2037518787,
 		name = "Extra Barn Slot 3",
 		icon = "🧱",
 		price = 299,
