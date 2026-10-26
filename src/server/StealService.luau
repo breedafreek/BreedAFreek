@@ -454,7 +454,11 @@ function StealService.init()
 	task.spawn(function()
 		while true do
 			task.wait(0.1)
-			checkCarries()
+			-- One bad tick must never stop deliveries for the rest of the server.
+			local ok, err = pcall(checkCarries)
+			if not ok then
+				warn("[StealService] " .. tostring(err))
+			end
 		end
 	end)
 end

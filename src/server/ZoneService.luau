@@ -13,7 +13,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Events = require(ReplicatedStorage.Shared.Events)
@@ -214,7 +214,10 @@ local function clearPedestal(pedestal)
 	end
 	local prompt = pedestal.base:FindFirstChild("GrabPrompt")
 	if prompt then
-		prompt:Destroy()
+		-- Destroyed a moment later: other PromptTriggered handlers may still be looking at it.
+		prompt.Enabled = false
+		prompt.Name = "OldGrabPrompt"
+		task.defer(prompt.Destroy, prompt)
 	end
 	pedestal.record = nil
 	pedestal.ring.Color = Color3.fromRGB(120, 120, 130)
@@ -407,7 +410,7 @@ end
 function ZoneService.init()
 	local map = Instance.new("Folder")
 	map.Name = "Zones"
-	map.Parent = workspace
+	map.Parent = Workspace
 	guardianFolder = Instance.new("Folder")
 	guardianFolder.Name = "Guardians"
 	guardianFolder.Parent = ReplicatedStorage
@@ -428,9 +431,17 @@ function ZoneService.init()
 		publish(zone.guardian)
 	end
 
-	RunService.Heartbeat:Connect(function(dt)
-		for _, zone in zones do
-			stepGuardian(zone.guardian, math.min(dt, 0.1))
+	-- Every frame (task.wait() resumes on Heartbeat). Guarded so one bad step can't stop
+	-- the guardians for the rest of the server.
+	task.spawn(function()
+		while true do
+			local dt = task.wait()
+			for _, zone in zones do
+				local ok, err = pcall(stepGuardian, zone.guardian, math.min(dt, 0.1))
+				if not ok then
+					warn("[ZoneService] " .. tostring(err))
+				end
+			end
 		end
 	end)
 	task.spawn(function()

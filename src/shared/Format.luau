@@ -22,6 +22,11 @@ function Format.money(n: number): string
 	return "$" .. text .. SUFFIXES[i]
 end
 
+-- A big number with a suffix and no "$" (Speed: 12.5K).
+function Format.number(n: number): string
+	return (string.gsub(Format.money(n), "^%$", ""))
+end
+
 function Format.time(seconds: number): string
 	seconds = math.max(0, math.ceil(seconds))
 	local h = seconds // 3600

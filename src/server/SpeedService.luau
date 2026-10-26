@@ -65,7 +65,10 @@ function SpeedService.init()
 			for _, player in Players:GetPlayers() do
 				local data = DataService.get(player)
 				if data then
-					update(player, data)
+					local ok, err = pcall(update, player, data)
+					if not ok then
+						warn("[SpeedService] " .. tostring(err))
+					end
 				end
 			end
 		end

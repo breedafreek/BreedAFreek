@@ -1538,6 +1538,11 @@ function Format.money(n: number): string
 	return "$" .. text .. SUFFIXES[i]
 end
 
+-- A big number with a suffix and no "$" (Speed: 12.5K).
+function Format.number(n: number): string
+	return (string.gsub(Format.money(n), "^%$", ""))
+end
+
 function Format.time(seconds: number): string
 	seconds = math.max(0, math.ceil(seconds))
 	local h = seconds // 3600
@@ -11729,7 +11734,10 @@ local function updateHouse(plot, layout, owner: Player?)
 			prompt:SetAttribute("Slot", slot.id)
 			prompt.Parent = spot
 		elseif not stealable and spot then
-			spot:Destroy()
+			-- Destroyed a moment later: a PromptTriggered handler may still be looking at it.
+			spot.Name = "OldSpot"
+			spot.Parent = nil
+			task.defer(spot.Destroy, spot)
 			spot = nil
 		end
 		if spot then
@@ -12364,7 +12372,10 @@ function SpeedService.init()
 			for _, player in Players:GetPlayers() do
 				local data = DataService.get(player)
 				if data then
-					update(player, data)
+					local ok, err = pcall(update, player, data)
+					if not ok then
+						warn("[SpeedService] " .. tostring(err))
+					end
 				end
 			end
 		end
@@ -12834,7 +12845,11 @@ function StealService.init()
 	task.spawn(function()
 		while true do
 			task.wait(0.1)
-			checkCarries()
+			-- One bad tick must never stop deliveries for the rest of the server.
+			local ok, err = pcall(checkCarries)
+			if not ok then
+				warn("[StealService] " .. tostring(err))
+			end
 		end
 	end)
 end
@@ -13867,7 +13882,7 @@ return ZoneDecor
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Events = require(ReplicatedStorage.Shared.Events)
@@ -14068,7 +14083,10 @@ local function clearPedestal(pedestal)
 	end
 	local prompt = pedestal.base:FindFirstChild("GrabPrompt")
 	if prompt then
-		prompt:Destroy()
+		-- Destroyed a moment later: other PromptTriggered handlers may still be looking at it.
+		prompt.Enabled = false
+		prompt.Name = "OldGrabPrompt"
+		task.defer(prompt.Destroy, prompt)
 	end
 	pedestal.record = nil
 	pedestal.ring.Color = Color3.fromRGB(120, 120, 130)
@@ -14261,7 +14279,7 @@ end
 function ZoneService.init()
 	local map = Instance.new("Folder")
 	map.Name = "Zones"
-	map.Parent = workspace
+	map.Parent = Workspace
 	guardianFolder = Instance.new("Folder")
 	guardianFolder.Name = "Guardians"
 	guardianFolder.Parent = ReplicatedStorage
@@ -14282,9 +14300,17 @@ function ZoneService.init()
 		publish(zone.guardian)
 	end
 
-	RunService.Heartbeat:Connect(function(dt)
-		for _, zone in zones do
-			stepGuardian(zone.guardian, math.min(dt, 0.1))
+	-- Every frame (task.wait() resumes on Heartbeat). Guarded so one bad step can't stop
+	-- the guardians for the rest of the server.
+	task.spawn(function()
+		while true do
+			local dt = task.wait()
+			for _, zone in zones do
+				local ok, err = pcall(stepGuardian, zone.guardian, math.min(dt, 0.1))
+				if not ok then
+					warn("[ZoneService] " .. tostring(err))
+				end
+			end
 		end
 	end)
 	task.spawn(function()

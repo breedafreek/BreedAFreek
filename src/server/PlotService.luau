@@ -477,7 +477,10 @@ local function updateHouse(plot, layout, owner: Player?)
 			prompt:SetAttribute("Slot", slot.id)
 			prompt.Parent = spot
 		elseif not stealable and spot then
-			spot:Destroy()
+			-- Destroyed a moment later: a PromptTriggered handler may still be looking at it.
+			spot.Name = "OldSpot"
+			spot.Parent = nil
+			task.defer(spot.Destroy, spot)
 			spot = nil
 		end
 		if spot then
