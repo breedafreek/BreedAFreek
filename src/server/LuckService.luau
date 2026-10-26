@@ -1,8 +1,8 @@
--- Monster Crates, the daily Lucky Wheel and Lucky Hour events (rules and odds in
+-- Mystery Boxes, the daily Lucky Wheel and Lucky Hour events (rules and odds in
 -- shared/Luck.luau). All rolls happen here; the client only shows the result (the
 -- LuckResult remote) with a reveal animation.
 --
--- Monster Crates are Developer Products. ProcessReceipt grants a crate only once per
+-- Mystery Boxes are Developer Products. ProcessReceipt grants a crate only once per
 -- purchase (receipts are remembered in the player's save) and only tells Roblox the
 -- purchase went through after the save succeeds, so nobody pays without getting it.
 
@@ -15,18 +15,18 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
-local EggModel = require(ReplicatedStorage.Shared.EggModel)
-local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
-local Freeks = require(ReplicatedStorage.Shared.Freeks)
+local BoxModel = require(ReplicatedStorage.Shared.BoxModel)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
+local HouseUtil = require(ReplicatedStorage.Shared.HouseUtil)
 local Luck = require(ReplicatedStorage.Shared.Luck)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
+local Parts = require(ReplicatedStorage.Shared.Parts)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
-local Seasons = require(ReplicatedStorage.Shared.Seasons)
 
 local ActionService = require(script.Parent.ActionService)
 local DataService = require(script.Parent.DataService)
+local StealService = require(script.Parent.StealService)
 
 local LuckService = {}
 
@@ -34,9 +34,6 @@ local rng = Random.new()
 local notifyRemote = Remotes.get("Notify")
 local resultRemote = Remotes.get("LuckResult")
 local RECEIPTS_KEPT = 50 -- how many recent purchase IDs each save remembers
-
--- Odds for the wheel's Golden/Rainbow Freek (by rarity, never Monsters).
-local WHEEL_FREEK_ODDS = { Common = 35, Uncommon = 45, Rare = 17, Legendary = 3 }
 
 local function notify(player: Player, message: string, kind: string?)
 	notifyRemote:FireClient(player, message, kind)
@@ -67,28 +64,9 @@ local function rollWeighted(weights: { [string]: number }): string
 	return keys[#keys]
 end
 
--- A random non-Monster species of that rarity (or the next rarity down that has any).
-local function pickSpecies(rarity: string)
-	local rank = Rarities.rank[rarity]
-	while rank >= 1 do
-		local pool = {}
-		for _, species in Freeks.list do
-			if
-				species.rarity == Rarities.order[rank]
-				and not species.exclusive
-				and not species.event
-				and species.rarity ~= "Secret"
-				and Seasons.available(species)
-			then
-				table.insert(pool, species)
-			end
-		end
-		if #pool > 0 then
-			return pool[rng:NextInteger(1, #pool)]
-		end
-		rank -= 1
-	end
-	return Freeks.list[1]
+-- A part of this style in a random slot.
+local function pickPart(styleId: string): string
+	return styleId .. "_" .. Parts.SLOTS[rng:NextInteger(1, #Parts.SLOTS)].id
 end
 
 local function rollMutations(boost: number): { string }?
@@ -101,25 +79,32 @@ local function rollMutations(boost: number): { string }?
 end
 
 local function hasRoom(player: Player, data): boolean
-	return FreekUtil.count(data) < GamePasses.maxFreeks(player)
+	return HouseUtil.backpackCount(data) < GamePasses.backpackSize(player)
 end
 
--- Gives the player a Freek and tells their client to show the reveal.
-local function giveFreek(player: Player, data, species, mutations, reveal)
-	local _, isNew = ActionService.giveFreek(player, data, species.id, mutations)
-	local freek = { species = species.id, mutations = mutations }
-	reveal.freek = freek
+-- Gives the player a part (onto their house if it's an upgrade) and tells their client to
+-- show the reveal.
+local function givePart(player: Player, data, partId: string, mutations, reveal)
+	local record = { id = partId, mutations = Mutations.pack(mutations) }
+	local isNew = not data.discovered[partId]
+	reveal.where = StealService.give(player, data, record)
+	reveal.part = record
 	reveal.isNew = isNew
-	reveal.rarity = species.rarity
+	reveal.rarity = Parts.byId[partId].rarity
 	resultRemote:FireClient(player, reveal)
-	if Rarities.rank[species.rarity] >= Rarities.rank.Legendary then
-		announce(player.DisplayName .. " got a " .. species.rarity .. " " .. FreekUtil.displayName(freek) .. "!")
+	if Rarities.rank[reveal.rarity] >= Rarities.rank.Legendary then
+		announce(player.DisplayName .. " got a " .. reveal.rarity .. " " .. HouseUtil.displayName(record) .. "!")
 	end
 end
 
 local function openCrate(player: Player, data, crate)
-	local species = Freeks.byId[rollWeighted(Luck.crateOdds(crate))]
-	giveFreek(player, data, species, rollMutations(crate.mutation), { kind = "crate", crate = crate.id })
+	givePart(
+		player,
+		data,
+		pickPart(rollWeighted(Luck.crateOdds(crate))),
+		rollMutations(crate.mutation),
+		{ kind = "crate", crate = crate.id }
+	)
 end
 
 -- Whether paid random items are allowed for this player (some countries ban them).
@@ -140,17 +125,17 @@ local function buyCrate(player: Player, data, crateId: any)
 		return
 	end
 	if player:GetAttribute("CratesRestricted") then
-		return notify(player, "Monster Eggs aren't available where you live.", "error")
+		return notify(player, "Mystery Boxes aren't available where you live.", "error")
 	end
 	if not hasRoom(player, data) then
-		return notify(player, "You have too many Freeks! Sell or fuse some first.", "error")
+		return notify(player, "Your backpack is full! Sell some parts first.", "error")
 	end
 	if crate.productId == 0 then
 		if RunService:IsStudio() and Luck.STUDIO_FREE_CRATES then
-			notify(player, "Studio test: hatching a " .. crate.name .. " for free.", "success")
+			notify(player, "Studio test: opening a " .. crate.name .. " for free.", "success")
 			return openCrate(player, data, crate)
 		end
-		return notify(player, "Monster Eggs are coming soon!", "error")
+		return notify(player, "Mystery Boxes are coming soon!", "error")
 	end
 	MarketplaceService:PromptProductPurchase(player, crate.productId)
 end
@@ -162,7 +147,7 @@ local function openOwnedCrate(player: Player, data, crateId: any)
 		return
 	end
 	if not hasRoom(player, data) then
-		return notify(player, "You have too many Freeks! Sell or fuse some first.", "error")
+		return notify(player, "Your backpack is full! Sell some parts first.", "error")
 	end
 	data.crates[crate.id] -= 1
 	openCrate(player, data, crate)
@@ -196,7 +181,7 @@ local function buyBundle(player: Player, _data, bundleId: any)
 		return
 	end
 	if player:GetAttribute("CratesRestricted") then
-		return notify(player, "Monster Eggs aren't available where you live.", "error")
+		return notify(player, "Mystery Boxes aren't available where you live.", "error")
 	end
 	if bundle.productId == 0 then
 		return notify(player, "This bundle is coming soon!", "error")
@@ -204,7 +189,7 @@ local function buyBundle(player: Player, _data, bundleId: any)
 	MarketplaceService:PromptProductPurchase(player, bundle.productId)
 end
 
--- Gives the Starter Pack's contents, once ever (the eggs wait in the Luck tab).
+-- Gives the Starter Pack's contents, once ever (the boxes wait in the Luck tab).
 local function grantStarter(player: Player, data)
 	if data.starterBought then
 		return
@@ -216,7 +201,7 @@ local function grantStarter(player: Player, data)
 	end
 	data.starterBought = true
 	markStarter(player, data)
-	notify(player, "🎁 Starter Pack unlocked! Your eggs are waiting in the 🍀 Luck tab.", "discovery")
+	notify(player, "🎁 Starter Pack unlocked! Your Mystery Boxes are waiting in the 🍀 Luck tab.", "discovery")
 	DataService.changed(player)
 	task.spawn(DataService.save, player)
 end
@@ -234,12 +219,12 @@ local function checkStarterPass(player: Player, data)
 	end
 end
 
--- Gives what a bundle contains (eggs are saved to hatch from Luck).
+-- Gives what a bundle contains (boxes are saved to open from Luck).
 local function grantPack(player: Player, data, productId: number): boolean
 	local bundle = Luck.bundleByProduct[productId]
 	if bundle then
 		data.crates[bundle.crate] = (data.crates[bundle.crate] or 0) + bundle.count
-		notify(player, "🥚 " .. bundle.name .. " added! Hatch them from the 🍀 Luck tab.", "discovery")
+		notify(player, "📦 " .. bundle.name .. " added! Open them from the 🍀 Luck tab.", "discovery")
 		return true
 	end
 	return false
@@ -267,7 +252,7 @@ local function processReceipt(receipt)
 			data.crates[crate.id] = (data.crates[crate.id] or 0) + 1
 			notify(
 				player,
-				"Your barn is full, so your " .. crate.name .. " was saved. Hatch it from the 🍀 Luck tab!",
+				"Your backpack is full, so your " .. crate.name .. " was saved. Open it from the 🍀 Luck tab!",
 				"success"
 			)
 		end
@@ -288,7 +273,7 @@ local function spinCooldown(player: Player): number
 end
 
 local function coinPrize(data, minutes: number): number
-	return math.max(Luck.MIN_COIN_PRIZE, math.floor(FreekUtil.yardIncome(data) * 60 * minutes))
+	return math.max(Luck.MIN_COIN_PRIZE, math.floor(HouseUtil.houseIncome(data) * 60 * minutes))
 end
 
 local function spin(player: Player, data)
@@ -307,8 +292,9 @@ local function spin(player: Player, data)
 	local reveal = { kind = "wheel", slice = index }
 
 	if (slice.golden or slice.rainbow) and hasRoom(player, data) then
-		local species = pickSpecies(rollWeighted(WHEEL_FREEK_ODDS))
-		return giveFreek(player, data, species, { if slice.rainbow then "Rainbow" else "Golden" }, reveal)
+		-- A part from the best zone the player's Speed reaches.
+		local style = Parts.ZONES[Parts.zoneFor(data.speed)].style
+		return givePart(player, data, pickPart(style), { if slice.rainbow then "Rainbow" else "Golden" }, reveal)
 	end
 	if slice.crate then
 		data.crates[slice.crate] = (data.crates[slice.crate] or 0) + 1
@@ -317,7 +303,7 @@ local function spin(player: Player, data)
 			announce(player.DisplayName .. " hit the JACKPOT on the Lucky Wheel!")
 		end
 	else
-		-- Coins (also the fallback for a Freek prize when the barn is full).
+		-- Coins (also the fallback for a part prize when the backpack is full).
 		local amount = coinPrize(data, slice.minutes or 10)
 		data.money += amount
 		reveal.coins = amount
@@ -351,8 +337,8 @@ local function checkPolicy(player: Player)
 	player:SetAttribute("CratesRestricted", not cratesAllowed(player))
 end
 
--- The Egg Stand by the spawn: the three Monster Eggs on glowing pedestals, each with its
--- odds floating above it (like the egg stands in pet games). Hold E to hatch one.
+-- The Mystery Box stand by the spawn: the three boxes on glowing pedestals, each with its
+-- odds floating above it (like the egg stands in pet games). Hold E to open one.
 local STAND_X = 128
 local OUTLINE = Color3.fromRGB(20, 22, 48)
 
@@ -374,9 +360,9 @@ local function outlinedLabel(parent: Instance, text: string, color: Color3, top:
 	return label
 end
 
-local function buildEggStand()
+local function buildBoxStand()
 	local folder = Instance.new("Folder")
-	folder.Name = "EggStand"
+	folder.Name = "BoxStand"
 	folder.Parent = Workspace
 	for i, crate in Luck.CRATES do
 		local z = (i - 2) * 13
@@ -398,7 +384,7 @@ local function buildEggStand()
 		rim.Material = Enum.Material.Neon
 		rim.Parent = folder
 
-		local egg, height = EggModel.build(crate.id)
+		local egg, height = BoxModel.build(crate.id)
 		local rest = base * CFrame.new(0, 1.2, 0)
 		egg:PivotTo(rest)
 		egg:SetAttribute("Rest", rest) -- clients spin and bob it around here
@@ -423,14 +409,14 @@ local function buildEggStand()
 			Enum.Font.LuckiestGuy
 		)
 		for k, entry in odds do
-			local species = Freeks.byId[entry.species]
+			local style = Parts.styleById[entry.style]
 			local percent = if entry.percent < 1
 				then string.format("%.1f", entry.percent)
 				else string.format("%.0f", entry.percent)
 			outlinedLabel(
 				gui,
-				species.name .. "  " .. percent .. "%",
-				Rarities.info[species.rarity].color,
+				style.name .. " part  " .. percent .. "%",
+				Rarities.info[style.rarity].color,
 				(46 + (k - 1) * 20) / total,
 				19 / total,
 				Enum.Font.FredokaOne
@@ -440,7 +426,7 @@ local function buildEggStand()
 
 		local prompt = Instance.new("ProximityPrompt")
 		prompt.Name = "EggPrompt"
-		prompt.ActionText = "Hatch (R$ " .. crate.robux .. ")"
+		prompt.ActionText = "Open (R$ " .. crate.robux .. ")"
 		prompt.ObjectText = crate.name
 		prompt.HoldDuration = 0.3
 		prompt.MaxActivationDistance = 10
@@ -463,13 +449,13 @@ local function buildEggStand()
 	gui.MaxDistance = 300
 	gui.LightInfluence = 0
 	local label =
-		outlinedLabel(gui, "🥚 MONSTER EGGS 🥚", Color3.fromRGB(255, 160, 40), 0, 1, Enum.Font.LuckiestGuy)
+		outlinedLabel(gui, "📦 MYSTERY BOXES 📦", Color3.fromRGB(255, 160, 40), 0, 1, Enum.Font.LuckiestGuy)
 	label:FindFirstChildOfClass("UIStroke").Thickness = 4
 	gui.Parent = signPart
 end
 
 function LuckService.init()
-	buildEggStand()
+	buildBoxStand()
 	ProximityPromptService.PromptTriggered:Connect(function(prompt, player)
 		local eggId = prompt.Name == "EggPrompt" and prompt:GetAttribute("EggId")
 		local data = DataService.get(player)

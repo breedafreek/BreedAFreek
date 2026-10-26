@@ -1,43 +1,43 @@
--- Stealing Freeks from other players' yards.
+-- Carrying house parts home: from the zone piles, or pried off other players' houses.
 --
--- While a yard's gate is open, anyone else can walk in and hold the Steal prompt on a Freek
--- standing on a pad. The Freek floats over the thief's head and they walk slower: barely
--- for a Common, a lot for a Secret (see carrySpeed in Rarities).
+-- Hold the Grab prompt on a part in a zone pile, or (while a home's gate is open) the Steal
+-- prompt on a part of someone's house. The part rides over your head and you run a little
+-- slower (GamePasses.carrySlowdown) until you get it inside your own yard, where it snaps
+-- onto your house if it's better than what's there (the old part goes in your backpack), or
+-- into your backpack if not.
 --
 -- While it's being carried:
---   * anyone can hit the carrier with a weapon (WeaponService) and it goes home;
---   * the owner can Snatch it back and it goes home;
---   * any other player can Snatch it and carry it to their own yard instead;
---   * if the carrier dies or leaves, it goes home.
--- Whoever gets it inside their own fence keeps it.
---
--- The Freek stays in the owner's save until the moment it's delivered, so a crash mid-steal
--- can never lose or duplicate it.
---
--- Freeks bought off the belt use the same carrying (see carryHome): they ride on the buyer's
--- head until the buyer walks into their own yard, then take the first free pad. They're
--- already in the buyer's save, can't be snatched, and don't slow the buyer down.
+--   * a zone's guardian that catches you flings you and you drop it (ZoneService);
+--   * anyone can hit you with a weapon (WeaponService) and you drop it;
+--   * the house's owner can Snatch it back; any other player can Snatch it for themselves;
+--   * if you die or leave, you drop it.
+-- A dropped zone part is gone (the pile grows a new one); a dropped house part goes straight
+-- back onto its owner's house. A house part stays in its owner's save until the moment it's
+-- delivered, so a crash mid-steal can never lose or duplicate it.
 
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Config = require(ReplicatedStorage.Shared.Config)
-local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
-local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
-local Rarities = require(ReplicatedStorage.Shared.Rarities)
+local HouseModel = require(ReplicatedStorage.Shared.HouseModel)
+local HouseUtil = require(ReplicatedStorage.Shared.HouseUtil)
+local Mutations = require(ReplicatedStorage.Shared.Mutations)
+local Parts = require(ReplicatedStorage.Shared.Parts)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Config = require(ReplicatedStorage.Shared.Config)
 
 local Carried = require(script.Parent.Carried)
 local DataService = require(script.Parent.DataService)
 local DiscoveryService = require(script.Parent.DiscoveryService)
 local PlotService = require(script.Parent.PlotService)
+local ZoneService = require(script.Parent.ZoneService)
 
 local StealService = {}
 
 local notifyRemote = Remotes.get("Notify")
--- [carrier Player] = { owner, uid, slot, name, species, mutations, model, normalSpeed }
+-- [carrier Player] = { record, name, source = "zone"|"house", zone?, pedestal?, owner?,
+--                      uid?, slot?, model, shoulders }
 local carries = {}
 
 local function notify(player: Player, message: string, kind: string?)
@@ -55,37 +55,50 @@ local function rootPart(player: Player): BasePart?
 	return character:FindFirstChild("HumanoidRootPart") :: BasePart?
 end
 
--- How far the arms swing forward to hold a Freek (R15 characters).
-local HOLD_ANGLE = math.rad(60)
+-- A sparkle on mutated parts, in the mutation's colour.
+local function addMutationEffect(model: Model, record)
+	local top = Mutations.top(record.mutations)
+	local base = model:FindFirstChildWhichIsA("BasePart")
+	if top and base then
+		local sparkles = Instance.new("Sparkles")
+		sparkles.SparkleColor = Mutations.byId[top].color
+		sparkles.Parent = base
+	end
+end
+StealService.addMutationEffect = addMutationEffect
 
--- Puts the Freek in the carrier's arms, slows them down, and adds a Snatch prompt for
--- everyone else. Returns false if the carrier has no character to carry it.
+-- How far the arms swing up to hold a part over the head (R15 characters).
+local HOLD_ANGLE = math.rad(165)
+
+-- Puts the part over the carrier's head and adds a Snatch prompt for everyone else.
+-- Returns false if the carrier has no character to carry it.
 local function pickUp(carrier: Player, carry): boolean
 	local character = carrier.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not root or not humanoid or humanoid.Health <= 0 then
+	local root = rootPart(carrier)
+	if not character or not root then
 		return false
 	end
-	local model = FreekModel.build(carry.species, carry.mutations)
-	pcall(function()
-		model:ScaleTo(0.6)
-	end)
-	-- Held out in front at the hands, facing the same way as the carrier.
-	model:PivotTo(root.CFrame * CFrame.new(0, 0.4, -1.8))
+	local model = HouseModel.item(carry.record.id)
+	addMutationEffect(model, carry.record)
+	-- Held up over the head, facing the same way as the carrier.
+	local _, size = model:GetBoundingBox()
+	model:PivotTo(root.CFrame * CFrame.new(0, 3.4 + math.max(0, 5 - size.Y) * 0.2, 0))
+	local first
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Anchored = false
 			descendant.CanCollide = false
+			descendant.CanQuery = false
 			descendant.Massless = true
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = root
 			weld.Part1 = descendant
 			weld.Parent = descendant
+			first = first or descendant
 		end
 	end
 
-	-- Arms out to hold it. Changing the shoulder joints' C0 (not Transform) keeps the pose
+	-- Arms up to hold it. Changing the shoulder joints' C0 (not Transform) keeps the pose
 	-- under the walk animation, and putDown puts them back.
 	carry.shoulders = {}
 	for _, name in { "RightUpperArm.RightShoulder", "LeftUpperArm.LeftShoulder" } do
@@ -98,7 +111,7 @@ local function pickUp(carrier: Player, carry): boolean
 		end
 	end
 
-	if not carry.bought then
+	if first then
 		local prompt = Instance.new("ProximityPrompt")
 		prompt.Name = "SnatchPrompt"
 		prompt.ActionText = "Snatch"
@@ -107,28 +120,25 @@ local function pickUp(carrier: Player, carry): boolean
 		prompt.MaxActivationDistance = 10
 		prompt.RequiresLineOfSight = false
 		prompt:SetAttribute("CarrierUserId", carrier.UserId)
-		prompt.Parent = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+		prompt.Parent = first
 	end
 
-	model.Name = "CarriedFreek"
+	model.Name = "CarriedPart"
 	model.Parent = character
-
 	carry.model = model
-	carry.normalSpeed = humanoid.WalkSpeed
-	if not carry.bought then
-		-- Rarer Freeks are heavier: the thief slows down more.
-		local rarity = FreekUtil.species(carry).rarity
-		humanoid.WalkSpeed = math.min(carry.normalSpeed, Rarities.info[rarity].carrySpeed)
-	end
-
 	carries[carrier] = carry
-	Carried.set(carry.owner, carry.uid, carrier)
+	carrier:SetAttribute("Carrying", carry.record.id)
+	if carry.source == "house" then
+		Carried.set(carry.owner, carry.uid, carrier)
+		PlotService.render(carry.owner)
+	end
 	return true
 end
 
--- Takes the Freek off the carrier and gives them their speed back.
+-- Takes the part off the carrier.
 local function putDown(carrier: Player, carry)
 	carries[carrier] = nil
+	carrier:SetAttribute("Carrying", nil)
 	if carry.model then
 		carry.model:Destroy()
 		carry.model = nil
@@ -139,145 +149,170 @@ local function putDown(carrier: Player, carry)
 		end
 	end
 	carry.shoulders = nil
-	local character = carrier.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if humanoid and carry.normalSpeed then
-		humanoid.WalkSpeed = carry.normalSpeed
-	end
 end
 
--- The Freek goes back to its owner's yard (or backpack, if its pad was filled meanwhile).
-local function sendBack(carrier: Player, carry, ownerMessage: string?, carrierMessage: string?)
-	if carry.bought then
-		-- The buyer is the owner: one message is enough.
-		ownerMessage, carrierMessage = "You dropped " .. carry.name .. ", so it went straight to your barn.", nil
-	end
+-- The carrier dropped it: a house part goes back on its owner's house, a zone part is gone
+-- (its pile grows a new one).
+local function drop(carrier: Player, carry, ownerMessage: string?, carrierMessage: string?)
 	putDown(carrier, carry)
-	Carried.set(carry.owner, carry.uid, nil)
-	local ownerData = DataService.get(carry.owner)
-	local freek = ownerData and ownerData.freeks[carry.uid]
-	if freek and not freek.slot then
-		local taken = false
-		for _, other in ownerData.freeks do
-			if other.slot == carry.slot then
-				taken = true
-			end
+	if carry.source == "house" then
+		Carried.set(carry.owner, carry.uid, nil)
+		PlotService.render(carry.owner)
+		if ownerMessage then
+			notify(carry.owner, ownerMessage, "success")
 		end
-		freek.slot = if taken
-				or not carry.slot
-				or carry.slot > FreekUtil.totalSlots(ownerData)
-			then FreekUtil.freeSlot(ownerData)
-			else carry.slot
-		DataService.changed(carry.owner)
-	end
-	if ownerMessage then
-		notify(carry.owner, ownerMessage, "success")
+	else
+		ZoneService.release(carry.zone, carry.pedestal)
 	end
 	if carrierMessage then
 		notify(carrier, carrierMessage, "error")
 	end
 end
 
-local function deliver(carrier: Player, carry)
-	if carry.bought then
-		-- Already the buyer's: just find it a pad (or the backpack, if the yard filled up).
-		putDown(carrier, carry)
-		Carried.set(carrier, carry.uid, nil)
-		local data = DataService.get(carrier)
-		local freek = data and data.freeks[carry.uid]
-		if freek and not freek.slot then
-			freek.slot = FreekUtil.freeSlot(data)
-			DataService.changed(carrier)
-			if freek.slot then
-				notify(carrier, carry.name .. " is home in your barn!", "success")
-			else
-				notify(carrier, "Your barn is full, so " .. carry.name .. " went in your backpack.", "error")
-			end
+-- Adds a part to a player's save: onto the house if it beats what's in its slot (the old
+-- one goes in the backpack, or is sold if the backpack is full), otherwise in the backpack.
+-- Returns "installed" or "backpack".
+function StealService.give(player: Player, data, record): string
+	local uid = DataService.newUid(data)
+	data.parts[uid] = { id = record.id, mutations = Mutations.pack(record.mutations) }
+	data.discovered[record.id] = true
+	task.spawn(DiscoveryService.claim, player, record.id)
+	local slotId = Parts.byId[record.id].slot
+	local current, currentUid = HouseUtil.installedRecord(data, slotId)
+	local currentIncome = HouseUtil.partIncome(current or { id = Parts.basic(slotId) })
+	if HouseUtil.partIncome(data.parts[uid]) > currentIncome then
+		data.house[slotId] = uid
+		if current and HouseUtil.backpackCount(data) > GamePasses.backpackSize(player) then
+			-- No room for the old part: sell it.
+			local price = HouseUtil.sellPrice(current)
+			data.parts[currentUid] = nil
+			data.money += price
 		end
-		return
+		return "installed"
 	end
-	local ownerData = DataService.get(carry.owner)
-	local carrierData = DataService.get(carrier)
-	local freek = ownerData and ownerData.freeks[carry.uid]
-	if not freek or not carrierData then
-		return sendBack(carrier, carry)
-	end
-	if FreekUtil.count(carrierData) >= GamePasses.maxFreeks(carrier) then
-		return sendBack(carrier, carry, nil, "You have too many Freeks! It ran back home.")
-	end
-
-	putDown(carrier, carry)
-	Carried.set(carry.owner, carry.uid, nil)
-	ownerData.freeks[carry.uid] = nil
-	carrierData.freeks[carry.uid] = {
-		species = freek.species,
-		mutations = freek.mutations,
-		income = freek.income,
-		slot = FreekUtil.freeSlot(carrierData),
-	}
-	carrierData.discovered[freek.species] = true
-	task.spawn(DiscoveryService.claim, carrier, freek.species)
-
-	for _, player in { carry.owner, carrier } do
-		DataService.changed(player)
-		task.spawn(DataService.save, player)
-	end
-	notify(carry.owner, carrier.DisplayName .. " stole your " .. carry.name .. "! Lock your gate!", "error")
-	notify(carrier, "You stole " .. carry.name .. "!", "success")
+	return "backpack"
 end
 
--- Checks a player could carry a Freek home right now. Returns an error message or nil.
+local function deliver(carrier: Player, carry)
+	local carrierData = DataService.get(carrier)
+	if not carrierData then
+		return drop(carrier, carry)
+	end
+	if carry.source == "house" then
+		local ownerData = DataService.get(carry.owner)
+		local owned = ownerData and ownerData.parts[carry.uid]
+		if not owned then
+			return drop(carrier, carry)
+		end
+		putDown(carrier, carry)
+		Carried.set(carry.owner, carry.uid, nil)
+		ownerData.parts[carry.uid] = nil
+		for slotId, uid in ownerData.house do
+			if uid == carry.uid then
+				ownerData.house[slotId] = nil
+			end
+		end
+		DataService.changed(carry.owner)
+		task.spawn(DataService.save, carry.owner)
+		notify(carry.owner, carrier.DisplayName .. " stole your " .. carry.name .. "! Lock your gate!", "error")
+	else
+		putDown(carrier, carry)
+		ZoneService.release(carry.zone, carry.pedestal)
+	end
+	local where = StealService.give(carrier, carrierData, carry.record)
+	DataService.changed(carrier)
+	task.spawn(DataService.save, carrier)
+	if where == "installed" then
+		notify(carrier, "🏠 " .. carry.name .. " added to your house!", "success")
+	else
+		notify(
+			carrier,
+			"🎒 " .. carry.name .. " went in your backpack (your house already has a better one).",
+			"money"
+		)
+	end
+	-- Tell the client so it can play the build effect on the right slot.
+	carrier:SetAttribute("LastBuilt", carry.record.id .. "@" .. os.clock())
+end
+
+-- Checks a player could carry a part home right now. Returns an error message or nil.
 local function cannotCarry(player: Player): string?
 	if carries[player] then
-		return "You can only carry one Freek at a time!"
+		return "You can only carry one part at a time!"
 	end
 	local data = DataService.get(player)
 	if not data or not PlotService.getPlot(player) or not rootPart(player) then
 		return ""
 	end
-	if FreekUtil.count(data) >= GamePasses.maxFreeks(player) then
-		return "You have too many Freeks to steal another!"
+	if HouseUtil.backpackCount(data) >= GamePasses.backpackSize(player) then
+		return "Your backpack is full! Sell some parts first."
 	end
 	return nil
 end
 
+local function grab(prompt: ProximityPrompt, player: Player)
+	local zone, pedestal = prompt:GetAttribute("Zone"), prompt:GetAttribute("Pedestal")
+	local problem = cannotCarry(player)
+	if problem then
+		return if problem ~= "" then notify(player, problem, "error") else nil
+	end
+	local record = ZoneService.take(zone, pedestal)
+	if not record then
+		return
+	end
+	local carry = {
+		record = record,
+		name = HouseUtil.displayName(record),
+		source = "zone",
+		zone = zone,
+		pedestal = pedestal,
+	}
+	if not pickUp(player, carry) then
+		return ZoneService.release(zone, pedestal)
+	end
+	notify(
+		player,
+		"You grabbed a " .. carry.name .. "! Run home before " .. Parts.ZONES[zone].title .. " catches you!",
+		"success"
+	)
+	ZoneService.alert(zone, player)
+end
+
 local function steal(prompt: ProximityPrompt, thief: Player)
-	local uid = prompt:GetAttribute("Uid")
+	local slotId = prompt:GetAttribute("Slot")
 	local owner = Players:GetPlayerByUserId(prompt:GetAttribute("OwnerUserId") or 0)
-	if not owner or owner == thief or typeof(uid) ~= "string" then
+	if not owner or owner == thief or typeof(slotId) ~= "string" then
 		return
 	end
 	local problem = cannotCarry(thief)
 	if problem then
 		return if problem ~= "" then notify(thief, problem, "error") else nil
 	end
-
 	local ownerData = DataService.get(owner)
 	local ownerPlot = PlotService.getPlot(owner)
-	local freek = ownerData and ownerData.freeks[uid]
-	if not freek or not freek.slot or freek.breeding or Carried.is(owner, uid) or not ownerPlot then
+	local record, uid = nil, nil
+	if ownerData then
+		record, uid = HouseUtil.installedRecord(ownerData, slotId)
+	end
+	if not record or not ownerPlot or Carried.is(owner, uid) then
 		return
 	end
 	if PlotService.isGateLocked(ownerPlot) or not PlotService.isInside(ownerPlot, rootPart(thief).Position) then
-		return
+		return notify(thief, "Their gate is locked!", "error")
 	end
-
 	local carry = {
+		record = { id = record.id, mutations = record.mutations },
+		name = HouseUtil.displayName(record),
+		source = "house",
 		owner = owner,
 		uid = uid,
-		slot = freek.slot,
-		name = FreekUtil.displayName(freek),
-		species = freek.species,
-		mutations = freek.mutations,
+		slot = slotId,
 	}
 	if not pickUp(thief, carry) then
 		return
 	end
-	freek.slot = nil
-	DataService.changed(owner)
-
-	notify(thief, "You grabbed " .. carry.name .. "! Get it back to your barn!", "success")
-	notify(owner, thief.DisplayName .. " is stealing your " .. carry.name .. "! Bonk them!", "error")
+	notify(thief, "You pried off their " .. carry.name .. "! Get it back to your house!", "success")
+	notify(owner, thief.DisplayName .. " is stealing your " .. carry.name .. "! Snatch it back!", "error")
 end
 
 local function snatch(prompt: ProximityPrompt, snatcher: Player)
@@ -286,36 +321,34 @@ local function snatch(prompt: ProximityPrompt, snatcher: Player)
 	if not carry or carrier == snatcher then
 		return
 	end
-
-	-- The owner snatching it back sends it straight home.
-	if snatcher == carry.owner then
-		return sendBack(
+	-- The owner snatching it back puts it straight back on their house.
+	if carry.source == "house" and snatcher == carry.owner then
+		return drop(
 			carrier,
 			carry,
 			"You got your " .. carry.name .. " back!",
-			snatcher.DisplayName .. " snatched their Freek back!"
+			snatcher.DisplayName .. " snatched their part back!"
 		)
 	end
-
 	local problem = cannotCarry(snatcher)
 	if problem then
 		return if problem ~= "" then notify(snatcher, problem, "error") else nil
 	end
 	putDown(carrier, carry)
+	if carry.source == "house" then
+		Carried.set(carry.owner, carry.uid, nil)
+	end
 	if not pickUp(snatcher, carry) then
-		return sendBack(carrier, carry)
+		return drop(carrier, carry)
 	end
 	notify(carrier, snatcher.DisplayName .. " snatched " .. carry.name .. " from you!", "error")
-	notify(snatcher, "You snatched " .. carry.name .. "! Get it back to your barn!", "success")
-	notify(
-		carry.owner,
-		snatcher.DisplayName .. " snatched your " .. carry.name .. " from " .. carrier.DisplayName .. "!",
-		"error"
-	)
+	notify(snatcher, "You snatched " .. carry.name .. "! Get it back to your house!", "success")
 end
 
 local function onPromptTriggered(prompt: ProximityPrompt, player: Player)
-	if prompt.Name == "StealPrompt" then
+	if prompt.Name == "GrabPrompt" then
+		grab(prompt, player)
+	elseif prompt.Name == "StealPrompt" then
 		steal(prompt, player)
 	elseif prompt.Name == "SnatchPrompt" then
 		snatch(prompt, player)
@@ -338,42 +371,42 @@ function StealService.isCarrying(player: Player): boolean
 	return carries[player] ~= nil
 end
 
--- Puts a Freek the player just bought (already in their save, with no slot) on their head
--- to walk home. Returns false if they have no character, so the caller can place it now.
-function StealService.carryHome(player: Player, uid: string, freek): boolean
-	return pickUp(player, {
-		owner = player,
-		uid = uid,
-		name = FreekUtil.displayName(freek),
-		species = freek.species,
-		mutations = freek.mutations,
-		bought = true,
-	})
+-- What a player is carrying (the part's record), if anything.
+function StealService.carrying(player: Player)
+	local carry = carries[player]
+	return carry and carry.record
 end
 
--- Called by WeaponService when a "drop" weapon hits someone carrying a Freek: it goes back
--- to its owner, whoever fired. Returns true if the target was carrying one.
+-- Makes the player drop whatever they're carrying. Returns true if they were carrying.
+function StealService.drop(player: Player, carrierMessage: string?, ownerMessage: string?): boolean
+	local carry = carries[player]
+	if not carry then
+		return false
+	end
+	drop(player, carry, ownerMessage, carrierMessage)
+	return true
+end
+
+-- Called by WeaponService when a weapon hits someone carrying a part: they drop it.
+-- Returns true if the target was carrying one.
 function StealService.knockLoose(attacker: Player, target: Player, weaponName: string): boolean
 	local carry = carries[target]
 	if not carry then
 		return false
 	end
-	local ownerMessage = if attacker == carry.owner
-		then "Hit with your " .. weaponName .. "! You got your " .. carry.name .. " back!"
-		else attacker.DisplayName
-			.. " knocked your "
-			.. carry.name
-			.. " loose from "
-			.. target.DisplayName
-			.. "! It's back home."
-	sendBack(
+	local ownerMessage = if carry.source == "house"
+		then (if attacker == carry.owner
+			then "Hit with your " .. weaponName .. "! You got your " .. carry.name .. " back!"
+			else attacker.DisplayName .. " knocked your " .. carry.name .. " loose! It's back on your house.")
+		else nil
+	drop(
 		target,
 		carry,
 		ownerMessage,
 		attacker.DisplayName .. " hit you with a " .. weaponName .. "! You dropped " .. carry.name .. "."
 	)
 	if attacker ~= carry.owner then
-		notify(attacker, "You knocked " .. carry.name .. " loose! It ran back to its owner.", "success")
+		notify(attacker, "You knocked " .. carry.name .. " loose!", "success")
 	end
 	return true
 end
@@ -382,10 +415,10 @@ local function checkCarries()
 	for carrier, carry in carries do
 		local root = rootPart(carrier)
 		if not root or not carry.model or not carry.model.Parent then
-			sendBack(
+			drop(
 				carrier,
 				carry,
-				"Your " .. carry.name .. " escaped and ran home!",
+				"Your " .. carry.name .. " is back on your house!",
 				"You dropped " .. carry.name .. "!"
 			)
 			continue
@@ -399,14 +432,18 @@ end
 
 function StealService.init()
 	ProximityPromptService.PromptTriggered:Connect(onPromptTriggered)
+	ZoneService.setCarrierHooks({
+		carrying = StealService.carrying,
+		drop = StealService.drop,
+	})
 
 	Players.PlayerRemoving:Connect(function(player)
 		local carry = carries[player]
 		if carry then
-			sendBack(player, carry, "The thief left! Your " .. carry.name .. " is back home.")
+			drop(player, carry, "The thief left! Your " .. carry.name .. " is back on your house.")
 		end
 		for carrier, other in carries do
-			if other.owner == player then
+			if other.source == "house" and other.owner == player then
 				putDown(carrier, other)
 				Carried.set(other.owner, other.uid, nil)
 				notify(carrier, other.name .. "'s owner left, so it vanished!", "error")

@@ -1,26 +1,22 @@
 -- Everything a player can ask the server to do. Every argument from the client is
 -- untrusted, so each handler re-checks ownership, money and limits itself.
 
-local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
-local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
-local Mutations = require(ReplicatedStorage.Shared.Mutations)
+local HouseUtil = require(ReplicatedStorage.Shared.HouseUtil)
+local Parts = require(ReplicatedStorage.Shared.Parts)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local Carried = require(script.Parent.Carried)
 local DataService = require(script.Parent.DataService)
-local DiscoveryService = require(script.Parent.DiscoveryService)
-local Recipes = require(script.Parent.Recipes)
 
 local ActionService = {}
 
 local notifyRemote = Remotes.get("Notify")
 local stateRemote = Remotes.get("State")
-local rng = Random.new()
 local lastAction = {} -- [Player] = os.clock()
 
 local function notify(player: Player, message: string, kind: string?)
@@ -32,158 +28,139 @@ local function snapshot(data)
 	return {
 		rebirths = data.rebirths,
 		money = data.money,
-		slots = FreekUtil.totalSlots(data),
-		boughtSlots = data.slots,
-		passSlots = data.passSlots or 0,
-		freeks = data.freeks,
-		breeding = data.breeding,
-		breeding2 = data.breeding2,
+		speed = data.speed,
+		treadmill = data.treadmill,
+		parts = data.parts,
+		house = data.house,
 		discovered = data.discovered,
 		crates = data.crates,
 		lastSpin = data.lastSpin,
 	}
 end
+ActionService.snapshot = snapshot
 
--- Adds a Freek, puts it in the yard if there's room, and records the discovery. income is
--- only given for fused Freeks (others earn their species' income).
-local function giveFreek(player: Player, data, species: string, mutations: { string }?, income: number?)
-	local uid = HttpService:GenerateGUID(false)
-	data.freeks[uid] = {
-		species = species,
-		mutations = Mutations.pack(mutations),
-		income = income,
-		slot = FreekUtil.freeSlot(data),
-	}
-	local isNew = not data.discovered[species]
-	data.discovered[species] = true
-	task.spawn(DiscoveryService.claim, player, species)
-	return uid, isNew
-end
-
-ActionService.giveFreek = giveFreek
-
-local function ownedFreek(data, uid: any)
+local function ownedPart(data, uid: any)
 	if typeof(uid) ~= "string" then
 		return nil
 	end
-	return data.freeks[uid]
+	return data.parts[uid]
 end
 
 local handlers = {}
 
-function handlers.BuySlot(player: Player, data)
-	if data.slots >= Config.MAX_SLOTS then
-		return notify(player, "Your barn is as big as it gets!", "error")
-	end
-	local price = Config.slotPrice(data.slots)
-	if data.money < price then
-		return notify(player, "Not enough money! A new slot costs " .. Format.money(price), "error")
-	end
-	data.money -= price
-	data.slots += 1
-	notify(player, "Your barn grew! You now have " .. data.slots .. " slots.", "success")
-end
-
-function handlers.Place(player: Player, data, uid: any)
-	local freek = ownedFreek(data, uid)
-	if not freek or freek.breeding or freek.slot or Carried.is(player, uid) then
+-- Puts a backpack part onto the house; whatever was in that slot goes to the backpack.
+function handlers.Install(player: Player, data, uid: any)
+	local record = ownedPart(data, uid)
+	if not record or Carried.is(player, uid) then
 		return
 	end
-	local slot = FreekUtil.freeSlot(data)
-	if not slot then
-		return notify(player, "Your barn is full! Buy more slots or remove a Freek.", "error")
+	local slotId = Parts.byId[record.id].slot
+	local current, currentUid = HouseUtil.installedRecord(data, slotId)
+	if currentUid == uid then
+		return
 	end
-	freek.slot = slot
+	if current and Carried.is(player, currentUid) then
+		return notify(player, "Someone is running off with that part! Snatch it back first.", "error")
+	end
+	data.house[slotId] = uid
+	notify(player, "🏠 Installed " .. HouseUtil.displayName(record) .. "!", "success")
 end
 
-function handlers.Unplace(_player: Player, data, uid: any)
-	local freek = ownedFreek(data, uid)
-	if freek then
-		freek.slot = nil
+-- Takes a part off the house and puts it in the backpack (the slot goes back to Basic).
+function handlers.Uninstall(player: Player, data, slotId: any)
+	if typeof(slotId) ~= "string" or not Parts.slotById[slotId] then
+		return
 	end
+	local current, currentUid = HouseUtil.installedRecord(data, slotId)
+	if not current or Carried.is(player, currentUid) then
+		return
+	end
+	if HouseUtil.backpackCount(data) >= GamePasses.backpackSize(player) then
+		return notify(player, "Your backpack is full!", "error")
+	end
+	data.house[slotId] = nil
 end
 
+local function sell(player: Player, data, uid: string): number
+	local record = data.parts[uid]
+	if not record or HouseUtil.installedSlots(data)[uid] or Carried.is(player, uid) then
+		return 0
+	end
+	local price = HouseUtil.sellPrice(record)
+	data.parts[uid] = nil
+	data.money += price
+	return price
+end
+
+-- Sells one part from the backpack.
 function handlers.Sell(player: Player, data, uid: any)
-	local freek = ownedFreek(data, uid)
-	if not freek or freek.breeding then
+	if typeof(uid) ~= "string" then
 		return
 	end
-	if Carried.is(player, uid) then
-		return notify(player, "That Freek is being carried right now!", "error")
+	local name = data.parts[uid] and HouseUtil.displayName(data.parts[uid])
+	local price = sell(player, data, uid)
+	if price > 0 then
+		notify(player, "Sold " .. name .. " for " .. Format.money(price) .. "!", "money")
 	end
-	local value = FreekUtil.sellValue(freek)
-	data.freeks[uid] = nil
-	data.money += value
-	notify(player, "Sold " .. FreekUtil.displayName(freek) .. " for " .. Format.money(value), "money")
 end
 
--- penIndex is optional: with no pen given, the first free pen is used.
-function handlers.StartBreed(player: Player, data, uidA: any, uidB: any, penIndex: any)
-	local pens = GamePasses.penCount(player)
-	local index = nil
-	if typeof(penIndex) == "number" and penIndex >= 1 and penIndex <= pens and not FreekUtil.pen(data, penIndex) then
-		index = penIndex
-	else
-		for i = 1, pens do
-			if not FreekUtil.pen(data, i) then
-				index = i
-				break
+-- Sells everything in the backpack.
+function handlers.SellBackpack(player: Player, data)
+	local total, count = 0, 0
+	for _, uid in HouseUtil.backpack(data) do
+		local price = sell(player, data, uid)
+		if price > 0 then
+			total += price
+			count += 1
+		end
+	end
+	if count > 0 then
+		notify(player, "Sold " .. count .. " parts for " .. Format.money(total) .. "!", "money")
+	end
+end
+
+-- Puts the best part for every slot onto the house.
+function handlers.InstallBest(player: Player, data)
+	local changed = 0
+	for _, slot in Parts.SLOTS do
+		local current, currentUid = HouseUtil.installedRecord(data, slot.id)
+		if current and Carried.is(player, currentUid) then
+			continue
+		end
+		local bestUid, bestIncome = currentUid, HouseUtil.partIncome(current or { id = Parts.basic(slot.id) })
+		for uid, record in data.parts do
+			if Parts.byId[record.id].slot == slot.id and HouseUtil.partIncome(record) > bestIncome then
+				bestUid, bestIncome = uid, HouseUtil.partIncome(record)
 			end
 		end
-	end
-	if not index then
-		return notify(
-			player,
-			if pens > 1 then "Both your Fusion Dens are busy!" else "Your Fusion Den is already busy!",
-			"error"
-		)
-	end
-	local a, b = ownedFreek(data, uidA), ownedFreek(data, uidB)
-	if not a or not b or uidA == uidB or a.breeding or b.breeding then
-		return
-	end
-	if Carried.is(player, uidA) or Carried.is(player, uidB) then
-		return notify(player, "That Freek is being carried right now!", "error")
-	end
-	a.slot, b.slot = nil, nil
-	a.breeding, b.breeding = true, true
-	local duration = math.ceil(FreekUtil.breedTime(a, b) * GamePasses.breedTimeMultiplier(player))
-	data[FreekUtil.PEN_KEYS[index]] = { a = uidA, b = uidB, endsAt = os.time() + duration }
-	notify(player, "Fusing started! Ready in " .. Format.time(duration) .. ".", "success")
-end
-
--- penIndex is optional: with no pen given, the first ready pen is collected.
-function handlers.ClaimBreed(player: Player, data, penIndex: any)
-	local index = nil
-	for i in FreekUtil.PEN_KEYS do
-		local pen = FreekUtil.pen(data, i)
-		if pen and os.time() >= pen.endsAt and (penIndex == nil or penIndex == i) then
-			index = i
-			break
+		if bestUid ~= currentUid then
+			data.house[slot.id] = bestUid
+			changed += 1
 		end
 	end
-	if not index then
-		return
-	end
-	local key = FreekUtil.PEN_KEYS[index]
-	local breeding = data[key]
-	local a, b = data.freeks[breeding.a], data.freeks[breeding.b]
-	data[key] = nil
-	if not a or not b then
-		return
-	end
-	-- Both parents are used up and become the fused Freek.
-	local species, mutations, income = Recipes.roll(a, b, rng)
-	data.freeks[breeding.a] = nil
-	data.freeks[breeding.b] = nil
-	local _, isNew = giveFreek(player, data, species, mutations, income)
-
-	local name = FreekUtil.displayName({ species = species, mutations = mutations })
-	if isNew then
-		notify(player, "NEW FREEK! You fused a " .. name .. "!", "discovery")
+	if changed > 0 then
+		notify(
+			player,
+			"🏠 Upgraded " .. changed .. " part" .. (if changed == 1 then "" else "s") .. " on your house!",
+			"success"
+		)
 	else
-		notify(player, "You fused a " .. name .. "!", "success")
+		notify(player, "Your house already has your best parts!", "info")
 	end
+end
+
+-- Upgrades the treadmill one level.
+function handlers.UpgradeTreadmill(player: Player, data)
+	if data.treadmill >= Config.TREADMILL_MAX then
+		return notify(player, "Your treadmill is maxed out!", "error")
+	end
+	local cost = Config.treadmillCost(data.treadmill)
+	if data.money < cost then
+		return notify(player, "You need " .. Format.money(cost) .. " to upgrade your treadmill.", "error")
+	end
+	data.money -= cost
+	data.treadmill += 1
+	notify(player, "⚡ Treadmill upgraded to level " .. data.treadmill .. "!", "success")
 end
 
 local quiet = {} -- actions that don't change saved data, so skip the refresh

@@ -27,21 +27,24 @@ GamePasses.order = {
 	"ExtraSlot3",
 }
 
+-- The keys are the original names the passes were created under (their ids are live on
+-- Roblox); name/description say what each one does now. Rename them on the dashboard to
+-- match.
 GamePasses.list = {
 	DoubleCoins = {
 		id = 2037836799,
 		name = "2x Coins",
 		icon = "💰",
 		price = 499,
-		description = "Double coins from your Freeks, forever.",
+		description = "Double coins from your house, forever.",
 		color = Color3.fromRGB(255, 200, 60),
 	},
 	FastBreeding = {
 		id = 2037644787,
-		name = "Fast Fusing",
+		name = "2x Speed",
 		icon = "⚡",
 		price = 999,
-		description = "Fusing takes half the time.",
+		description = "Your treadmill trains twice as much Speed.",
 		color = Color3.fromRGB(90, 200, 255),
 	},
 	LongerLock = {
@@ -54,37 +57,37 @@ GamePasses.list = {
 	},
 	ExtraSlot1 = {
 		id = 2036624799,
-		name = "Extra Barn Slot 1",
-		icon = "🧱",
+		name = "Bigger Backpack 1",
+		icon = "🎒",
 		price = 199,
-		description = "+1 barn slot on top of the 12 you can buy with coins.",
+		description = "+20 backpack space for house parts.",
 		color = Color3.fromRGB(230, 150, 90),
-		slot = true,
+		backpack = true,
 	},
 	ExtraSlot2 = {
 		id = 2040200325,
-		name = "Extra Barn Slot 2",
-		icon = "🧱",
+		name = "Bigger Backpack 2",
+		icon = "🎒",
 		price = 299,
-		description = "+1 barn slot on top of the 12 you can buy with coins.",
+		description = "+20 more backpack space for house parts.",
 		color = Color3.fromRGB(230, 150, 90),
-		slot = true,
+		backpack = true,
 	},
 	ExtraSlot3 = {
 		id = 2037518787,
-		name = "Extra Barn Slot 3",
-		icon = "🧱",
+		name = "Bigger Backpack 3",
+		icon = "🎒",
 		price = 349,
-		description = "+1 barn slot on top of the 12 you can buy with coins.",
+		description = "+20 more backpack space for house parts.",
 		color = Color3.fromRGB(230, 150, 90),
-		slot = true,
+		backpack = true,
 	},
 	ExtraPen = {
 		id = 2037308784,
-		name = "Extra Fusion Den",
-		icon = "🐣",
+		name = "Strong Arms",
+		icon = "💪",
 		price = 399,
-		description = "A second Fusion Den, so you can fuse two pairs at once.",
+		description = "Carrying a part never slows you down.",
 		color = Color3.fromRGB(255, 130, 190),
 	},
 	VIP = {
@@ -114,33 +117,28 @@ function GamePasses.coinMultiplier(player: Player): number
 	return multiplier
 end
 
-function GamePasses.breedTimeMultiplier(player: Player): number
-	return if GamePasses.has(player, "FastBreeding") then 0.5 else 1
+function GamePasses.speedMultiplier(player: Player): number
+	return if GamePasses.has(player, "FastBreeding") then 2 else 1
 end
 
 function GamePasses.gateLockSeconds(player: Player): number
 	return if GamePasses.has(player, "LongerLock") then 300 else Config.GATE_LOCK_SECONDS
 end
 
--- How many breeding pens the player can use.
-function GamePasses.penCount(player: Player): number
-	return if GamePasses.has(player, "ExtraPen") then 2 else 1
-end
-
--- How many Extra Yard Slot passes the player owns.
-function GamePasses.passSlots(player: Player): number
-	local count = 0
+-- How many parts the player's backpack holds.
+function GamePasses.backpackSize(player: Player): number
+	local size = Config.MAX_PARTS
 	for _, key in GamePasses.order do
-		if GamePasses.list[key].slot and GamePasses.has(player, key) then
-			count += 1
+		if GamePasses.list[key].backpack and GamePasses.has(player, key) then
+			size += 20
 		end
 	end
-	return count
+	return size
 end
 
--- Kept as a hook so a future pass can raise the limit.
-function GamePasses.maxFreeks(_player: Player): number
-	return Config.MAX_FREEKS
+-- How much carrying a part slows the player (1 = not at all).
+function GamePasses.carrySlowdown(player: Player): number
+	return if GamePasses.has(player, "ExtraPen") then 1 else 0.9
 end
 
 return GamePasses

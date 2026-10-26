@@ -5,7 +5,7 @@
 -- Commands (Admin remote, returns ok, message):
 --   "event"    { id, minutes, everywhere }  start an event now (big, weather or Lucky Hour)
 --   "stop"     { everywhere }               end whatever is running
---   "spawn"    { species, mutation }         fire that Freek from a cannon in this server
+--   "spawn"    { zone, part?, mutation? }    fill a zone's pile now (or put one part there)
 --   "announce" { text, everywhere }          a message on everyone's screen
 --   "money"    { amount }                    give yourself coins (for testing)
 
@@ -17,14 +17,14 @@ local Workspace = game:GetService("Workspace")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Events = require(ReplicatedStorage.Shared.Events)
-local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local Luck = require(ReplicatedStorage.Shared.Luck)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
+local Parts = require(ReplicatedStorage.Shared.Parts)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
-local CannonService = require(script.Parent.CannonService)
 local DataService = require(script.Parent.DataService)
 local EventService = require(script.Parent.EventService)
+local ZoneService = require(script.Parent.ZoneService)
 
 local AdminService = {}
 
@@ -71,14 +71,18 @@ function commands.stop(_player: Player, args)
 end
 
 function commands.spawn(_player: Player, args)
-	local species = Freeks.byId[args.species]
-	if not species or species.look.hybrid then
-		return false, "Unknown Freek"
+	local zone = tonumber(args.zone)
+	if not zone or not Parts.ZONES[zone] then
+		return false, "Unknown zone"
+	end
+	local partId = args.part
+	if partId ~= nil and not Parts.byId[partId] then
+		return false, "Unknown part"
 	end
 	local mutation = args.mutation
 	local mutations = if mutation and Mutations.byId[mutation] then { mutation } else nil
-	CannonService.fireNow(species.id, mutations)
-	return true, "Fired " .. (if mutation then mutation .. " " else "") .. species.name .. "!"
+	ZoneService.spawnNow(zone, partId, mutations)
+	return true, "Spawned in " .. Parts.ZONES[zone].name .. "!"
 end
 
 function commands.announce(player: Player, args)

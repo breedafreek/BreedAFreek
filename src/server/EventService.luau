@@ -2,8 +2,8 @@
 --
 -- Every second it works out what should be running and publishes it as ReplicatedStorage
 -- attributes (Event/EventEnds, Weather/WeatherEnds, NextEvent/NextEventAt,
--- NextWeather/NextWeatherAt), announcing each start and end. While weather runs, Freeks
--- standing in barns can catch its mutation.
+-- NextWeather/NextWeatherAt), announcing each start and end. While weather runs, parts on
+-- houses can catch its mutation.
 --
 -- Admin events reach every server at once through MessagingService, and are also saved in
 -- a DataStore so servers that start up later still join in.
@@ -15,7 +15,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local Events = require(ReplicatedStorage.Shared.Events)
-local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
+local HouseUtil = require(ReplicatedStorage.Shared.HouseUtil)
 local Luck = require(ReplicatedStorage.Shared.Luck)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -24,7 +24,7 @@ local DataService = require(script.Parent.DataService)
 
 local EventService = {}
 
-local TOPIC = "FuseAFreekAdmin"
+local TOPIC = "StealAHomeAdmin"
 local STORE_KEY = "AdminEvents"
 
 local notifyRemote = Remotes.get("Notify")
@@ -106,23 +106,24 @@ local function pick(kind: string, scheduled)
 	return scheduled
 end
 
--- Weather mutations: every Freek standing on a pad has a chance to catch it.
+-- Weather mutations: every part on a house has a chance to catch it.
 local function weatherTick(weather)
 	for _, player in Players:GetPlayers() do
 		local data = DataService.get(player)
 		if data then
 			local changed = false
-			for _, freek in data.freeks do
-				local mutations = Mutations.normalize(freek.mutations)
-				if freek.slot and not table.find(mutations, weather.mutation) and rng:NextNumber() < weather.chance then
+			for _, uid in data.house do
+				local record = data.parts[uid]
+				local mutations = record and Mutations.normalize(record.mutations)
+				if record and not table.find(mutations, weather.mutation) and rng:NextNumber() < weather.chance then
 					table.insert(mutations, weather.mutation)
-					freek.mutations = Mutations.pack(mutations)
+					record.mutations = Mutations.pack(mutations)
 					changed = true
 					notifyRemote:FireClient(
 						player,
 						weather.icon
 							.. " Your "
-							.. FreekUtil.displayName(freek)
+							.. HouseUtil.displayName(record)
 							.. " caught the "
 							.. weather.name
 							.. "!",
@@ -139,7 +140,7 @@ end
 
 function EventService.init()
 	local ok, result = pcall(function()
-		return DataStoreService:GetDataStore("FuseAFreekEvents")
+		return DataStoreService:GetDataStore("StealAHomeEvents")
 	end)
 	store = ok and result or nil
 

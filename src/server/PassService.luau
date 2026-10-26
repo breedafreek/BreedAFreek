@@ -6,7 +6,6 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
-local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
@@ -14,31 +13,19 @@ local DataService = require(script.Parent.DataService)
 
 local PassService = {}
 
--- Keeps the save's passSlots in step with the Extra Yard Slot passes the player owns, and
--- moves any Freek off a pad the player no longer has (e.g. after a refund).
-local function syncSlots(player: Player)
-	local data = DataService.get(player)
-	if not data then
-		return
+-- Refreshes income, the house sign and the UI so a pass's perk shows immediately.
+local function refresh(player: Player)
+	if DataService.get(player) then
+		DataService.changed(player)
 	end
-	data.passSlots = GamePasses.passSlots(player)
-	local total = FreekUtil.totalSlots(data)
-	for _, freek in data.freeks do
-		if freek.slot and freek.slot > total then
-			freek.slot = nil
-		end
-	end
-	DataService.changed(player)
 end
 
 local function grant(player: Player, key: string)
 	player:SetAttribute("Pass_" .. key, true)
-	-- Refresh income, yard and UI so the perk shows immediately.
-	syncSlots(player)
+	refresh(player)
 end
 
 local function checkOwnership(player: Player)
-	-- Ownership is re-checked every join, so start from zero pass slots until confirmed.
 	player:SetAttribute("PassesChecked", false)
 	for _, key in GamePasses.order do
 		local pass = GamePasses.list[key]
@@ -54,7 +41,7 @@ local function checkOwnership(player: Player)
 		end
 	end
 	player:SetAttribute("PassesChecked", true)
-	syncSlots(player)
+	refresh(player)
 end
 
 function PassService.init()
@@ -62,12 +49,6 @@ function PassService.init()
 	for _, player in Players:GetPlayers() do
 		task.spawn(checkOwnership, player)
 	end
-
-	DataService.onLoaded(function(player)
-		if player:GetAttribute("PassesChecked") then
-			syncSlots(player)
-		end
-	end)
 
 	MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, passId, purchased)
 		if not purchased then

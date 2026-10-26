@@ -1,10 +1,10 @@
 -- Scheduled events, like the "admin abuse" events of the big Roblox games.
 --
---   * Big events (Monster Storm) run on a weekly timetable, the same moment in every server:
---     the cannons go wild, rare Freeks come out much more often and an event-only Freek
---     can drop.
---   * Weather rolls in for a few minutes at half past most hours. While it lasts, Freeks
---     standing in a barn can catch its mutation (Blood Moon -> Shadow, and so on).
+--   * Big events (Guardian Nap) run on a weekly timetable, the same moment in every server:
+--     the guardians get sleepy and slow, parts regrow faster and rarer parts turn up.
+--   * Weather rolls in for a few minutes at half past most hours. While it lasts, parts on
+--     houses can catch its mutation (Blood Moon -> Shadow, and so on), and new parts in the
+--     zone piles often grow with it.
 --
 -- The timetable is worked out from the clock alone, so every server agrees without talking.
 -- The admin panel can also start any event early, in one server or all of them (see
@@ -20,33 +20,32 @@ local Events = {}
 
 -- Big events.
 Events.BIG = {
-	MonsterStorm = {
-		name = "Monster Storm",
-		icon = "⛈️",
-		description = "The cannons go wild! Rare Freeks everywhere and Stormy can drop!",
+	GuardianNap = {
+		name = "Guardian Nap",
+		icon = "😴",
+		description = "The guardians are sleepy! They run slower, parts regrow fast and rare parts turn up!",
 		color = Color3.fromRGB(170, 110, 255),
-		fireRate = 3,
-		rareBoost = 4,
+		respawnBoost = 3, -- parts regrow this many times faster
+		rareBoost = 4, -- rarer parts (the next zone's style) turn up this many times more often
 		mutationBoost = 2,
-		eventFreek = "Stormy", -- the event-only Freek
-		eventChance = 0.1, -- chance each shot is the event Freek
+		guardianSpeed = 0.75, -- guardians run at this fraction of their speed
 	},
 }
 
--- Weather: each one can give Freeks in barns its mutation.
+-- Weather: each one can give parts on houses (and new parts in the piles) its mutation.
 Events.WEATHER = {
 	BloodMoon = {
 		name = "Blood Moon",
 		icon = "🌕",
-		description = "Freeks in barns can turn Shadow!",
+		description = "Parts can turn Shadow!",
 		color = Color3.fromRGB(255, 70, 80),
 		mutation = "Shadow",
-		chance = 0.02, -- per Freek, every WEATHER_TICK seconds
+		chance = 0.02, -- per part on a house, every WEATHER_TICK seconds
 	},
 	GoldRush = {
 		name = "Gold Rush",
 		icon = "✨",
-		description = "Freeks in barns can turn Golden!",
+		description = "Parts can turn Golden!",
 		color = Color3.fromRGB(255, 205, 60),
 		mutation = "Golden",
 		chance = 0.012,
@@ -54,7 +53,7 @@ Events.WEATHER = {
 	RainbowRain = {
 		name = "Rainbow Rain",
 		icon = "🌈",
-		description = "Freeks in barns can turn Rainbow!",
+		description = "Parts can turn Rainbow!",
 		color = Color3.fromRGB(255, 120, 230),
 		mutation = "Rainbow",
 		chance = 0.004,
@@ -65,8 +64,8 @@ Events.WEATHER_TICK = 20
 -- The weekly timetable, in UTC (weekday 1 = Sunday). 19:00 UTC on Saturday is 3pm US
 -- Eastern in summer time (2pm in winter).
 Events.SCHEDULE = {
-	{ id = "MonsterStorm", weekday = 7, hour = 19, minute = 0, minutes = 30 }, -- Saturday
-	{ id = "MonsterStorm", weekday = 3, hour = 22, minute = 0, minutes = 30 }, -- Tuesday
+	{ id = "GuardianNap", weekday = 7, hour = 19, minute = 0, minutes = 30 }, -- Saturday
+	{ id = "GuardianNap", weekday = 3, hour = 22, minute = 0, minutes = 30 }, -- Tuesday
 }
 
 -- Weather comes at WEATHER_MINUTE past the hour for WEATHER_MINUTES, picked from this
@@ -177,7 +176,7 @@ function Events.weather()
 end
 
 -- A boost from everything running now (a Lucky Hour and a big event multiply together):
--- "fireRate", "rareBoost", "mutationBoost" or "crateLuck".
+-- "respawnBoost", "rareBoost", "mutationBoost", "guardianSpeed" or "crateLuck".
 function Events.boost(key: string): number
 	local total = 1
 	local lucky = Luck.current()

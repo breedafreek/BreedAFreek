@@ -1,21 +1,30 @@
--- The Discovery Book: the first player in the whole game to get each species has their
--- name saved forever. Claims go through UpdateAsync so two servers can't both win, and
--- MessagingService tells every other server right away.
+-- The Catalog: the first player in the whole game to get each rare house part (Legendary
+-- and up) has their name saved forever. Claims go through UpdateAsync so two servers can't
+-- both win, and MessagingService tells every other server right away.
 
 local DataStoreService = game:GetService("DataStoreService")
 local MessagingService = game:GetService("MessagingService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
-local Freeks = require(ReplicatedStorage.Shared.Freeks)
+local Parts = require(ReplicatedStorage.Shared.Parts)
+local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
-local STORE_NAME = "FuseAFreek_Discoveries_v1"
-local TOPIC = "FreekDiscovered"
+local STORE_NAME = "StealAHome_Discoveries_v1"
+local TOPIC = "PartDiscovered"
+
+-- Only parts this rare or rarer can be claimed.
+local MIN_RANK = Rarities.rank.Legendary
+
+local function claimable(partId: string): boolean
+	local part = Parts.byId[partId]
+	return part ~= nil and Rarities.rank[part.rarity] >= MIN_RANK
+end
 
 local DiscoveryService = {}
 
-local cache = {} -- [speciesId] = { name, userId, time }
+local cache = {} -- [partId] = { name, userId, time }
 local claiming = {}
 local store = nil
 pcall(function()
@@ -25,26 +34,25 @@ end)
 local discoveryUpdate = Remotes.get("DiscoveryUpdate")
 local notify = Remotes.get("Notify")
 
--- DataStore keys can be at most 50 characters; long hybrid ids are hashed to fit.
-local function storeKey(speciesId: string): string
-	if #speciesId <= 50 then
-		return speciesId
+-- DataStore keys can be at most 50 characters; longer ids are hashed to fit.
+local function storeKey(partId: string): string
+	if #partId <= 50 then
+		return partId
 	end
 	local hash = 5381
-	for i = 1, #speciesId do
-		hash = (hash * 33 + string.byte(speciesId, i)) % 4294967296
+	for i = 1, #partId do
+		hash = (hash * 33 + string.byte(partId, i)) % 4294967296
 	end
-	return string.format("H%08x%d", hash, #speciesId)
+	return string.format("H%08x%d", hash, #partId)
 end
 
-local function announce(speciesId: string, discovery)
-	local isNew = cache[speciesId] == nil
-	cache[speciesId] = discovery
-	discoveryUpdate:FireAllClients(speciesId, discovery)
+local function announce(partId: string, discovery)
+	local isNew = cache[partId] == nil
+	cache[partId] = discovery
+	discoveryUpdate:FireAllClients(partId, discovery)
 	if isNew then
-		local species = Freeks.byId[speciesId]
 		notify:FireAllClients(
-			string.format("%s discovered %s for the first time ever!", discovery.name, species.name),
+			string.format("%s found the first %s ever!", discovery.name, Parts.byId[partId].name),
 			"discovery"
 		)
 	end
@@ -54,30 +62,29 @@ local function loadAll()
 	if not store then
 		return
 	end
-	for _, species in Freeks.list do
-		if not species.price and not cache[species.id] then
-			local ok, value = pcall(store.GetAsync, store, species.id)
+	for _, part in Parts.list do
+		if claimable(part.id) and not cache[part.id] then
+			local ok, value = pcall(store.GetAsync, store, part.id)
 			if ok and value then
-				cache[species.id] = value
+				cache[part.id] = value
 			end
 		end
 	end
 end
 
--- Call whenever a player gets a species. Shop (starter) Freeks aren't claimable.
-function DiscoveryService.claim(player: Player, speciesId: string)
-	local species = Freeks.byId[speciesId]
-	if not species or species.price or cache[speciesId] or claiming[speciesId] then
+-- Call whenever a player gets a part.
+function DiscoveryService.claim(player: Player, partId: string)
+	if not claimable(partId) or cache[partId] or claiming[partId] then
 		return
 	end
-	claiming[speciesId] = true
+	claiming[partId] = true
 
 	local mine = { name = player.DisplayName, userId = player.UserId, time = os.time() }
 	local winner = mine
 	if store then
 		local ok, result = pcall(function()
 			local existing = nil
-			store:UpdateAsync(storeKey(speciesId), function(old)
+			store:UpdateAsync(storeKey(partId), function(old)
 				existing = old
 				if old then
 					return nil
@@ -90,21 +97,21 @@ function DiscoveryService.claim(player: Player, speciesId: string)
 			winner = result or mine
 		elseif not RunService:IsStudio() then
 			warn("Discovery claim failed:", result)
-			claiming[speciesId] = nil
+			claiming[partId] = nil
 			return
 		end
 	end
 
-	announce(speciesId, winner)
+	announce(partId, winner)
 	if winner == mine then
-		pcall(MessagingService.PublishAsync, MessagingService, TOPIC, { species = speciesId, discovery = mine })
+		pcall(MessagingService.PublishAsync, MessagingService, TOPIC, { part = partId, discovery = mine })
 	end
-	claiming[speciesId] = nil
+	claiming[partId] = nil
 end
 
--- True once someone, anywhere, has found this species.
-function DiscoveryService.isDiscovered(speciesId: string): boolean
-	return cache[speciesId] ~= nil
+-- True once someone, anywhere, has found this part.
+function DiscoveryService.isDiscovered(partId: string): boolean
+	return cache[partId] ~= nil
 end
 
 function DiscoveryService.init()
@@ -117,8 +124,8 @@ function DiscoveryService.init()
 	task.spawn(pcall, function()
 		MessagingService:SubscribeAsync(TOPIC, function(message)
 			local data = message.Data
-			if typeof(data) == "table" and Freeks.byId[data.species] then
-				announce(data.species, data.discovery)
+			if typeof(data) == "table" and typeof(data.part) == "string" and claimable(data.part) then
+				announce(data.part, data.discovery)
 			end
 		end)
 	end)
@@ -130,11 +137,11 @@ function DiscoveryService.init()
 		end
 	end)
 
-	-- Re-check species a player already owns, in case an earlier claim failed.
+	-- Re-check parts a player already owns, in case an earlier claim failed.
 	local DataService = require(script.Parent.DataService)
 	DataService.onLoaded(function(player, data)
-		for speciesId in data.discovered do
-			DiscoveryService.claim(player, speciesId)
+		for partId in data.discovered do
+			DiscoveryService.claim(player, partId)
 		end
 	end)
 end

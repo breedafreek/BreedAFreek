@@ -1,57 +1,56 @@
--- Luck: Monster Eggs, the daily Lucky Wheel and Lucky Hour events. Shared so the client
+-- Luck: Mystery Boxes, the daily Lucky Wheel and Lucky Hour events. Shared so the client
 -- can show every chance on screen (players always see the odds before buying), while the
 -- server does all the rolling (server/LuckService).
 --
--- Monster Eggs are Developer Products bought with Robux. They're the only way to get
--- the Monster line (Freeks with exclusive = true). Roblox's rules for paid random items:
--- the odds are shown before buying, and players in countries where paid random items
--- aren't allowed can't buy them (LuckService checks PolicyService).
+-- Mystery Boxes are Developer Products bought with Robux: each one opens into a random house
+-- part (a random slot, in a style rolled from the box's odds). Roblox's rules for paid
+-- random items: the odds are shown before buying, and players in countries where paid
+-- random items aren't allowed can't buy them (LuckService checks PolicyService).
 
-local Freeks = require(script.Parent.Freeks)
+local Parts = require(script.Parent.Parts)
 local Rarities = require(script.Parent.Rarities)
 
 local Luck = {}
 
--- Monster Eggs (Halloween style; models in EggModel.luau). In the code they're still
--- called crates. productId: create a Developer Product for each on the Creator Dashboard
--- (Monetization -> Developer Products) at this price and paste its ID here. Until then
--- the egg shows "Coming soon", except in Studio where it hatches free for testing.
--- odds are weights per Monster; mutation multiplies each mutation's normal chance.
+-- Mystery Boxes. In the code they're still called crates (and the product ids are the ones
+-- first made for the old Monster Eggs: rename those products on the dashboard).
+-- productId: the Developer Product's ID. odds are weights per part style; mutation
+-- multiplies each mutation's normal chance.
 Luck.CRATES = {
 	{
 		id = "Monster",
-		name = "Monster Egg",
+		name = "Mystery Box",
 		robux = 49,
 		productId = 3718866310,
 		color = Color3.fromRGB(255, 140, 30),
-		odds = { BooBoo = 45, Zomboy = 35, Mumbles = 15, CountFangula = 4.5, Howlz = 0.5 },
+		odds = { Stone = 45, Sand = 35, Ice = 15, Candy = 4.5, Lava = 0.5 },
 		mutation = 1,
 	},
 	{
 		id = "MegaMonster",
-		name = "Mega Monster Egg",
+		name = "Mega Mystery Box",
 		robux = 149,
 		productId = 3718866430,
 		color = Color3.fromRGB(160, 110, 240),
-		odds = { BooBoo = 20, Zomboy = 25, Mumbles = 35, CountFangula = 15, Howlz = 4.5, Blinky = 0.5 },
+		odds = { Sand = 20, Ice = 25, Candy = 35, Lava = 15, Royal = 4.5, Crystal = 0.5 },
 		mutation = 2,
 	},
 	{
 		id = "LegendaryMonster",
-		name = "Legendary Monster Egg",
+		name = "Legendary Mystery Box",
 		robux = 399,
 		productId = 3718866530,
 		color = Color3.fromRGB(255, 200, 60),
-		odds = { Mumbles = 30, CountFangula = 45, Howlz = 20, Blinky = 5 },
+		odds = { Candy = 30, Lava = 45, Royal = 20, Crystal = 5 },
 		mutation = 3,
 	},
 }
--- Opens crates for free in Studio when they have no product ID yet (for testing).
+-- Opens boxes for free in Studio when they have no product ID yet (for testing).
 Luck.STUDIO_FREE_CRATES = true
 
 -- The Starter Pack: a one-time offer for a player's first STARTER.hours after they first
 -- join. It's a game pass (passId); its contents are given once, the first time the server
--- sees the player owns it. The eggs are saved to hatch from the Luck tab.
+-- sees the player owns it. The boxes are saved to open from the Luck tab.
 Luck.STARTER = {
 	name = "Starter Pack",
 	robux = 499,
@@ -61,11 +60,11 @@ Luck.STARTER = {
 	crates = { LegendaryMonster = 3 },
 }
 
--- Egg bundles (Developer Products): several eggs at once, cheaper than one by one.
+-- Box bundles (Developer Products): several boxes at once, cheaper than one by one.
 Luck.BUNDLES = {
 	{
 		id = "LegendaryTen",
-		name = "10x Legendary Monster Eggs",
+		name = "10x Legendary Mystery Boxes",
 		robux = 2800,
 		productId = 3718869744,
 		crate = "LegendaryMonster",
@@ -90,7 +89,7 @@ for _, bundle in Luck.BUNDLES do
 	end
 end
 
--- How much cheaper a bundle is than buying its eggs one by one (percent).
+-- How much cheaper a bundle is than buying its boxes one by one (percent).
 function Luck.bundleSaving(bundle): number
 	local single = Luck.crateById[bundle.crate].robux * bundle.count
 	return math.floor((1 - bundle.robux / single) * 100 + 0.5)
@@ -101,15 +100,15 @@ function Luck.crateOdds(crate): { [string]: number }
 	local event = Luck.current()
 	local boost = event and event.crateLuck or 1
 	local odds = {}
-	for speciesId, weight in crate.odds do
-		local species = Freeks.byId[speciesId]
-		local rare = species and Rarities.rank[species.rarity] >= Rarities.rank.Legendary
-		odds[speciesId] = if rare then weight * boost else weight
+	for styleId, weight in crate.odds do
+		local style = Parts.styleById[styleId]
+		local rare = style and Rarities.rank[style.rarity] >= Rarities.rank.Legendary
+		odds[styleId] = if rare then weight * boost else weight
 	end
 	return odds
 end
 
--- The crate's odds as a list, most likely first: { { species, percent } }.
+-- The crate's odds as a list, most likely first: { { style, percent } }.
 function Luck.oddsList(crate)
 	local odds = Luck.crateOdds(crate)
 	local total = 0
@@ -117,8 +116,8 @@ function Luck.oddsList(crate)
 		total += weight
 	end
 	local list = {}
-	for speciesId, weight in odds do
-		table.insert(list, { species = speciesId, percent = weight / total * 100 })
+	for styleId, weight in odds do
+		table.insert(list, { style = styleId, percent = weight / total * 100 })
 	end
 	table.sort(list, function(a, b)
 		return a.percent > b.percent
@@ -133,11 +132,11 @@ Luck.VIP_SPIN_COOLDOWN = 12 * 60 * 60
 Luck.WHEEL = {
 	{ label = "Coins", minutes = 3, weight = 34, color = Color3.fromRGB(110, 235, 140) },
 	{ label = "Big Coins", minutes = 10, weight = 22, color = Color3.fromRGB(60, 200, 110) },
-	{ label = "Golden Freek", golden = true, weight = 14, color = Color3.fromRGB(255, 220, 90) },
-	{ label = "Monster Egg", crate = "Monster", weight = 12, color = Color3.fromRGB(255, 140, 30) },
+	{ label = "Golden Part", golden = true, weight = 14, color = Color3.fromRGB(255, 220, 90) },
+	{ label = "Mystery Box", crate = "Monster", weight = 12, color = Color3.fromRGB(255, 140, 30) },
 	{ label = "Huge Coins", minutes = 30, weight = 10, color = Color3.fromRGB(40, 160, 90) },
-	{ label = "Rainbow Freek", rainbow = true, weight = 4, color = Color3.fromRGB(255, 120, 255) },
-	{ label = "Mega Egg", crate = "MegaMonster", weight = 3, color = Color3.fromRGB(160, 110, 240) },
+	{ label = "Rainbow Part", rainbow = true, weight = 4, color = Color3.fromRGB(255, 120, 255) },
+	{ label = "Mega Box", crate = "MegaMonster", weight = 3, color = Color3.fromRGB(160, 110, 240) },
 	{ label = "JACKPOT", crate = "LegendaryMonster", weight = 1, color = Color3.fromRGB(255, 200, 60) },
 }
 Luck.MIN_COIN_PRIZE = 200 -- coin prizes are never less than this
@@ -159,28 +158,28 @@ Luck.EVENTS = {
 	Rainbow = {
 		name = "Rainbow Hour",
 		icon = "🌈",
-		description = "Cannon Freeks are 5x as likely to be mutated!",
+		description = "Parts in the zones are 5x as likely to be mutated!",
 		color = Color3.fromRGB(255, 120, 255),
 		mutationBoost = 5,
 	},
 	LuckySkies = {
-		name = "Lucky Skies",
+		name = "Lucky Zones",
 		icon = "🍀",
-		description = "Rare and better Freeks come out of the cannons 3x as often!",
+		description = "Rarer parts turn up in the zones 3x as often!",
 		color = Color3.fromRGB(90, 230, 120),
 		rareBoost = 3,
 	},
 	RapidFire = {
-		name = "Rapid Fire",
+		name = "Fast Regrow",
 		icon = "💥",
-		description = "The cannons fire twice as fast!",
+		description = "Parts regrow in the zones twice as fast!",
 		color = Color3.fromRGB(255, 140, 50),
-		fireRate = 2,
+		respawnBoost = 2,
 	},
 	CrateLuck = {
-		name = "Egg Luck",
+		name = "Box Luck",
 		icon = "📦",
-		description = "Legendary and better Monsters are 2x as likely from Monster Eggs!",
+		description = "Legendary and better parts are 2x as likely from Mystery Boxes!",
 		color = Color3.fromRGB(110, 200, 255),
 		crateLuck = 2,
 	},

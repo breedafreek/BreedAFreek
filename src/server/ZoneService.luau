@@ -1,0 +1,459 @@
+-- The zones: piles of house parts to steal, each guarded by a giant Freek.
+--
+-- Every zone has a ring of pedestals at its far end. Each pedestal grows a random part in
+-- the zone's style (sometimes with a mutation; the last zone sometimes grows Rainbow ones).
+-- Hold Grab on one and run! The zone's guardian chases anyone carrying a part inside its
+-- zone. It runs at Parts.guardianSpeed: a bit slower than a player who has the zone's Speed,
+-- so if you trained enough you get away, and if you didn't it catches you, flings you
+-- toward town and you drop the part.
+--
+-- Guardians live on the server as plain data (position, heading, who they're chasing) and
+-- are published as attributes on ReplicatedStorage.Guardians, so every client builds and
+-- animates its own copy smoothly (client GuardianFX).
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Events = require(ReplicatedStorage.Shared.Events)
+local Format = require(ReplicatedStorage.Shared.Format)
+local HouseModel = require(ReplicatedStorage.Shared.HouseModel)
+local HouseUtil = require(ReplicatedStorage.Shared.HouseUtil)
+local Mutations = require(ReplicatedStorage.Shared.Mutations)
+local Parts = require(ReplicatedStorage.Shared.Parts)
+local Rarities = require(ReplicatedStorage.Shared.Rarities)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local ZoneLayout = require(ReplicatedStorage.Shared.ZoneLayout)
+
+local ZoneDecor = require(script.Parent.ZoneDecor)
+
+local ZoneService = {}
+
+local RESPAWN_MIN, RESPAWN_MAX = 6, 12 -- seconds before an empty pedestal grows a new part
+local CATCH_RADIUS = 6
+local LEASH = 14 -- how far past its zone's edge a guardian keeps chasing
+local PUBLISH_INTERVAL = 0.1
+
+local notifyRemote = Remotes.get("Notify")
+local knockbackRemote = Remotes.get("Knockback")
+local rng = Random.new()
+
+local zones = {} -- [index] = { pedestals = { { spot, part, model, ring, label, respawnAt, taken } }, guardian }
+local hooks = {
+	carrying = function(_player)
+		return nil
+	end,
+	drop = function(_player, _message)
+		return false
+	end,
+}
+-- Mutations a part can grow with (only on pedestals; rolled once per part).
+local MUTATION_FACTOR = 0.6
+local RARE_CHANCE = 0.03 -- chance a pedestal grows the next zone's style instead
+
+--------------------------------------------------------------------------------
+-- Pedestals
+--------------------------------------------------------------------------------
+
+local OUTLINE = Color3.fromRGB(20, 22, 48)
+
+local function part(props): Part
+	local p = Instance.new("Part")
+	p.Anchored = true
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	for key, value in props do
+		p[key] = value
+	end
+	return p
+end
+
+local function textLine(parent: Instance, font: Enum.Font, y: number, h: number)
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Position = UDim2.fromScale(0, y)
+	label.Size = UDim2.fromScale(1, h)
+	label.TextScaled = true
+	label.Font = font
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.Parent = parent
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = OUTLINE
+	stroke.Thickness = 3
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
+	stroke.Parent = label
+	return label
+end
+
+local function buildPedestal(parent: Instance, index: number, n: number)
+	local spot = CFrame.new(ZoneLayout.pedestal(index, n))
+	local theme = ZoneDecor.THEMES[index]
+	local base = part({
+		Name = "Pedestal",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(2, 6, 6),
+		CFrame = spot * CFrame.new(0, 1, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		Color = theme.cliff:Lerp(Color3.new(1, 1, 1), 0.3),
+		Material = Enum.Material.Marble,
+		Parent = parent,
+	})
+	local ring = part({
+		Name = "PedestalRing",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.3, 6.4, 6.4),
+		CFrame = spot * CFrame.new(0, 2.05, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		Color = Color3.fromRGB(200, 200, 200),
+		Material = Enum.Material.Neon,
+		CanCollide = false,
+		Parent = parent,
+	})
+	-- Floating text: rarity, name, income.
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromScale(9, 3.6)
+	gui.StudsOffset = Vector3.new(0, 8, 0)
+	gui.MaxDistance = 90
+	gui.LightInfluence = 0
+	gui.AlwaysOnTop = false
+	gui.Parent = base
+	local rarity = textLine(gui, Enum.Font.LuckiestGuy, 0, 0.32)
+	local name = textLine(gui, Enum.Font.FredokaOne, 0.32, 0.36)
+	local income = textLine(gui, Enum.Font.LuckiestGuy, 0.68, 0.32)
+	income.TextColor3 = Color3.fromRGB(110, 235, 140)
+	return {
+		spot = spot * CFrame.new(0, 2.1, 0),
+		base = base,
+		ring = ring,
+		labels = { rarity = rarity, name = name, income = income, gui = gui },
+		record = nil,
+		model = nil,
+		respawnAt = 0,
+		taken = false,
+	}
+end
+
+-- Picks what grows next on a pedestal in this zone.
+local function rollPart(index: number)
+	local zone = Parts.ZONES[index]
+	local style = zone.style
+	local rare = Events.boost("rareBoost")
+	if index == #Parts.ZONES and rng:NextNumber() < Parts.RAINBOW_CHANCE * rare then
+		style = "Rainbow"
+	elseif index < #Parts.ZONES and rng:NextNumber() < RARE_CHANCE * rare then
+		-- Now and then, a part from the next zone along.
+		style = Parts.ZONES[index + 1].style
+	end
+	local slot = Parts.SLOTS[rng:NextInteger(1, #Parts.SLOTS)]
+	local mutations = {}
+	for _, mutation in Mutations.list do
+		if rng:NextNumber() < mutation.chance * MUTATION_FACTOR * Events.boost("mutationBoost") then
+			table.insert(mutations, mutation.id)
+			break
+		end
+	end
+	-- Weather events give every new part a good chance of their mutation.
+	local weather = Events.weather()
+	if weather and rng:NextNumber() < 0.25 then
+		mutations = { weather.mutation }
+	end
+	return { id = style .. "_" .. slot.id, mutations = Mutations.pack(mutations) }
+end
+
+local function showPart(index: number, pedestal, record)
+	if pedestal.model then
+		pedestal.model:Destroy()
+	end
+	pedestal.record = record
+	pedestal.taken = false
+	local info = Parts.byId[record.id]
+	local color = Rarities.info[info.rarity].color
+	local model = HouseModel.item(record.id)
+	model:PivotTo(pedestal.spot * CFrame.Angles(0, math.rad(180 + (rng:NextNumber() - 0.5) * 40), 0))
+	local top = Mutations.top(record.mutations)
+	local first = model:FindFirstChildWhichIsA("BasePart")
+	if top and first then
+		local sparkles = Instance.new("Sparkles")
+		sparkles.SparkleColor = Mutations.byId[top].color
+		sparkles.Parent = first
+	end
+	model.Parent = pedestal.base.Parent
+	pedestal.model = model
+	pedestal.ring.Color = color
+	pedestal.labels.rarity.Text = string.upper(info.rarity)
+	pedestal.labels.rarity.TextColor3 = color
+	pedestal.labels.name.Text = HouseUtil.displayName(record)
+	pedestal.labels.income.Text = Format.money(HouseUtil.partIncome(record)) .. "/s"
+	pedestal.labels.gui.Enabled = true
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "GrabPrompt"
+	prompt.ActionText = "Grab"
+	prompt.ObjectText = HouseUtil.displayName(record)
+	prompt.HoldDuration = Config.GRAB_HOLD_SECONDS
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt:SetAttribute("Zone", index)
+	prompt:SetAttribute("Pedestal", table.find(zones[index].pedestals, pedestal))
+	prompt.Parent = pedestal.base
+
+	if info.rarity == "Secret" or (top == "Rainbow") then
+		for _, player in Players:GetPlayers() do
+			notifyRemote:FireClient(
+				player,
+				"🌈 A " .. HouseUtil.displayName(record) .. " just appeared in " .. Parts.ZONES[index].name .. "!",
+				"discovery"
+			)
+		end
+	end
+end
+
+local function clearPedestal(pedestal)
+	if pedestal.model then
+		pedestal.model:Destroy()
+		pedestal.model = nil
+	end
+	local prompt = pedestal.base:FindFirstChild("GrabPrompt")
+	if prompt then
+		prompt:Destroy()
+	end
+	pedestal.record = nil
+	pedestal.ring.Color = Color3.fromRGB(120, 120, 130)
+	pedestal.labels.gui.Enabled = false
+end
+
+-- Takes the part off a pedestal for someone to carry. Returns its record, or nil if there's
+-- nothing there.
+function ZoneService.take(index: number, n: number)
+	local zone = zones[index]
+	local pedestal = zone and zone.pedestals[n]
+	if not pedestal or not pedestal.record or pedestal.taken then
+		return nil
+	end
+	local record = pedestal.record
+	clearPedestal(pedestal)
+	pedestal.taken = true
+	return record
+end
+
+-- The carried part was delivered or dropped: the pedestal can grow a new one.
+function ZoneService.release(index: number?, n: number?)
+	local zone = index and zones[index]
+	local pedestal = zone and n and zone.pedestals[n]
+	if pedestal then
+		pedestal.taken = false
+		pedestal.respawnAt = os.clock() + rng:NextNumber(RESPAWN_MIN, RESPAWN_MAX) / Events.boost("respawnBoost")
+	end
+end
+
+-- Fills every empty pedestal of zone `index` right away with parts of `style` (admin).
+function ZoneService.spawnNow(index: number, partId: string?, mutations: { string }?)
+	local zone = zones[index]
+	if not zone then
+		return
+	end
+	for _, pedestal in zone.pedestals do
+		if not pedestal.taken then
+			showPart(
+				index,
+				pedestal,
+				if partId then { id = partId, mutations = Mutations.pack(mutations) } else rollPart(index)
+			)
+			if partId then
+				return
+			end
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Guardians
+--------------------------------------------------------------------------------
+
+local guardianFolder
+
+local function rootPart(player: Player): BasePart?
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then
+		return nil
+	end
+	return character:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
+local function newGuardian(index: number)
+	local home = ZoneLayout.guardianHome(index)
+	local zone = Parts.ZONES[index]
+	local data = Instance.new("Configuration")
+	data.Name = "Guardian" .. index
+	data:SetAttribute("Zone", index)
+	data:SetAttribute("Species", zone.guardian)
+	data:SetAttribute("Title", zone.title)
+	data.Parent = guardianFolder
+	return {
+		index = index,
+		position = home,
+		home = home,
+		yaw = -math.pi / 2, -- facing the entrance (+X)
+		target = nil,
+		cooldown = 0,
+		wanderAt = 0,
+		wanderTo = home,
+		speed = Parts.guardianSpeed(index),
+		data = data,
+		moving = false,
+	}
+end
+
+-- Sends a guardian after a player right away (they just grabbed a part).
+function ZoneService.alert(index: number, player: Player)
+	local zone = zones[index]
+	if zone and zone.guardian.cooldown <= os.clock() then
+		zone.guardian.target = player
+	end
+end
+
+local function flatten(v: Vector3): Vector3
+	return Vector3.new(v.X, 0, v.Z)
+end
+
+local function catch(guardian, player: Player, root: BasePart)
+	local zone = Parts.ZONES[guardian.index]
+	guardian.target = nil
+	guardian.cooldown = os.clock() + 2.5
+	hooks.drop(player, zone.title .. " caught you! You dropped it.")
+	-- Fling them toward town.
+	local away = flatten(root.Position - guardian.position)
+	local direction = (Vector3.new(1, 0, 0) + (if away.Magnitude > 0.1 then away.Unit else Vector3.zero)).Unit
+	knockbackRemote:FireClient(player, direction + Vector3.new(0, 0.9, 0), 95, 0.35)
+end
+
+local function stepGuardian(guardian, dt: number)
+	local now = os.clock()
+	local target = guardian.target
+	local targetRoot = target and rootPart(target)
+	-- Give up on anyone who got away, isn't carrying anything, or left.
+	if
+		target
+		and (
+			not targetRoot
+			or not hooks.carrying(target)
+			or not ZoneLayout.inside(guardian.index, targetRoot.Position, LEASH)
+			or not target.Parent
+		)
+	then
+		guardian.target = nil
+		target, targetRoot = nil, nil
+	end
+	-- Look for thieves in the zone.
+	if not target and guardian.cooldown <= now then
+		local best, bestDistance = nil, math.huge
+		for _, player in Players:GetPlayers() do
+			local root = rootPart(player)
+			if root and hooks.carrying(player) and ZoneLayout.inside(guardian.index, root.Position) then
+				local distance = (flatten(root.Position) - guardian.position).Magnitude
+				if distance < bestDistance then
+					best, bestDistance = player, distance
+				end
+			end
+		end
+		if best then
+			guardian.target = best
+			target, targetRoot = best, rootPart(best)
+		end
+	end
+
+	local goal, speed
+	if target and targetRoot then
+		goal = flatten(targetRoot.Position)
+		speed = guardian.speed * Events.boost("guardianSpeed")
+	else
+		-- Wander round the pile.
+		if now >= guardian.wanderAt then
+			guardian.wanderAt = now + rng:NextNumber(2.5, 5)
+			local a = rng:NextNumber() * math.pi * 2
+			guardian.wanderTo = guardian.home + Vector3.new(math.cos(a), 0, math.sin(a)) * rng:NextNumber(0, 9)
+		end
+		goal = guardian.wanderTo
+		speed = guardian.speed * 0.45
+	end
+	local offset = goal - guardian.position
+	local distance = offset.Magnitude
+	guardian.moving = distance > 0.5
+	if guardian.moving then
+		local step = math.min(distance, speed * dt)
+		guardian.position += offset.Unit * step
+		guardian.yaw = math.atan2(-offset.X, -offset.Z)
+	end
+	if target and targetRoot and (flatten(targetRoot.Position) - guardian.position).Magnitude < CATCH_RADIUS then
+		catch(guardian, target, targetRoot)
+	end
+end
+
+local function publish(guardian)
+	local data = guardian.data
+	data:SetAttribute("X", math.floor(guardian.position.X * 10) / 10)
+	data:SetAttribute("Z", math.floor(guardian.position.Z * 10) / 10)
+	data:SetAttribute("Yaw", math.floor(guardian.yaw * 100) / 100)
+	data:SetAttribute("Moving", guardian.moving)
+	data:SetAttribute("Chasing", guardian.target ~= nil)
+	data:SetAttribute("Speed", guardian.speed)
+end
+
+-- StealService tells us how to check and end carries (it requires this module).
+function ZoneService.setCarrierHooks(newHooks)
+	hooks = newHooks
+end
+
+function ZoneService.init()
+	local map = Instance.new("Folder")
+	map.Name = "Zones"
+	map.Parent = workspace
+	guardianFolder = Instance.new("Folder")
+	guardianFolder.Name = "Guardians"
+	guardianFolder.Parent = ReplicatedStorage
+
+	for index = 1, #Parts.ZONES do
+		local folder = ZoneDecor.build(map, index)
+		local pile = Instance.new("Folder")
+		pile.Name = "Pile"
+		pile.Parent = folder
+		local zone = { pedestals = {}, guardian = newGuardian(index) }
+		zones[index] = zone
+		for n = 1, ZoneLayout.PEDESTALS do
+			zone.pedestals[n] = buildPedestal(pile, index, n)
+		end
+		for _, pedestal in zone.pedestals do
+			showPart(index, pedestal, rollPart(index))
+		end
+		publish(zone.guardian)
+	end
+
+	RunService.Heartbeat:Connect(function(dt)
+		for _, zone in zones do
+			stepGuardian(zone.guardian, math.min(dt, 0.1))
+		end
+	end)
+	task.spawn(function()
+		while true do
+			task.wait(PUBLISH_INTERVAL)
+			for _, zone in zones do
+				publish(zone.guardian)
+			end
+		end
+	end)
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			local now = os.clock()
+			for index, zone in zones do
+				for _, pedestal in zone.pedestals do
+					if not pedestal.record and not pedestal.taken and now >= pedestal.respawnAt then
+						showPart(index, pedestal, rollPart(index))
+					end
+				end
+			end
+		end
+	end)
+end
+
+return ZoneService

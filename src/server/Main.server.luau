@@ -23,16 +23,16 @@ local SERVICES = {
 	"DiscoveryService",
 	"EconomyService",
 	"ActionService",
-	"TradeService",
+	"ZoneService",
 	"StealService",
+	"SpeedService",
 	"WeaponService",
 	"RebirthService",
 	"PassService",
-	"CannonService",
 	"LuckService",
 	"EventService",
 	"AdminService",
-	"SeasonalService", -- after the map and yards exist
+	"SeasonalService", -- after the map and homes exist
 	"DataService",
 }
 
@@ -48,7 +48,7 @@ for _, name in SERVICES do
 		end, debug.traceback)
 		done = true
 		if not ok then
-			warn("[Fuse a Freek] " .. name .. " failed to start:\n" .. tostring(err))
+			warn("[Steal a Home] " .. name .. " failed to start:\n" .. tostring(err))
 			table.insert(problems, name .. " failed: " .. tostring(err))
 		end
 	end)
@@ -57,8 +57,8 @@ for _, name in SERVICES do
 		task.wait()
 	end
 	if not done then
-		warn("[Fuse a Freek] " .. name .. " is slow to start (still going after " .. STARTUP_WAIT .. "s); carrying on")
+		warn("[Steal a Home] " .. name .. " is slow to start (still going after " .. STARTUP_WAIT .. "s); carrying on")
 	end
 end
 setStatus("Server started")
-print("[Fuse a Freek] Server started")
+print("[Steal a Home] Server started")

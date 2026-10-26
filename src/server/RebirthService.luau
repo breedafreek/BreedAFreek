@@ -1,15 +1,15 @@
 -- Rebirth: pay Config.rebirthCost to start over with a permanent income bonus.
 --
--- Resets: money (back to START_MONEY), Freeks, yard slots, the breeding pen.
--- Keeps: the Discovery Book, Limited (seasonal) Freeks (moved to the backpack, then back into
--- the yard), and weapons, which unlock at rebirth milestones (see Weapons.luau).
+-- Resets: money (back to START_MONEY), Speed, and the treadmill level.
+-- Keeps: your house and backpack, the Catalog, and weapons, which unlock at rebirth
+-- milestones (see Weapons.luau). Each rebirth adds REBIRTH_INCOME_BONUS income and
+-- REBIRTH_SPEED_BONUS treadmill speed, forever.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
-local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 
@@ -17,7 +17,6 @@ local ActionService = require(script.Parent.ActionService)
 local Carried = require(script.Parent.Carried)
 local DataService = require(script.Parent.DataService)
 local StealService = require(script.Parent.StealService)
-local TradeService = require(script.Parent.TradeService)
 local WeaponService = require(script.Parent.WeaponService)
 
 local RebirthService = {}
@@ -33,30 +32,14 @@ local function rebirth(player: Player, data)
 	if data.money < cost then
 		return notify(player, "You need " .. Format.money(cost) .. " to rebirth!", "error")
 	end
-	if TradeService.isTrading(player) then
-		return notify(player, "Finish your trade before rebirthing!", "error")
-	end
 	if StealService.isCarrying(player) or Carried.any(player) then
 		return notify(player, "You can't rebirth in the middle of a steal!", "error")
 	end
 
-	-- Limited Freeks survive; everything else is cleared.
-	local kept = {}
-	for uid, freek in data.freeks do
-		local species = FreekUtil.species(freek)
-		if species and species.season then
-			kept[uid] = { species = freek.species, mutations = freek.mutations, income = freek.income }
-		end
-	end
-	data.freeks = kept
-	data.breeding = nil
-	data.breeding2 = nil
 	data.money = Config.TEST_MONEY or Config.START_MONEY
-	data.slots = Config.START_SLOTS
+	data.speed = 0
+	data.treadmill = 1
 	data.rebirths += 1
-	for _, freek in data.freeks do
-		freek.slot = FreekUtil.freeSlot(data)
-	end
 
 	WeaponService.giveWeapons(player)
 	task.spawn(DataService.save, player)
@@ -68,9 +51,10 @@ local function rebirth(player: Player, data)
 		end
 	end
 	local message = string.format(
-		"Rebirth %d! Your Freeks now earn x%s forever.",
+		"Rebirth %d! Your house now earns x%s and your treadmill trains x%s Speed, forever.",
 		data.rebirths,
-		tostring(Config.incomeMultiplier(data.rebirths))
+		tostring(Config.incomeMultiplier(data.rebirths)),
+		tostring(Config.speedMultiplier(data.rebirths))
 	)
 	if #unlocked > 0 then
 		message ..= " Unlocked: " .. table.concat(unlocked, ", ") .. "!"

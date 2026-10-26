@@ -1,5 +1,5 @@
 -- Loads and saves each player's data with a session lock, so the same player in two
--- servers at once (e.g. a fast rejoin) can't duplicate or lose Freeks.
+-- servers at once (e.g. a fast rejoin) can't duplicate or lose house parts.
 --
 -- In Studio without "Enable Studio Access to API Services", saving is skipped and a
 -- fresh save is used so the game is still testable.
@@ -10,11 +10,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
-local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
-local Freeks = require(ReplicatedStorage.Shared.Freeks)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
+local Parts = require(ReplicatedStorage.Shared.Parts)
 
-local STORE_NAME = "FuseAFreek_Players_v1"
+local STORE_NAME = "StealAHome_Players_v1"
 
 local DataService = {}
 
@@ -32,12 +31,14 @@ local function defaultData()
 	return {
 		version = 1,
 		money = Config.START_MONEY,
-		slots = Config.START_SLOTS,
-		freeks = {}, -- [uid] = { species, mutations?, slot?, breeding? }
-		breeding = nil, -- { a = uid, b = uid, endsAt = unix seconds }
-		discovered = {}, -- [speciesId] = true for every species this player has owned
+		speed = 0, -- trained on the treadmill; decides how fast you run
+		treadmill = 1, -- treadmill level
+		parts = {}, -- [uid] = { id = partId, mutations? }
+		house = {}, -- [slotId] = uid of the part installed there (none = Basic)
+		nextUid = 1,
+		discovered = {}, -- [partId] = true for every part this player has owned
 		rebirths = 0,
-		crates = {}, -- [crateId] = how many unopened Monster Crates (won on the wheel)
+		crates = {}, -- [crateId] = how many unopened Mystery Boxes (won on the wheel)
 		receipts = {}, -- recent Robux purchase IDs, so a purchase is never granted twice
 		lastSpin = 0, -- os.time() of the last Lucky Wheel spin
 		lastSeen = os.time(),
@@ -55,33 +56,28 @@ local function reconcile(data)
 	if Config.TEST_MONEY and data.money < Config.TEST_MONEY then
 		data.money = Config.TEST_MONEY
 	end
-	-- Old saves stored a single mutation.
-	for _, freek in data.freeks do
-		if freek.mutation then
-			freek.mutations = Mutations.pack(freek.mutation)
-			freek.mutation = nil
+	-- Parts that no longer exist are dropped, and slots pointing at missing parts emptied.
+	for uid, record in data.parts do
+		if not Parts.byId[record.id] or Parts.isBasic(record.id) then
+			data.parts[uid] = nil
+		else
+			record.mutations = Mutations.pack(record.mutations)
 		end
 	end
-	-- Freeks whose species no longer exists (removed from Freeks.luau) are dropped, along
-	-- with any Fusion Den using them.
-	for uid, freek in data.freeks do
-		if not Freeks.byId[freek.species] then
-			data.freeks[uid] = nil
-		end
-	end
-	for _, key in FreekUtil.PEN_KEYS do
-		local pen = data[key]
-		if pen and not (data.freeks[pen.a] and data.freeks[pen.b]) then
-			for _, uid in { pen.a, pen.b } do
-				local freek = data.freeks[uid]
-				if freek then
-					freek.breeding = nil
-				end
-			end
-			data[key] = nil
+	for slotId, uid in data.house do
+		local record = data.parts[uid]
+		if not Parts.slotById[slotId] or not record or Parts.byId[record.id].slot ~= slotId then
+			data.house[slotId] = nil
 		end
 	end
 	return data
+end
+
+-- A fresh uid for a new part.
+function DataService.newUid(data): string
+	local uid = "p" .. data.nextUid
+	data.nextUid += 1
+	return uid
 end
 
 local function keyFor(player: Player): string
@@ -189,7 +185,7 @@ function DataService.onChanged(callback)
 	table.insert(changedCallbacks, callback)
 end
 
--- Call after changing a player's data so their yard and UI refresh.
+-- Call after changing a player's data so their house and UI refresh.
 function DataService.changed(player: Player)
 	local data = profiles[player]
 	if not data then
@@ -211,10 +207,10 @@ local function onPlayerAdded(player: Player)
 			data = reconcile(defaultData())
 			noSave[player] = true
 		elseif reason == "locked" then
-			player:Kick("Your Freeks are still saving from your last server. Please rejoin in a minute!")
+			player:Kick("Your house is still saving from your last server. Please rejoin in a minute!")
 			return
 		else
-			player:Kick("Couldn't load your Freeks right now. Please rejoin!")
+			player:Kick("Couldn't load your house right now. Please rejoin!")
 			return
 		end
 	end

@@ -1,21 +1,21 @@
--- Pays every player once a second for the Freeks in their yard, plus offline earnings
+-- Pays every player once a second for the parts on their house, plus offline earnings
 -- when they come back. Money also shows on the leaderboard so players can show off.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
-local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
+local HouseUtil = require(ReplicatedStorage.Shared.HouseUtil)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local DataService = require(script.Parent.DataService)
 
 local EconomyService = {}
 
--- Yard income including rebirths and game passes.
+-- House income including rebirths and game passes.
 local function incomeFor(player: Player, data): number
-	return FreekUtil.yardIncome(data) * GamePasses.coinMultiplier(player)
+	return HouseUtil.houseIncome(data) * GamePasses.coinMultiplier(player)
 end
 
 local function publish(player: Player, data, income: number)
@@ -30,6 +30,10 @@ local function publish(player: Player, data, income: number)
 	if rebirths then
 		rebirths.Value = data.rebirths
 	end
+	local speed = stats and stats:FindFirstChild("Speed")
+	if speed then
+		speed.Value = math.floor(data.speed)
+	end
 end
 
 local function onLoaded(player: Player, data)
@@ -41,6 +45,9 @@ local function onLoaded(player: Player, data)
 	local rebirths = Instance.new("IntValue")
 	rebirths.Name = "Rebirths"
 	rebirths.Parent = stats
+	local speed = Instance.new("NumberValue")
+	speed.Name = "Speed"
+	speed.Parent = stats
 	stats.Parent = player
 
 	local income = incomeFor(player, data)
@@ -49,7 +56,7 @@ local function onLoaded(player: Player, data)
 	if earned > 0 then
 		data.money += earned
 		Remotes.get("Notify")
-			:FireClient(player, "While you were away your Freeks earned " .. Format.money(earned) .. "!", "money")
+			:FireClient(player, "While you were away your house earned " .. Format.money(earned) .. "!", "money")
 	end
 	publish(player, data, income)
 end
