@@ -31,7 +31,7 @@ local ZoneDecor = require(script.Parent.ZoneDecor)
 local ZoneService = {}
 
 local RESPAWN_MIN, RESPAWN_MAX = 6, 12 -- seconds before an empty pedestal grows a new part
-local CATCH_RADIUS = 6
+local CATCH_RADIUS = 7
 local LEASH = 14 -- how far past its zone's edge a guardian keeps chasing
 local PUBLISH_INTERVAL = 0.1
 

@@ -1,11 +1,12 @@
--- 3D pictures for shop items (barn slots, weapons, game passes), built from parts like
--- everything else in the game and shown in ViewportFrames on the item cards.
--- ItemPictures.view(key, height) returns a ViewportFrame; keys are "BarnSlot", a weapon
--- id from Weapons.luau, or a game pass key from GamePasses.luau.
+-- 3D pictures for shop items (the treadmill, weapons, game passes), house parts and the
+-- side menu, built from parts like everything else in the game and shown in
+-- ViewportFrames. ItemPictures.view(key, height) returns a ViewportFrame; keys are
+-- "Treadmill", a weapon id from Weapons.luau, or a game pass key from GamePasses.luau.
+-- ItemPictures.part(partId) pictures a house part; ItemPictures.icon(key) a menu icon.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
+local HouseModel = require(ReplicatedStorage.Shared.HouseModel)
 local WeaponModel = require(ReplicatedStorage.Shared.WeaponModel)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 
@@ -86,31 +87,64 @@ local function plus(model, position: Vector3, size: number)
 	part(model, { Size = Vector3.new(size * 0.32, size, size * 0.32), CFrame = CFrame.new(position), Color = green })
 end
 
--- A glowing pad like the ones in the barn, with a Freek standing on it.
-local function padWithFreek(model, species: string)
-	cylinder(model, CFrame.new(0, 0.3, 0), 0.6, 5, rgb(70, 70, 85))
-	cylinder(model, CFrame.new(0, 0.62, 0), 0.06, 4.4, rgb(90, 230, 255), Enum.Material.Neon)
-	local freek, height = FreekModel.build(species)
-	freek:PivotTo(CFrame.new(0, 0.65, 0))
-	for _, p in freek:GetDescendants() do
-		if p:IsA("BasePart") then
-			p.Parent = model
-		end
-	end
-	freek:Destroy()
-	return height
-end
-
 local BUILDERS = {}
 
--- An extra barn slot: a pad with a Freek on it and a big plus.
-function BUILDERS.BarnSlot(model)
-	local height = padWithFreek(model, "Oinkle")
-	plus(model, Vector3.new(-2.6, height + 0.8, 0), 1.8)
+-- A chunky orange backpack.
+local function backpack(model, plusSign: boolean)
+	local orange = rgb(255, 140, 50)
+	ball(model, Vector3.new(0, 2.4, 0), Vector3.new(3.6, 4.4, 2.4), orange)
+	ball(model, Vector3.new(0, 1.6, -1.05), Vector3.new(2.6, 2, 1), rgb(255, 175, 80))
+	part(model, { Size = Vector3.new(2.4, 0.25, 0.3), CFrame = CFrame.new(0, 2.5, -1.25), Color = rgb(90, 60, 40) })
+	ball(model, Vector3.new(0, 2.5, -1.4), 0.35, GOLD, Enum.Material.Foil)
+	for _, x in { -1.1, 1.1 } do
+		part(model, {
+			Size = Vector3.new(0.45, 3.6, 0.3),
+			CFrame = CFrame.new(x, 2.5, 1.25) * CFrame.Angles(0, 0, math.rad(x * 4)),
+			Color = rgb(90, 60, 40),
+		})
+	end
+	cylinder(model, CFrame.new(0, 4.6, 0) * CFrame.Angles(math.pi / 2, 0, 0), 0.4, 1.2, rgb(90, 60, 40))
+	if plusSign then
+		plus(model, Vector3.new(2.4, 4.2, -0.6), 1.6)
+	end
 end
-BUILDERS.ExtraSlot1 = BUILDERS.BarnSlot
-BUILDERS.ExtraSlot2 = BUILDERS.BarnSlot
-BUILDERS.ExtraSlot3 = BUILDERS.BarnSlot
+
+function BUILDERS.ExtraSlot1(model)
+	backpack(model, true)
+end
+BUILDERS.ExtraSlot2 = BUILDERS.ExtraSlot1
+BUILDERS.ExtraSlot3 = BUILDERS.ExtraSlot1
+
+-- The treadmill (Shop): a belt, rails and a glowing console.
+function BUILDERS.Treadmill(model)
+	local frame = rgb(60, 62, 75)
+	part(
+		model,
+		{ Size = Vector3.new(3, 0.6, 6), CFrame = CFrame.new(0, 0.3, 0), Color = frame, Material = Enum.Material.Metal }
+	)
+	part(model, { Size = Vector3.new(2.4, 0.2, 5.2), CFrame = CFrame.new(0, 0.7, 0.3), Color = rgb(30, 30, 36) })
+	for _, x in { -1.4, 1.4 } do
+		part(model, { Size = Vector3.new(0.3, 0.3, 5.6), CFrame = CFrame.new(x, 0.8, 0.2), Color = rgb(90, 200, 255) })
+		part(model, { Size = Vector3.new(0.25, 2.6, 0.25), CFrame = CFrame.new(x, 1.9, -2.6), Color = frame })
+	end
+	part(model, { Size = Vector3.new(3, 0.3, 0.3), CFrame = CFrame.new(0, 3.1, -2.6), Color = rgb(90, 200, 255) })
+	part(model, {
+		Size = Vector3.new(2.2, 1.1, 0.3),
+		CFrame = CFrame.new(0, 3.8, -2.8) * CFrame.Angles(math.rad(20), 0, 0),
+		Color = rgb(90, 220, 255),
+		Material = Enum.Material.Neon,
+	})
+	-- A lightning bolt over it.
+	local yellow = rgb(255, 220, 40)
+	for _, bit in { { 1.9, 5, -30 }, { 1.6, 3.9, 35 }, { 2, 2.8, -30 } } do
+		part(model, {
+			Size = Vector3.new(0.6, 1.4, 0.4),
+			CFrame = CFrame.new(bit[1], bit[2], -0.6) * CFrame.Angles(0, 0, math.rad(bit[3])),
+			Color = yellow,
+			Material = Enum.Material.Neon,
+		})
+	end
+end
 
 -- 2x Coins: a pile of gold coins and a green cash stack.
 function BUILDERS.DoubleCoins(model)
@@ -197,26 +231,27 @@ function BUILDERS.VIP(model)
 	end
 end
 
--- Extra Fusion Den: two hay bales and a pink heart.
+-- Strong Arms: a big dumbbell.
 function BUILDERS.ExtraPen(model)
-	for _, x in { -1.4, 1.4 } do
-		part(model, {
-			Size = Vector3.new(2.4, 1.5, 1.6),
-			CFrame = CFrame.new(x, 0.75, 0),
-			Color = rgb(225, 190, 95),
-			Material = Enum.Material.Sand,
-		})
-		part(model, { Size = Vector3.new(0.2, 1.55, 1.65), CFrame = CFrame.new(x, 0.75, 0), Color = rgb(140, 100, 55) })
+	local dark = rgb(55, 55, 70)
+	cylinder(
+		model,
+		CFrame.new(0, 1.4, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		5,
+		0.45,
+		rgb(190, 190, 205),
+		Enum.Material.Metal
+	)
+	for _, x in { -2.1, -1.6, 1.6, 2.1 } do
+		local big = math.abs(x) > 2
+		cylinder(
+			model,
+			CFrame.new(x, 1.4, 0) * CFrame.Angles(0, 0, math.pi / 2),
+			0.45,
+			if big then 2.2 else 2.8,
+			if big then dark else rgb(255, 90, 160)
+		)
 	end
-	local pink = rgb(255, 90, 170)
-	ball(model, Vector3.new(-0.45, 3, 0), 1.2, pink, Enum.Material.Neon)
-	ball(model, Vector3.new(0.45, 3, 0), 1.2, pink, Enum.Material.Neon)
-	part(model, {
-		Size = Vector3.new(1.25, 1.25, 1),
-		CFrame = CFrame.new(0, 2.5, 0) * CFrame.Angles(0, 0, math.rad(45)),
-		Color = pink,
-		Material = Enum.Material.Neon,
-	})
 end
 
 --------------------------------------------------------------------------------
@@ -396,37 +431,7 @@ BUILDERS.MenuLuck = function(model)
 	sparkle(model, center + Vector3.new(2.2, -1.2, -0.6), 0.6)
 end
 
--- Freeks: Oinkle, the mascot.
-BUILDERS.MenuFreeks = function(model)
-	local freek = FreekModel.build("Oinkle")
-	freek:PivotTo(CFrame.new())
-	for _, p in freek:GetDescendants() do
-		if p:IsA("BasePart") then
-			p.Parent = model
-		end
-	end
-	freek:Destroy()
-end
-
--- Fuse: a round potion flask bubbling purple-to-pink.
-BUILDERS.MenuFuse = function(model)
-	local glass = rgb(215, 240, 255)
-	ball(model, Vector3.new(0, 1.9, 0), 3.6, glass, Enum.Material.Glass).Transparency = 0.55
-	ball(model, Vector3.new(0, 1.65, 0), Vector3.new(3.15, 2.7, 3.15), rgb(170, 80, 255))
-	ball(model, Vector3.new(0, 2.55, 0), Vector3.new(2.7, 0.7, 2.7), rgb(255, 80, 190))
-	-- A highlight on the glass.
-	ball(model, Vector3.new(-0.9, 2.7, -1.25), Vector3.new(0.45, 0.9, 0.2), rgb(255, 255, 255))
-	cylinder(model, CFrame.new(0, 4.0, 0), 1.3, 1.1, glass, Enum.Material.Glass).Transparency = 0.35
-	cylinder(model, CFrame.new(0, 4.55, 0), 0.25, 1.35, glass)
-	cylinder(model, CFrame.new(0, 4.95, 0), 0.7, 0.95, rgb(160, 100, 55))
-	-- Bubbles.
-	for _, b in { { 0.5, 1.4, 0.45 }, { -0.6, 1.0, 0.35 }, { 0.2, 2.0, 0.3 }, { 0.9, 5.7, 0.4 }, { 0.3, 6.4, 0.3 } } do
-		ball(model, Vector3.new(b[1], b[2], -0.8), b[3], rgb(255, 210, 245), Enum.Material.Neon)
-	end
-	sparkle(model, Vector3.new(-1.9, 4.6, -0.5), 0.8)
-end
-
--- Book: the Freekdex, open, with a ribbon.
+-- Book: the Catalog, open, with a ribbon.
 BUILDERS.MenuBook = function(model)
 	local cover, pages, lines = rgb(225, 45, 80), rgb(255, 250, 235), rgb(190, 180, 170)
 	local center = Vector3.new(0, 2, 0)
@@ -450,7 +455,7 @@ BUILDERS.MenuBook = function(model)
 			})
 		end
 	end
-	-- A little Freek face on the left page and a ribbon hanging out.
+	-- A little face on the left page and a ribbon hanging out.
 	ball(model, center + Vector3.new(-1.05, 0.2, -0.45), Vector3.new(0.9, 0.9, 0.3), rgb(255, 160, 190))
 	ball(model, center + Vector3.new(-1.25, 0.3, -0.62), Vector3.new(0.22, 0.22, 0.1), rgb(30, 30, 40))
 	ball(model, center + Vector3.new(-0.85, 0.3, -0.62), Vector3.new(0.22, 0.22, 0.1), rgb(30, 30, 40))
@@ -462,33 +467,43 @@ BUILDERS.MenuBook = function(model)
 	sparkle(model, center + Vector3.new(2.2, 1.9, -0.4), 0.8)
 end
 
--- Trade: two fat arrows passing each other.
-BUILDERS.MenuTrade = function(model)
-	for _, arrow in { { 1, 1.1, rgb(80, 220, 110) }, { -1, -0.4, rgb(70, 160, 255) } } do
-		local dir, y, color = arrow[1], arrow[2], arrow[3]
-		local x0 = -dir * 0.6
-		part(model, {
-			Size = Vector3.new(2.6, 0.95, 0.7),
-			CFrame = CFrame.new(x0, 2 + y, -dir * 0.1),
-			Color = color,
-		})
-		triangle(
-			model,
-			Vector3.new(x0 + dir * 1.25, 2 + y, -dir * 0.1),
-			Vector3.new(0, 1, 0),
-			Vector3.new(dir, 0, 0),
-			2.1,
-			1.4,
-			0.7,
-			color
-		)
-		-- A light stripe along the top edge.
-		part(model, {
-			Size = Vector3.new(2.4, 0.2, 0.1),
-			CFrame = CFrame.new(x0, 2 + y + 0.25, -dir * 0.1 - 0.36),
-			Color = color:Lerp(Color3.new(1, 1, 1), 0.5),
-		})
+-- House: a little house made of real house parts.
+BUILDERS.MenuHouse = function(model)
+	local function add(partId: string, offset: CFrame)
+		local item = HouseModel.item(partId)
+		item:PivotTo(offset)
+		for _, p in item:GetDescendants() do
+			if p:IsA("BasePart") then
+				p.Parent = model
+			end
+		end
+		item:Destroy()
 	end
+	add("Candy_Walls", CFrame.new(0, 0, 0))
+	add("Royal_Roof", CFrame.new(0, 4.8, 0))
+	add("Basic_Door", CFrame.new(0, 0.4, -2.3) * CFrame.new(0, 0, 0))
+end
+
+-- Bag: the backpack.
+BUILDERS.MenuBag = function(model)
+	backpack(model, false)
+end
+
+-- Catalog: the book.
+BUILDERS.MenuCatalog = function(model)
+	BUILDERS.MenuBook(model)
+end
+
+-- Home: a fancy front door (it takes you home).
+BUILDERS.MenuHome = function(model)
+	local item = HouseModel.item("Royal_Door")
+	for _, p in item:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Parent = model
+		end
+	end
+	item:Destroy()
+	sparkle(model, Vector3.new(2, 4.6, -0.8), 0.9)
 end
 
 -- Rebirth: a big gold star with a bevel.
@@ -608,6 +623,31 @@ function ItemPictures.icon(key: string): (ViewportFrame, (number) -> ())
 	camera.Parent = frame
 	frame.CurrentCamera = camera
 	return frame, sway
+end
+
+-- A house part, framed to fit, seen a little from above and the side. silhouette = true
+-- draws it solid black ("???" in the Catalog).
+function ItemPictures.part(partId: string, height: number?, silhouette: boolean?): ViewportFrame
+	local frame = Instance.new("ViewportFrame")
+	frame.BackgroundTransparency = 1
+	frame.Size = UDim2.new(1, 0, 0, height or 100)
+	frame.Ambient = Color3.fromRGB(195, 195, 200)
+	frame.LightColor = Color3.fromRGB(255, 250, 240)
+	frame.LightDirection = Vector3.new(-1, -1.4, 1)
+	frame.ImageColor3 = if silhouette then Color3.new(0, 0, 0) else Color3.new(1, 1, 1)
+	local model = HouseModel.item(partId)
+	model.Parent = frame
+	local lo, hi = visibleBounds(model)
+	local center = (lo + hi) / 2
+	local extent = hi - lo
+	local camera = Instance.new("Camera")
+	camera.FieldOfView = 30
+	local fit = math.max(extent.Y, math.max(extent.X, extent.Z) * 0.8 / 1.6) / 2 * 1.12
+	local distance = fit / math.tan(math.rad(15)) + extent.Z / 2
+	camera.CFrame = CFrame.lookAt(center + Vector3.new(0.45, 0.4, -1).Unit * distance, center)
+	camera.Parent = frame
+	frame.CurrentCamera = camera
+	return frame
 end
 
 function ItemPictures.has(key: string): boolean

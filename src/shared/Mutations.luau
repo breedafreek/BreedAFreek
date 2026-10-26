@@ -1,8 +1,9 @@
--- Mutations multiply a Freek's income. They only enter the game from the cannons (chance
--- is per cannon Freek, times Drops.MUTATION_FACTOR); after that they're passed on by
--- fusing (see Breeding.luau). Rarest first.
+-- Mutations multiply a house part's income. Parts grow with them in the zone piles (chance
+-- per part, see ZoneService), weather events add them to parts on houses, and the Lucky
+-- Wheel gives Golden and Rainbow parts.
+-- Rarest first.
 --
--- A Freek can carry several mutations. They're saved as a list ({ "Rainbow", "Golden" }),
+-- A part can carry several mutations. They're saved as a list ({ "Rainbow", "Golden" }),
 -- or nil for none, and their multipliers stack (Golden + Shadow = x6).
 
 local Mutations = {}
@@ -19,7 +20,7 @@ for index, mutation in Mutations.list do
 	Mutations.byId[mutation.id] = mutation
 end
 
--- A Freek's mutations as a list, rarest first. Accepts a list, a single id (old saves) or nil.
+-- A part's mutations as a list, rarest first. Accepts a list, a single id (old saves) or nil.
 function Mutations.normalize(value): { string }
 	local list = {}
 	if type(value) == "string" then
@@ -36,12 +37,12 @@ function Mutations.normalize(value): { string }
 	return list
 end
 
--- The rarest mutation, which decides how the Freek looks and what colour its name is.
+-- The rarest mutation, which decides how the part sparkles and what colour its name is.
 function Mutations.top(value): string?
 	return Mutations.normalize(value)[1]
 end
 
--- Combined income multiplier for all of a Freek's mutations.
+-- Combined income multiplier for all of a part's mutations.
 function Mutations.mult(value): number
 	local mult = 1
 	for _, id in Mutations.normalize(value) do

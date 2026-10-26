@@ -77,7 +77,7 @@ local function playSound(parent: Instance, soundId: string)
 	end)
 end
 
--- Finds the player a hit part belongs to (including parts of a Freek they're carrying).
+-- Finds the player a hit part belongs to (including the house part they're carrying).
 local function playerFromPart(part: Instance): Player?
 	local node = part.Parent
 	while node and node ~= Workspace do

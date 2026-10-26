@@ -11,11 +11,11 @@ local Events = require(ReplicatedStorage.Shared.Events)
 local EventFX = {}
 
 local LOOKS = {
-	MonsterStorm = {
-		tint = Color3.fromRGB(205, 185, 255),
-		brightness = -0.06,
-		rain = Color3.fromRGB(170, 200, 255),
-		lightning = true,
+	-- Guardian Nap: a dreamy purple dusk with soft sparkles drifting down.
+	GuardianNap = {
+		tint = Color3.fromRGB(210, 195, 255),
+		brightness = -0.04,
+		rain = Color3.fromRGB(205, 185, 255),
 	},
 	BloodMoon = { tint = Color3.fromRGB(255, 165, 170), brightness = -0.04, rain = Color3.fromRGB(255, 80, 90) },
 	GoldRush = { tint = Color3.fromRGB(255, 238, 180), brightness = 0.03, rain = Color3.fromRGB(255, 215, 80) },

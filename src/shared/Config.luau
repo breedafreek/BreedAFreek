@@ -7,7 +7,7 @@ local Config = {
 	TEST_MONEY = 1_000_000,
 	-- Who can open the admin panel (events, part spawns, announcements). Usernames are
 	-- checked as well as user ids; anyone can use it in Studio for testing.
-	ADMIN_NAMES = { "FuseAFreek" },
+	ADMIN_NAMES = { "FuseAFreek" }, -- the owner's Roblox username
 	ADMIN_USER_IDS = { 11813437895 } :: { number }, -- the owner's account
 	MAX_PARTS = 40, -- house parts you can keep in your backpack (not counting the house)
 	SELL_MULTIPLIER = 30, -- a part sells for (its money per second * this)

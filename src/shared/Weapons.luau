@@ -4,7 +4,7 @@
 --
 -- kind "melee": hits players within range in front of you.
 -- kind "projectile": fires a ball toward where you aim; speed/range in studs.
--- effect "drop": a target carrying a Freek drops it (it goes home to its owner); anyone else
+-- effect "drop": a target carrying a part drops it (a stolen house part goes back to its owner); anyone else
 --   is knocked back (knockback strength) and falls over for stunSeconds.
 -- effect "glue": the target is stuck to the nearest wall for glueSeconds.
 --
@@ -22,7 +22,7 @@ Weapons.order = { "BonkBat", "CandyCannon", "GlueGun" }
 Weapons.list = {
 	BonkBat = {
 		name = "Bonk Bat",
-		description = "Bonk someone up close. Thieves drop the Freek they're carrying.",
+		description = "Bonk someone up close. Thieves drop the part they're carrying.",
 		kind = "melee",
 		effect = "drop",
 		knockback = 45,
@@ -118,7 +118,7 @@ Weapons.list = {
 	},
 	CandyCannon = {
 		name = "Candy Cannon",
-		description = "Shoot a candy ball. Thieves drop the Freek they're carrying.",
+		description = "Shoot a candy ball. Thieves drop the part they're carrying.",
 		kind = "projectile",
 		effect = "drop",
 		knockback = 60,

@@ -1,5 +1,6 @@
--- The always-on-screen parts of the UI: money, event chip, menu tabs, leaderboard,
--- gate button and pop-up notifications. Windows (Shop, Freeks, ...) live in Main.
+-- The always-on-screen parts of the UI: money, Speed, event chip, menu buttons, leaderboard,
+-- gate status, the zone banner, the carrying banner and pop-up notifications. Windows
+-- (Shop, House, Bag, ...) live in Main.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13,7 +14,10 @@ local Events = require(ReplicatedStorage.Shared.Events)
 local Format = require(ReplicatedStorage.Shared.Format)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Luck = require(ReplicatedStorage.Shared.Luck)
+local Parts = require(ReplicatedStorage.Shared.Parts)
+local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
+local ZoneLayout = require(ReplicatedStorage.Shared.ZoneLayout)
 local ItemPictures = require(script.Parent.ItemPictures)
 local UI = require(script.Parent.UI)
 
@@ -142,6 +146,231 @@ function Hud.money(screen: ScreenGui)
 		boost.Visible = rebirths > 0
 		boost.Text = "x" .. tostring(Config.incomeMultiplier(rebirths))
 	end
+end
+
+--------------------------------------------------------------------------------
+-- Speed
+--------------------------------------------------------------------------------
+
+-- A blue pill next to the money: your Speed (trained on the treadmill) and how fast you
+-- run. While you're training it glows and shows +speed a second.
+function Hud.speed(screen: ScreenGui)
+	local pill = UI.glass({
+		Name = "Speed",
+		Position = UDim2.fromOffset(270, 12),
+		Size = UDim2.fromOffset(200, 62),
+		BackgroundColor3 = Color3.fromRGB(50, 130, 245),
+		Parent = screen,
+	}, { UI.corner(20) })
+	text("⚡", 32, {
+		Position = UDim2.fromOffset(8, 0),
+		Size = UDim2.fromOffset(40, 62),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Parent = pill,
+	})
+	local amount = text("0", 28, {
+		Position = UDim2.fromOffset(52, 4),
+		Size = UDim2.new(1, -60, 0, 32),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = Color3.fromRGB(150, 230, 255),
+		Parent = pill,
+	})
+	local run = text("🏃 16", 15, {
+		Position = UDim2.fromOffset(52, 35),
+		Size = UDim2.new(1, -60, 0, 18),
+		TextColor3 = Color3.fromRGB(230, 240, 255),
+		Parent = pill,
+	})
+	local ring = pill:FindFirstChildOfClass("UIStroke")
+	local shown = 0
+	local last, lastTime = nil, os.clock()
+	local gain = 0
+	RunService.RenderStepped:Connect(function(dt)
+		local target = player:GetAttribute("Speed") or 0
+		if last and target > last then
+			gain = (target - last) / math.max(os.clock() - lastTime, 0.05)
+		end
+		if target ~= last then
+			last, lastTime = target, os.clock()
+		end
+		shown += (target - shown) * math.min(1, dt * 8)
+		if math.abs(target - shown) < 1 then
+			shown = target
+		end
+		amount.Text = Format.number(shown)
+		local training = player:GetAttribute("Training") == true
+		if training then
+			run.Text = "+" .. Format.number(gain) .. " ⚡/s  TRAINING!"
+			run.TextColor3 = Color3.fromRGB(255, 235, 110)
+			ring.Color = Color3.fromRGB(255, 230, 90):Lerp(UI.OUTLINE, (math.sin(os.clock() * 8) + 1) / 2)
+		else
+			run.Text = "🏃 Run speed " .. string.format("%.0f", Parts.walkSpeed(target))
+			run.TextColor3 = Color3.fromRGB(230, 240, 255)
+			ring.Color = UI.OUTLINE
+		end
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- Zone banner
+--------------------------------------------------------------------------------
+
+-- Walking into a zone shows its name and the Speed it needs: green if you have it, a red
+-- warning if its guardian will catch you.
+function Hud.zoneBanner(screen: ScreenGui)
+	local banner = UI.glass({
+		Name = "ZoneBanner",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.26),
+		Size = UDim2.fromOffset(460, 96),
+		Visible = false,
+		Parent = screen,
+	}, { UI.corner(22) })
+	local name = text("", 40, {
+		Position = UDim2.fromOffset(0, 6),
+		Size = UDim2.new(1, 0, 0, 46),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		FontFace = UI.fonts.heavy,
+		Parent = banner,
+	})
+	local need = text("", 19, {
+		Position = UDim2.fromOffset(0, 54),
+		Size = UDim2.new(1, 0, 0, 30),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Parent = banner,
+	})
+	local scale = UI.new("UIScale", { Parent = banner })
+	local current = nil
+	local showId = 0
+	task.spawn(function()
+		while true do
+			task.wait(0.2)
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			local zone = root and ZoneLayout.zoneAt(root.Position)
+			if zone ~= current then
+				current = zone
+				if zone then
+					local info = Parts.ZONES[zone]
+					local speed = player:GetAttribute("Speed") or 0
+					local fast = speed >= info.speed
+					local theme = Parts.styleById[info.style]
+					name.Text = string.upper(info.name)
+					name.TextColor3 = Rarities.info[theme.rarity].color:Lerp(Color3.new(1, 1, 1), 0.2)
+					if fast then
+						need.Text = "⚡ You're fast enough! Grab a part and run!"
+						need.TextColor3 = colors.money
+						banner.BackgroundColor3 = Color3.fromRGB(50, 150, 90)
+					else
+						need.Text = "⚠️ Needs ⚡"
+							.. Format.number(info.speed)
+							.. " Speed! "
+							.. info.title
+							.. " will catch you!"
+						need.TextColor3 = Color3.fromRGB(255, 230, 230)
+						banner.BackgroundColor3 = colors.red
+					end
+					showId += 1
+					local id = showId
+					banner.Visible = true
+					scale.Scale = 0.4
+					TweenService:Create(scale, TweenInfo.new(0.3, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+					task.delay(3.5, function()
+						if showId == id then
+							banner.Visible = false
+						end
+					end)
+				end
+			end
+		end
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- Carrying
+--------------------------------------------------------------------------------
+
+-- While you carry a part: a pulsing banner telling you to run home, and a glowing beam
+-- from you to your gate so you never get lost.
+function Hud.carrying(screen: ScreenGui)
+	local banner = UI.glass({
+		Name = "Carrying",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -160),
+		Size = UDim2.fromOffset(0, 50),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundColor3 = Color3.fromRGB(255, 150, 40),
+		Visible = false,
+		Parent = screen,
+	}, {
+		UI.corner(25),
+		UI.new("UIPadding", { PaddingLeft = UDim.new(0, 20), PaddingRight = UDim.new(0, 20) }),
+	})
+	local label = text("", 22, {
+		Size = UDim2.fromOffset(0, 50),
+		AutomaticSize = Enum.AutomaticSize.X,
+		FontFace = UI.fonts.heavy,
+		Parent = banner,
+	})
+	local beam, from, target
+	local function clear()
+		for _, thing in { beam, from, target } do
+			if thing then
+				thing:Destroy()
+			end
+		end
+		beam, from, target = nil, nil, nil
+	end
+	local function update()
+		local partId = player:GetAttribute("Carrying")
+		local info = partId and Parts.byId[partId]
+		banner.Visible = info ~= nil
+		clear()
+		if not info then
+			return
+		end
+		label.Text = "🏠  " .. string.upper(info.name) .. " · RUN HOME!"
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local plotIndex = player:GetAttribute("Plot")
+		local plot = plotIndex
+			and Workspace:FindFirstChild("Plots")
+			and Workspace.Plots:FindFirstChild("Plot" .. plotIndex)
+		local origin = plot and plot:GetAttribute("Origin")
+		if root and typeof(origin) == "CFrame" then
+			target = Instance.new("Part")
+			target.Anchored = true
+			target.CanCollide = false
+			target.CanQuery = false
+			target.Transparency = 1
+			target.Size = Vector3.one
+			target.CFrame = origin * CFrame.new(0, 3, -26)
+			target.Parent = Workspace
+			local a1 = Instance.new("Attachment")
+			a1.Parent = target
+			from = Instance.new("Attachment")
+			from.Position = Vector3.new(0, -2, 0)
+			from.Parent = root
+			beam = Instance.new("Beam")
+			beam.Attachment0 = from
+			beam.Attachment1 = a1
+			beam.Width0 = 0.8
+			beam.Width1 = 0.8
+			beam.FaceCamera = true
+			beam.LightEmission = 1
+			beam.Color = ColorSequence.new(Color3.fromRGB(110, 255, 140))
+			beam.Transparency = NumberSequence.new(0.2)
+			beam.Parent = target
+		end
+	end
+	player:GetAttributeChangedSignal("Carrying"):Connect(update)
+	update()
+	-- Pulse.
+	RunService.RenderStepped:Connect(function()
+		if banner.Visible then
+			banner.BackgroundColor3 = Color3.fromRGB(255, 150, 40):Lerp(colors.red, (math.sin(os.clock() * 6) + 1) / 2)
+		end
+	end)
 end
 
 --------------------------------------------------------------------------------
@@ -1028,7 +1257,7 @@ function Hud.gateStatus(screen: ScreenGui)
 			else
 				-- Pulses red while open so the owner notices.
 				local pulse = (math.sin(os.clock() * 6) + 1) / 2
-				label.Text = "🔓  Barn open · Lock it at your door!"
+				label.Text = "🔓  Gate open · Lock it at your gate!"
 				label.TextColor3 = colors.text
 				ring.Color = colors.red
 				button.BackgroundColor3 = colors.red:Lerp(Color3.fromRGB(120, 25, 35), pulse)

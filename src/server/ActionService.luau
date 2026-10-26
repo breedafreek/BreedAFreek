@@ -12,6 +12,8 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local Carried = require(script.Parent.Carried)
 local DataService = require(script.Parent.DataService)
+local PlotService = require(script.Parent.PlotService)
+local StealService = require(script.Parent.StealService)
 
 local ActionService = {}
 
@@ -163,7 +165,20 @@ function handlers.UpgradeTreadmill(player: Player, data)
 	notify(player, "⚡ Treadmill upgraded to level " .. data.treadmill .. "!", "success")
 end
 
-local quiet = {} -- actions that don't change saved data, so skip the refresh
+-- Teleports the player home (not while carrying a part: that would skip the run).
+local lastHome = {}
+function handlers.GoHome(player: Player, _data)
+	if StealService.isCarrying(player) then
+		return notify(player, "No teleporting with a part! Run it home!", "error")
+	end
+	if lastHome[player] and os.clock() - lastHome[player] < 3 then
+		return
+	end
+	lastHome[player] = os.clock()
+	PlotService.sendHome(player)
+end
+
+local quiet = { GoHome = true } -- actions that don't change saved data, so skip the refresh
 
 -- Lets other services add actions (they get the same rate limit and refresh).
 -- Pass isQuiet = true for actions that never change the player's data.
@@ -205,6 +220,7 @@ function ActionService.init()
 
 	game:GetService("Players").PlayerRemoving:Connect(function(player)
 		lastAction[player] = nil
+		lastHome[player] = nil
 	end)
 end
 

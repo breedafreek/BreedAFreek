@@ -1,5 +1,5 @@
 -- The admin panel (only for admins: the server sets IsAdmin and checks every command).
--- Start or end events in this server or all of them, fire any Freek from a cannon,
+-- Start or end events in this server or all of them, fill a zone's pile with any part,
 -- announce something to everyone, see the coming timetable, and get test coins.
 
 local Players = game:GetService("Players")
@@ -7,7 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local Events = require(ReplicatedStorage.Shared.Events)
-local Freeks = require(ReplicatedStorage.Shared.Freeks)
+local Parts = require(ReplicatedStorage.Shared.Parts)
 local Luck = require(ReplicatedStorage.Shared.Luck)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -20,7 +20,7 @@ local colors = UI.colors
 
 -- Every event the panel can start, in the order its buttons appear.
 local EVENT_BUTTONS = {
-	{ id = "MonsterStorm", def = Events.BIG.MonsterStorm },
+	{ id = "GuardianNap", def = Events.BIG.GuardianNap },
 	{ id = "BloodMoon", def = Events.WEATHER.BloodMoon },
 	{ id = "GoldRush", def = Events.WEATHER.GoldRush },
 	{ id = "RainbowRain", def = Events.WEATHER.RainbowRain },
@@ -139,7 +139,7 @@ function AdminPanel.start(screen: ScreenGui)
 		UI.new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }),
 		UI.new("UIPadding", { PaddingRight = UDim.new(0, 6), PaddingTop = UDim.new(0, 6) }),
 	})
-	status = UI.label("Pick an event, or fire a Freek!", {
+	status = UI.label("Pick an event, or spawn some parts!", {
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -12),
 		Size = UDim2.new(1, -32, 0, 26),
@@ -223,17 +223,24 @@ function AdminPanel.start(screen: ScreenGui)
 		run("stop", { everywhere = everywhere })
 	end, { Size = UDim2.new(0.5, -3, 0, 40), LayoutOrder = 2, ZIndex = 22, Parent = goRow })
 
-	-- Cannon --------------------------------------------------------------------
-	heading("💥 FIRE A FREEK FROM A CANNON (THIS SERVER)", body, 5)
-	local speciesIds = {}
-	for _, species in Freeks.list do
-		table.insert(speciesIds, species.id)
+	-- Spawn parts ----------------------------------------------------------------
+	heading("📦 SPAWN PARTS IN A ZONE (THIS SERVER)", body, 5)
+	local zoneIds = {}
+	for index in Parts.ZONES do
+		table.insert(zoneIds, index)
 	end
+	local styleIds = { "" }
+	for _, style in Parts.STYLES do
+		if style.id ~= "Basic" then
+			table.insert(styleIds, style.id)
+		end
+	end
+	local zoneIndex, styleIndex = 1, 1
 	local mutationIds = { "" }
 	for _, mutation in Mutations.list do
 		table.insert(mutationIds, mutation.id)
 	end
-	local speciesIndex, mutationIndex = 1, 1
+	local mutationIndex = 1
 	local cannonRow = row(body, 6, 44)
 	local function cycler(values, getIndex, setIndex, describe, order, width)
 		local label
@@ -260,25 +267,37 @@ function AdminPanel.start(screen: ScreenGui)
 		end, { Size = UDim2.fromOffset(34, 36), LayoutOrder = order + 2, ZIndex = 22, Parent = cannonRow })
 		show()
 	end
-	cycler(speciesIds, function()
-		return speciesIndex
+	cycler(zoneIds, function()
+		return zoneIndex
 	end, function(v)
-		speciesIndex = v
+		zoneIndex = v
+	end, function(index)
+		return Parts.ZONES[index].name
+	end, 1, 120)
+	cycler(styleIds, function()
+		return styleIndex
+	end, function(v)
+		styleIndex = v
 	end, function(id)
-		local species = Freeks.byId[id]
-		return species and species.name or id
-	end, 1, 130)
+		return if id == "" then "Fill pile" else Parts.styleById[id].name
+	end, 4, 90)
 	cycler(mutationIds, function()
 		return mutationIndex
 	end, function(v)
 		mutationIndex = v
 	end, function(id)
 		return if id == "" then "No mutation" else id
-	end, 4, 110)
-	UI.button("FIRE!", colors.orange, function()
+	end, 7, 90)
+	UI.button("GO!", colors.orange, function()
 		local mutation = mutationIds[mutationIndex]
-		run("spawn", { species = speciesIds[speciesIndex], mutation = if mutation == "" then nil else mutation })
-	end, { Size = UDim2.fromOffset(84, 40), LayoutOrder = 10, ZIndex = 22, Parent = cannonRow })
+		local style = styleIds[styleIndex]
+		local slot = Parts.SLOTS[math.random(1, #Parts.SLOTS)].id
+		run("spawn", {
+			zone = zoneIds[zoneIndex],
+			part = if style == "" then nil else style .. "_" .. slot,
+			mutation = if mutation == "" then nil else mutation,
+		})
+	end, { Size = UDim2.fromOffset(64, 40), LayoutOrder = 10, ZIndex = 22, Parent = cannonRow })
 
 	-- Announce ------------------------------------------------------------------
 	heading("📣 ANNOUNCE (USES THE SERVER BUTTON ABOVE)", body, 7)
@@ -287,7 +306,7 @@ function AdminPanel.start(screen: ScreenGui)
 		Size = UDim2.new(1, -110, 0, 38),
 		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
 		FontFace = UI.fonts.bold,
-		PlaceholderText = "Monster Storm in 5 minutes!",
+		PlaceholderText = "Guardian Nap in 5 minutes!",
 		PlaceholderColor3 = Color3.fromRGB(140, 150, 180),
 		Text = "",
 		TextColor3 = UI.OUTLINE,

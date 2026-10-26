@@ -1,16 +1,15 @@
 -- Small helpers for building the UI in code (so there's nothing to set up in Studio).
 -- Style: the clean cartoon look of the big Roblox simulators (Pet Simulator, PLS DONATE,
--- Grow a Garden) in Fuse a Freek colours: light windows with a coloured header and a
+-- Grow a Garden) in Steal a Home colours: light windows with a coloured header and a
 -- slanted title tab, bright glossy gradient cards with a big 3D picture, black price
 -- pills, chunky shaded buttons that squish when pressed, Luckiest Guy titles, Fredoka One
 -- text, and every bit of text outlined in dark navy.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
-local Freeks = require(ReplicatedStorage.Shared.Freeks)
+local BoxModel = require(ReplicatedStorage.Shared.BoxModel)
+local Parts = require(ReplicatedStorage.Shared.Parts)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
-local EggModel = require(ReplicatedStorage.Shared.EggModel)
 local ItemPictures = require(script.Parent.ItemPictures)
 
 local UI = {}
@@ -195,46 +194,23 @@ function UI.button(text: string, color: Color3, onClick: () -> (), props)
 	return button
 end
 
--- A little 3D picture of a Freek. silhouette = true draws it solid black ("???").
-function UI.viewport(speciesId: string, mutations: { string }?, silhouette: boolean?)
-	local frame = UI.new("ViewportFrame", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 100),
-		Ambient = Color3.fromRGB(170, 170, 170),
-		LightColor = Color3.fromRGB(255, 255, 255),
-		LightDirection = Vector3.new(-1, -1, -1),
-		ImageColor3 = if silhouette then Color3.new(0, 0, 0) else Color3.new(1, 1, 1),
-	})
-	local model, height = FreekModel.build(speciesId, mutations)
-	model:PivotTo(CFrame.new())
-	model.Parent = frame
-	local camera = Instance.new("Camera")
-	camera.FieldOfView = 40
-	local distance = height * 2.1
-	camera.CFrame =
-		CFrame.lookAt(Vector3.new(distance * 0.35, height * 0.75, -distance), Vector3.new(0, height * 0.42, 0))
-	camera.Parent = frame
-	frame.CurrentCamera = camera
-	return frame
-end
-
--- A little 3D picture of a Monster Egg.
-function UI.eggViewport(eggId: string, size: number?)
+-- A little 3D picture of a Mystery Box.
+function UI.boxViewport(crateId: string, size: number?)
 	local frame = UI.new("ViewportFrame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 0, size or 100),
-		Ambient = Color3.fromRGB(180, 170, 190),
-		LightColor = Color3.fromRGB(255, 240, 220),
+		Ambient = Color3.fromRGB(190, 185, 200),
+		LightColor = Color3.fromRGB(255, 245, 230),
 		LightDirection = Vector3.new(-1, -1, 1),
 	})
-	local model, height = EggModel.build(eggId)
+	local model, height = BoxModel.build(crateId)
 	model:PivotTo(CFrame.new())
 	model.Parent = frame
 	local camera = Instance.new("Camera")
 	camera.FieldOfView = 40
-	local distance = height * 1.9
+	local distance = height * 2
 	camera.CFrame =
-		CFrame.lookAt(Vector3.new(distance * 0.2, height * 0.6, -distance), Vector3.new(0, height * 0.45, 0))
+		CFrame.lookAt(Vector3.new(distance * 0.35, height * 0.8, -distance), Vector3.new(0, height * 0.42, 0))
 	camera.Parent = frame
 	frame.CurrentCamera = camera
 	return frame
@@ -288,19 +264,19 @@ end
 -- A bright glossy card (like Pet Simulator's shop): a gradient in the card's colour with a
 -- shine across the top, the title in white, a big picture on a glowing disc, then text
 -- lines and buttons. opts: accent (colour), border (a highlight outline, e.g. owned),
--- picture/egg/species, lines = { { text, colour?, height? } }, buttons, tag = { text,
--- colour? }, onClick.
+-- picture (an ItemPictures key) / part (+ mutations, silhouette) / box, lines = { { text,
+-- colour?, height? } }, buttons, tag = { text, colour? }, onClick.
 function UI.card(opts)
 	local title = opts.lines and opts.lines[1] and opts.lines[1][1] or ""
 	local accent = opts.accent
-	if not accent and opts.species then
-		local species = Freeks.byId[opts.species]
-		local rarity = species and species.rarity
+	if not accent and opts.part then
+		local part = Parts.byId[opts.part]
+		local rarity = part and part.rarity
 		if rarity and rarity ~= "Common" then
 			accent = Rarities.info[rarity].color
 		end
 	end
-	accent = accent or (if opts.species then Color3.fromRGB(110, 165, 255) else UI.cardColor(title))
+	accent = accent or (if opts.part then Color3.fromRGB(110, 165, 255) else UI.cardColor(title))
 	if opts.background then
 		accent = opts.background
 	end
@@ -370,10 +346,10 @@ function UI.card(opts)
 	local picture
 	if opts.picture then
 		picture = ItemPictures.view(opts.picture, opts.pictureHeight)
-	elseif opts.egg then
-		picture = UI.eggViewport(opts.egg)
-	elseif opts.species then
-		picture = UI.viewport(opts.species, opts.mutations, opts.silhouette)
+	elseif opts.box then
+		picture = UI.boxViewport(opts.box)
+	elseif opts.part then
+		picture = ItemPictures.part(opts.part, opts.pictureHeight, opts.silhouette)
 	end
 	if picture then
 		local holder = UI.new("Frame", {

@@ -1,5 +1,5 @@
--- Which Freeks are being carried off by a thief right now. Kept in memory only: if the
--- server stops mid-steal, the owner simply keeps the Freek.
+-- Which house parts are being carried off by a thief right now. Kept in memory only: if the
+-- server stops mid-steal, the owner simply keeps the part.
 
 local Carried = {}
 
@@ -26,7 +26,7 @@ function Carried.set(owner: Player, uid: string, thief: Player?)
 	end
 end
 
--- True if any of this owner's Freeks are being carried off right now.
+-- True if any of this owner's parts are being carried off right now.
 function Carried.any(owner: Player): boolean
 	return byOwner[owner] ~= nil
 end

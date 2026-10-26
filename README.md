@@ -1,64 +1,97 @@
-# Fuse a Freek
+# Steal a Home
 
-A Roblox game: collect funny Freeks, fuse them in your barn to make new ones, earn
-money every second, and get your name in the Discovery Book by being the first player
-ever to fuse a new species.
+A Roblox game: everyone starts with a plain little house. Train your Speed on the
+treadmill, run out to the zones, steal house parts from under the noses of giant
+guardians, carry them home and snap them onto your house. Better parts earn more money
+every second, and other players can sneak into your yard and pry them off.
 
 ## Play it in Studio
 
 1. Install [Roblox Studio](https://create.roblox.com/) (Windows or Mac).
-2. Download `FuseAFreek.rbxlx` from this repo and double-click it.
-3. Press **Play**. The map, barns and menus are all made by the scripts, so there's nothing to place by hand.
+2. Download `StealAHome.rbxlx` from this repo and double-click it.
+3. Press **Play**. The town, the houses, the zones and the menus are all made by the
+   scripts, so there's nothing to place by hand.
 
-In Studio progress isn't saved unless the place is published and **Game Settings → Security → Enable Studio Access to API Services** is on. To test with several players, use **Test → Clients and Servers**.
+In Studio progress isn't saved unless the place is published and **Game Settings →
+Security → Enable Studio Access to API Services** is on. To test with several players, use
+**Test → Clients and Servers**.
 
 ## Publishing
 
 1. **File → Publish to Roblox**.
-2. **Game Settings → Places → Max Players: 8.** There are 8 barns per server, 4 on each side of the town square (`Config.PLOT_COUNT`).
-3. Saving and the Discovery Book work automatically on live servers.
+2. **Game Settings → Places → Max Players: 8.** There are 8 homes per server, 4 on each side
+   of the street (`Config.PLOT_COUNT`).
+3. **Before launch, set `TEST_MONEY = nil`** in `src/shared/Config.luau` (it currently gives
+   every player 1,000,000 coins for testing).
 
 ## Working on the code
 
 The code lives in `src/` and is synced into Studio with [Rojo](https://rojo.space/):
 
 ```
-rojo serve                       # live-sync into Studio (install the Rojo Studio plugin)
-rojo build -o FuseAFreek.rbxlx  # or build a place file
+rojo serve                        # live-sync into Studio (install the Rojo Studio plugin)
+rojo build -o StealAHome.rbxlx    # or build a place file
 ```
 
 | Folder | Becomes | What's in it |
 |---|---|---|
-| `src/shared` | ReplicatedStorage.Shared | Freek list, rarities, mutations, tuning, 3D placeholder builder |
-| `src/server` | ServerScriptService.Server | Saving, barns, money, fusing, trading, Discovery Book, fusion recipes |
-| `src/client` | StarterPlayerScripts.Client | All the menus |
-
-### Common changes
-
-- **Add or rename Freeks:** edit `src/shared/Freeks.luau`. Never change an `id` once players own that Freek, because ids are what saves store.
-- **Decide what two Freeks fuse into:** every pair automatically makes its own hybrid. The only hand-made results are Secrets: add Ultra pairs to `SECRETS` in `src/server/Recipes.luau` (server-only so players can't read them). The rules themselves (rarity, income bonus, mutation odds) live in `src/shared/Breeding.luau` (the code still calls fusing "breeding" internally).
-- **Rarities:** Common, Uncommon, Rare, Legendary, Mystic, Ultra, Secret (`src/shared/Rarities.luau`).
-- **Seasonal Freeks:** add `season = "Halloween"` to a Freek (or `Thanksgiving`, `Christmas`, `NewYears`, `Easter`, `America`). It can only be fused or bought during that event, but players keep it forever. Event dates are in `src/shared/Seasons.luau`; Thanksgiving and Easter are worked out for each year automatically.
-- **Money, slots and limits:** edit `src/shared/Config.luau`. **Before launch, set `TEST_MONEY = nil`** (it currently gives every player 1,000,000 coins for testing).
-- **Designing a Freek:** give it `look = { parts = {...}, effects = {...} }` in `Freeks.luau`. The format is described at the top of `src/shared/FreekModel.luau`.
-- **Previewing Freeks without Studio:** `tools/snapshot/snapshot.sh out/ Nerdle Glamora:Golden` runs the real model code and saves a front and back picture of each Freek. Set it up once with `cd tools/snapshot && cargo build --release && npm install`. It needs Rust, Node and Chromium.
-- **Real 3D models:** put a Model named after the species id (e.g. `Nerdle`) in a `ReplicatedStorage.FreekModels` folder. Set its pivot at its feet and face it toward -Z. It replaces the placeholder automatically.
+| `src/shared` | ReplicatedStorage.Shared | Parts and zones, house models, tuning, luck, events |
+| `src/server` | ServerScriptService.Server | Saving, homes, zones and guardians, stealing, speed, money |
+| `src/client` | StarterPlayerScripts.Client | All the menus, the HUD, guardian animation |
 
 ## How the game works
 
-- **Barn:** 4 pads to start, buy up to 12. Only Freeks on pads earn money. Extra Freeks wait in your backpack (50 total).
-- **Freek cannons** (`src/shared/Drops.luau`, `src/server/CannonService.luau`): a clear glass bubble covers the whole map, with 8 cannons hanging on it. Each cannon fires a random Freek every 30 seconds (they take turns, so one lands every ~4 seconds). It flies down into the town square between the barns, wanders around for a minute (each species has its own walk, set with `walk` in `Freeks.luau`: legs, arms, wings and tails swing around hinges while it moves, and it stands on whatever the ground really is), then walks into the Freek House at the west end and disappears. Walk up and hold **Grab** to buy it, first come first served, and carry it home in your arms: as soon as you step inside your barn it takes the first free pad (you can't grab one if your barn is full, or while already carrying one). Grabbed Freeks can't be snatched and don't slow you down; if you die or leave on the way, it goes straight to your barn. Odds: Common 70%, Uncommon 22%, Rare 6.5%, Legendary 1.3%, Mystic 0.2%, Ultra 0.04%. Secrets never come out of a cannon. Any species of those rarities can show up, but Limited Freeks only during their event. Cannon Freeks can roll one mutation (Shadow ×2, Golden ×3, Rainbow ×10 income), which is the only way mutations enter the game. Legendary and up are announced to the server. Prices are the starter price, or 50 seconds of the Freek's income, times any mutation. Where each Freek is gets worked out from its seed and launch time, so the server and every client agree without sending positions.
-- **Shop:** barn slots and weapons.
-- **Fusing:** pick any two Freeks, put them in a Fusion Den and wait out the timer (the rarer one sets how long). Both are used up and become one new Freek. Two different species make a **hybrid** (`src/shared/Hybrids.luau`): its name is the parents' names mashed together (Chuckles + Flexo = Chuxo) and its model is one parent's lower half (legs, snout, mouth) with the other's upper half (eyes, ears, antennae) on a body with both colours blended, so every pair has its own hybrid to discover. Hybrids can be fused again. The result is the rarer parent's rarity (fusing never raises it) and earns both parents' income added together plus 10% (`HYBRID_BONUS` in `src/shared/Breeding.luau`). The only way to get a Secret is from certain pairs of Ultras, listed in `SECRETS` in `src/server/Recipes.luau`. Each mutation is rolled on its own: 100% if both parents have it, 50% if only one does, so a fused Freek can carry several (their income multipliers stack, Golden + Shadow = ×6). The 🧪 Fuse window shows what a pair will make, and the Discovery Book lists the hybrids you've made and who made each one first.
-- **Discovery Book:** every species, shown as a black "???" until someone finds it. The first finder in any server is saved forever and announced to everyone.
+- **Your home** (`src/server/PlotService.luau`): a yard with a fence, a gate, a treadmill and
+  a house built by `src/shared/HouseModel.luau`. The house has 10 snap slots: Walls, Roof,
+  Door, Windows, Tower, Chimney, Porch, Fence, Garden and Mailbox. Everyone starts with the
+  free Basic part in every slot.
+- **Parts** (`src/shared/Parts.luau`): every part is one slot in one style. Styles, worst to
+  best: Scrap, Log Cabin, Stone, Sandstone, Ice, Candy, Lava, Royal, Crystal, Cloud, and the
+  super-rare Rainbow. A part earns its style's income times its slot's weight (big pieces
+  like walls and roofs earn more). Mutations (Shadow ×2, Golden ×3, Rainbow ×10) stack on top.
+- **Speed** (`src/server/SpeedService.luau`): run on your treadmill to train ⚡ Speed, which
+  makes you run faster (`Parts.walkSpeed`). Upgrade the treadmill in the Shop. Rebirths and
+  the 2x Speed pass multiply it.
+- **Zones** (`src/shared/ZoneLayout.luau`, `src/server/ZoneService.luau`,
+  `src/server/ZoneDecor.luau`): ten zones in a row west of the town (Junkyard, Pine Woods,
+  Rocky Quarry, Sunny Desert, Frosty Peaks, Candy Land, Lava Volcano, Royal Kingdom, Crystal
+  Caves, Sky Islands). Each has a pile of pedestals growing parts in its style and a giant
+  Freek guardian. Hold **Grab** on a part and run! The guardian chases anyone carrying a part
+  in its zone. If your Speed meets the zone's requirement you can outrun it; if not, it
+  catches you, flings you toward town and you drop the part. Guardians live on the server as
+  plain data and every client animates its own copy (`src/client/GuardianFX.luau`).
+- **Stealing** (`src/server/StealService.luau`): parts ride over your head while you carry
+  them (a little slower, unless you have Strong Arms). Get inside your own yard and the part
+  snaps onto your house if it beats what's there (the old one goes in your backpack), or
+  into your backpack if not. While a home's gate is open, other players can walk in and hold
+  **Steal** on any non-Basic part of its house. The owner can Snatch it back, anyone else can
+  Snatch it for themselves, and a weapon hit makes the carrier drop it. A stolen part only
+  leaves its owner's save once it's delivered.
+- **Gate:** the owner holds **Lock Gate** on the padlock post inside the gate to put up a
+  barrier for 3 minutes (5 with Longer Gate Lock). Invisible walls stop anyone climbing the
+  fence. New arrivals start locked.
+- **Backpack:** 40 parts (more with the Bigger Backpack passes). Install, take off or sell
+  parts from the 🏠 House and 🎒 Bag windows; Install Best fills every slot with your best.
+- **Catalog:** every part, shown as a black silhouette until you've owned it. The first
+  player ever to get each Legendary-or-better part is saved forever and announced.
+- **Luck** (`src/shared/Luck.luau`, `src/server/LuckService.luau`): **Mystery Boxes** (Robux:
+  49 / 149 / 399) open into a random house part with the odds shown before buying, from the
+  🍀 Luck tab or the box stand by the spawn, with a card-pack style reveal
+  (`src/client/PackReveal.luau`). Players in countries where paid random items aren't
+  allowed (PolicyService) can't buy them. The **Lucky Wheel** gives a free spin a day (every
+  12 hours with VIP). **Lucky Hours** run every 20–35 minutes: Rainbow Hour, Lucky Zones, Fast
+  Regrow and Box Luck.
+- **Events** (`src/shared/Events.luau`, `src/server/EventService.luau`): **Guardian Nap**
+  runs on a weekly timetable (guardians slow down, parts regrow faster, rarer parts turn up).
+  **Weather** (Blood Moon, Gold Rush, Rainbow Rain) rolls in at half past most hours: parts on
+  houses can catch its mutation and new parts in the piles often grow with it. The admin
+  panel (owner only, or anyone in Studio) can start events and spawn parts.
+- **Rebirth:** costs 100K coins, then 4× more each time. Resets coins, Speed and the
+  treadmill; keeps your house, backpack, Catalog and weapons. Each rebirth adds +50% income
+  and +50% treadmill speed forever.
 - **Offline:** you earn 50% while away, up to 8 hours.
-- **Luck** (`src/shared/Luck.luau`, `src/server/LuckService.luau`, the 🍀 Luck tab): **Monster Eggs** (Halloween-style pumpkin, bat and haunted gold eggs, `src/shared/EggModel.luau`) are bought with Robux (Monster Egg 49, Mega 149, Legendary 399) from the 🍀 tab or the egg stand at the end of the street and are the only way to get the Monster line (Boo-Boo, Zomboy, Mumbles, Count Fangula, Howlz, Blinky; `exclusive = true` in `Freeks.luau` keeps them out of the cannons and the wheel). Each egg shows the exact odds of every Monster before buying. Opening one (`src/client/PackReveal.luau`) plays a card-pack style reveal: the egg drops in and bursts into a face-down card, then the Freek's series slams in, then its rarity (the lights turn that colour; rarer pulls get longer suspense, confetti, lightning and rainbow lights), then the card flips to show the Freek and its name. Better eggs have better odds and more mutation luck. Create a Developer Product for each egg (Creator Dashboard → Monetization → Developer Products) and paste its ID into `Luck.CRATES`; until then eggs open free in Studio for testing and show "Coming soon" live. Players in countries where paid random items aren't allowed (checked with PolicyService) can't buy them. Purchases are only confirmed to Roblox after the save succeeds, and each purchase is granted once. The **Lucky Wheel** gives one free spin a day (every 12 hours with VIP): coins (minutes of your own income), a Golden or Rainbow Freek, a Monster Egg, a Mega Egg, or the 1% Legendary Egg jackpot. **Lucky Hour** events start a few minutes after a server opens and then every 20–35 minutes, for 10 minutes each: Rainbow Hour (5× cannon mutations), Lucky Skies (3× Rare and better from cannons), Rapid Fire (cannons fire twice as fast) or Egg Luck (Legendary-and-better Monsters 2× as likely, with the shown odds updated), with a banner and countdown.
-- **Barns and stealing** (`src/server/Barn.luau`): every player gets a big red barn facing the town square, with their Freek pads and Fusion Dens inside. The barn doors always stand open; the owner holds **Lock Gate** on the padlock post just inside the doorway to put up a red barrier for 180 seconds (the on-screen chip only shows the status), then it drops until they lock it again (barns start locked for 180 seconds when you join). Owners can always walk through their own barrier. The roof stays solid, so the camera stays inside with you. While a barn is open, other players can walk in and hold **Steal** on a Freek standing on a pad. The thief carries it in their arms and is slowed down: barely for a Common, down to well under half speed for a Secret (`carrySpeed` in `Rarities.luau`). While it's being carried, anyone can hit the carrier with a weapon to send it home (the owner can also Snatch it back), and any other player can **Snatch** it to carry it to their own barn instead. Whoever gets it inside their own barn keeps it. If the carrier dies or leaves, it goes home. Freeks in a Fusion Den or the backpack can't be stolen.
-- **Rebirth:** costs 100K coins, then 4× more each time (`Config.luau`). Resets coins, Freeks and barn slots. Keeps the Discovery Book, Limited Freeks and weapons. Each rebirth adds +50% income forever, and rebirths show on the leaderboard.
-- **Barn upgrades** (`src/server/BarnUpgrades.luau`, animated by `src/client/BarnFX.luau`): the barn gets cooler with every rebirth, and keeps everything from earlier levels. Rebirth 1 adds a cupola with a weathervane, a picket fence with lanterns and bunting. Rebirth 2 adds a hayloft balcony, a silo and a stone statue of your best Freek. Rebirth 3 adds gold trim, neon roof edges and a slime fountain. Rebirth 4 adds an extra storey, castle turrets and a gold Freek on the roof. Rebirth 5 adds a gold roof, rainbow edges and crystal spires. Rebirth 6 adds sky spotlights, a sparkle aura and orbiting gems. Rebirth 7 adds a red carpet, a trophy wall of your rarest Freeks and fireworks. Rebirth 8 makes it the Golden Barn. The door frame goes Iron → Bronze → Silver → Gold → Diamond → Emerald → Ruby → Amethyst → Rainbow (`GateTiers.luau`). The owner's name is on a plaque to the right of the doors.
-- **Seasonal themes** (`src/server/SeasonalService.luau`): while an event runs, the map dresses up for it and switches back afterwards, checked every 2 minutes. Halloween switches to a spooky purple twilight, turns tree leaves orange and red and lamps orange, and adds glowing jack-o'-lanterns, hay bales, leaf piles, cobwebs and string lights on every barn doorway, string lights along the walkways and low fog over the town square, a witch hat on the Freek House, and a graveyard with a bubbling cauldron by the spawn. Ghosts drift and bats circle overhead (flown by each client in `src/client/Ambient.luau`). Other events can add a theme to `THEMES`.
-- **Game passes** (`src/shared/GamePasses.luau`), sold in the 💎 Store tab: 2x Coins (499 R$), Fast Fusing (999), Longer Gate Lock (499), VIP (299), Extra Fusion Den (399, a second den so two pairs can fuse at once), and three Extra Barn Slot passes (299 each, +1 slot each, up to 15). Create each pass on the Creator Dashboard (Monetization → Passes) and paste its ID into `GamePasses.luau`. Until then it shows "Coming soon". Set `STUDIO_GRANT_ALL = true` to test every perk in Studio.
-- **Door upgrades** (`src/shared/GateTiers.luau`): the frame around each barn's doors upgrades with rebirths, from Iron (0) to Bronze (1), Silver (2) and Gold (3+): chunkier posts, then finials, then a crest over the name sign, then glowing gems and sparkles.
-- **Weapons** (`src/shared/Weapons.luau`): everyone has the **Bonk Bat** (hit up close). The **Candy Cannon** (shoots a candy ball) unlocks at Rebirth 1 and the **Glue Gun** (sticks the target to the nearest wall for 5 seconds) at Rebirth 2. Weapons hit anyone except a player standing inside their own barn. A bat or cannon hit on someone carrying a Freek makes them drop it, and it goes home to its owner. On anyone else, it knocks them back and over for about a second. After being stunned or glued, players are immune for 3 seconds.
-- **Trading:** send a request to anyone in your server, each side offers up to 8 Freeks, and both press Ready. A 3 second countdown runs before the swap, and any change to an offer clears both Ready buttons, so nobody can switch Freeks at the last second. The server re-checks ownership at the moment of the swap and saves both players right away.
-- **Saving:** session-locked so a fast rejoin into another server can't duplicate or wipe Freeks.
+- **Seasonal themes** (`src/server/SeasonalService.luau`): Halloween dresses up the town with
+  pumpkins, cobwebs, fog, a graveyard, ghosts and bats.
+- **Game passes** (`src/shared/GamePasses.luau`): 2x Coins, 2x Speed, Longer Gate Lock, VIP,
+  Strong Arms and three Bigger Backpack passes. They use the pass IDs first created for the
+  old game; rename and re-describe them on the Creator Dashboard to match.

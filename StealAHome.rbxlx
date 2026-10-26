@@ -697,86 +697,6 @@ return BoxModel
       </Item>
       <Item class="ModuleScript" referent="6">
         <Properties>
-          <string name="Name">Breeding</string>
-          <string name="Source"><![CDATA[-- The fusing rules (the code calls it breeding). Shared so the Fuse window can show what a
--- pair will make.
---
---   * Any two Freeks can fuse. Both are used up and become one new Freek.
---   * Two different species make a hybrid of the two (see Hybrids.luau), so every
---     combination has its own result to discover. Mutations are what make two fused
---     Freeks of the same kind different.
---   * The result's rarity is the rarer parent's rarity; fusing never raises it.
---   * It earns both parents' income added together, times HYBRID_BONUS.
---   * The one way to get a Secret: certain pairs of Ultras (listed in server/Recipes).
---   * Mutations are only inherited, each one rolled on its own: if both parents have it the
---     baby always gets it, if only one parent has it it's a 50% chance. A baby can end up
---     with several.
-
-local FreekUtil = require(script.Parent.FreekUtil)
-local Freeks = require(script.Parent.Freeks)
-local Hybrids = require(script.Parent.Hybrids)
-local Mutations = require(script.Parent.Mutations)
-local Rarities = require(script.Parent.Rarities)
-
-local Breeding = {}
-
--- A fused Freek earns both parents' income (before mutations) times this.
-Breeding.HYBRID_BONUS = 1.1
-
--- Chance of passing on a mutation that only one parent has.
-Breeding.SINGLE_PARENT_MUTATION_CHANCE = 0.5
-
--- The rarity the baby will be, plus whether both parents are Ultras (some Ultra pairs make
--- a Secret instead; which ones is kept on the server).
-function Breeding.babyRarity(parentA, parentB): (string, boolean)
-	local rankA = Rarities.rank[Freeks.byId[parentA.species].rarity]
-	local rankB = Rarities.rank[Freeks.byId[parentB.species].rarity]
-	local rarity = Rarities.order[math.max(rankA, rankB)]
-	local bothUltra = rankA == Rarities.rank.Ultra and rankB == Rarities.rank.Ultra
-	return rarity, bothUltra
-end
-
--- What the pair fuses into, unless it's an Ultra pair with a Secret recipe (server only).
-function Breeding.babySpecies(parentA, parentB): string
-	return Hybrids.combine(parentA.species, parentB.species)
-end
-
--- The fused Freek's income before mutations, rounded to a tenth.
-function Breeding.babyIncome(parentA, parentB): number
-	local total = (FreekUtil.baseIncome(parentA) + FreekUtil.baseIncome(parentB)) * Breeding.HYBRID_BONUS
-	return math.round(total * 10) / 10
-end
-
--- Every mutation the baby could get, rarest first: { { id, chance } }. Each is rolled
--- separately.
-function Breeding.mutationOdds(parentA, parentB)
-	local fromA = Mutations.normalize(parentA.mutations)
-	local fromB = Mutations.normalize(parentB.mutations)
-	local odds = {}
-	for _, id in Mutations.normalize(table.move(fromB, 1, #fromB, #fromA + 1, table.clone(fromA))) do
-		local both = table.find(fromA, id) and table.find(fromB, id)
-		table.insert(odds, { id = id, chance = if both then 1 else Breeding.SINGLE_PARENT_MUTATION_CHANCE })
-	end
-	return odds
-end
-
--- The baby's mutations (a list, or nil for none).
-function Breeding.rollMutations(parentA, parentB, rng: Random): { string }?
-	local list = {}
-	for _, option in Breeding.mutationOdds(parentA, parentB) do
-		if rng:NextNumber() < option.chance then
-			table.insert(list, option.id)
-		end
-	end
-	return Mutations.pack(list)
-end
-
-return Breeding
-]]></string>
-        </Properties>
-      </Item>
-      <Item class="ModuleScript" referent="7">
-        <Properties>
           <string name="Name">Config</string>
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
@@ -787,7 +707,7 @@ local Config = {
 	TEST_MONEY = 1_000_000,
 	-- Who can open the admin panel (events, part spawns, announcements). Usernames are
 	-- checked as well as user ids; anyone can use it in Studio for testing.
-	ADMIN_NAMES = { "FuseAFreek" },
+	ADMIN_NAMES = { "FuseAFreek" }, -- the owner's Roblox username
 	ADMIN_USER_IDS = { 11813437895 } :: { number }, -- the owner's account
 	MAX_PARTS = 40, -- house parts you can keep in your backpack (not counting the house)
 	SELL_MULTIPLIER = 30, -- a part sells for (its money per second * this)
@@ -845,474 +765,7 @@ return Config
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="8">
-        <Properties>
-          <string name="Name">Drops</string>
-          <string name="Source"><![CDATA[-- Freeks arrive by cannon. Eight cannons hang on the glass bubble over the map, and each
--- fires a Freek every FIRE_INTERVAL seconds (they take turns, so one lands every few
--- seconds). A Freek flies down, lands somewhere in the town square, wanders around for
--- WANDER_TIME, then walks into the Freek House and is gone. Hold Grab on it (and pay) to
--- carry it home.
---
--- Where a Freek is at any moment depends only on its seed, cannon and launch time, so the
--- server (which checks grabs) and every client (which draws it) agree without sending
--- positions around.
-
-local Rarities = require(script.Parent.Rarities)
-
-local Drops = {}
-
--- The bubble and its cannons.
-Drops.DOME_RADIUS = 285
-Drops.DOME_HEIGHT = 0.6 -- the bubble is squashed: its top is this fraction of the radius up
-Drops.CANNON_COUNT = 8
-Drops.CANNON_ELEVATION = math.rad(30) -- how high up the bubble the cannons hang
-Drops.FIRE_INTERVAL = 30 -- seconds between shots from each cannon
-
--- Flight, wandering and leaving.
-Drops.FLIGHT_TIME = 3.2
-Drops.FLIGHT_ARC = 30 -- extra height in the middle of the flight
-Drops.WANDER_TIME = 60
-Drops.WANDER_SPEED = 5
-Drops.EXIT_SPEED = 9
--- The town square between the two rows of barns, where Freeks land and wander.
-Drops.AREA = { minX = -125, maxX = 125, minZ = -23, maxZ = 23 }
--- Height of the town square's floor, which Freeks walk on.
-Drops.GROUND_Y = 0.2
--- The Freek House at the west end; Freeks nobody grabbed walk in through this door.
-Drops.HOUSE_POSITION = Vector3.new(-152, 0, 0)
-Drops.HOUSE_DOOR = Vector3.new(-143.5, 0, 0)
-
-Drops.GRAB_DISTANCE = 12 -- how close a player must be to grab
-
--- Chance of each rarity per shot. Secrets never come out of a cannon.
-Drops.ODDS = {
-	{ rarity = "Common", weight = 70 },
-	{ rarity = "Uncommon", weight = 22 },
-	{ rarity = "Rare", weight = 6.5 },
-	{ rarity = "Legendary", weight = 1.3 },
-	{ rarity = "Mystic", weight = 0.2 },
-	{ rarity = "Ultra", weight = 0.04 },
-}
-
--- Scales each mutation's chance for cannon Freeks (the only place mutations come from).
-Drops.MUTATION_FACTOR = 0.5
-
--- Price of a Freek that has no fixed shop price: this many seconds of its income.
-Drops.PRICE_SECONDS = 50
-
--- Rarities at or above this get announced to the whole server when they're fired.
-Drops.ANNOUNCE_RANK = Rarities.rank.Legendary
-
--- A point on the bubble: `around` radians round from +X, `up` radians up from the ground.
-function Drops.domePoint(around: number, up: number): Vector3
-	local r = Drops.DOME_RADIUS
-	return Vector3.new(
-		math.cos(around) * math.cos(up) * r,
-		math.sin(up) * r * Drops.DOME_HEIGHT,
-		math.sin(around) * math.cos(up) * r
-	)
-end
-
--- The outward direction of the bubble's surface at a point on it.
-function Drops.domeNormal(point: Vector3): Vector3
-	return Vector3.new(point.X, point.Y / (Drops.DOME_HEIGHT * Drops.DOME_HEIGHT), point.Z).Unit
-end
-
--- Where cannon `index` hangs on the bubble, pointing at the middle of the town square.
-function Drops.cannonCFrame(index: number): CFrame
-	local angle = (index - 0.5) / Drops.CANNON_COUNT * math.pi * 2
-	local position = Drops.domePoint(angle, Drops.CANNON_ELEVATION)
-	return CFrame.lookAt(position, Vector3.new(0, 10, 0))
-end
-
--- How big the cannons are, and where one sits: just inside the bubble, its back against it.
-Drops.CANNON_SCALE = 2
-function Drops.cannonBase(index: number): CFrame
-	return Drops.cannonCFrame(index) * CFrame.new(0, 0, -12 * Drops.CANNON_SCALE)
-end
-
--- Where a fired Freek leaves the barrel.
-function Drops.muzzle(index: number): Vector3
-	return (Drops.cannonBase(index) * CFrame.new(0, 0, -16.5 * Drops.CANNON_SCALE)).Position
-end
-
-local function clampToArea(position: Vector3): Vector3
-	local area = Drops.AREA
-	return Vector3.new(
-		math.clamp(position.X, area.minX, area.maxX),
-		Drops.GROUND_Y,
-		math.clamp(position.Z, area.minZ, area.maxZ)
-	)
-end
-
--- The whole trip of one Freek: { launch, land, muzzle, legs, wanderEnd, finish }.
--- legs = { { start, finish, from, to, facing } } covering wandering and the walk home.
-function Drops.plan(seed: number, cannon: number, launch: number)
-	local rng = Random.new(seed)
-	local area = Drops.AREA
-	local landAt =
-		Vector3.new(rng:NextNumber(area.minX, area.maxX), Drops.GROUND_Y, rng:NextNumber(area.minZ, area.maxZ))
-	local legs = {}
-	local t = launch + Drops.FLIGHT_TIME
-	local wanderEnd = t + Drops.WANDER_TIME
-	local position = landAt
-	local facing = (Vector3.new(0, 0, 0) - Drops.muzzle(cannon)) * Vector3.new(1, 0, 1)
-	facing = if facing.Magnitude > 0.01 then facing.Unit else Vector3.new(0, 0, -1)
-
-	while t < wanderEnd do
-		-- Stop and look around, then toddle somewhere nearby.
-		local pause = rng:NextNumber(0.4, 2)
-		table.insert(legs, { start = t, finish = t + pause, from = position, to = position, facing = facing })
-		t += pause
-		local angle = rng:NextNumber(0, math.pi * 2)
-		local distance = rng:NextNumber(6, 22)
-		local target = clampToArea(position + Vector3.new(math.cos(angle), 0, math.sin(angle)) * distance)
-		local length = (target - position).Magnitude
-		if length > 0.5 then
-			facing = (target - position).Unit
-			local duration = length / Drops.WANDER_SPEED
-			table.insert(legs, { start = t, finish = t + duration, from = position, to = target, facing = facing })
-			t += duration
-			position = target
-		end
-	end
-
-	-- Time's up: head into the Freek House.
-	local home = Drops.HOUSE_DOOR + Vector3.new(0, Drops.GROUND_Y, 0)
-	local length = (home - position).Magnitude
-	if length > 0.5 then
-		facing = (home - position).Unit
-	end
-	local duration = length / Drops.EXIT_SPEED
-	table.insert(
-		legs,
-		{ start = t, finish = t + duration, from = position, to = home, facing = facing, leaving = true }
-	)
-
-	return {
-		launch = launch,
-		land = launch + Drops.FLIGHT_TIME,
-		landAt = landAt,
-		muzzle = Drops.muzzle(cannon),
-		legs = legs,
-		finish = t + duration,
-	}
-end
-
--- Where a Freek on `path` is at time `now`, as a ground CFrame for FreekModel:PivotTo,
--- plus what it's doing: "waiting", "flying", "wandering", "leaving" or "gone".
-function Drops.cframeAt(path, now: number): (CFrame, string, boolean)
-	if now < path.launch then
-		return CFrame.new(path.muzzle), "waiting", false
-	end
-	if now < path.land then
-		local a = (now - path.launch) / Drops.FLIGHT_TIME
-		local position = path.muzzle:Lerp(path.landAt, a) + Vector3.new(0, Drops.FLIGHT_ARC * 4 * a * (1 - a), 0)
-		return CFrame.new(position) * CFrame.Angles(a * math.pi * 4, a * math.pi * 3, 0), "flying", false
-	end
-	if now >= path.finish then
-		return CFrame.new(Drops.HOUSE_DOOR), "gone", false
-	end
-	for _, leg in path.legs do
-		if now < leg.finish then
-			local a = math.clamp((now - leg.start) / math.max(leg.finish - leg.start, 0.001), 0, 1)
-			local position = leg.from:Lerp(leg.to, a)
-			local moving = leg.from ~= leg.to
-			return CFrame.lookAt(position, position + leg.facing),
-				if leg.leaving then "leaving" else "wandering",
-				moving
-		end
-	end
-	return CFrame.new(Drops.HOUSE_DOOR), "gone", false
-end
-
-return Drops
-]]></string>
-        </Properties>
-      </Item>
-      <Item class="ModuleScript" referent="9">
-        <Properties>
-          <string name="Name">EggModel</string>
-          <string name="Source"><![CDATA[-- 3D models of the Monster Eggs (Halloween style), used for the egg stands in the world,
--- the Luck window and the hatch animation. Built from parts like the Freeks: the egg is a
--- ball stretched tall with a SpecialMesh, and the decorations sit on its surface.
---
--- EggModel.build(eggId) returns the model (pivot at the bottom of the egg, facing -Z)
--- and its height.
-
-local EggModel = {}
-
-local A, B = 1.5, 1.9 -- the egg's radius across and its half-height
-local CENTER_Y = B
-
-local function rgb(r, g, b)
-	return Color3.fromRGB(r, g, b)
-end
-
-local function newPart(model: Model, props)
-	local part = Instance.new(props.ClassName or "Part")
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanTouch = false
-	part.CastShadow = true
-	part.TopSurface = Enum.SurfaceType.Smooth
-	part.BottomSurface = Enum.SurfaceType.Smooth
-	part.Material = Enum.Material.SmoothPlastic
-	for key, value in props do
-		if key ~= "ClassName" and key ~= "Mesh" then
-			part[key] = value
-		end
-	end
-	if props.Mesh then
-		local mesh = Instance.new("SpecialMesh")
-		mesh.MeshType = Enum.MeshType.Sphere
-		mesh.Scale = props.Mesh
-		mesh.Parent = part
-	end
-	part.Parent = model
-	return part
-end
-
--- A spot on the egg's surface: angle round from the front (radians, 0 = facing -Z), height
--- from the egg's middle, pushed out by `out`. Faces outward.
-local function onEgg(angle: number, y: number, out: number?): CFrame
-	local ring = A * math.sqrt(math.max(1 - (y * y) / (B * B), 0.02))
-	local direction = Vector3.new(math.sin(angle), 0, -math.cos(angle))
-	local position = direction * (ring + (out or 0)) + Vector3.new(0, CENTER_Y + y, 0)
-	local normal = (direction / A + Vector3.new(0, y / (B * B), 0)).Unit
-	return CFrame.lookAt(position, position + normal)
-end
-
--- A diamond (a square turned 45°) flat on the surface.
-local function diamond(model, cframe: CFrame, size: number, color: Color3, material)
-	return newPart(model, {
-		Size = Vector3.new(size, size, 0.12),
-		CFrame = cframe * CFrame.Angles(0, 0, math.rad(45)),
-		Color = color,
-		Material = material or Enum.Material.Neon,
-	})
-end
-
-local function body(model: Model, color: Color3, material)
-	local egg = newPart(model, {
-		Name = "Egg",
-		Shape = Enum.PartType.Ball,
-		Size = Vector3.one * (A * 2),
-		CFrame = CFrame.new(0, CENTER_Y, 0),
-		Color = color,
-		Material = material or Enum.Material.SmoothPlastic,
-		Mesh = Vector3.new(1, B / A, 1),
-	})
-	egg.PivotOffset = CFrame.new(0, -CENTER_Y, 0)
-	model.PrimaryPart = egg
-	return egg
-end
-
-local function effect(part: BasePart, kind: string, color: Color3)
-	local instance
-	if kind == "Glow" then
-		instance = Instance.new("PointLight")
-		instance.Color = color
-		instance.Range = 10
-		instance.Brightness = 2
-	else
-		instance = Instance.new("Sparkles")
-		instance.SparkleColor = color
-	end
-	instance.Parent = part
-end
-
-local BUILDERS = {}
-
--- A pumpkin egg: orange with ribs, a stem, and a glowing jack-o'-lantern face.
-function BUILDERS.Monster(model: Model)
-	local egg = body(model, rgb(255, 140, 30))
-	for i = 0, 3 do
-		newPart(model, {
-			Name = "Rib",
-			Shape = Enum.PartType.Ball,
-			Size = Vector3.one * (A * 2),
-			CFrame = CFrame.new(0, CENTER_Y, 0) * CFrame.Angles(0, math.rad(i * 45), 0),
-			Color = rgb(205, 90, 10),
-			Mesh = Vector3.new(0.1, B / A * 1.006, 1.02),
-		})
-	end
-	newPart(model, {
-		Name = "Stem",
-		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(0.8, 0.45, 0.45),
-		CFrame = CFrame.new(0.05, CENTER_Y + B + 0.25, 0) * CFrame.Angles(0, 0, math.rad(80)),
-		Color = rgb(95, 120, 45),
-	})
-	newPart(model, {
-		Name = "Leaf",
-		Size = Vector3.new(0.7, 0.08, 0.4),
-		CFrame = CFrame.new(0.4, CENTER_Y + B + 0.05, -0.1) * CFrame.Angles(0, 0, math.rad(-20)),
-		Color = rgb(110, 190, 60),
-	})
-	local glow = rgb(255, 215, 70)
-	for _, side in { -1, 1 } do
-		diamond(model, onEgg(side * 0.38, 0.45, 0.02), 0.45, glow)
-	end
-	diamond(model, onEgg(0, 0.05, 0.02), 0.25, glow)
-	for i = -2, 2 do
-		local y = -0.5 + math.abs(i) * 0.1
-		diamond(model, onEgg(i * 0.17, y, 0.02), if i % 2 == 0 then 0.3 else 0.22, glow)
-	end
-	effect(egg, "Glow", rgb(255, 160, 50))
-end
-
--- A bat egg: purple with spots, bat wings, glowing green eyes and little fangs.
-function BUILDERS.MegaMonster(model: Model)
-	local egg = body(model, rgb(130, 70, 200))
-	for _, spot in { { 0.9, 0.9 }, { 2.4, -0.6 }, { -2.2, 0.5 }, { 3.4, 1.0 }, { -1.0, -1.2 } } do
-		newPart(model, {
-			Name = "Spot",
-			Shape = Enum.PartType.Ball,
-			Size = Vector3.one * 0.6,
-			CFrame = onEgg(spot[1], spot[2], -0.2),
-			Color = rgb(95, 45, 160),
-		})
-	end
-	for _, side in { -1, 1 } do
-		-- Wings: a black flap with a scalloped edge.
-		local base = CFrame.new(side * 2.1, CENTER_Y + 0.5, 0.2) * CFrame.Angles(0, 0, math.rad(side * -25))
-		newPart(model, {
-			Name = "Wing",
-			Size = Vector3.new(1.6, 0.9, 0.12),
-			CFrame = base,
-			Color = rgb(30, 25, 40),
-		})
-		for k = -1, 1 do
-			newPart(model, {
-				Name = "Wing",
-				Shape = Enum.PartType.Ball,
-				Size = Vector3.one * 0.55,
-				CFrame = base * CFrame.new(k * 0.5, -0.45, 0),
-				Color = rgb(30, 25, 40),
-			})
-		end
-		-- Pointy ears on top.
-		newPart(model, {
-			ClassName = "WedgePart",
-			Name = "Ear",
-			Size = Vector3.new(0.15, 0.6, 0.45),
-			CFrame = CFrame.new(side * 0.55, CENTER_Y + B - 0.05, -0.1) * CFrame.Angles(0, math.rad(side * 90), 0),
-			Color = rgb(30, 25, 40),
-		})
-		local eye = onEgg(side * 0.36, 0.4, 0.05)
-		newPart(model, {
-			Name = "Eye",
-			Shape = Enum.PartType.Ball,
-			Size = Vector3.one * 0.48,
-			CFrame = eye,
-			Color = rgb(120, 255, 120),
-			Material = Enum.Material.Neon,
-		})
-		newPart(model, {
-			Name = "Pupil",
-			Size = Vector3.new(0.08, 0.3, 0.05),
-			CFrame = eye * CFrame.new(0, 0, -0.22),
-			Color = rgb(10, 10, 15),
-		})
-		newPart(model, {
-			ClassName = "WedgePart",
-			Name = "Fang",
-			Size = Vector3.new(0.08, 0.25, 0.16),
-			CFrame = onEgg(side * 0.13, -0.25, 0.02) * CFrame.Angles(math.rad(180), 0, 0),
-			Color = rgb(255, 255, 255),
-		})
-	end
-	effect(egg, "Glow", rgb(170, 110, 255))
-end
-
--- A haunted golden egg: black with glowing golden cracks, a gold crown and purple eyes
--- peeking out of the dark.
-function BUILDERS.LegendaryMonster(model: Model)
-	local egg = body(model, rgb(35, 28, 48))
-	local gold = rgb(255, 200, 60)
-	-- Zig-zag cracks running down the egg, front and sides.
-	for _, crack in { { 0.0, 1 }, { 1.6, -1 }, { -1.7, 1 }, { 3.1, -1 } } do
-		local angle = crack[1]
-		for k = 0, 4 do
-			local y = 1.2 - k * 0.55
-			local tilt = (if k % 2 == 0 then 1 else -1) * crack[2] * 35
-			newPart(model, {
-				Name = "Crack",
-				Size = Vector3.new(0.12, 0.65, 0.1),
-				CFrame = onEgg(angle + (if k % 2 == 0 then 0.06 else -0.06), y, 0.01)
-					* CFrame.Angles(0, 0, math.rad(tilt)),
-				Color = gold,
-				Material = Enum.Material.Neon,
-			})
-		end
-	end
-	for _, side in { -1, 1 } do
-		newPart(model, {
-			Name = "Eye",
-			Shape = Enum.PartType.Ball,
-			Size = Vector3.one * 0.32,
-			CFrame = onEgg(side * 0.3, 0.55, 0.02),
-			Color = rgb(200, 120, 255),
-			Material = Enum.Material.Neon,
-		})
-	end
-	-- A golden crown with a red gem.
-	local crownY = CENTER_Y + B - 0.15
-	newPart(model, {
-		Name = "Crown",
-		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(0.35, 1.4, 1.4),
-		CFrame = CFrame.new(0, crownY, 0) * CFrame.Angles(0, 0, math.rad(90)),
-		Color = gold,
-		Material = Enum.Material.Foil,
-	})
-	for i = 0, 4 do
-		local a = i / 5 * math.pi * 2
-		newPart(model, {
-			Name = "Crown",
-			Shape = Enum.PartType.Ball,
-			Size = Vector3.one * 0.3,
-			CFrame = CFrame.new(math.sin(a) * 0.62, crownY + 0.35, -math.cos(a) * 0.62),
-			Color = gold,
-			Material = Enum.Material.Foil,
-		})
-	end
-	local gem = newPart(model, {
-		Name = "Gem",
-		Shape = Enum.PartType.Ball,
-		Size = Vector3.one * 0.35,
-		CFrame = CFrame.new(0, crownY, -0.7),
-		Color = rgb(255, 50, 80),
-		Material = Enum.Material.Neon,
-	})
-	effect(egg, "Glow", gold)
-	effect(gem, "Sparkles", rgb(255, 230, 140))
-end
-
--- For effects that sit on the egg (like the hatch cracks): a spot on the surface relative to
--- the egg's pivot, and the egg's colour.
-EggModel.surface = onEgg
-EggModel.COLORS = {
-	Monster = rgb(255, 140, 30),
-	MegaMonster = rgb(130, 70, 200),
-	LegendaryMonster = rgb(35, 28, 48),
-}
-
-function EggModel.build(eggId: string): (Model, number)
-	local model = Instance.new("Model")
-	model.Name = eggId .. "Egg"
-	local builder = BUILDERS[eggId] or BUILDERS.Monster
-	builder(model)
-	return model, B * 2 + 0.6
-end
-
-return EggModel
-]]></string>
-        </Properties>
-      </Item>
-      <Item class="ModuleScript" referent="10">
+      <Item class="ModuleScript" referent="7">
         <Properties>
           <string name="Name">Events</string>
           <string name="Source"><![CDATA[-- Scheduled events, like the "admin abuse" events of the big Roblox games.
@@ -1511,7 +964,7 @@ return Events
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="11">
+      <Item class="ModuleScript" referent="8">
         <Properties>
           <string name="Name">Format</string>
           <string name="Source"><![CDATA[local Format = {}
@@ -1560,7 +1013,7 @@ return Format
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="9">
         <Properties>
           <string name="Name">FreekAnimator</string>
           <string name="Source"><![CDATA[-- Brings Freek models to life: idle animations for Freeks standing in barns and on the
@@ -2049,7 +1502,7 @@ return FreekAnimator
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="10">
         <Properties>
           <string name="Name">FreekModel</string>
           <string name="Source"><![CDATA[-- Builds the 3D model for a Freek out of plain parts.
@@ -2979,118 +2432,7 @@ return FreekModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
-        <Properties>
-          <string name="Name">FreekUtil</string>
-          <string name="Source"><![CDATA[-- Helpers shared by server and client for reading a saved Freek record:
---   { species = "Nerdle", mutations = { "Golden" }?, income = 2.2?, slot = 3?, breeding = true? }
--- species can be a hybrid id ("Nerdle+Oinkle"). income is set on fused Freeks; others earn
--- their species' income.
-
-local Config = require(script.Parent.Config)
-local Freeks = require(script.Parent.Freeks)
-local Mutations = require(script.Parent.Mutations)
-local Rarities = require(script.Parent.Rarities)
-local Seasons = require(script.Parent.Seasons)
-
-local FreekUtil = {}
-
-function FreekUtil.species(freek)
-	return Freeks.byId[freek.species]
-end
-
--- Money per second before mutations.
-function FreekUtil.baseIncome(freek): number
-	if freek.income then
-		return freek.income
-	end
-	local species = Freeks.byId[freek.species]
-	return if species then species.income else 0
-end
-
-function FreekUtil.income(freek): number
-	return FreekUtil.baseIncome(freek) * Mutations.mult(freek.mutations)
-end
-
-function FreekUtil.sellValue(freek): number
-	return math.floor(FreekUtil.income(freek) * Config.SELL_MULTIPLIER)
-end
-
-function FreekUtil.displayName(freek): string
-	local species = Freeks.byId[freek.species]
-	local name = if species then species.name else "???"
-	local mutations = Mutations.normalize(freek.mutations)
-	return if #mutations > 0 then table.concat(mutations, " ") .. " " .. name else name
-end
-
--- "Rare" or, for Seasonal Freeks, "Rare · Halloween".
-function FreekUtil.rarityText(speciesId: string): string
-	local species = Freeks.byId[speciesId]
-	local season = species.season and Seasons.list[species.season]
-	return if season then species.rarity .. " · " .. season.name else species.rarity
-end
-
--- Money per second from the yard, including the rebirth bonus.
-function FreekUtil.yardIncome(data): number
-	local total = 0
-	for _, freek in data.freeks do
-		if freek.slot then
-			total += FreekUtil.income(freek)
-		end
-	end
-	return total * Config.incomeMultiplier(data.rebirths)
-end
-
--- Yard slots a player can use: bought with coins plus any from Extra Yard Slot passes.
-function FreekUtil.totalSlots(data): number
-	return data.slots + (data.passSlots or 0)
-end
-
--- First empty yard slot, or nil if the yard is full.
-function FreekUtil.freeSlot(data): number?
-	local used = {}
-	for _, freek in data.freeks do
-		if freek.slot then
-			used[freek.slot] = true
-		end
-	end
-	for i = 1, FreekUtil.totalSlots(data) do
-		if not used[i] then
-			return i
-		end
-	end
-	return nil
-end
-
-function FreekUtil.count(data): number
-	local n = 0
-	for _ in data.freeks do
-		n += 1
-	end
-	return n
-end
-
--- Breeding pens live in the save as data.breeding (pen 1) and data.breeding2 (pen 2, from
--- the Extra Breeding Pen pass). Each is nil or { a = uid, b = uid, endsAt = unix seconds }.
-FreekUtil.PEN_KEYS = { "breeding", "breeding2" }
-
-function FreekUtil.pen(data, index: number)
-	local key = FreekUtil.PEN_KEYS[index]
-	return key and data[key]
-end
-
-function FreekUtil.breedTime(a, b): number
-	local rankA = Rarities.rank[Freeks.byId[a.species].rarity]
-	local rankB = Rarities.rank[Freeks.byId[b.species].rarity]
-	local rarity = Rarities.order[math.max(rankA, rankB)]
-	return Rarities.info[rarity].breedTime
-end
-
-return FreekUtil
-]]></string>
-        </Properties>
-      </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="11">
         <Properties>
           <string name="Name">Freeks</string>
           <string name="Source"><![CDATA[-- Every Freek species in the game.
@@ -5127,7 +4469,7 @@ return Freeks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="12">
         <Properties>
           <string name="Name">GamePasses</string>
           <string name="Source"><![CDATA[-- Game passes: one-time Robux purchases with permanent perks.
@@ -5277,87 +4619,7 @@ return GamePasses
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
-        <Properties>
-          <string name="Name">GateTiers</string>
-          <string name="Source"><![CDATA[-- The frame around each barn's doors upgrades with rebirths: Iron, then Bronze, Silver,
--- Gold, Diamond, Emerald, Ruby, Amethyst and finally Rainbow (rebirth 8). The doorway stays the same size; the frame gets chunkier and fancier.
---
--- postWidth: post thickness; finials: balls on the posts; crest: an arch over the name
--- plaque; gems: glowing gems and sparkles; rainbow: the metal cycles through the rainbow.
--- (height is no longer used.)
-
-local GateTiers = {}
-
-GateTiers.list = {
-	{
-		name = "Iron",
-		color = Color3.fromRGB(38, 38, 44),
-		material = "Metal",
-		height = 11,
-		postWidth = 1.6,
-	},
-	{
-		name = "Bronze",
-		color = Color3.fromRGB(180, 112, 58),
-		material = "Foil",
-		height = 12.5,
-		postWidth = 2.1,
-		finials = true,
-	},
-	{
-		name = "Silver",
-		color = Color3.fromRGB(205, 210, 222),
-		material = "Foil",
-		height = 14,
-		postWidth = 2.5,
-		finials = true,
-		crest = true,
-	},
-	{
-		name = "Gold",
-		color = Color3.fromRGB(255, 196, 55),
-		material = "Foil",
-		height = 15.5,
-		postWidth = 2.9,
-		finials = true,
-		crest = true,
-		gems = true,
-	},
-}
-
--- The jewel tiers past Gold all share Gold's shape.
-for _, jewel in
-	{
-		{ "Diamond", Color3.fromRGB(170, 235, 255), "Glass" },
-		{ "Emerald", Color3.fromRGB(50, 205, 110), "Glass" },
-		{ "Ruby", Color3.fromRGB(230, 40, 70), "Glass" },
-		{ "Amethyst", Color3.fromRGB(165, 85, 240), "Glass" },
-		{ "Rainbow", Color3.fromRGB(255, 90, 160), "Neon" },
-	}
-do
-	table.insert(GateTiers.list, {
-		name = jewel[1],
-		color = jewel[2],
-		material = jewel[3],
-		height = 15.5,
-		postWidth = 3.1,
-		finials = true,
-		crest = true,
-		gems = true,
-		rainbow = jewel[1] == "Rainbow",
-	})
-end
-
-function GateTiers.forRebirths(rebirths: number): number
-	return math.clamp((rebirths or 0) + 1, 1, #GateTiers.list)
-end
-
-return GateTiers
-]]></string>
-        </Properties>
-      </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">HouseModel</string>
           <string name="Source"><![CDATA[-- Builds houses and house parts out of simple parts, in the game's chunky cartoon style.
@@ -6915,6 +6177,8 @@ end
 local ITEMS = {
 	Walls = function(model, look)
 		builders.Walls(model, CFrame.new(0, 0, -1), look, { w = 5.5, d = 2.2, h = 4.4, base = 0.4 })
+		-- A window so it reads as a piece of wall, not a box.
+		window(model, CFrame.new(0, 2.7, -1.05), look, 1.7, 1.7)
 	end,
 	Roof = function(model, look)
 		builders.Roof(model, CFrame.new(0, 0, -2), look, { w = 5.5, d = 4, y = 0 })
@@ -6965,7 +6229,7 @@ return HouseModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">HouseUtil</string>
           <string name="Source"><![CDATA[-- Helpers for a player's house data, shared by the server and the UI.
@@ -7071,7 +6335,7 @@ return HouseUtil
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">Hybrids</string>
           <string name="Source"><![CDATA[-- Hybrids: what you get when two different Freeks fuse.
@@ -7256,7 +6520,7 @@ return Hybrids
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">Luck</string>
           <string name="Source"><![CDATA[-- Luck: Mystery Boxes, the daily Lucky Wheel and Lucky Hour events. Shared so the client
@@ -7461,14 +6725,15 @@ return Luck
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="22">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">Mutations</string>
-          <string name="Source"><![CDATA[-- Mutations multiply a Freek's income. They only enter the game from the cannons (chance
--- is per cannon Freek, times Drops.MUTATION_FACTOR); after that they're passed on by
--- fusing (see Breeding.luau). Rarest first.
+          <string name="Source"><![CDATA[-- Mutations multiply a house part's income. Parts grow with them in the zone piles (chance
+-- per part, see ZoneService), weather events add them to parts on houses, and the Lucky
+-- Wheel gives Golden and Rainbow parts.
+-- Rarest first.
 --
--- A Freek can carry several mutations. They're saved as a list ({ "Rainbow", "Golden" }),
+-- A part can carry several mutations. They're saved as a list ({ "Rainbow", "Golden" }),
 -- or nil for none, and their multipliers stack (Golden + Shadow = x6).
 
 local Mutations = {}
@@ -7485,7 +6750,7 @@ for index, mutation in Mutations.list do
 	Mutations.byId[mutation.id] = mutation
 end
 
--- A Freek's mutations as a list, rarest first. Accepts a list, a single id (old saves) or nil.
+-- A part's mutations as a list, rarest first. Accepts a list, a single id (old saves) or nil.
 function Mutations.normalize(value): { string }
 	local list = {}
 	if type(value) == "string" then
@@ -7502,12 +6767,12 @@ function Mutations.normalize(value): { string }
 	return list
 end
 
--- The rarest mutation, which decides how the Freek looks and what colour its name is.
+-- The rarest mutation, which decides how the part sparkles and what colour its name is.
 function Mutations.top(value): string?
 	return Mutations.normalize(value)[1]
 end
 
--- Combined income multiplier for all of a Freek's mutations.
+-- Combined income multiplier for all of a part's mutations.
 function Mutations.mult(value): number
 	local mult = 1
 	for _, id in Mutations.normalize(value) do
@@ -7526,7 +6791,7 @@ return Mutations
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">Parts</string>
           <string name="Source"><![CDATA[-- House parts: what players steal from the zones and snap onto their house.
@@ -7663,12 +6928,11 @@ return Parts
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
--- walks while carrying a Freek of this rarity (normal walking speed is 16).
--- "Seasonal" isn't a tier: it's a tag a Freek of any rarity can have (see Seasons).
+-- (breedTime and carrySpeed are left over from the Freek days and unused.)
 
 local Rarities = {}
 
@@ -7693,7 +6957,7 @@ return Rarities
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">Remotes</string>
           <string name="Source"><![CDATA[-- One place that names every remote. The server creates them; clients wait for them.
@@ -7754,7 +7018,7 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">Seasons</string>
           <string name="Source"><![CDATA[-- Limited events for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred
@@ -7891,7 +7155,7 @@ return Seasons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">WeaponModel</string>
           <string name="Source"><![CDATA[-- Builds the Tool for a weapon from its part list in Weapons.luau.
@@ -7977,7 +7241,7 @@ return WeaponModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">Weapons</string>
           <string name="Source"><![CDATA[-- Weapons. Everyone has the STARTER weapon; the rest unlock at a number of rebirths
@@ -7986,7 +7250,7 @@ return WeaponModel
 --
 -- kind "melee": hits players within range in front of you.
 -- kind "projectile": fires a ball toward where you aim; speed/range in studs.
--- effect "drop": a target carrying a Freek drops it (it goes home to its owner); anyone else
+-- effect "drop": a target carrying a part drops it (a stolen house part goes back to its owner); anyone else
 --   is knocked back (knockback strength) and falls over for stunSeconds.
 -- effect "glue": the target is stuck to the nearest wall for glueSeconds.
 --
@@ -8004,7 +7268,7 @@ Weapons.order = { "BonkBat", "CandyCannon", "GlueGun" }
 Weapons.list = {
 	BonkBat = {
 		name = "Bonk Bat",
-		description = "Bonk someone up close. Thieves drop the Freek they're carrying.",
+		description = "Bonk someone up close. Thieves drop the part they're carrying.",
 		kind = "melee",
 		effect = "drop",
 		knockback = 45,
@@ -8100,7 +7364,7 @@ Weapons.list = {
 	},
 	CandyCannon = {
 		name = "Candy Cannon",
-		description = "Shoot a candy ball. Thieves drop the Freek they're carrying.",
+		description = "Shoot a candy ball. Thieves drop the part they're carrying.",
 		kind = "projectile",
 		effect = "drop",
 		knockback = 60,
@@ -8266,7 +7530,7 @@ return Weapons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="24">
         <Properties>
           <string name="Name">ZoneLayout</string>
           <string name="Source"><![CDATA[-- Where the zones are. They run in a line west from the end of the town street: zone 1
@@ -8342,15 +7606,15 @@ return ZoneLayout
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="30">
+  <Item class="ServerScriptService" referent="25">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="31">
+    <Item class="Folder" referent="26">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="32">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -8367,6 +7631,8 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local Carried = require(script.Parent.Carried)
 local DataService = require(script.Parent.DataService)
+local PlotService = require(script.Parent.PlotService)
+local StealService = require(script.Parent.StealService)
 
 local ActionService = {}
 
@@ -8518,7 +7784,20 @@ function handlers.UpgradeTreadmill(player: Player, data)
 	notify(player, "⚡ Treadmill upgraded to level " .. data.treadmill .. "!", "success")
 end
 
-local quiet = {} -- actions that don't change saved data, so skip the refresh
+-- Teleports the player home (not while carrying a part: that would skip the run).
+local lastHome = {}
+function handlers.GoHome(player: Player, _data)
+	if StealService.isCarrying(player) then
+		return notify(player, "No teleporting with a part! Run it home!", "error")
+	end
+	if lastHome[player] and os.clock() - lastHome[player] < 3 then
+		return
+	end
+	lastHome[player] = os.clock()
+	PlotService.sendHome(player)
+end
+
+local quiet = { GoHome = true } -- actions that don't change saved data, so skip the refresh
 
 -- Lets other services add actions (they get the same rate limit and refresh).
 -- Pass isQuiet = true for actions that never change the player's data.
@@ -8560,6 +7839,7 @@ function ActionService.init()
 
 	game:GetService("Players").PlayerRemoving:Connect(function(player)
 		lastAction[player] = nil
+		lastHome[player] = nil
 	end)
 end
 
@@ -8567,7 +7847,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">AdminService</string>
           <string name="Source"><![CDATA[-- The admin panel's server side. Only admins (Config.ADMIN_NAMES / ADMIN_USER_IDS, or
@@ -8711,11 +7991,11 @@ return AdminService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">Carried</string>
-          <string name="Source"><![CDATA[-- Which Freeks are being carried off by a thief right now. Kept in memory only: if the
--- server stops mid-steal, the owner simply keeps the Freek.
+          <string name="Source"><![CDATA[-- Which house parts are being carried off by a thief right now. Kept in memory only: if the
+-- server stops mid-steal, the owner simply keeps the part.
 
 local Carried = {}
 
@@ -8742,7 +8022,7 @@ function Carried.set(owner: Player, uid: string, thief: Player?)
 	end
 end
 
--- True if any of this owner's Freeks are being carried off right now.
+-- True if any of this owner's parts are being carried off right now.
 function Carried.any(owner: Player): boolean
 	return byOwner[owner] ~= nil
 end
@@ -8751,7 +8031,7 @@ return Carried
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -9021,7 +8301,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">Decor</string>
           <string name="Source"><![CDATA[-- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
@@ -9399,7 +8679,7 @@ return Decor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="32">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Catalog: the first player in the whole game to get each rare house part (Legendary
@@ -9554,7 +8834,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the parts on their house, plus offline earnings
@@ -9642,7 +8922,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">Environment</string>
           <string name="Source"><![CDATA[-- Lighting, sky, terrain and the town: the street between the two rows of homes, the
@@ -9900,7 +9180,7 @@ return Environment
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">EventService</string>
           <string name="Source"><![CDATA[-- Runs the scheduled events (see shared/Events.luau) and the ones the admin starts.
@@ -10139,7 +9419,7 @@ return EventService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">HalloweenDecor</string>
           <string name="Source"><![CDATA[-- Halloween props: ghosts, bats, cobwebs, tombstones, dead trees, a witch's cauldron,
@@ -10599,7 +9879,7 @@ return HalloweenDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">LuckService</string>
           <string name="Source"><![CDATA[-- Mystery Boxes, the daily Lucky Wheel and Lucky Hour events (rules and odds in
@@ -11108,7 +10388,7 @@ return LuckService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="43">
+      <Item class="Script" referent="38">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -11179,7 +10459,7 @@ print("[Steal a Home] Server started")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="44">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -11252,7 +10532,7 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="45">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the town and gives every player a home: a yard with a fence, a gate, a treadmill
@@ -11957,7 +11237,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="46">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">RebirthService</string>
           <string name="Source"><![CDATA[-- Rebirth: pay Config.rebirthCost to start over with a permanent income bonus.
@@ -12037,7 +11317,7 @@ return RebirthService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="47">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -12302,7 +11582,7 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="48">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">SpeedService</string>
           <string name="Source"><![CDATA[-- Speed: trained on your treadmill, it decides how fast you run (Parts.walkSpeed), which
@@ -12386,7 +11666,7 @@ return SpeedService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="49">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Carrying house parts home: from the zone piles, or pried off other players' houses.
@@ -12858,7 +12138,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="50">
+      <Item class="ModuleScript" referent="45">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- Weapons: giving them out, buying them, and what happens when they hit.
@@ -12940,7 +12220,7 @@ local function playSound(parent: Instance, soundId: string)
 	end)
 end
 
--- Finds the player a hit part belongs to (including parts of a Freek they're carrying).
+-- Finds the player a hit part belongs to (including the house part they're carrying).
 local function playerFromPart(part: Instance): Player?
 	local node = part.Parent
 	while node and node ~= Workspace do
@@ -13185,7 +12465,7 @@ return WeaponService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="51">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">ZoneDecor</string>
           <string name="Source"><![CDATA[-- The scenery of each zone: its ground, the cliffs along its sides, the entrance arch with
@@ -13864,7 +13144,7 @@ return ZoneDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="52">
+      <Item class="ModuleScript" referent="47">
         <Properties>
           <string name="Name">ZoneService</string>
           <string name="Source"><![CDATA[-- The zones: piles of house parts to steal, each guarded by a giant Freek.
@@ -13900,7 +13180,7 @@ local ZoneDecor = require(script.Parent.ZoneDecor)
 local ZoneService = {}
 
 local RESPAWN_MIN, RESPAWN_MAX = 6, 12 -- seconds before an empty pedestal grows a new part
-local CATCH_RADIUS = 6
+local CATCH_RADIUS = 7
 local LEASH = 14 -- how far past its zone's edge a guardian keeps chasing
 local PUBLISH_INTERVAL = 0.1
 
@@ -14342,23 +13622,23 @@ return ZoneService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="53">
+  <Item class="StarterPlayer" referent="48">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="54">
+    <Item class="StarterPlayerScripts" referent="49">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="55">
+      <Item class="Folder" referent="50">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="56">
+        <Item class="ModuleScript" referent="51">
           <Properties>
             <string name="Name">AdminPanel</string>
             <string name="Source"><![CDATA[-- The admin panel (only for admins: the server sets IsAdmin and checks every command).
--- Start or end events in this server or all of them, fire any Freek from a cannon,
+-- Start or end events in this server or all of them, fill a zone's pile with any part,
 -- announce something to everyone, see the coming timetable, and get test coins.
 
 local Players = game:GetService("Players")
@@ -14366,7 +13646,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local Events = require(ReplicatedStorage.Shared.Events)
-local Freeks = require(ReplicatedStorage.Shared.Freeks)
+local Parts = require(ReplicatedStorage.Shared.Parts)
 local Luck = require(ReplicatedStorage.Shared.Luck)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -14379,7 +13659,7 @@ local colors = UI.colors
 
 -- Every event the panel can start, in the order its buttons appear.
 local EVENT_BUTTONS = {
-	{ id = "MonsterStorm", def = Events.BIG.MonsterStorm },
+	{ id = "GuardianNap", def = Events.BIG.GuardianNap },
 	{ id = "BloodMoon", def = Events.WEATHER.BloodMoon },
 	{ id = "GoldRush", def = Events.WEATHER.GoldRush },
 	{ id = "RainbowRain", def = Events.WEATHER.RainbowRain },
@@ -14498,7 +13778,7 @@ function AdminPanel.start(screen: ScreenGui)
 		UI.new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }),
 		UI.new("UIPadding", { PaddingRight = UDim.new(0, 6), PaddingTop = UDim.new(0, 6) }),
 	})
-	status = UI.label("Pick an event, or fire a Freek!", {
+	status = UI.label("Pick an event, or spawn some parts!", {
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -12),
 		Size = UDim2.new(1, -32, 0, 26),
@@ -14582,17 +13862,24 @@ function AdminPanel.start(screen: ScreenGui)
 		run("stop", { everywhere = everywhere })
 	end, { Size = UDim2.new(0.5, -3, 0, 40), LayoutOrder = 2, ZIndex = 22, Parent = goRow })
 
-	-- Cannon --------------------------------------------------------------------
-	heading("💥 FIRE A FREEK FROM A CANNON (THIS SERVER)", body, 5)
-	local speciesIds = {}
-	for _, species in Freeks.list do
-		table.insert(speciesIds, species.id)
+	-- Spawn parts ----------------------------------------------------------------
+	heading("📦 SPAWN PARTS IN A ZONE (THIS SERVER)", body, 5)
+	local zoneIds = {}
+	for index in Parts.ZONES do
+		table.insert(zoneIds, index)
 	end
+	local styleIds = { "" }
+	for _, style in Parts.STYLES do
+		if style.id ~= "Basic" then
+			table.insert(styleIds, style.id)
+		end
+	end
+	local zoneIndex, styleIndex = 1, 1
 	local mutationIds = { "" }
 	for _, mutation in Mutations.list do
 		table.insert(mutationIds, mutation.id)
 	end
-	local speciesIndex, mutationIndex = 1, 1
+	local mutationIndex = 1
 	local cannonRow = row(body, 6, 44)
 	local function cycler(values, getIndex, setIndex, describe, order, width)
 		local label
@@ -14619,25 +13906,37 @@ function AdminPanel.start(screen: ScreenGui)
 		end, { Size = UDim2.fromOffset(34, 36), LayoutOrder = order + 2, ZIndex = 22, Parent = cannonRow })
 		show()
 	end
-	cycler(speciesIds, function()
-		return speciesIndex
+	cycler(zoneIds, function()
+		return zoneIndex
 	end, function(v)
-		speciesIndex = v
+		zoneIndex = v
+	end, function(index)
+		return Parts.ZONES[index].name
+	end, 1, 120)
+	cycler(styleIds, function()
+		return styleIndex
+	end, function(v)
+		styleIndex = v
 	end, function(id)
-		local species = Freeks.byId[id]
-		return species and species.name or id
-	end, 1, 130)
+		return if id == "" then "Fill pile" else Parts.styleById[id].name
+	end, 4, 90)
 	cycler(mutationIds, function()
 		return mutationIndex
 	end, function(v)
 		mutationIndex = v
 	end, function(id)
 		return if id == "" then "No mutation" else id
-	end, 4, 110)
-	UI.button("FIRE!", colors.orange, function()
+	end, 7, 90)
+	UI.button("GO!", colors.orange, function()
 		local mutation = mutationIds[mutationIndex]
-		run("spawn", { species = speciesIds[speciesIndex], mutation = if mutation == "" then nil else mutation })
-	end, { Size = UDim2.fromOffset(84, 40), LayoutOrder = 10, ZIndex = 22, Parent = cannonRow })
+		local style = styleIds[styleIndex]
+		local slot = Parts.SLOTS[math.random(1, #Parts.SLOTS)].id
+		run("spawn", {
+			zone = zoneIds[zoneIndex],
+			part = if style == "" then nil else style .. "_" .. slot,
+			mutation = if mutation == "" then nil else mutation,
+		})
+	end, { Size = UDim2.fromOffset(64, 40), LayoutOrder = 10, ZIndex = 22, Parent = cannonRow })
 
 	-- Announce ------------------------------------------------------------------
 	heading("📣 ANNOUNCE (USES THE SERVER BUTTON ABOVE)", body, 7)
@@ -14646,7 +13945,7 @@ function AdminPanel.start(screen: ScreenGui)
 		Size = UDim2.new(1, -110, 0, 38),
 		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
 		FontFace = UI.fonts.bold,
-		PlaceholderText = "Monster Storm in 5 minutes!",
+		PlaceholderText = "Guardian Nap in 5 minutes!",
 		PlaceholderColor3 = Color3.fromRGB(140, 150, 180),
 		Text = "",
 		TextColor3 = UI.OUTLINE,
@@ -14733,7 +14032,7 @@ return AdminPanel
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="57">
+        <Item class="ModuleScript" referent="52">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -14807,155 +14106,7 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="58">
-          <Properties>
-            <string name="Name">BarnFX</string>
-            <string name="Source"><![CDATA[-- Moving bits of the rebirth barn upgrades (BarnUpgrades.luau on the server), animated
--- locally so they're smooth: weathervanes and spotlights sway, the gem halo spins, and
--- barns with fireworks set one off every so often. Only nearby barns animate.
-
-local CollectionService = game:GetService("CollectionService")
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-
-local BarnFX = {}
-
-local SPINNER_TAG = "BarnSpinner"
-local FIREWORKS_TAG = "BarnFireworks"
-local RANGE = 400
-local FIREWORK_COLORS = {
-	Color3.fromRGB(255, 80, 120),
-	Color3.fromRGB(255, 200, 60),
-	Color3.fromRGB(80, 220, 255),
-	Color3.fromRGB(170, 100, 255),
-	Color3.fromRGB(120, 255, 110),
-	Color3.fromRGB(255, 140, 50),
-}
-
-local function spark(parent: Instance, position: Vector3, size: number, color: Color3): BasePart
-	local p = Instance.new("Part")
-	p.Shape = Enum.PartType.Ball
-	p.Size = Vector3.one * size
-	p.CFrame = CFrame.new(position)
-	p.Color = color
-	p.Material = Enum.Material.Neon
-	p.Anchored = true
-	p.CanCollide = false
-	p.CanQuery = false
-	p.CanTouch = false
-	p.CastShadow = false
-	p.Parent = parent
-	return p
-end
-
--- One firework: a rocket climbs from the roof, then bursts into a ball of sparks.
-local function launch(folder: Instance, from: Vector3)
-	local random = Random.new()
-	local color = FIREWORK_COLORS[random:NextInteger(1, #FIREWORK_COLORS)]
-	local second = FIREWORK_COLORS[random:NextInteger(1, #FIREWORK_COLORS)]
-	local burstAt = from + Vector3.new(random:NextNumber(-8, 8), random:NextNumber(26, 38), random:NextNumber(-8, 8))
-	local rocket = spark(folder, from, 0.8, Color3.fromRGB(255, 240, 200))
-	local began = os.clock()
-	while os.clock() - began < 0.9 do
-		local a = (os.clock() - began) / 0.9
-		local position = from:Lerp(burstAt, 1 - (1 - a) * (1 - a))
-		rocket.CFrame = CFrame.new(position)
-		task.wait()
-	end
-	rocket:Destroy()
-	local flash = Instance.new("PointLight")
-	local core = spark(folder, burstAt, 2.5, color)
-	flash.Color = color
-	flash.Range = 40
-	flash.Brightness = 4
-	flash.Parent = core
-	local sparks = {}
-	for k = 1, 36 do
-		local direction = random:NextUnitVector()
-		local p = spark(folder, burstAt, 0.7, if k % 3 == 0 then second else color)
-		table.insert(sparks, { part = p, velocity = direction * random:NextNumber(14, 20) })
-	end
-	began = os.clock()
-	local last = began
-	while os.clock() - began < 1.6 do
-		local now = os.clock()
-		local dt = now - last
-		last = now
-		local a = (now - began) / 1.6
-		for _, s in sparks do
-			s.velocity = s.velocity * (1 - dt * 1.5) - Vector3.new(0, 9 * dt, 0)
-			s.part.CFrame = s.part.CFrame + s.velocity * dt
-			s.part.Transparency = a * a
-		end
-		core.Transparency = math.min(a * 4, 1)
-		flash.Brightness = 4 * (1 - a)
-		task.wait()
-	end
-	for _, s in sparks do
-		s.part:Destroy()
-	end
-	core:Destroy()
-end
-
-function BarnFX.start()
-	local folder = Instance.new("Folder")
-	folder.Name = "BarnFX"
-	folder.Parent = Workspace
-
-	RunService.RenderStepped:Connect(function()
-		local camera = Workspace.CurrentCamera
-		local eye = if camera then camera.CFrame.Position else Vector3.zero
-		local t = os.clock()
-		for i, model in CollectionService:GetTagged(SPINNER_TAG) do
-			local rest = model:GetAttribute("Rest")
-			if model:IsA("Model") and model.PrimaryPart and typeof(rest) == "CFrame" then
-				if (rest.Position - eye).Magnitude < RANGE then
-					local speed = model:GetAttribute("Speed") or 0.5
-					local angle = if model:GetAttribute("Mode") == "sway"
-						then math.sin(t * speed + i) * (model:GetAttribute("Amount") or 0.5)
-						else t * speed
-					model:PivotTo(rest * CFrame.Angles(0, angle, 0))
-				end
-			end
-		end
-	end)
-
-	-- Fireworks: each barn with a launcher fires every 40-80 seconds.
-	local nextShot = {}
-	task.spawn(function()
-		while true do
-			task.wait(1)
-			local camera = Workspace.CurrentCamera
-			local eye = if camera then camera.CFrame.Position else Vector3.zero
-			local now = os.clock()
-			for _, launcher in CollectionService:GetTagged(FIREWORKS_TAG) do
-				if launcher:IsA("BasePart") then
-					if not nextShot[launcher] then
-						nextShot[launcher] = now + math.random(5, 30)
-					elseif now >= nextShot[launcher] then
-						nextShot[launcher] = now + math.random(40, 80)
-						if (launcher.Position - eye).Magnitude < RANGE then
-							for k = 1, math.random(2, 3) do
-								task.delay(k * 0.35, launch, folder, launcher.Position)
-							end
-						end
-					end
-				end
-			end
-			for launcher in nextShot do
-				if not launcher.Parent then
-					nextShot[launcher] = nil
-				end
-			end
-		end
-	end)
-end
-
-return BarnFX
-]]></string>
-          </Properties>
-        </Item>
-        <Item class="ModuleScript" referent="59">
+        <Item class="ModuleScript" referent="53">
           <Properties>
             <string name="Name">EventFX</string>
             <string name="Source"><![CDATA[-- What big events and weather look like (see Events.luau), on each player's own screen:
@@ -14971,11 +14122,11 @@ local Events = require(ReplicatedStorage.Shared.Events)
 local EventFX = {}
 
 local LOOKS = {
-	MonsterStorm = {
-		tint = Color3.fromRGB(205, 185, 255),
-		brightness = -0.06,
-		rain = Color3.fromRGB(170, 200, 255),
-		lightning = true,
+	-- Guardian Nap: a dreamy purple dusk with soft sparkles drifting down.
+	GuardianNap = {
+		tint = Color3.fromRGB(210, 195, 255),
+		brightness = -0.04,
+		rain = Color3.fromRGB(205, 185, 255),
 	},
 	BloodMoon = { tint = Color3.fromRGB(255, 165, 170), brightness = -0.04, rain = Color3.fromRGB(255, 80, 90) },
 	GoldRush = { tint = Color3.fromRGB(255, 238, 180), brightness = 0.03, rain = Color3.fromRGB(255, 215, 80) },
@@ -15047,11 +14198,155 @@ return EventFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="60">
+        <Item class="ModuleScript" referent="54">
+          <Properties>
+            <string name="Name">GuardianFX</string>
+            <string name="Source"><![CDATA[-- The zone guardians, drawn on this client: a giant Freek per zone that walks after its
+-- target. The server keeps each guardian as plain data on ReplicatedStorage.Guardians
+-- (X, Z, Yaw, Moving, Chasing, Speed); this builds the model once, glides it toward the
+-- latest position every frame (so it moves smoothly between the server's updates) and
+-- animates it walking or idling with FreekAnimator. A name tag shows over its head, red
+-- and angry while it's chasing someone.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local FreekAnimator = require(ReplicatedStorage.Shared.FreekAnimator)
+local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
+
+local GuardianFX = {}
+
+local SCALE = 3.4
+local OUTLINE = Color3.fromRGB(20, 22, 48)
+
+-- Builds a Freek scaled up round its pivot.
+local function giant(species: string): (Model, number)
+	local model, height = FreekModel.build(species)
+	local pivot = model:GetPivot()
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			local rel = pivot:ToObjectSpace(p.CFrame)
+			p.Size *= SCALE
+			p.CFrame = pivot * (rel.Rotation + rel.Position * SCALE)
+			p.Anchored = true
+			p.CanCollide = false
+			p.CanQuery = false
+		end
+	end
+	return model, height * SCALE
+end
+
+local function nameTag(parent: BasePart, title: string, height: number)
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromScale(12, 2.4)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, height - (parent.Position.Y - 0) + 2, 0)
+	gui.MaxDistance = 160
+	gui.LightInfluence = 0
+	gui.Parent = parent
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.TextScaled = true
+	label.Font = Enum.Font.LuckiestGuy
+	label.Text = string.upper(title)
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.Parent = gui
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = OUTLINE
+	stroke.Thickness = 3
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
+	stroke.Parent = label
+	return label
+end
+
+local guardians = {} -- [Configuration] = { model, rig, position, yaw, label }
+
+local function add(data: Instance)
+	if guardians[data] or not data:IsA("Configuration") then
+		return
+	end
+	local species = data:GetAttribute("Species")
+	if typeof(species) ~= "string" then
+		return
+	end
+	local model, height = giant(species)
+	local position = Vector3.new(data:GetAttribute("X") or 0, 0, data:GetAttribute("Z") or 0)
+	local yaw = data:GetAttribute("Yaw") or 0
+	local home = CFrame.new(position) * CFrame.Angles(0, yaw, 0)
+	model:PivotTo(home)
+	model.Name = "Guardian_" .. species
+	model.Parent = Workspace
+	local anchor = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+	local label = anchor and nameTag(anchor, data:GetAttribute("Title") or species, height)
+	guardians[data] = {
+		model = model,
+		rig = FreekAnimator.rig(model, (data:GetAttribute("Zone") or 1) * 17, home),
+		position = position,
+		yaw = yaw,
+		label = label,
+	}
+end
+
+local function step(dt: number)
+	local t = os.clock()
+	for data, g in guardians do
+		if not data.Parent then
+			g.model:Destroy()
+			guardians[data] = nil
+			continue
+		end
+		local target = Vector3.new(data:GetAttribute("X") or 0, 0, data:GetAttribute("Z") or 0)
+		local speed = (data:GetAttribute("Speed") or 16) * 1.25
+		local offset = target - g.position
+		local distance = offset.Magnitude
+		if distance > 30 then
+			g.position = target -- too far behind (e.g. just streamed in): jump there
+		elseif distance > 0.01 then
+			g.position += offset.Unit * math.min(distance, speed * dt)
+		end
+		-- Turn smoothly toward the server's heading.
+		local goalYaw = data:GetAttribute("Yaw") or g.yaw
+		local diff = (goalYaw - g.yaw + math.pi) % (2 * math.pi) - math.pi
+		g.yaw += diff * math.min(1, dt * 10)
+		local ground = CFrame.new(g.position) * CFrame.Angles(0, g.yaw, 0)
+		local walking = data:GetAttribute("Moving") == true
+		if g.rig then
+			FreekAnimator.pose(g.rig, ground, t * (if data:GetAttribute("Chasing") then 1.6 else 1), walking)
+		else
+			g.model:PivotTo(ground)
+		end
+		if g.label then
+			local chasing = data:GetAttribute("Chasing") == true
+			g.label.TextColor3 = if chasing then Color3.fromRGB(255, 80, 80) else Color3.new(1, 1, 1)
+			local title = string.upper(data:GetAttribute("Title") or "")
+			g.label.Text = if chasing then "😡 " .. title else title
+		end
+	end
+end
+
+function GuardianFX.start()
+	local folder = ReplicatedStorage:WaitForChild("Guardians", 30)
+	if not folder then
+		return
+	end
+	for _, data in folder:GetChildren() do
+		task.spawn(add, data)
+	end
+	folder.ChildAdded:Connect(add)
+	RunService.RenderStepped:Connect(step)
+end
+
+return GuardianFX
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="55">
           <Properties>
             <string name="Name">Hud</string>
-            <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, event chip, menu tabs, leaderboard,
--- gate button and pop-up notifications. Windows (Shop, Freeks, ...) live in Main.
+            <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, Speed, event chip, menu buttons, leaderboard,
+-- gate status, the zone banner, the carrying banner and pop-up notifications. Windows
+-- (Shop, House, Bag, ...) live in Main.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -15065,7 +14360,10 @@ local Events = require(ReplicatedStorage.Shared.Events)
 local Format = require(ReplicatedStorage.Shared.Format)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Luck = require(ReplicatedStorage.Shared.Luck)
+local Parts = require(ReplicatedStorage.Shared.Parts)
+local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
+local ZoneLayout = require(ReplicatedStorage.Shared.ZoneLayout)
 local ItemPictures = require(script.Parent.ItemPictures)
 local UI = require(script.Parent.UI)
 
@@ -15194,6 +14492,231 @@ function Hud.money(screen: ScreenGui)
 		boost.Visible = rebirths > 0
 		boost.Text = "x" .. tostring(Config.incomeMultiplier(rebirths))
 	end
+end
+
+--------------------------------------------------------------------------------
+-- Speed
+--------------------------------------------------------------------------------
+
+-- A blue pill next to the money: your Speed (trained on the treadmill) and how fast you
+-- run. While you're training it glows and shows +speed a second.
+function Hud.speed(screen: ScreenGui)
+	local pill = UI.glass({
+		Name = "Speed",
+		Position = UDim2.fromOffset(270, 12),
+		Size = UDim2.fromOffset(200, 62),
+		BackgroundColor3 = Color3.fromRGB(50, 130, 245),
+		Parent = screen,
+	}, { UI.corner(20) })
+	text("⚡", 32, {
+		Position = UDim2.fromOffset(8, 0),
+		Size = UDim2.fromOffset(40, 62),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Parent = pill,
+	})
+	local amount = text("0", 28, {
+		Position = UDim2.fromOffset(52, 4),
+		Size = UDim2.new(1, -60, 0, 32),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = Color3.fromRGB(150, 230, 255),
+		Parent = pill,
+	})
+	local run = text("🏃 16", 15, {
+		Position = UDim2.fromOffset(52, 35),
+		Size = UDim2.new(1, -60, 0, 18),
+		TextColor3 = Color3.fromRGB(230, 240, 255),
+		Parent = pill,
+	})
+	local ring = pill:FindFirstChildOfClass("UIStroke")
+	local shown = 0
+	local last, lastTime = nil, os.clock()
+	local gain = 0
+	RunService.RenderStepped:Connect(function(dt)
+		local target = player:GetAttribute("Speed") or 0
+		if last and target > last then
+			gain = (target - last) / math.max(os.clock() - lastTime, 0.05)
+		end
+		if target ~= last then
+			last, lastTime = target, os.clock()
+		end
+		shown += (target - shown) * math.min(1, dt * 8)
+		if math.abs(target - shown) < 1 then
+			shown = target
+		end
+		amount.Text = Format.number(shown)
+		local training = player:GetAttribute("Training") == true
+		if training then
+			run.Text = "+" .. Format.number(gain) .. " ⚡/s  TRAINING!"
+			run.TextColor3 = Color3.fromRGB(255, 235, 110)
+			ring.Color = Color3.fromRGB(255, 230, 90):Lerp(UI.OUTLINE, (math.sin(os.clock() * 8) + 1) / 2)
+		else
+			run.Text = "🏃 Run speed " .. string.format("%.0f", Parts.walkSpeed(target))
+			run.TextColor3 = Color3.fromRGB(230, 240, 255)
+			ring.Color = UI.OUTLINE
+		end
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- Zone banner
+--------------------------------------------------------------------------------
+
+-- Walking into a zone shows its name and the Speed it needs: green if you have it, a red
+-- warning if its guardian will catch you.
+function Hud.zoneBanner(screen: ScreenGui)
+	local banner = UI.glass({
+		Name = "ZoneBanner",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.26),
+		Size = UDim2.fromOffset(460, 96),
+		Visible = false,
+		Parent = screen,
+	}, { UI.corner(22) })
+	local name = text("", 40, {
+		Position = UDim2.fromOffset(0, 6),
+		Size = UDim2.new(1, 0, 0, 46),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		FontFace = UI.fonts.heavy,
+		Parent = banner,
+	})
+	local need = text("", 19, {
+		Position = UDim2.fromOffset(0, 54),
+		Size = UDim2.new(1, 0, 0, 30),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Parent = banner,
+	})
+	local scale = UI.new("UIScale", { Parent = banner })
+	local current = nil
+	local showId = 0
+	task.spawn(function()
+		while true do
+			task.wait(0.2)
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			local zone = root and ZoneLayout.zoneAt(root.Position)
+			if zone ~= current then
+				current = zone
+				if zone then
+					local info = Parts.ZONES[zone]
+					local speed = player:GetAttribute("Speed") or 0
+					local fast = speed >= info.speed
+					local theme = Parts.styleById[info.style]
+					name.Text = string.upper(info.name)
+					name.TextColor3 = Rarities.info[theme.rarity].color:Lerp(Color3.new(1, 1, 1), 0.2)
+					if fast then
+						need.Text = "⚡ You're fast enough! Grab a part and run!"
+						need.TextColor3 = colors.money
+						banner.BackgroundColor3 = Color3.fromRGB(50, 150, 90)
+					else
+						need.Text = "⚠️ Needs ⚡"
+							.. Format.number(info.speed)
+							.. " Speed! "
+							.. info.title
+							.. " will catch you!"
+						need.TextColor3 = Color3.fromRGB(255, 230, 230)
+						banner.BackgroundColor3 = colors.red
+					end
+					showId += 1
+					local id = showId
+					banner.Visible = true
+					scale.Scale = 0.4
+					TweenService:Create(scale, TweenInfo.new(0.3, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+					task.delay(3.5, function()
+						if showId == id then
+							banner.Visible = false
+						end
+					end)
+				end
+			end
+		end
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- Carrying
+--------------------------------------------------------------------------------
+
+-- While you carry a part: a pulsing banner telling you to run home, and a glowing beam
+-- from you to your gate so you never get lost.
+function Hud.carrying(screen: ScreenGui)
+	local banner = UI.glass({
+		Name = "Carrying",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -160),
+		Size = UDim2.fromOffset(0, 50),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundColor3 = Color3.fromRGB(255, 150, 40),
+		Visible = false,
+		Parent = screen,
+	}, {
+		UI.corner(25),
+		UI.new("UIPadding", { PaddingLeft = UDim.new(0, 20), PaddingRight = UDim.new(0, 20) }),
+	})
+	local label = text("", 22, {
+		Size = UDim2.fromOffset(0, 50),
+		AutomaticSize = Enum.AutomaticSize.X,
+		FontFace = UI.fonts.heavy,
+		Parent = banner,
+	})
+	local beam, from, target
+	local function clear()
+		for _, thing in { beam, from, target } do
+			if thing then
+				thing:Destroy()
+			end
+		end
+		beam, from, target = nil, nil, nil
+	end
+	local function update()
+		local partId = player:GetAttribute("Carrying")
+		local info = partId and Parts.byId[partId]
+		banner.Visible = info ~= nil
+		clear()
+		if not info then
+			return
+		end
+		label.Text = "🏠  " .. string.upper(info.name) .. " · RUN HOME!"
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local plotIndex = player:GetAttribute("Plot")
+		local plot = plotIndex
+			and Workspace:FindFirstChild("Plots")
+			and Workspace.Plots:FindFirstChild("Plot" .. plotIndex)
+		local origin = plot and plot:GetAttribute("Origin")
+		if root and typeof(origin) == "CFrame" then
+			target = Instance.new("Part")
+			target.Anchored = true
+			target.CanCollide = false
+			target.CanQuery = false
+			target.Transparency = 1
+			target.Size = Vector3.one
+			target.CFrame = origin * CFrame.new(0, 3, -26)
+			target.Parent = Workspace
+			local a1 = Instance.new("Attachment")
+			a1.Parent = target
+			from = Instance.new("Attachment")
+			from.Position = Vector3.new(0, -2, 0)
+			from.Parent = root
+			beam = Instance.new("Beam")
+			beam.Attachment0 = from
+			beam.Attachment1 = a1
+			beam.Width0 = 0.8
+			beam.Width1 = 0.8
+			beam.FaceCamera = true
+			beam.LightEmission = 1
+			beam.Color = ColorSequence.new(Color3.fromRGB(110, 255, 140))
+			beam.Transparency = NumberSequence.new(0.2)
+			beam.Parent = target
+		end
+	end
+	player:GetAttributeChangedSignal("Carrying"):Connect(update)
+	update()
+	-- Pulse.
+	RunService.RenderStepped:Connect(function()
+		if banner.Visible then
+			banner.BackgroundColor3 = Color3.fromRGB(255, 150, 40):Lerp(colors.red, (math.sin(os.clock() * 6) + 1) / 2)
+		end
+	end)
 end
 
 --------------------------------------------------------------------------------
@@ -16080,7 +15603,7 @@ function Hud.gateStatus(screen: ScreenGui)
 			else
 				-- Pulses red while open so the owner notices.
 				local pulse = (math.sin(os.clock() * 6) + 1) / 2
-				label.Text = "🔓  Barn open · Lock it at your door!"
+				label.Text = "🔓  Gate open · Lock it at your gate!"
 				label.TextColor3 = colors.text
 				ring.Color = colors.red
 				button.BackgroundColor3 = colors.red:Lerp(Color3.fromRGB(120, 25, 35), pulse)
@@ -16157,17 +15680,18 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="61">
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">ItemPictures</string>
-            <string name="Source"><![CDATA[-- 3D pictures for shop items (barn slots, weapons, game passes), built from parts like
--- everything else in the game and shown in ViewportFrames on the item cards.
--- ItemPictures.view(key, height) returns a ViewportFrame; keys are "BarnSlot", a weapon
--- id from Weapons.luau, or a game pass key from GamePasses.luau.
+            <string name="Source"><![CDATA[-- 3D pictures for shop items (the treadmill, weapons, game passes), house parts and the
+-- side menu, built from parts like everything else in the game and shown in
+-- ViewportFrames. ItemPictures.view(key, height) returns a ViewportFrame; keys are
+-- "Treadmill", a weapon id from Weapons.luau, or a game pass key from GamePasses.luau.
+-- ItemPictures.part(partId) pictures a house part; ItemPictures.icon(key) a menu icon.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
+local HouseModel = require(ReplicatedStorage.Shared.HouseModel)
 local WeaponModel = require(ReplicatedStorage.Shared.WeaponModel)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 
@@ -16248,31 +15772,64 @@ local function plus(model, position: Vector3, size: number)
 	part(model, { Size = Vector3.new(size * 0.32, size, size * 0.32), CFrame = CFrame.new(position), Color = green })
 end
 
--- A glowing pad like the ones in the barn, with a Freek standing on it.
-local function padWithFreek(model, species: string)
-	cylinder(model, CFrame.new(0, 0.3, 0), 0.6, 5, rgb(70, 70, 85))
-	cylinder(model, CFrame.new(0, 0.62, 0), 0.06, 4.4, rgb(90, 230, 255), Enum.Material.Neon)
-	local freek, height = FreekModel.build(species)
-	freek:PivotTo(CFrame.new(0, 0.65, 0))
-	for _, p in freek:GetDescendants() do
-		if p:IsA("BasePart") then
-			p.Parent = model
-		end
-	end
-	freek:Destroy()
-	return height
-end
-
 local BUILDERS = {}
 
--- An extra barn slot: a pad with a Freek on it and a big plus.
-function BUILDERS.BarnSlot(model)
-	local height = padWithFreek(model, "Oinkle")
-	plus(model, Vector3.new(-2.6, height + 0.8, 0), 1.8)
+-- A chunky orange backpack.
+local function backpack(model, plusSign: boolean)
+	local orange = rgb(255, 140, 50)
+	ball(model, Vector3.new(0, 2.4, 0), Vector3.new(3.6, 4.4, 2.4), orange)
+	ball(model, Vector3.new(0, 1.6, -1.05), Vector3.new(2.6, 2, 1), rgb(255, 175, 80))
+	part(model, { Size = Vector3.new(2.4, 0.25, 0.3), CFrame = CFrame.new(0, 2.5, -1.25), Color = rgb(90, 60, 40) })
+	ball(model, Vector3.new(0, 2.5, -1.4), 0.35, GOLD, Enum.Material.Foil)
+	for _, x in { -1.1, 1.1 } do
+		part(model, {
+			Size = Vector3.new(0.45, 3.6, 0.3),
+			CFrame = CFrame.new(x, 2.5, 1.25) * CFrame.Angles(0, 0, math.rad(x * 4)),
+			Color = rgb(90, 60, 40),
+		})
+	end
+	cylinder(model, CFrame.new(0, 4.6, 0) * CFrame.Angles(math.pi / 2, 0, 0), 0.4, 1.2, rgb(90, 60, 40))
+	if plusSign then
+		plus(model, Vector3.new(2.4, 4.2, -0.6), 1.6)
+	end
 end
-BUILDERS.ExtraSlot1 = BUILDERS.BarnSlot
-BUILDERS.ExtraSlot2 = BUILDERS.BarnSlot
-BUILDERS.ExtraSlot3 = BUILDERS.BarnSlot
+
+function BUILDERS.ExtraSlot1(model)
+	backpack(model, true)
+end
+BUILDERS.ExtraSlot2 = BUILDERS.ExtraSlot1
+BUILDERS.ExtraSlot3 = BUILDERS.ExtraSlot1
+
+-- The treadmill (Shop): a belt, rails and a glowing console.
+function BUILDERS.Treadmill(model)
+	local frame = rgb(60, 62, 75)
+	part(
+		model,
+		{ Size = Vector3.new(3, 0.6, 6), CFrame = CFrame.new(0, 0.3, 0), Color = frame, Material = Enum.Material.Metal }
+	)
+	part(model, { Size = Vector3.new(2.4, 0.2, 5.2), CFrame = CFrame.new(0, 0.7, 0.3), Color = rgb(30, 30, 36) })
+	for _, x in { -1.4, 1.4 } do
+		part(model, { Size = Vector3.new(0.3, 0.3, 5.6), CFrame = CFrame.new(x, 0.8, 0.2), Color = rgb(90, 200, 255) })
+		part(model, { Size = Vector3.new(0.25, 2.6, 0.25), CFrame = CFrame.new(x, 1.9, -2.6), Color = frame })
+	end
+	part(model, { Size = Vector3.new(3, 0.3, 0.3), CFrame = CFrame.new(0, 3.1, -2.6), Color = rgb(90, 200, 255) })
+	part(model, {
+		Size = Vector3.new(2.2, 1.1, 0.3),
+		CFrame = CFrame.new(0, 3.8, -2.8) * CFrame.Angles(math.rad(20), 0, 0),
+		Color = rgb(90, 220, 255),
+		Material = Enum.Material.Neon,
+	})
+	-- A lightning bolt over it.
+	local yellow = rgb(255, 220, 40)
+	for _, bit in { { 1.9, 5, -30 }, { 1.6, 3.9, 35 }, { 2, 2.8, -30 } } do
+		part(model, {
+			Size = Vector3.new(0.6, 1.4, 0.4),
+			CFrame = CFrame.new(bit[1], bit[2], -0.6) * CFrame.Angles(0, 0, math.rad(bit[3])),
+			Color = yellow,
+			Material = Enum.Material.Neon,
+		})
+	end
+end
 
 -- 2x Coins: a pile of gold coins and a green cash stack.
 function BUILDERS.DoubleCoins(model)
@@ -16359,26 +15916,27 @@ function BUILDERS.VIP(model)
 	end
 end
 
--- Extra Fusion Den: two hay bales and a pink heart.
+-- Strong Arms: a big dumbbell.
 function BUILDERS.ExtraPen(model)
-	for _, x in { -1.4, 1.4 } do
-		part(model, {
-			Size = Vector3.new(2.4, 1.5, 1.6),
-			CFrame = CFrame.new(x, 0.75, 0),
-			Color = rgb(225, 190, 95),
-			Material = Enum.Material.Sand,
-		})
-		part(model, { Size = Vector3.new(0.2, 1.55, 1.65), CFrame = CFrame.new(x, 0.75, 0), Color = rgb(140, 100, 55) })
+	local dark = rgb(55, 55, 70)
+	cylinder(
+		model,
+		CFrame.new(0, 1.4, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		5,
+		0.45,
+		rgb(190, 190, 205),
+		Enum.Material.Metal
+	)
+	for _, x in { -2.1, -1.6, 1.6, 2.1 } do
+		local big = math.abs(x) > 2
+		cylinder(
+			model,
+			CFrame.new(x, 1.4, 0) * CFrame.Angles(0, 0, math.pi / 2),
+			0.45,
+			if big then 2.2 else 2.8,
+			if big then dark else rgb(255, 90, 160)
+		)
 	end
-	local pink = rgb(255, 90, 170)
-	ball(model, Vector3.new(-0.45, 3, 0), 1.2, pink, Enum.Material.Neon)
-	ball(model, Vector3.new(0.45, 3, 0), 1.2, pink, Enum.Material.Neon)
-	part(model, {
-		Size = Vector3.new(1.25, 1.25, 1),
-		CFrame = CFrame.new(0, 2.5, 0) * CFrame.Angles(0, 0, math.rad(45)),
-		Color = pink,
-		Material = Enum.Material.Neon,
-	})
 end
 
 --------------------------------------------------------------------------------
@@ -16558,37 +16116,7 @@ BUILDERS.MenuLuck = function(model)
 	sparkle(model, center + Vector3.new(2.2, -1.2, -0.6), 0.6)
 end
 
--- Freeks: Oinkle, the mascot.
-BUILDERS.MenuFreeks = function(model)
-	local freek = FreekModel.build("Oinkle")
-	freek:PivotTo(CFrame.new())
-	for _, p in freek:GetDescendants() do
-		if p:IsA("BasePart") then
-			p.Parent = model
-		end
-	end
-	freek:Destroy()
-end
-
--- Fuse: a round potion flask bubbling purple-to-pink.
-BUILDERS.MenuFuse = function(model)
-	local glass = rgb(215, 240, 255)
-	ball(model, Vector3.new(0, 1.9, 0), 3.6, glass, Enum.Material.Glass).Transparency = 0.55
-	ball(model, Vector3.new(0, 1.65, 0), Vector3.new(3.15, 2.7, 3.15), rgb(170, 80, 255))
-	ball(model, Vector3.new(0, 2.55, 0), Vector3.new(2.7, 0.7, 2.7), rgb(255, 80, 190))
-	-- A highlight on the glass.
-	ball(model, Vector3.new(-0.9, 2.7, -1.25), Vector3.new(0.45, 0.9, 0.2), rgb(255, 255, 255))
-	cylinder(model, CFrame.new(0, 4.0, 0), 1.3, 1.1, glass, Enum.Material.Glass).Transparency = 0.35
-	cylinder(model, CFrame.new(0, 4.55, 0), 0.25, 1.35, glass)
-	cylinder(model, CFrame.new(0, 4.95, 0), 0.7, 0.95, rgb(160, 100, 55))
-	-- Bubbles.
-	for _, b in { { 0.5, 1.4, 0.45 }, { -0.6, 1.0, 0.35 }, { 0.2, 2.0, 0.3 }, { 0.9, 5.7, 0.4 }, { 0.3, 6.4, 0.3 } } do
-		ball(model, Vector3.new(b[1], b[2], -0.8), b[3], rgb(255, 210, 245), Enum.Material.Neon)
-	end
-	sparkle(model, Vector3.new(-1.9, 4.6, -0.5), 0.8)
-end
-
--- Book: the Freekdex, open, with a ribbon.
+-- Book: the Catalog, open, with a ribbon.
 BUILDERS.MenuBook = function(model)
 	local cover, pages, lines = rgb(225, 45, 80), rgb(255, 250, 235), rgb(190, 180, 170)
 	local center = Vector3.new(0, 2, 0)
@@ -16612,7 +16140,7 @@ BUILDERS.MenuBook = function(model)
 			})
 		end
 	end
-	-- A little Freek face on the left page and a ribbon hanging out.
+	-- A little face on the left page and a ribbon hanging out.
 	ball(model, center + Vector3.new(-1.05, 0.2, -0.45), Vector3.new(0.9, 0.9, 0.3), rgb(255, 160, 190))
 	ball(model, center + Vector3.new(-1.25, 0.3, -0.62), Vector3.new(0.22, 0.22, 0.1), rgb(30, 30, 40))
 	ball(model, center + Vector3.new(-0.85, 0.3, -0.62), Vector3.new(0.22, 0.22, 0.1), rgb(30, 30, 40))
@@ -16624,33 +16152,43 @@ BUILDERS.MenuBook = function(model)
 	sparkle(model, center + Vector3.new(2.2, 1.9, -0.4), 0.8)
 end
 
--- Trade: two fat arrows passing each other.
-BUILDERS.MenuTrade = function(model)
-	for _, arrow in { { 1, 1.1, rgb(80, 220, 110) }, { -1, -0.4, rgb(70, 160, 255) } } do
-		local dir, y, color = arrow[1], arrow[2], arrow[3]
-		local x0 = -dir * 0.6
-		part(model, {
-			Size = Vector3.new(2.6, 0.95, 0.7),
-			CFrame = CFrame.new(x0, 2 + y, -dir * 0.1),
-			Color = color,
-		})
-		triangle(
-			model,
-			Vector3.new(x0 + dir * 1.25, 2 + y, -dir * 0.1),
-			Vector3.new(0, 1, 0),
-			Vector3.new(dir, 0, 0),
-			2.1,
-			1.4,
-			0.7,
-			color
-		)
-		-- A light stripe along the top edge.
-		part(model, {
-			Size = Vector3.new(2.4, 0.2, 0.1),
-			CFrame = CFrame.new(x0, 2 + y + 0.25, -dir * 0.1 - 0.36),
-			Color = color:Lerp(Color3.new(1, 1, 1), 0.5),
-		})
+-- House: a little house made of real house parts.
+BUILDERS.MenuHouse = function(model)
+	local function add(partId: string, offset: CFrame)
+		local item = HouseModel.item(partId)
+		item:PivotTo(offset)
+		for _, p in item:GetDescendants() do
+			if p:IsA("BasePart") then
+				p.Parent = model
+			end
+		end
+		item:Destroy()
 	end
+	add("Candy_Walls", CFrame.new(0, 0, 0))
+	add("Royal_Roof", CFrame.new(0, 4.8, 0))
+	add("Basic_Door", CFrame.new(0, 0.4, -2.3) * CFrame.new(0, 0, 0))
+end
+
+-- Bag: the backpack.
+BUILDERS.MenuBag = function(model)
+	backpack(model, false)
+end
+
+-- Catalog: the book.
+BUILDERS.MenuCatalog = function(model)
+	BUILDERS.MenuBook(model)
+end
+
+-- Home: a fancy front door (it takes you home).
+BUILDERS.MenuHome = function(model)
+	local item = HouseModel.item("Royal_Door")
+	for _, p in item:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Parent = model
+		end
+	end
+	item:Destroy()
+	sparkle(model, Vector3.new(2, 4.6, -0.8), 0.9)
 end
 
 -- Rebirth: a big gold star with a bevel.
@@ -16772,6 +16310,31 @@ function ItemPictures.icon(key: string): (ViewportFrame, (number) -> ())
 	return frame, sway
 end
 
+-- A house part, framed to fit, seen a little from above and the side. silhouette = true
+-- draws it solid black ("???" in the Catalog).
+function ItemPictures.part(partId: string, height: number?, silhouette: boolean?): ViewportFrame
+	local frame = Instance.new("ViewportFrame")
+	frame.BackgroundTransparency = 1
+	frame.Size = UDim2.new(1, 0, 0, height or 100)
+	frame.Ambient = Color3.fromRGB(195, 195, 200)
+	frame.LightColor = Color3.fromRGB(255, 250, 240)
+	frame.LightDirection = Vector3.new(-1, -1.4, 1)
+	frame.ImageColor3 = if silhouette then Color3.new(0, 0, 0) else Color3.new(1, 1, 1)
+	local model = HouseModel.item(partId)
+	model.Parent = frame
+	local lo, hi = visibleBounds(model)
+	local center = (lo + hi) / 2
+	local extent = hi - lo
+	local camera = Instance.new("Camera")
+	camera.FieldOfView = 30
+	local fit = math.max(extent.Y, math.max(extent.X, extent.Z) * 0.8 / 1.6) / 2 * 1.12
+	local distance = fit / math.tan(math.rad(15)) + extent.Z / 2
+	camera.CFrame = CFrame.lookAt(center + Vector3.new(0.45, 0.4, -1).Unit * distance, center)
+	camera.Parent = frame
+	frame.CurrentCamera = camera
+	return frame
+end
+
 function ItemPictures.has(key: string): boolean
 	return BUILDERS[key] ~= nil or Weapons.list[key] ~= nil
 end
@@ -16815,7 +16378,7 @@ return ItemPictures
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="62">
+        <Item class="ModuleScript" referent="57">
           <Properties>
             <string name="Name">LuckyWheel</string>
             <string name="Source"><![CDATA[-- The Lucky Wheel, drawn like the prize wheels in the big simulators: bright pie slices
@@ -16846,11 +16409,11 @@ local SLICE_COLORS = {
 local ICONS = {
 	Coins = "💰",
 	["Big Coins"] = "💵",
-	["Golden Freek"] = "⭐",
-	["Monster Egg"] = "🥚",
+	["Golden Part"] = "⭐",
+	["Mystery Box"] = "📦",
 	["Huge Coins"] = "🤑",
-	["Rainbow Freek"] = "🌈",
-	["Mega Egg"] = "🔮",
+	["Rainbow Part"] = "🌈",
+	["Mega Box"] = "🎁",
 	JACKPOT = "👑",
 }
 
@@ -16858,11 +16421,11 @@ local ICONS = {
 local SHORT = {
 	Coins = "COINS",
 	["Big Coins"] = "BIG $",
-	["Golden Freek"] = "GOLDEN",
-	["Monster Egg"] = "EGG",
+	["Golden Part"] = "GOLDEN",
+	["Mystery Box"] = "BOX",
 	["Huge Coins"] = "HUGE $",
-	["Rainbow Freek"] = "RAINBOW",
-	["Mega Egg"] = "MEGA EGG",
+	["Rainbow Part"] = "RAINBOW",
+	["Mega Box"] = "MEGA BOX",
 	JACKPOT = "JACKPOT",
 }
 
@@ -17111,22 +16674,22 @@ return LuckyWheel
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="63">
+        <Item class="LocalScript" referent="58">
           <Properties>
             <string name="Name">Main</string>
-            <string name="Source"><![CDATA[-- The player's screen: money display, menu buttons, and the Shop / Freeks / Breed / Book
--- windows. The server is the source of truth; this only shows state and sends requests.
+            <string name="Source"><![CDATA[-- The player's screen: money and Speed, the side menu, and the Shop / Luck / House / Bag /
+-- Catalog / Rebirth / Store windows. The server is the source of truth; this only shows
+-- state and sends requests.
 
 local CollectionService = game:GetService("CollectionService")
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
-local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
-print("[Fuse a Freek] Client starting")
+print("[Steal a Home] Client starting")
 
 -- If the game hasn't loaded after a few seconds, show what the server is stuck on.
 local clientReady = false
@@ -17160,29 +16723,23 @@ task.delay(8, function()
 end)
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Drops = require(Shared.Drops)
-local Breeding = require(Shared.Breeding)
 local Config = require(Shared.Config)
-local GateTiers = require(Shared.GateTiers)
 local Format = require(Shared.Format)
-local FreekAnimator = require(ReplicatedStorage.Shared.FreekAnimator)
-local FreekModel = require(Shared.FreekModel)
-local FreekUtil = require(Shared.FreekUtil)
-local Freeks = require(Shared.Freeks)
 local GamePasses = require(Shared.GamePasses)
+local HouseUtil = require(Shared.HouseUtil)
 local Luck = require(Shared.Luck)
 local Mutations = require(Shared.Mutations)
+local Parts = require(Shared.Parts)
 local Rarities = require(Shared.Rarities)
 local Remotes = require(Shared.Remotes)
-local Seasons = require(Shared.Seasons)
 local Weapons = require(Shared.Weapons)
-local Ambient = require(script.Parent.Ambient)
-local BarnFX = require(script.Parent.BarnFX)
 local AdminPanel = require(script.Parent.AdminPanel)
+local Ambient = require(script.Parent.Ambient)
+local EventFX = require(script.Parent.EventFX)
+local GuardianFX = require(script.Parent.GuardianFX)
+local Hud = require(script.Parent.Hud)
 local ItemPictures = require(script.Parent.ItemPictures)
 local LuckyWheel = require(script.Parent.LuckyWheel)
-local EventFX = require(script.Parent.EventFX)
-local Hud = require(script.Parent.Hud)
 local PackReveal = require(script.Parent.PackReveal)
 local UI = require(script.Parent.UI)
 
@@ -17202,13 +16759,14 @@ local discoveries = {}
 --------------------------------------------------------------------------------
 
 local screen = UI.new("ScreenGui", {
-	Name = "FuseAFreekUI",
+	Name = "StealAHomeUI",
 	ResetOnSpawn = false,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 	Parent = player:WaitForChild("PlayerGui"),
 })
 
 local setRebirthBoost = Hud.money(screen)
+Hud.speed(screen)
 Hud.eventChip(screen)
 Hud.luckChip(screen)
 Hud.eventBanner(screen)
@@ -17216,6 +16774,8 @@ AdminPanel.start(screen)
 EventFX.start()
 Hud.leaderboard(screen)
 Hud.vipChatTag()
+Hud.zoneBanner(screen)
+Hud.carrying(screen)
 local toast = Hud.toasts(screen)
 
 -- Windows: a light body under a header bar in the window's own colour, with a slanted
@@ -17335,10 +16895,7 @@ local body = UI.new("ScrollingFrame", {
 
 local currentWindow = nil
 local renderers = {}
-local breedSelection = {}
-local penCountdowns = {} -- { { label, button, endsAt } } for the Fuse window
-local trade = nil -- the server's view of my current trade, or nil
-local tradeStatusLabel = nil
+local catalogStyle = "Scrap" -- which style the Catalog is showing
 
 local function clearBody()
 	for _, child in body:GetChildren() do
@@ -17346,8 +16903,6 @@ local function clearBody()
 			child:Destroy()
 		end
 	end
-	table.clear(penCountdowns)
-	tradeStatusLabel = nil
 end
 
 local function render()
@@ -17389,44 +16944,38 @@ end, {
 })
 
 -- A line of text over the cards: short ones are bold section titles, long ones are hints.
-local function heading(text: string, order: number)
-	local title = #text <= 24
+local function heading(text: string, order: number, color: Color3?)
+	local title = #text <= 28
 	return UI.label(text, {
 		Size = UDim2.new(1, 0, 0, if title then 32 else 26),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		FontFace = if title then UI.fonts.heavy else UI.fonts.bold,
-		TextColor3 = if title then Color3.new(1, 1, 1) else colors.muted,
+		TextColor3 = color or (if title then Color3.new(1, 1, 1) else colors.muted),
 		LayoutOrder = order,
 		Parent = body,
 	})
 end
 
-local function rarityColor(speciesId: string): Color3
-	return Rarities.info[Freeks.byId[speciesId].rarity].color
-end
-
-local function nameColor(freek): Color3
-	local top = Mutations.top(freek.mutations)
-	if top then
-		return Mutations.byId[top].color
+-- A row of buttons across the window.
+local function buttonRow(order: number, buttons: { GuiButton })
+	local row = UI.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 48),
+		LayoutOrder = order,
+		Parent = body,
+	}, {
+		UI.new("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			Padding = UDim.new(0, 10),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	for i, button in buttons do
+		button.Size = UDim2.fromOffset(220, 46)
+		button.LayoutOrder = i
+		button.Parent = row
 	end
-	return rarityColor(freek.species)
-end
-
--- My Freeks, best earners first.
-local function sortedFreeks()
-	local list = {}
-	for uid, freek in state.freeks do
-		table.insert(list, { uid = uid, freek = freek })
-	end
-	table.sort(list, function(x, y)
-		local ix, iy = FreekUtil.income(x.freek), FreekUtil.income(y.freek)
-		if ix ~= iy then
-			return ix > iy
-		end
-		return x.uid < y.uid
-	end)
-	return list
+	return row
 end
 
 -- Button that needs a second tap within 3 seconds.
@@ -17450,39 +16999,159 @@ local function confirmButton(text: string, color: Color3, onConfirm: () -> ())
 	return button
 end
 
+-- A part's name, coloured by its mutation (or rarity).
+local function partColor(record): Color3
+	local top = Mutations.top(record.mutations)
+	if top then
+		return Mutations.byId[top].color
+	end
+	return Parts.color(record.id)
+end
+
+-- A wide glossy banner card (treadmill, Starter Pack, box bundles, VIP): returns the frame.
+local function banner(order: number, colorA: Color3, colorB: Color3, height: number)
+	local frame = UI.new("Frame", {
+		Size = UDim2.new(1, -8, 0, height),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		LayoutOrder = order,
+		Parent = body,
+	}, {
+		UI.corner(18),
+		UI.stroke(nil, 4),
+		UI.new("UIGradient", { Color = ColorSequence.new(colorA, colorB), Rotation = 15 }),
+	})
+	UI.new("Frame", {
+		Position = UDim2.fromOffset(6, 5),
+		Size = UDim2.new(1, -12, 0.4, 0),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 0.8,
+		Parent = frame,
+	}, { UI.corner(14) })
+	return frame
+end
+
+local function bannerText(parent: Instance, title: string, lines: string, x: number, color: Color3)
+	local titleLabel = UI.label(title, {
+		Position = UDim2.fromOffset(x, 12),
+		Size = UDim2.new(1, -x - 230, 0, 44),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = color,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = parent,
+	})
+	titleLabel.UIStroke.Thickness = 3
+	return UI.label(lines, {
+		Position = UDim2.fromOffset(x + 2, 58),
+		Size = UDim2.new(1, -x - 232, 0, 70),
+		TextScaled = false,
+		TextSize = 18,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Parent = parent,
+	})
+end
+
+local function bannerButton(parent: Instance, button: GuiButton)
+	button.AnchorPoint = Vector2.new(1, 0.5)
+	button.Position = UDim2.new(1, -20, 0.5, 6)
+	button.Size = UDim2.fromOffset(190, 54)
+	button.Parent = parent
+	return button
+end
+
+-- A row of Mystery Box pictures inside a banner.
+local function boxRow(parent: Instance, crateId: string, count: number, x: number, size: number)
+	for k = 1, count do
+		local view = UI.boxViewport(crateId, size)
+		view.Position = UDim2.fromOffset(x + (k - 1) * size * 0.62, 18)
+		view.Size = UDim2.fromOffset(size, size)
+		view.ZIndex = 3
+		view.Parent = parent
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Shop: the treadmill, the zones and weapons
+--------------------------------------------------------------------------------
+
+local function speedGain(level: number): number
+	return Config.treadmillGain(level) * Config.speedMultiplier(state.rebirths) * GamePasses.speedMultiplier(player)
+end
+
 function renderers.Shop()
-	heading("New Freeks fly out of the cannons! Grab one while it wanders and carry it home.", 1)
-	heading("Barn", 3)
-	local yard = UI.grid(220, 220)
-	yard.LayoutOrder = 4
-	yard.Parent = body
-	local bought = state.boughtSlots or state.slots
-	local maxed = bought >= Config.MAX_SLOTS
-	local price = Config.slotPrice(bought)
-	UI.card({
-		picture = "BarnSlot",
-		lines = {
-			{ "Barn Slots", colors.text, 26 },
-			{
-				bought .. " / " .. Config.MAX_SLOTS .. " bought" .. (if (state.passSlots or 0) > 0
-					then "  ·  +" .. state.passSlots .. " from passes"
-					else ""),
-				colors.muted,
+	-- The treadmill, big across the top.
+	local level = state.treadmill or 1
+	local frame = banner(1, Color3.fromRGB(70, 160, 255), Color3.fromRGB(120, 90, 255), 150)
+	local picture = ItemPictures.view("Treadmill", 140)
+	picture.Position = UDim2.fromOffset(10, 5)
+	picture.Size = UDim2.fromOffset(150, 140)
+	picture.Parent = frame
+	local maxed = level >= Config.TREADMILL_MAX
+	bannerText(
+		frame,
+		"TREADMILL  LV " .. level,
+		"Run on the treadmill in your yard to train ⚡ Speed.\nNow: +"
+			.. Format.number(speedGain(level))
+			.. " ⚡/s"
+			.. (
+				if maxed
+					then "  (max level!)"
+					else "   ➜   Next: +" .. Format.number(speedGain(level + 1)) .. " ⚡/s"
+			),
+		170,
+		Color3.fromRGB(150, 230, 255)
+	)
+	local cost = Config.treadmillCost(level)
+	bannerButton(
+		frame,
+		if maxed
+			then UI.button("MAXED!", colors.gray, function() end)
+			else UI.pricePill("UPGRADE " .. Format.money(cost), function()
+				send("UpgradeTreadmill")
+			end)
+	)
+
+	-- The zones and the Speed each one needs.
+	local speed = player:GetAttribute("Speed") or state.speed or 0
+	heading("Zones", 2)
+	heading("Each zone's guardian is fast! Train enough ⚡ Speed to outrun it with a part.", 3)
+	local grid = UI.grid(200, 250)
+	grid.LayoutOrder = 4
+	grid.Parent = body
+	for i, zone in Parts.ZONES do
+		local style = Parts.styleById[zone.style]
+		local ready = speed >= zone.speed
+		local card = UI.card({
+			part = zone.style .. "_Door",
+			pictureHeight = 100,
+			accent = Rarities.info[style.rarity].color,
+			border = if ready then colors.money else nil,
+			lines = {
+				{ zone.name, nil, 24 },
+				{
+					"⚡ " .. (if zone.speed > 0 then Format.number(zone.speed) else "Any") .. " Speed",
+					Color3.fromRGB(150, 230, 255),
+					20,
+				},
+				{ style.name .. " parts · " .. style.rarity, colors.text, 18 },
+				{
+					if ready
+						then "✅ You're fast enough!"
+						else "🔒 Need " .. Format.number(zone.speed - speed) .. " more",
+					if ready then colors.money else Color3.fromRGB(255, 200, 200),
+					18,
+				},
 			},
-		},
-		buttons = {
-			if maxed
-				then UI.button("Maxed out!", colors.gray, function() end)
-				else UI.pricePill("BUY " .. Format.money(price), function()
-					send("BuySlot")
-				end, { Size = UDim2.new(1, 0, 0, 36) }),
-		},
-	}).Parent =
-		yard
+		})
+		card.LayoutOrder = i
+		card.Parent = grid
+	end
 
 	heading("Weapons", 5)
+	heading("Bonk a thief carrying a part and they drop it!", 6)
 	local weapons = UI.grid(220, 250)
-	weapons.LayoutOrder = 6
+	weapons.LayoutOrder = 7
 	weapons.Parent = body
 	for i, weaponId in Weapons.order do
 		local weapon = Weapons.list[weaponId]
@@ -17510,543 +17179,214 @@ function renderers.Shop()
 	end
 end
 
-function renderers.Freeks()
-	local list = sortedFreeks()
-	local placed = 0
-	for _, item in list do
-		if item.freek.slot then
-			placed += 1
-		end
-	end
-	heading(
-		string.format(
-			"%d Freeks (max %d)  ·  %d / %d in barn",
-			#list,
-			GamePasses.maxFreeks(player),
-			placed,
-			state.slots
-		),
-		1
-	)
-	if #list == 0 then
-		heading("No Freeks yet! Buy one in the Shop.", 2)
-		return
-	end
+--------------------------------------------------------------------------------
+-- House: what's in each slot
+--------------------------------------------------------------------------------
 
-	local grid = UI.grid(150, 270)
-	grid.LayoutOrder = 3
-	grid.Parent = body
-	for i, item in list do
-		local uid, freek = item.uid, item.freek
-		local status, statusColor
-		if freek.breeding then
-			status, statusColor = "Fusing", colors.pink
-		elseif freek.slot then
-			status, statusColor = "In barn", colors.money
-		else
-			status, statusColor = "In backpack (not earning)", colors.muted
-		end
-
-		local buttons = {}
-		if not freek.breeding then
-			if freek.slot then
-				table.insert(
-					buttons,
-					UI.button("Take out", colors.orange, function()
-						send("Unplace", uid)
-					end)
-				)
-			else
-				table.insert(
-					buttons,
-					UI.button("Put in barn", colors.green, function()
-						send("Place", uid)
-					end)
-				)
-			end
-			table.insert(
-				buttons,
-				confirmButton("Sell " .. Format.money(FreekUtil.sellValue(freek)), colors.red, function()
-					send("Sell", uid)
-				end)
-			)
-		end
-
-		local card = UI.card({
-			species = freek.species,
-			mutations = freek.mutations,
-			lines = {
-				{ FreekUtil.displayName(freek), nameColor(freek), 20 },
-				{ FreekUtil.rarityText(freek.species), rarityColor(freek.species), 16 },
-				{ Format.money(FreekUtil.income(freek)) .. "/s", colors.money },
-				{ status, statusColor, 14 },
-			},
-			buttons = buttons,
-		})
-		card.LayoutOrder = i
-		card.Parent = grid
-	end
-end
-
-function renderers.Fuse()
-	-- Pens: what's cooking in each, and a locked card for the Extra Breeding Pen.
-	local pens = GamePasses.penCount(player)
-	local freePen = false
-	local penGrid = UI.grid(300, 250)
-	penGrid.LayoutOrder = 0
-	penGrid.Parent = body
-	for index = 1, #FreekUtil.PEN_KEYS do
-		local breeding = FreekUtil.pen(state, index)
-		local card
-		if breeding then
-			local a, b = state.freeks[breeding.a], state.freeks[breeding.b]
-			local pair = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 100) }, {
-				UI.new("UIListLayout", {
-					FillDirection = Enum.FillDirection.Horizontal,
-					HorizontalAlignment = Enum.HorizontalAlignment.Center,
-				}),
-			})
-			for _, freek in { a, b } do
-				if freek then
-					local view = UI.viewport(freek.species, freek.mutations)
-					view.Size = UDim2.new(0.5, 0, 1, 0)
-					view.Parent = pair
-				end
-			end
-			local countdown = UI.label("", { Size = UDim2.new(1, 0, 0, 22) })
-			local claim = UI.button("Collect!", colors.pink, function()
-				send("ClaimBreed", index)
-			end, { Size = UDim2.new(1, 0, 0, 38) })
-			card = UI.card({
-				lines = { { "Den " .. index, colors.pink, 22 } },
-				buttons = { pair, countdown, claim },
-			})
-			table.insert(penCountdowns, { label = countdown, button = claim, endsAt = breeding.endsAt })
-		elseif index <= pens then
-			freePen = true
-			card = UI.card({
-				lines = {
-					{ "Den " .. index, colors.pink, 22 },
-					{ "Empty. Pick two Freeks below!", colors.muted, 18 },
-				},
-			})
-		else
-			card = UI.card({
-				lines = {
-					{ "🐣", colors.text, 40 },
-					{ "Extra Fusion Den", colors.pink, 22 },
-					{ "Fuse two pairs at once.", colors.muted, 18 },
-				},
-				buttons = {
-					UI.button("Get it in the Store", colors.gray, function()
-						open("Store")
-					end, { Size = UDim2.new(1, 0, 0, 36) }),
-				},
-			})
-		end
-		card.LayoutOrder = index
-		card.Parent = penGrid
-	end
-	if not freePen then
-		heading(if pens > 1 then "Both Fusion Dens are busy!" else "Your Fusion Den is busy!", 1)
-		return
-	end
-
-	-- Drop selections that are no longer valid.
-	for i = #breedSelection, 1, -1 do
-		local freek = state.freeks[breedSelection[i]]
-		if not freek or freek.breeding then
-			table.remove(breedSelection, i)
-		end
-	end
-
-	heading("Both Freeks fuse into one hybrid that earns more than both. Some Ultra pairs make a Secret!", 1)
-
-	local selected = {}
-	for _, uid in breedSelection do
-		selected[uid] = true
-	end
-
-	local ready = #breedSelection == 2
-	local label = "Pick 2 Freeks (" .. #breedSelection .. "/2)"
-	if ready then
-		local a, b = state.freeks[breedSelection[1]], state.freeks[breedSelection[2]]
-		label = "Fuse "
-			.. FreekUtil.displayName(a)
-			.. " + "
-			.. FreekUtil.displayName(b)
-			.. " ("
-			.. Format.time(FreekUtil.breedTime(a, b))
-			.. ")"
-
-		-- What this pair will make: its name once you've made it before, otherwise ???.
-		-- Which Ultra pairs make a Secret stays a surprise.
-		local rarity, bothUltra = Breeding.babyRarity(a, b)
-		local resultId = Breeding.babySpecies(a, b)
-		local result = Freeks.byId[resultId]
-		local resultName = if state.discovered[resultId] and result then result.name else "???"
-		local parts = {
-			"Makes: " .. resultName .. " (" .. rarity .. (if bothUltra then ", or a Secret?!" else "") .. ")",
-			Format.money(Breeding.babyIncome(a, b)) .. "/s",
-		}
-		local odds = Breeding.mutationOdds(a, b)
-		for _, option in odds do
-			table.insert(parts, math.round(option.chance * 100) .. "% " .. option.id)
-		end
-		if #odds == 0 then
-			table.insert(parts, "no mutations")
-		end
-		local prediction = heading(table.concat(parts, "  •  "), 2)
-		prediction.TextColor3 = Rarities.info[rarity].color
-	end
-	UI.button(label, if ready then colors.pink else colors.gray, function()
-		if #breedSelection == 2 then
-			send("StartBreed", breedSelection[1], breedSelection[2])
-			table.clear(breedSelection)
-		end
-	end, { Size = UDim2.new(1, 0, 0, 46), LayoutOrder = 3, Parent = body })
-
-	local grid = UI.grid(140, 190)
+function renderers.House()
+	local income = HouseUtil.houseIncome(state) * GamePasses.coinMultiplier(player)
+	heading("Your house earns " .. Format.money(income) .. "/s", 1, colors.money)
+	heading("Steal better parts from the zones! A better part snaps on by itself.", 2)
+	buttonRow(3, {
+		UI.button("⬆ INSTALL BEST", colors.green, function()
+			send("InstallBest")
+		end),
+	})
+	local grid = UI.grid(200, 270)
 	grid.LayoutOrder = 4
 	grid.Parent = body
-	for i, item in sortedFreeks() do
-		local uid, freek = item.uid, item.freek
-		local isSelected = selected[uid]
+	for i, slot in Parts.SLOTS do
+		local record = HouseUtil.installedRecord(state, slot.id) or { id = Parts.basic(slot.id) }
+		local basic = Parts.isBasic(record.id)
 		local card = UI.card({
-			species = freek.species,
-			mutations = freek.mutations,
-			background = if isSelected then Color3.fromRGB(90, 40, 80) else nil,
-			border = if isSelected then colors.pink else nil,
+			part = record.id,
+			pictureHeight = 110,
+			accent = if basic then Color3.fromRGB(150, 150, 170) else nil,
 			lines = {
-				{ FreekUtil.displayName(freek), nameColor(freek), 20 },
-				{ FreekUtil.rarityText(freek.species), rarityColor(freek.species), 16 },
-				{ if isSelected then "Selected!" else "Tap to pick", colors.muted, 14 },
+				{ slot.icon .. " " .. slot.name, nil, 24 },
+				{ HouseUtil.displayName(record), partColor(record):Lerp(Color3.new(1, 1, 1), 0.2), 20 },
+				{ Format.money(HouseUtil.partIncome(record)) .. "/s", colors.money, 20 },
 			},
-			onClick = function()
-				local index = table.find(breedSelection, uid)
-				if index then
-					table.remove(breedSelection, index)
-				elseif #breedSelection < 2 then
-					table.insert(breedSelection, uid)
-				else
-					breedSelection[2] = uid
-				end
-				render()
-			end,
+			buttons = {
+				if basic
+					then UI.button("Steal a better one!", colors.gray, function()
+						open("Shop")
+					end, { Size = UDim2.new(1, 0, 0, 36) })
+					else UI.button("TAKE OFF", colors.blue, function()
+						send("Uninstall", slot.id)
+					end, { Size = UDim2.new(1, 0, 0, 36) }),
+			},
+			tag = if basic then nil else { Parts.byId[record.id].rarity:upper(), Parts.color(record.id) },
 		})
 		card.LayoutOrder = i
 		card.Parent = grid
 	end
 end
 
-function renderers.Book()
-	local total, found = 0, 0
-	for _, species in Freeks.list do
-		total += 1
-		if state.discovered[species.id] then
-			found += 1
-		end
-	end
-	heading(string.format("You've found %d / %d Freeks", found, total), 1)
+--------------------------------------------------------------------------------
+-- Bag: parts that aren't on the house
+--------------------------------------------------------------------------------
 
-	local grid = UI.grid(150, 220)
-	grid.LayoutOrder = 2
-	grid.Parent = body
-	for _, species in Freeks.list do
-		local discovery = discoveries[species.id]
-		-- Monsters are always shown, so players can see what the crates hold.
-		local known = species.price ~= nil or discovery ~= nil or species.exclusive == true
-		local credit
-		if species.price then
-			credit = "Starter Freek"
-		elseif species.exclusive and not discovery then
-			credit = "Only from Monster Eggs (🍀 Luck tab)"
-		elseif discovery then
-			credit = "First found by\n" .. discovery.name
-		elseif not Seasons.available(species) then
-			credit = "Limited: only during the " .. Seasons.list[species.season].name .. " Event"
-		else
-			credit = "Nobody has found this yet!"
-		end
-		local card = UI.card({
-			species = species.id,
-			silhouette = not known,
-			border = if state.discovered[species.id] then colors.green else nil,
-			lines = {
-				{ if known then species.name else "???", if known then colors.text else colors.muted, 22 },
-				{ FreekUtil.rarityText(species.id), Rarities.info[species.rarity].color, 16 },
-				{ credit, if discovery then colors.orange else colors.muted, 34 },
-				{ if state.discovered[species.id] then "You have found this" else "", colors.green, 14 },
-			},
-		})
-		card.LayoutOrder = species.order
-		card.Parent = grid
-	end
-
-	-- Hybrids this player has made, with whoever made each one first.
-	local hybrids = {}
-	for id in state.discovered do
-		local species = Freeks.byId[id]
-		if species and species.hybrid then
-			table.insert(hybrids, species)
-		end
-	end
-	table.sort(hybrids, function(a, b)
-		return a.name < b.name
-	end)
-	heading(string.format("Hybrids you've made: %d (every pair makes its own!)", #hybrids), 3)
-	local hybridGrid = UI.grid(150, 220)
-	hybridGrid.LayoutOrder = 4
-	hybridGrid.Parent = body
-	for i, species in hybrids do
-		local discovery = discoveries[species.id]
-		local card = UI.card({
-			species = species.id,
-			border = colors.green,
-			lines = {
-				{ species.name, colors.text, 22 },
-				{ species.rarity .. " hybrid", Rarities.info[species.rarity].color, 16 },
-				{
-					if discovery then "First made by\n" .. discovery.name else "",
-					colors.orange,
-					34,
-				},
-			},
-		})
-		card.LayoutOrder = i
-		card.Parent = hybridGrid
-	end
-end
-
-local function tradeStatus(): string
-	if not trade then
-		return ""
-	end
-	if trade.countdownEndsAt then
-		local left = math.max(0, math.ceil(trade.countdownEndsAt - Workspace:GetServerTimeNow()))
-		return "Trading in " .. left .. "..."
-	elseif trade.myReady then
-		return "Waiting for " .. trade.partner .. " to press Ready..."
-	elseif trade.theirReady then
-		return trade.partner .. " is ready! Press Ready to accept."
-	end
-	return "Add Freeks, then both press Ready."
-end
-
-local function tradeCard(item, footer: string, onClick)
-	return UI.card({
-		species = item.species,
-		mutations = item.mutations,
-		lines = {
-			{ FreekUtil.displayName(item), nameColor(item), 18 },
-			{ Format.money(FreekUtil.income(item)) .. "/s", colors.money, 14 },
-			{ footer, colors.muted, 14 },
-		},
-		onClick = onClick,
-	})
-end
-
-function renderers.Trade()
-	if not trade then
-		heading("Trade Freeks with other players in this server.", 1)
-		local grid = UI.grid(200, 100)
-		grid.LayoutOrder = 2
-		grid.Parent = body
-		local anyone = false
-		for _, other in Players:GetPlayers() do
-			if other ~= player then
-				anyone = true
-				UI.card({
-					lines = { { other.DisplayName, colors.text, 24 } },
-					buttons = {
-						UI.button("Send trade request", colors.blue, function()
-							send("TradeRequest", other.UserId)
-						end, { Size = UDim2.new(1, 0, 0, 36) }),
-					},
-				}).Parent =
-					grid
-			end
-		end
-		if not anyone then
-			heading("Nobody else is here yet!", 3)
-		end
+function renderers.Bag()
+	local list = HouseUtil.backpack(state)
+	heading("🎒 Backpack  " .. #list .. " / " .. GamePasses.backpackSize(player), 1)
+	if #list == 0 then
+		heading("Empty! Parts that aren't better than your house's go here.", 2)
 		return
 	end
-
-	heading("Trading with " .. trade.partner, 1)
-
-	local offered = {}
-	for _, item in trade.mine do
-		offered[item.uid] = true
+	local total = 0
+	for _, uid in list do
+		total += HouseUtil.sellPrice(state.parts[uid])
 	end
+	buttonRow(2, {
+		UI.button("⬆ INSTALL BEST", colors.green, function()
+			send("InstallBest")
+		end),
+		confirmButton("SELL ALL " .. Format.money(total), colors.red, function()
+			send("SellBackpack")
+		end),
+	})
+	local grid = UI.grid(200, 300)
+	grid.LayoutOrder = 3
+	grid.Parent = body
+	for i, uid in list do
+		local record = state.parts[uid]
+		local info = Parts.byId[record.id]
+		local current = HouseUtil.installedRecord(state, info.slot) or { id = Parts.basic(info.slot) }
+		local diff = HouseUtil.partIncome(record) - HouseUtil.partIncome(current)
+		local card = UI.card({
+			part = record.id,
+			pictureHeight = 110,
+			border = if diff > 0 then colors.money else nil,
+			lines = {
+				{ HouseUtil.displayName(record), nil, 22 },
+				{
+					Parts.slotById[info.slot].icon .. " " .. info.slot .. " · " .. info.rarity,
+					partColor(record):Lerp(Color3.new(1, 1, 1), 0.2),
+					18,
+				},
+				{ Format.money(HouseUtil.partIncome(record)) .. "/s", colors.money, 20 },
+				{
+					if diff > 0 then "▲ +" .. Format.money(diff) .. "/s upgrade!" else "▼ Worse than yours",
+					if diff > 0 then colors.money else Color3.fromRGB(255, 200, 200),
+					18,
+				},
+			},
+			buttons = {
+				UI.button("INSTALL", colors.green, function()
+					send("Install", uid)
+				end, { Size = UDim2.new(1, 0, 0, 34) }),
+				confirmButton("SELL " .. Format.money(HouseUtil.sellPrice(record)), colors.red, function()
+					send("Sell", uid)
+				end),
+			},
+			tag = if diff > 0 then { "UP!", colors.green } else nil,
+		})
+		card.LayoutOrder = i
+		card.Parent = grid
+	end
+end
 
-	local columns = UI.new("Frame", {
+--------------------------------------------------------------------------------
+-- Catalog: every part, style by style
+--------------------------------------------------------------------------------
+
+function renderers.Catalog()
+	local found = 0
+	local total = 0
+	for _, part in Parts.list do
+		if not Parts.isBasic(part.id) then
+			total += 1
+			if state.discovered[part.id] then
+				found += 1
+			end
+		end
+	end
+	heading("Found " .. found .. " / " .. total .. " parts", 1)
+	-- Style tabs.
+	local tabs = UI.new("Frame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		LayoutOrder = 2,
 		Parent = body,
 	}, {
-		UI.new("UIListLayout", {
-			FillDirection = Enum.FillDirection.Horizontal,
-			Padding = UDim.new(0, 10),
+		UI.new("UIGridLayout", {
+			CellSize = UDim2.fromOffset(118, 36),
+			CellPadding = UDim2.fromOffset(6, 6),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 		}),
 	})
-	local function column(title: string, color: Color3, ready: boolean, order: number)
-		local frame = UI.new("Frame", {
-			BackgroundColor3 = Color3.fromRGB(30, 26, 46),
-			Size = UDim2.new(0.5, -5, 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			LayoutOrder = order,
-			Parent = columns,
-		}, {
-			UI.corner(12),
-			if ready then UI.stroke(colors.green, 2.5) else UI.stroke(),
-			UI.new("UIPadding", {
-				PaddingTop = UDim.new(0, 6),
-				PaddingBottom = UDim.new(0, 8),
-				PaddingLeft = UDim.new(0, 6),
-				PaddingRight = UDim.new(0, 6),
-			}),
-			UI.new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }),
-		})
-		UI.label(title .. (if ready then "  READY" else ""), {
-			TextColor3 = color,
-			Size = UDim2.new(1, 0, 0, 24),
-			LayoutOrder = 1,
-			Parent = frame,
-		})
-		local grid = UI.grid(120, 165)
-		grid.LayoutOrder = 2
-		grid.Parent = frame
-		return grid
-	end
-
-	local giveGrid = column("You give", colors.orange, trade.myReady, 1)
-	for i, item in trade.mine do
-		local card = tradeCard(item, "Tap to remove", function()
-			send("TradeOffer", item.uid, false)
-		end)
-		card.LayoutOrder = i
-		card.Parent = giveGrid
-	end
-	local getGrid = column("You get", colors.money, trade.theirReady, 2)
-	for i, item in trade.theirs do
-		local card = tradeCard(item, "", nil)
-		card.LayoutOrder = i
-		card.Parent = getGrid
-	end
-
-	tradeStatusLabel = UI.label(tradeStatus(), { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 3, Parent = body })
-
-	local buttons = UI.new("Frame", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 46),
-		LayoutOrder = 4,
-		Parent = body,
-	}, {
-		UI.new("UIListLayout", {
-			FillDirection = Enum.FillDirection.Horizontal,
-			Padding = UDim.new(0, 10),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		}),
-	})
-	UI.button(
-		if trade.myReady then "Not ready" else "Ready",
-		if trade.myReady then colors.gray else colors.green,
-		function()
-			if trade then
-				send("TradeReady", not trade.myReady)
-			end
-		end,
-		{ Size = UDim2.new(0.5, -5, 1, 0), LayoutOrder = 1, Parent = buttons }
-	)
-	UI.button("Cancel trade", colors.red, function()
-		send("TradeCancel")
-	end, { Size = UDim2.new(0.5, -5, 1, 0), LayoutOrder = 2, Parent = buttons })
-
-	heading("Tap your Freeks to offer them", 5)
-	local mine = UI.grid(120, 165)
-	mine.LayoutOrder = 6
-	mine.Parent = body
-	for i, item in sortedFreeks() do
-		if not offered[item.uid] and not item.freek.breeding then
-			local card = tradeCard(item.freek, "Tap to offer", function()
-				send("TradeOffer", item.uid, true)
+	for i, style in Parts.STYLES do
+		if style.id ~= "Basic" then
+			local color = Rarities.info[style.rarity].color
+			local button = UI.button(style.name, if style.id == catalogStyle then color else colors.gray, function()
+				catalogStyle = style.id
+				render()
 			end)
-			card.LayoutOrder = i
-			card.Parent = mine
+			button.LayoutOrder = i
+			button.Parent = tabs
 		end
 	end
+	local style = Parts.styleById[catalogStyle]
+	local zone = style.zone and Parts.ZONES[style.zone]
+	heading(
+		style.name .. " · " .. style.rarity .. (if zone then " · from " .. zone.name else ""),
+		3,
+		Rarities.info[style.rarity].color
+	)
+	if style.secret then
+		heading("Super rare! Sometimes grows in " .. (zone and zone.name or "the last zone") .. ".", 4)
+	end
+	local grid = UI.grid(150, 200)
+	grid.LayoutOrder = 5
+	grid.Parent = body
+	for i, slot in Parts.SLOTS do
+		local id = style.id .. "_" .. slot.id
+		local info = Parts.byId[id]
+		local owned = state.discovered[id] == true
+		local first = discoveries[id]
+		local lines = {
+			{ if owned then slot.name else "???", nil, 20 },
+			{ Format.money(info.income) .. "/s", colors.money, 18 },
+		}
+		if first then
+			table.insert(lines, { "1st: " .. first.name, colors.gold, 16 })
+		end
+		local card = UI.card({
+			part = id,
+			pictureHeight = 90,
+			silhouette = not owned,
+			accent = if owned then nil else Color3.fromRGB(90, 90, 110),
+			lines = lines,
+		})
+		card.LayoutOrder = i
+		card.Parent = grid
+	end
 end
 
--- Incoming trade request popup.
-local requestPopup = UI.new("Frame", {
-	Visible = false,
-	AnchorPoint = Vector2.new(0.5, 0),
-	Position = UDim2.new(0.5, 0, 0, 90),
-	Size = UDim2.fromOffset(320, 110),
-	BackgroundColor3 = colors.panel,
-	ZIndex = 10,
-	Parent = screen,
-}, {
-	UI.corner(18),
-	UI.stroke(colors.blue, 2),
-})
-local requestLabel = UI.label("", {
-	Size = UDim2.new(1, -20, 0, 40),
-	Position = UDim2.fromOffset(10, 8),
-	ZIndex = 10,
-	Parent = requestPopup,
-})
-local pendingRequest = nil
-local function answerRequest(accept: boolean)
-	if pendingRequest then
-		send("TradeRespond", pendingRequest.userId, accept)
-	end
-	pendingRequest = nil
-	requestPopup.Visible = false
-end
-UI.button("Accept", colors.green, function()
-	answerRequest(true)
-end, {
-	Size = UDim2.new(0.5, -15, 0, 42),
-	Position = UDim2.new(0, 10, 1, -52),
-	ZIndex = 10,
-	Parent = requestPopup,
-})
-UI.button("Decline", colors.red, function()
-	answerRequest(false)
-end, {
-	Size = UDim2.new(0.5, -15, 0, 42),
-	Position = UDim2.new(0.5, 5, 1, -52),
-	ZIndex = 10,
-	Parent = requestPopup,
-})
+--------------------------------------------------------------------------------
+-- Rebirth
+--------------------------------------------------------------------------------
 
 function renderers.Rebirth()
 	local rebirths = state.rebirths or 0
 	local cost = Config.rebirthCost(rebirths)
-	local nextMult = Config.incomeMultiplier(rebirths + 1)
 	heading(
-		string.format("Rebirth %d  ·  Your Freeks earn x%s", rebirths, tostring(Config.incomeMultiplier(rebirths))),
+		string.format(
+			"Rebirth %d  ·  House x%s  ·  Speed x%s",
+			rebirths,
+			tostring(Config.incomeMultiplier(rebirths)),
+			tostring(Config.speedMultiplier(rebirths))
+		),
 		1
 	)
-
 	local unlocks = {}
 	for _, weaponId in Weapons.order do
 		if Weapons.list[weaponId].rebirth == rebirths + 1 then
 			table.insert(unlocks, Weapons.list[weaponId].name)
 		end
 	end
-
-	local gateNow = GateTiers.list[GateTiers.forRebirths(rebirths)]
-	local gateNext = GateTiers.list[GateTiers.forRebirths(rebirths + 1)]
-	local gateLine = if gateNext ~= gateNow
-		then "Gate upgrade: " .. gateNow.name .. " → " .. gateNext.name
-		else "Your gate: " .. gateNow.name .. " (max)"
-
 	local grid = UI.grid(440, 290)
 	grid.LayoutOrder = 2
 	grid.Parent = body
@@ -18054,11 +17394,15 @@ function renderers.Rebirth()
 	UI.card({
 		lines = {
 			{ "Rebirth " .. (rebirths + 1), Color3.fromRGB(255, 210, 80), 30 },
-			{ "Your Freeks earn x" .. tostring(nextMult) .. " forever", colors.money, 22 },
+			{ "Your house earns x" .. tostring(Config.incomeMultiplier(rebirths + 1)) .. " forever", colors.money, 22 },
+			{
+				"Your treadmill trains x" .. tostring(Config.speedMultiplier(rebirths + 1)) .. " Speed forever",
+				Color3.fromRGB(150, 230, 255),
+				20,
+			},
 			{ if #unlocks > 0 then "Unlocks: " .. table.concat(unlocks, ", ") else "", colors.orange, 20 },
-			{ gateLine, colors.gold, 18 },
-			{ "Resets: coins, Freeks, barn slots", colors.red:Lerp(Color3.new(1, 1, 1), 0.3), 18 },
-			{ "Keeps: Discovery Book, Limited Freeks, weapons", colors.muted, 18 },
+			{ "Resets: coins, Speed, treadmill level", colors.red:Lerp(Color3.new(1, 1, 1), 0.3), 18 },
+			{ "Keeps: your house, backpack, Catalog, weapons", colors.muted, 18 },
 			{
 				Format.money(state.money) .. " / " .. Format.money(cost),
 				if ready then colors.money else colors.text,
@@ -18097,15 +17441,19 @@ function renderers.Rebirth()
 	end
 end
 
+--------------------------------------------------------------------------------
+-- Store
+--------------------------------------------------------------------------------
+
 -- What each pass gives, shown as a badge on its card.
 local PASS_BADGES = {
 	DoubleCoins = "x2",
-	FastBreeding = "2x FAST",
+	FastBreeding = "x2",
 	LongerLock = "+2 MIN",
-	ExtraPen = "+1",
-	ExtraSlot1 = "+1",
-	ExtraSlot2 = "+1",
-	ExtraSlot3 = "+1",
+	ExtraPen = "💪",
+	ExtraSlot1 = "+20",
+	ExtraSlot2 = "+20",
+	ExtraSlot3 = "+20",
 }
 
 -- The price pill (or Owned / Coming soon) for a game pass.
@@ -18125,69 +17473,6 @@ local function passButton(key: string, size: UDim2)
 	return UI.pricePill("R$ " .. pass.price, buy, { Size = size })
 end
 
--- A wide glossy banner card (Starter Pack, egg bundles, VIP): returns the frame.
-local function banner(order: number, colorA: Color3, colorB: Color3, height: number)
-	local frame = UI.new("Frame", {
-		Size = UDim2.new(1, -8, 0, height),
-		BackgroundColor3 = Color3.new(1, 1, 1),
-		LayoutOrder = order,
-		Parent = body,
-	}, {
-		UI.corner(18),
-		UI.stroke(nil, 4),
-		UI.new("UIGradient", { Color = ColorSequence.new(colorA, colorB), Rotation = 15 }),
-	})
-	UI.new("Frame", {
-		Position = UDim2.fromOffset(6, 5),
-		Size = UDim2.new(1, -12, 0.4, 0),
-		BackgroundColor3 = Color3.new(1, 1, 1),
-		BackgroundTransparency = 0.8,
-		Parent = frame,
-	}, { UI.corner(14) })
-	return frame
-end
-
--- A row of egg pictures inside a banner.
-local function eggRow(parent: Instance, crateId: string, count: number, x: number, size: number)
-	for k = 1, count do
-		local view = UI.eggViewport(crateId, size)
-		view.Position = UDim2.fromOffset(x + (k - 1) * size * 0.62, 18)
-		view.Size = UDim2.fromOffset(size, size)
-		view.ZIndex = 3
-		view.Parent = parent
-	end
-end
-
-local function bannerText(parent: Instance, title: string, lines: string, x: number, color: Color3)
-	local titleLabel = UI.label(title, {
-		Position = UDim2.fromOffset(x, 12),
-		Size = UDim2.new(1, -x - 230, 0, 44),
-		FontFace = UI.fonts.heavy,
-		TextColor3 = color,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = parent,
-	})
-	titleLabel.UIStroke.Thickness = 3
-	return UI.label(lines, {
-		Position = UDim2.fromOffset(x + 2, 58),
-		Size = UDim2.new(1, -x - 232, 0, 70),
-		TextScaled = false,
-		TextSize = 18,
-		TextWrapped = true,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextYAlignment = Enum.TextYAlignment.Top,
-		Parent = parent,
-	})
-end
-
-local function bannerButton(parent: Instance, button: GuiButton)
-	button.AnchorPoint = Vector2.new(1, 0.5)
-	button.Position = UDim2.new(1, -20, 0.5, 6)
-	button.Size = UDim2.fromOffset(190, 54)
-	button.Parent = parent
-	return button
-end
-
 -- The Starter Pack banner, with its countdown (only while the offer is open).
 local function starterBanner(order: number)
 	local ends = player:GetAttribute("StarterEnds")
@@ -18198,7 +17483,7 @@ local function starterBanner(order: number)
 	local frame = banner(order, Color3.fromRGB(70, 225, 120), Color3.fromRGB(30, 160, 200), 150)
 	local eggs = 0
 	for crateId, count in starter.crates do
-		eggRow(frame, crateId, count, 10 + eggs * 70, 110)
+		boxRow(frame, crateId, count, 10 + eggs * 70, 110)
 		eggs += count
 	end
 	local x = 10 + eggs * 70 + 60
@@ -18209,7 +17494,7 @@ local function starterBanner(order: number)
 	local info = bannerText(
 		frame,
 		"STARTER PACK",
-		"💰 " .. Format.money(starter.coins) .. " coins\n🥚 " .. table.concat(eggWord, " + ") .. "\n⏰ ",
+		"💰 " .. Format.money(starter.coins) .. " coins\n📦 " .. table.concat(eggWord, " + ") .. "\n⏰ ",
 		x,
 		colors.gold
 	)
@@ -18230,11 +17515,11 @@ local function starterBanner(order: number)
 	end)
 end
 
--- An egg bundle banner.
+-- A Mystery Box bundle banner.
 local function bundleBanner(order: number, bundle)
 	local crate = Luck.crateById[bundle.crate]
 	local frame = banner(order, crate.color, Color3.fromRGB(255, 100, 60), 150)
-	eggRow(frame, crate.id, 4, 10, 110)
+	boxRow(frame, crate.id, 4, 10, 110)
 	local restricted = player:GetAttribute("CratesRestricted")
 	bannerText(
 		frame,
@@ -18243,7 +17528,7 @@ local function bundleBanner(order: number, bundle)
 			.. Luck.bundleSaving(bundle)
 			.. "% on "
 			.. crate.name
-			.. "s!\nThey wait in the Luck tab to hatch whenever you like.",
+			.. "es!\nThey wait in the Luck tab to open whenever you like.",
 		350,
 		Color3.new(1, 1, 1)
 	)
@@ -18348,7 +17633,7 @@ function renderers.Store()
 		end
 	end
 
-	-- Egg bundles.
+	-- Mystery Box bundles.
 	for k, bundle in Luck.BUNDLES do
 		bundleBanner(10 + k, bundle)
 	end
@@ -18362,7 +17647,7 @@ player.AttributeChanged:Connect(function(name)
 end)
 
 --------------------------------------------------------------------------------
--- Luck: the reveal overlay (crates and the wheel) and the Luck window
+-- Luck: the reveal overlay (boxes and the wheel) and the Luck window
 --------------------------------------------------------------------------------
 
 local revealing = false
@@ -18390,8 +17675,8 @@ local function overlay()
 	return shade, box
 end
 
--- The prize card: the Freek, its name and rarity, and a button to close.
-local function prizeCard(box: Frame, title: string, freek, color: Color3, subtitle: string, close: () -> ())
+-- The prize card: the part, its name and rarity, and a button to close.
+local function prizeCard(box: Frame, title: string, part, color: Color3, subtitle: string, close: () -> ())
 	local card = UI.glass({
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = 52,
@@ -18422,11 +17707,11 @@ local function prizeCard(box: Frame, title: string, freek, color: Color3, subtit
 	for _, line in lines do
 		add(UI.label(line[1], { TextColor3 = line[2], Size = UDim2.new(1, 0, 0, line[3]) }))
 	end
-	if freek then
-		local view = UI.viewport(freek.species, freek.mutations)
+	if part then
+		local view = ItemPictures.part(part.id, 200)
 		view.Size = UDim2.new(1, 0, 0, 200)
 		add(view)
-		add(UI.label(FreekUtil.displayName(freek), { TextColor3 = color, Size = UDim2.new(1, 0, 0, 30) }))
+		add(UI.label(HouseUtil.displayName(part), { TextColor3 = color, Size = UDim2.new(1, 0, 0, 30) }))
 	end
 	add(UI.label(subtitle, { TextColor3 = colors.muted, Size = UDim2.new(1, 0, 0, 40), TextWrapped = true }))
 	add(UI.button("Awesome!", colors.green, close, { Size = UDim2.new(1, 0, 0, 44) }))
@@ -18436,10 +17721,12 @@ local function prizeCard(box: Frame, title: string, freek, color: Color3, subtit
 		:Play()
 end
 
-local function freekPrize(box: Frame, freek, rarity: string, isNew: boolean, close)
+local function partPrize(box: Frame, part, rarity: string, isNew: boolean, where: string?, close)
 	local color = Rarities.info[rarity].color
-	local subtitle = rarity .. (if isNew then "  ·  NEW FREEK!" else "") .. "\nIt's in your barn."
-	prizeCard(box, if isNew then "NEW FREEK!" else "You got...", freek, color, subtitle, close)
+	local subtitle = rarity
+		.. (if isNew then "  ·  NEW PART!" else "")
+		.. (if where == "installed" then "\nIt's on your house!" else "\nIt's in your backpack.")
+	prizeCard(box, if isNew then "NEW PART!" else "You got...", part, color, subtitle, close)
 end
 
 -- The Lucky Wheel spins and lands on the prize the server rolled.
@@ -18456,15 +17743,15 @@ local function revealWheel(result, done)
 		wheel.frame:Destroy()
 		box.Size = UDim2.fromOffset(360, 420)
 		local slice = Luck.WHEEL[result.slice]
-		if result.freek then
-			freekPrize(box, result.freek, result.rarity, result.isNew, close)
+		if result.part then
+			partPrize(box, result.part, result.rarity, result.isNew, result.where, close)
 		elseif result.crate then
 			prizeCard(
 				box,
 				if slice.crate == "LegendaryMonster" then "JACKPOT!" else "You won!",
 				nil,
 				slice.color,
-				"A " .. Luck.crateById[result.crate].name .. "!\nHatch it from the 🍀 Luck tab.",
+				"A " .. Luck.crateById[result.crate].name .. "!\nOpen it from the 🍀 Luck tab.",
 				close
 			)
 		else
@@ -18489,7 +17776,7 @@ local function nextReveal()
 		revealWheel(result, done)
 		return
 	end
-	-- Eggs open with the full card-pack reveal.
+	-- Boxes open with the full card-pack reveal.
 	if currentWindow then
 		open(currentWindow)
 	end
@@ -18553,7 +17840,7 @@ function renderers.Luck()
 		Size = UDim2.new(1, -330, 0, 30),
 		Parent = wheelCard,
 	})
-	UI.label("Win coins, Golden and Rainbow Freeks, Monster Eggs and the JACKPOT!", {
+	UI.label("Win coins, Golden and Rainbow parts, Mystery Boxes and the JACKPOT!", {
 		Position = UDim2.fromOffset(310, 114),
 		Size = UDim2.new(1, -330, 0, 48),
 		TextScaled = false,
@@ -18576,8 +17863,8 @@ function renderers.Luck()
 		UI.tag(spinButton, "FREE", colors.red)
 	end
 
-	-- Monster Eggs (Robux): the only place to get the Monster line. Every chance is shown.
-	UI.label("🥚 MONSTER EGGS · Freeks you can't get anywhere else", {
+	-- Mystery Boxes (Robux): every chance is shown before buying.
+	UI.label("📦 MYSTERY BOXES · a random house part, odds below", {
 		Size = UDim2.new(1, 0, 0, 30),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		FontFace = UI.fonts.heavy,
@@ -18592,13 +17879,13 @@ function renderers.Luck()
 		local odds = Luck.oddsList(crate)
 		local lines = { { crate.name, nil, 24 } }
 		for _, entry in odds do
-			local species = Freeks.byId[entry.species]
+			local style = Parts.styleById[entry.style]
 			local percent = if entry.percent < 1
 				then string.format("%.1f", entry.percent)
 				else string.format("%.0f", entry.percent)
 			table.insert(lines, {
-				string.format("%s · %s  %s%%", species.name, species.rarity, percent),
-				Rarities.info[species.rarity].color:Lerp(Color3.new(1, 1, 1), 0.35),
+				string.format("%s part · %s  %s%%", style.name, style.rarity, percent),
+				Rarities.info[style.rarity].color:Lerp(Color3.new(1, 1, 1), 0.35),
 				17,
 			})
 		end
@@ -18624,13 +17911,13 @@ function renderers.Luck()
 		if owned > 0 then
 			table.insert(
 				buttons,
-				UI.button("HATCH YOURS (" .. owned .. ")", colors.green, function()
+				UI.button("OPEN YOURS (" .. owned .. ")", colors.green, function()
 					send("OpenCrate", crate.id)
 				end, { Size = UDim2.new(1, 0, 0, 38) })
 			)
 		end
 		local card = UI.card({
-			egg = crate.id,
+			box = crate.id,
 			accent = crate.color,
 			lines = lines,
 			buttons = buttons,
@@ -18647,40 +17934,52 @@ end
 local MENU = {
 	{ "Shop", "🛒", colors.green },
 	{ "Luck", "🍀", Color3.fromRGB(160, 215, 45) },
-	{ "Freeks", "🐷", colors.blue },
-	{ "Fuse", "🧪", colors.pink },
-	{ "Book", "📖", colors.orange },
-	{ "Trade", "🤝", colors.purple },
+	{ "House", "🏠", colors.blue },
+	{ "Bag", "🎒", colors.orange },
+	{ "Catalog", "📖", colors.pink },
 	{ "Rebirth", "⭐", Color3.fromRGB(230, 170, 30) },
 	{ "Store", "💎", Color3.fromRGB(40, 180, 160) },
+	{ "Home", "🚪", colors.purple },
 }
 for _, entry in MENU do
 	TAB_ICONS[entry[1]] = entry[2]
 	TAB_COLORS[entry[1]] = entry[3]
 end
 local setBadge
-setActiveTab, setBadge = Hud.menu(screen, MENU, open)
+setActiveTab, setBadge = Hud.menu(screen, MENU, function(name: string)
+	if name == "Home" then
+		-- Not a window: takes you back to your house.
+		send("GoHome")
+		return
+	end
+	open(name)
+end)
 
--- Alert badges on the side buttons: a free spin, unopened eggs, a finished fusion, enough
--- coins to rebirth.
+-- Alert badges on the side buttons: a free spin or unopened boxes, upgrades waiting in the
+-- backpack, a treadmill upgrade you can afford, enough coins to rebirth.
 task.spawn(function()
 	while true do
 		if state then
 			local now = Workspace:GetServerTimeNow()
-			local eggs = 0
+			local boxes = 0
 			for _, count in state.crates or {} do
-				eggs += count
+				boxes += count
 			end
 			local spinReady = (state.lastSpin or 0) + spinCooldown() <= now
-			setBadge("Luck", if spinReady then "SPIN!" elseif eggs > 0 then tostring(eggs) else nil)
-			local fused = false
-			for index = 1, #FreekUtil.PEN_KEYS do
-				local breeding = FreekUtil.pen(state, index)
-				if breeding and breeding.endsAt <= now then
-					fused = true
+			setBadge("Luck", if spinReady then "SPIN!" elseif boxes > 0 then tostring(boxes) else nil)
+			local upgrades = 0
+			for _, uid in HouseUtil.backpack(state) do
+				local record = state.parts[uid]
+				local slotId = Parts.byId[record.id].slot
+				local current = HouseUtil.installedRecord(state, slotId) or { id = Parts.basic(slotId) }
+				if HouseUtil.partIncome(record) > HouseUtil.partIncome(current) then
+					upgrades += 1
 				end
 			end
-			setBadge("Fuse", if fused then "!" else nil)
+			setBadge("Bag", if upgrades > 0 then "UP!" else nil, colors.green)
+			local level = state.treadmill or 1
+			local canUpgrade = level < Config.TREADMILL_MAX and (state.money or 0) >= Config.treadmillCost(level)
+			setBadge("Shop", if canUpgrade then "⚡" else nil, colors.blue)
 			local canRebirth = (state.money or 0) >= Config.rebirthCost(state.rebirths or 0)
 			setBadge("Rebirth", if canRebirth then "!" else nil, colors.green)
 		end
@@ -18711,65 +18010,16 @@ Remotes.get("State").OnClientEvent:Connect(function(newState)
 	render()
 end)
 
-Remotes.get("DiscoveryUpdate").OnClientEvent:Connect(function(speciesId, discovery)
-	discoveries[speciesId] = discovery
-	if currentWindow == "Book" then
+Remotes.get("DiscoveryUpdate").OnClientEvent:Connect(function(partId, discovery)
+	discoveries[partId] = discovery
+	if currentWindow == "Catalog" then
 		render()
-	end
-end)
-
-Remotes.get("Trade").OnClientEvent:Connect(function(kind, payload)
-	if kind == "Request" then
-		pendingRequest = payload
-		requestLabel.Text = payload.name .. " wants to trade!"
-		requestPopup.Visible = true
-		task.delay(30, function()
-			if pendingRequest == payload then
-				pendingRequest = nil
-				requestPopup.Visible = false
-			end
-		end)
-	elseif kind == "State" then
-		local isNew = trade == nil
-		trade = payload
-		if isNew and currentWindow ~= "Trade" then
-			open("Trade")
-		elseif currentWindow == "Trade" then
-			render()
-		end
-	elseif kind == "Closed" then
-		trade = nil
-		toast(payload, if string.find(payload, "complete") then "success" else "error")
-		if currentWindow == "Trade" then
-			render()
-		end
-	end
-end)
-
--- Refresh the player list while the Trade window is open with no trade going.
-local function refreshTradeList()
-	if currentWindow == "Trade" and not trade then
-		render()
-	end
-end
-Players.PlayerAdded:Connect(refreshTradeList)
-Players.PlayerRemoving:Connect(function()
-	task.defer(refreshTradeList)
-end)
-
--- Trade countdown.
-task.spawn(function()
-	while true do
-		task.wait(0.25)
-		if tradeStatusLabel then
-			tradeStatusLabel.Text = tradeStatus()
-		end
 	end
 end)
 
 Hud.gateStatus(screen)
 
--- Nobody needs a Steal prompt on their own Freeks, a Snatch prompt on the Freek they're
+-- Nobody needs a Steal prompt on their own house, a Snatch prompt on the part they're
 -- carrying, or the padlock on someone else's gate.
 local function hideOwnPrompt(instance: Instance)
 	if not instance:IsA("ProximityPrompt") then
@@ -18793,12 +18043,12 @@ player:GetAttributeChangedSignal("Plot"):Connect(function()
 		hideOwnPrompt(descendant)
 	end
 end)
-
--- Cannon Freeks only move on clients, so the server can't use Roblox's own prompt range
--- check for them; grabbing goes through an action the server checks itself.
-ProximityPromptService.PromptTriggered:Connect(function(prompt)
-	if prompt.Name == "GrabPrompt" then
-		send("GrabDrop", prompt:GetAttribute("ItemId"))
+-- A steal prompt's owner can be set after it appears.
+Workspace.DescendantAdded:Connect(function(instance)
+	if instance:IsA("ProximityPrompt") and instance.Name == "StealPrompt" then
+		instance:GetAttributeChangedSignal("OwnerUserId"):Connect(function()
+			hideOwnPrompt(instance)
+		end)
 	end
 end)
 
@@ -18840,191 +18090,17 @@ Remotes.get("Knockback").OnClientEvent:Connect(function(direction: Vector3, stre
 	end)
 end)
 
--- Breed countdowns.
-task.spawn(function()
-	while true do
-		task.wait(0.5)
-		for _, pen in penCountdowns do
-			local left = pen.endsAt - Workspace:GetServerTimeNow()
-			if left > 0 then
-				pen.label.Text = "Fusing... " .. Format.time(left)
-				pen.button.BackgroundColor3 = colors.gray
-				pen.button.Text = "Not ready yet"
-			else
-				pen.label.Text = "Fusion complete!"
-				pen.button.BackgroundColor3 = colors.pink
-				pen.button.Text = "Collect!"
-			end
-		end
-	end
-end)
-
--- Cannon Freeks: fly each one out of its cannon, then let it wander the town square and
--- walk into the Freek House, all worked out locally from its seed and launch time (smooth,
--- and matches where the server thinks it is).
-local dropFolder = Workspace:WaitForChild("DropFreeks")
-local paths = {} -- [Model] = path; cleared when the model goes
-dropFolder.ChildRemoved:Connect(function(model)
-	paths[model] = nil
-end)
-
--- A puff of smoke that grows and fades (cannon shots and landings).
-local function puff(position: Vector3, size: number, color: Color3)
-	for i = 1, 5 do
-		local ball = Instance.new("Part")
-		ball.Shape = Enum.PartType.Ball
-		ball.Anchored = true
-		ball.CanCollide = false
-		ball.CanQuery = false
-		ball.CastShadow = false
-		ball.Material = Enum.Material.SmoothPlastic
-		ball.Color = color
-		ball.Transparency = 0.2
-		ball.Size = Vector3.one * size * 0.4
-		ball.Position = position + Vector3.new(math.random() - 0.5, math.random() - 0.5, math.random() - 0.5) * size
-		ball.Parent = Workspace
-		local grow = TweenInfo.new(0.6 + i * 0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		TweenService:Create(ball, grow, { Size = Vector3.one * size * 1.4, Transparency = 1 }):Play()
-		task.delay(1.2, ball.Destroy, ball)
-	end
-end
-
--- What Freeks stand on: the ground itself (terrain, the town square floor and the
--- walkways), never lamps, trees, players or other Freeks.
-local groundParams = RaycastParams.new()
-groundParams.FilterType = Enum.RaycastFilterType.Include
-local groundList = { Workspace.Terrain }
-local scenery = Workspace:WaitForChild("Scenery")
-for _, part in scenery:GetDescendants() do
-	if part:IsA("BasePart") and (part.Name == "TownSquare" or part.Name == "Walkway" or part.Name == "Curb") then
-		table.insert(groundList, part)
-	end
-end
-groundParams.FilterDescendantsInstances = groundList
-
--- Height of the ground at a spot (nil if there's nothing below).
-local function groundAt(position: Vector3): number?
-	local hit = Workspace:Raycast(position + Vector3.new(0, 12, 0), Vector3.new(0, -40, 0), groundParams)
-	return hit and hit.Position.Y
-end
-
-RunService.RenderStepped:Connect(function()
-	local now = Workspace:GetServerTimeNow()
-	for _, model in dropFolder:GetChildren() do
-		if not model:IsA("Model") or not model.PrimaryPart then
-			continue -- not streamed in yet
-		end
-		local path = paths[model]
-		if not path then
-			local seed, cannon, launch =
-				model:GetAttribute("Seed"), model:GetAttribute("Cannon"), model:GetAttribute("Launch")
-			if not (seed and cannon and launch) then
-				continue
-			end
-			path = Drops.plan(seed, cannon, launch)
-			path.landed = now >= path.land
-			-- The server keeps the model at the muzzle; parts that arrive late start there.
-			path.rig = FreekAnimator.rig(model, seed, CFrame.new(path.muzzle))
-			paths[model] = path
-		end
-		local cframe, doing, moving = Drops.cframeAt(path, now)
-		local onFoot = doing == "wandering" or doing == "leaving"
-		if onFoot then
-			-- Stand on whatever the ground really is right there.
-			local groundY = groundAt(cframe.Position)
-			if groundY then
-				cframe = cframe + Vector3.new(0, groundY - cframe.Position.Y, 0)
-			end
-			if not path.landed then
-				path.landed = true
-				puff(cframe.Position + Vector3.new(0, 1, 0), 3, Color3.fromRGB(225, 210, 180))
-			end
-		end
-		if onFoot and path.rig then
-			-- Walking with its own gait, or idling (blinking, looking around) when it stops.
-			FreekAnimator.pose(path.rig, cframe, now, moving)
-		elseif path.rig then
-			FreekAnimator.place(path.rig, cframe)
-		else
-			model:PivotTo(cframe)
-		end
-
-		local prompt = model:FindFirstChild("GrabPrompt", true)
-		if prompt then
-			prompt.Enabled = doing == "wandering" or doing == "leaving"
-		end
-	end
-end)
-
--- Cannons go boom: smoke at the muzzle when the server fires one.
-local cannonsFolder = Workspace:WaitForChild("Cannons")
-for index = 1, Drops.CANNON_COUNT do
-	local cannon = cannonsFolder:WaitForChild("Cannon" .. index)
-	cannon:GetAttributeChangedSignal("FiredAt"):Connect(function()
-		local wait = (cannon:GetAttribute("FiredAt") or 0) - Workspace:GetServerTimeNow()
-		task.delay(math.max(wait, 0), function()
-			local muzzle = Drops.muzzle(index)
-			puff(muzzle, 6, Color3.fromRGB(200, 200, 205))
-			local flash = Instance.new("PointLight")
-			flash.Brightness = 6
-			flash.Range = 40
-			flash.Color = Color3.fromRGB(255, 200, 120)
-			flash.Parent = cannon.PrimaryPart
-			task.delay(0.15, flash.Destroy, flash)
-		end)
-	end)
-end
-
--- Yard Freeks are alive: they breathe, blink, look around, wag, twitch their ears, wave
--- and hop (see FreekAnimator). Only nearby ones are animated. They always move relative to
--- the "Ground" the server set, so they can't drift.
-local plotsFolder = Workspace:WaitForChild("Plots")
-local yardRigs = setmetatable({}, { __mode = "k" })
-RunService.RenderStepped:Connect(function()
-	local camera = Workspace.CurrentCamera
-	local eye = camera and camera.CFrame.Position or Vector3.zero
-	local t = os.clock()
-	for _, plot in plotsFolder:GetChildren() do
-		local freeks = plot:FindFirstChild("Freeks")
-		if freeks then
-			for _, model in freeks:GetChildren() do
-				local ground = model:IsA("Model") and model.PrimaryPart and model:GetAttribute("Ground")
-				if typeof(ground) == "CFrame" and (ground.Position - eye).Magnitude < 140 then
-					local rig = yardRigs[model]
-					if rig == nil then
-						-- Rig it from where it rests, so the pose is always relative to the ground.
-						model:PivotTo(ground)
-						rig = FreekAnimator.rig(model, nil, ground) or false
-						yardRigs[model] = rig
-					end
-					if rig then
-						FreekAnimator.pose(rig, ground, t)
-					end
-				end
-			end
-		end
-	end
-end)
-
+GuardianFX.start()
 Ambient.start()
-BarnFX.start()
 
--- Rainbow Freeks cycle through colors.
-RunService.RenderStepped:Connect(function()
-	local color = Color3.fromHSV((os.clock() * 0.25) % 1, 0.75, 1)
-	for _, part in CollectionService:GetTagged(FreekModel.RAINBOW_TAG) do
-		part.Color = color
-	end
-end)
-
--- The Monster Eggs on the egg stand turn slowly and bob up and down.
+-- The Mystery Boxes on the stand turn slowly and bob up and down.
 RunService.RenderStepped:Connect(function()
 	local t = os.clock()
-	for i, egg in CollectionService:GetTagged("DisplayEgg") do
-		local rest = egg:GetAttribute("Rest")
-		if egg:IsA("Model") and egg.PrimaryPart and typeof(rest) == "CFrame" then
+	for i, box in CollectionService:GetTagged("DisplayEgg") do
+		local rest = box:GetAttribute("Rest")
+		if box:IsA("Model") and box.PrimaryPart and typeof(rest) == "CFrame" then
 			local phase = i * 1.7
-			egg:PivotTo(
+			box:PivotTo(
 				rest * CFrame.new(0, 0.35 + math.sin(t * 2 + phase) * 0.35, 0) * CFrame.Angles(0, t * 0.8 + phase, 0)
 			)
 		end
@@ -19035,9 +18111,9 @@ task.spawn(function()
 	discoveries = Remotes.get("GetDiscoveries"):InvokeServer() or {}
 	render()
 end)
-print("[Fuse a Freek] Client UI built, loading your data...")
+print("[Steal a Home] Client UI built, loading your data...")
 state = Remotes.get("GetState"):InvokeServer()
-print("[Fuse a Freek] Client ready")
+print("[Steal a Home] Client ready")
 clientReady = true
 if state then
 	setRebirthBoost(state.rebirths or 0)
@@ -19046,27 +18122,27 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="64">
+        <Item class="ModuleScript" referent="59">
           <Properties>
             <string name="Name">PackReveal</string>
-            <string name="Source"><![CDATA[-- Monster Egg opening, done like a card-pack reveal in the big sports games, in 3D.
+            <string name="Source"><![CDATA[-- Mystery Box opening, done like a card-pack reveal in the big sports games, in 3D.
 -- The camera cuts to a dark arena (built on this client only, high above the map): the
--- egg drops onto a glowing pedestal under sweeping spotlights, shakes, and bursts into a
--- face-down card. Then the clues slam onto the screen one at a time (first the Freek's
--- SERIES, then its RARITY, with every light in the arena turning that colour) before the
--- card flips over in 3D and the Freek walks out in front of it with its name.
--- The rarer the Freek, the longer the suspense and the wilder the lights.
+-- box drops onto a glowing pedestal under sweeping spotlights, shakes, and bursts into a
+-- face-down card. Then the clues slam onto the screen one at a time (first which SLOT of
+-- the house the part is for, then its RARITY, with every light in the arena turning that
+-- colour) before the card flips over in 3D and the part pops out in front of it with its
+-- name. The rarer the part, the longer the suspense and the wilder the lights.
 -- Tapping the screen speeds it up.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
-local EggModel = require(ReplicatedStorage.Shared.EggModel)
-local FreekAnimator = require(ReplicatedStorage.Shared.FreekAnimator)
-local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
-local FreekUtil = require(ReplicatedStorage.Shared.FreekUtil)
-local Freeks = require(ReplicatedStorage.Shared.Freeks)
+local BoxModel = require(ReplicatedStorage.Shared.BoxModel)
+local HouseModel = require(ReplicatedStorage.Shared.HouseModel)
+local HouseUtil = require(ReplicatedStorage.Shared.HouseUtil)
+local Luck = require(ReplicatedStorage.Shared.Luck)
+local Parts = require(ReplicatedStorage.Shared.Parts)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local UI = require(script.Parent.UI)
 
@@ -19381,7 +18457,7 @@ local function buildCardBack(card: Model, body: BasePart): (number) -> ()
 	faceText(
 		plateText,
 		Enum.NormalId.Front,
-		"FUSE A FREEK",
+		"STEAL A HOME",
 		GOLD,
 		UDim2.fromScale(0.03, 0.05),
 		UDim2.fromScale(0.94, 0.9),
@@ -19464,15 +18540,17 @@ local function hideHud(playerGui: Instance, keep: Instance): () -> ()
 	end
 end
 
--- result = { crate, rarity, isNew, freek = { species, mutations } }
+-- result = { crate, rarity, isNew, where = "installed"|"backpack", part = { id, mutations } }
 function PackReveal.play(result, done: () -> ())
 	local player = Players.LocalPlayer
 	local playerGui = player:WaitForChild("PlayerGui")
-	local species = Freeks.byId[result.freek.species]
+	local partInfo = Parts.byId[result.part.id]
 	local rarity = result.rarity
 	local tier = Rarities.rank[rarity] or 1
 	local rarityColor = Rarities.info[rarity] and Rarities.info[rarity].color or Color3.new(1, 1, 1)
-	local series = Freeks.SERIES[species and species.series or "Animal"] or Freeks.SERIES.Animal
+	-- The first clue is which slot of the house it's for.
+	local slot = Parts.slotById[partInfo.slot]
+	local series = { icon = slot.icon, name = slot.name, color = UI.cardColor(slot.name) }
 	local random = Random.new()
 
 	----------------------------------------------------------------------------
@@ -19853,7 +18931,7 @@ function PackReveal.play(result, done: () -> ())
 	camera.CFrame = state.camFrom
 	flash(Color3.new(0, 0, 0), 0.5)
 	moveCamera(Vector3.new(0, 7, -24), Vector3.new(0, 4, 0))
-	local egg = EggModel.build(result.crate)
+	local egg = BoxModel.build(result.crate)
 	egg.Parent = stage
 	local eggRest = at(0, PEDESTAL_TOP, 0) * CFrame.Angles(0, math.pi, 0)
 	animate(0.8, function(a)
@@ -19879,7 +18957,11 @@ function PackReveal.play(result, done: () -> ())
 	-- 3. Burst! A face-down card spins up out of the light.
 	----------------------------------------------------------------------------
 	flash(Color3.new(1, 1, 1), 0.45)
-	burst(Vector3.new(0, PEDESTAL_TOP + 2, 0), 18, { EggModel.COLORS[result.crate] or GOLD, Color3.new(1, 1, 1) })
+	burst(
+		Vector3.new(0, PEDESTAL_TOP + 2, 0),
+		18,
+		{ (Luck.crateById[result.crate] and Luck.crateById[result.crate].color) or GOLD, Color3.new(1, 1, 1) }
+	)
 	egg:Destroy()
 	state.shake = 1
 	state.sweep = 0.6
@@ -19987,11 +19069,11 @@ function PackReveal.play(result, done: () -> ())
 	end
 
 	----------------------------------------------------------------------------
-	-- 4. Clue one: the series. The arena lights turn the series colour.
+	-- 4. Clue one: the slot. The arena lights turn its colour.
 	----------------------------------------------------------------------------
 	state.color = series.color
 	state.brightness = 0.7
-	slam("SERIES", series.icon .. " " .. string.upper(series.name), series.color)
+	slam("SLOT", series.icon .. " " .. string.upper(series.name), series.color)
 	setRim(series.color)
 	camTime = 2
 	moveCamera(Vector3.new(-5, 8, -18), CARD_HOME)
@@ -20243,7 +19325,7 @@ function PackReveal.play(result, done: () -> ())
 	paintFront()
 
 	----------------------------------------------------------------------------
-	-- 6. The flip: the card turns over in 3D, then the Freek walks out in front of it.
+	-- 6. The flip: the card turns over in 3D, then the part pops out in front of it.
 	----------------------------------------------------------------------------
 	camTime = 0.5
 	moveCamera(Vector3.new(0, 7.5, -16), CARD_HOME)
@@ -20259,8 +19341,9 @@ function PackReveal.play(result, done: () -> ())
 		placeCard(t)
 	end)
 
-	-- The card lifts up and back; the Freek pops out onto the pedestal.
-	local freek = FreekModel.build(result.freek.species, result.freek.mutations)
+	-- The card lifts up and back; the part pops out onto the pedestal.
+	local freek = HouseModel.item(result.part.id)
+	pcall(freek.ScaleTo, freek, 1.3)
 	for _, p in freek:GetDescendants() do
 		if p:IsA("BasePart") then
 			p.Anchored = true
@@ -20287,7 +19370,7 @@ function PackReveal.play(result, done: () -> ())
 	state.shake = 0.6
 
 	-- 7. The name slams in, with NEW! if it's new to them.
-	local nameLabel = UI.label(string.upper(FreekUtil.displayName(result.freek)), {
+	local nameLabel = UI.label(string.upper(HouseUtil.displayName(result.part)), {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.86),
 		Size = UDim2.fromOffset(800, 70),
@@ -20330,7 +19413,7 @@ function PackReveal.play(result, done: () -> ())
 			stampScale.Scale = 2 - easeOut(a)
 		end)
 	end
-	UI.label("It's in your barn!", {
+	UI.label(if result.where == "installed" then "It's on your house!" else "It's in your backpack!", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.86, 48),
 		Size = UDim2.fromOffset(400, 26),
@@ -20355,7 +19438,6 @@ function PackReveal.play(result, done: () -> ())
 	moveCamera(Vector3.new(-4, 5.5, -14.5), Vector3.new(0, 6.2, 1))
 	local showTime = 0
 	freek:PivotTo(freekRest)
-	local rig = FreekAnimator.rig(freek, 3)
 	while not closed do
 		animate(0.2, function(_, t)
 			local time = showTime + t
@@ -20364,10 +19446,8 @@ function PackReveal.play(result, done: () -> ())
 					* CFrame.new(CARD_HOME + Vector3.new(0, 5 + math.sin(time * 2.2) * 0.25, 6))
 					* CFrame.Angles(0, math.pi + math.sin(time * 0.9) * 0.12, 0)
 			)
-			-- It shows off: blinking, looking around, wagging and hopping.
-			if rig then
-				FreekAnimator.pose(rig, freekRest, time + 8)
-			end
+			-- It turns slowly on the pedestal to show off.
+			freek:PivotTo(freekRest * CFrame.new(0, math.sin(time * 2) * 0.25, 0) * CFrame.Angles(0, time * 0.7, 0))
 			if state.rainbow then
 				setRim(rainbow(os.clock()))
 			end
@@ -20391,22 +19471,21 @@ return PackReveal
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="65">
+        <Item class="ModuleScript" referent="60">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).
 -- Style: the clean cartoon look of the big Roblox simulators (Pet Simulator, PLS DONATE,
--- Grow a Garden) in Fuse a Freek colours: light windows with a coloured header and a
+-- Grow a Garden) in Steal a Home colours: light windows with a coloured header and a
 -- slanted title tab, bright glossy gradient cards with a big 3D picture, black price
 -- pills, chunky shaded buttons that squish when pressed, Luckiest Guy titles, Fredoka One
 -- text, and every bit of text outlined in dark navy.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
-local Freeks = require(ReplicatedStorage.Shared.Freeks)
+local BoxModel = require(ReplicatedStorage.Shared.BoxModel)
+local Parts = require(ReplicatedStorage.Shared.Parts)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
-local EggModel = require(ReplicatedStorage.Shared.EggModel)
 local ItemPictures = require(script.Parent.ItemPictures)
 
 local UI = {}
@@ -20591,46 +19670,23 @@ function UI.button(text: string, color: Color3, onClick: () -> (), props)
 	return button
 end
 
--- A little 3D picture of a Freek. silhouette = true draws it solid black ("???").
-function UI.viewport(speciesId: string, mutations: { string }?, silhouette: boolean?)
-	local frame = UI.new("ViewportFrame", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 100),
-		Ambient = Color3.fromRGB(170, 170, 170),
-		LightColor = Color3.fromRGB(255, 255, 255),
-		LightDirection = Vector3.new(-1, -1, -1),
-		ImageColor3 = if silhouette then Color3.new(0, 0, 0) else Color3.new(1, 1, 1),
-	})
-	local model, height = FreekModel.build(speciesId, mutations)
-	model:PivotTo(CFrame.new())
-	model.Parent = frame
-	local camera = Instance.new("Camera")
-	camera.FieldOfView = 40
-	local distance = height * 2.1
-	camera.CFrame =
-		CFrame.lookAt(Vector3.new(distance * 0.35, height * 0.75, -distance), Vector3.new(0, height * 0.42, 0))
-	camera.Parent = frame
-	frame.CurrentCamera = camera
-	return frame
-end
-
--- A little 3D picture of a Monster Egg.
-function UI.eggViewport(eggId: string, size: number?)
+-- A little 3D picture of a Mystery Box.
+function UI.boxViewport(crateId: string, size: number?)
 	local frame = UI.new("ViewportFrame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 0, size or 100),
-		Ambient = Color3.fromRGB(180, 170, 190),
-		LightColor = Color3.fromRGB(255, 240, 220),
+		Ambient = Color3.fromRGB(190, 185, 200),
+		LightColor = Color3.fromRGB(255, 245, 230),
 		LightDirection = Vector3.new(-1, -1, 1),
 	})
-	local model, height = EggModel.build(eggId)
+	local model, height = BoxModel.build(crateId)
 	model:PivotTo(CFrame.new())
 	model.Parent = frame
 	local camera = Instance.new("Camera")
 	camera.FieldOfView = 40
-	local distance = height * 1.9
+	local distance = height * 2
 	camera.CFrame =
-		CFrame.lookAt(Vector3.new(distance * 0.2, height * 0.6, -distance), Vector3.new(0, height * 0.45, 0))
+		CFrame.lookAt(Vector3.new(distance * 0.35, height * 0.8, -distance), Vector3.new(0, height * 0.42, 0))
 	camera.Parent = frame
 	frame.CurrentCamera = camera
 	return frame
@@ -20684,19 +19740,19 @@ end
 -- A bright glossy card (like Pet Simulator's shop): a gradient in the card's colour with a
 -- shine across the top, the title in white, a big picture on a glowing disc, then text
 -- lines and buttons. opts: accent (colour), border (a highlight outline, e.g. owned),
--- picture/egg/species, lines = { { text, colour?, height? } }, buttons, tag = { text,
--- colour? }, onClick.
+-- picture (an ItemPictures key) / part (+ mutations, silhouette) / box, lines = { { text,
+-- colour?, height? } }, buttons, tag = { text, colour? }, onClick.
 function UI.card(opts)
 	local title = opts.lines and opts.lines[1] and opts.lines[1][1] or ""
 	local accent = opts.accent
-	if not accent and opts.species then
-		local species = Freeks.byId[opts.species]
-		local rarity = species and species.rarity
+	if not accent and opts.part then
+		local part = Parts.byId[opts.part]
+		local rarity = part and part.rarity
 		if rarity and rarity ~= "Common" then
 			accent = Rarities.info[rarity].color
 		end
 	end
-	accent = accent or (if opts.species then Color3.fromRGB(110, 165, 255) else UI.cardColor(title))
+	accent = accent or (if opts.part then Color3.fromRGB(110, 165, 255) else UI.cardColor(title))
 	if opts.background then
 		accent = opts.background
 	end
@@ -20766,10 +19822,10 @@ function UI.card(opts)
 	local picture
 	if opts.picture then
 		picture = ItemPictures.view(opts.picture, opts.pictureHeight)
-	elseif opts.egg then
-		picture = UI.eggViewport(opts.egg)
-	elseif opts.species then
-		picture = UI.viewport(opts.species, opts.mutations, opts.silhouette)
+	elseif opts.box then
+		picture = UI.boxViewport(opts.box)
+	elseif opts.part then
+		picture = ItemPictures.part(opts.part, opts.pictureHeight, opts.silhouette)
 	end
 	if picture then
 		local holder = UI.new("Frame", {

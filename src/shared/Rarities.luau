@@ -1,6 +1,5 @@
 -- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
--- walks while carrying a Freek of this rarity (normal walking speed is 16).
--- "Seasonal" isn't a tier: it's a tag a Freek of any rarity can have (see Seasons).
+-- (breedTime and carrySpeed are left over from the Freek days and unused.)
 
 local Rarities = {}
 

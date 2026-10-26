@@ -1553,6 +1553,8 @@ end
 local ITEMS = {
 	Walls = function(model, look)
 		builders.Walls(model, CFrame.new(0, 0, -1), look, { w = 5.5, d = 2.2, h = 4.4, base = 0.4 })
+		-- A window so it reads as a piece of wall, not a box.
+		window(model, CFrame.new(0, 2.7, -1.05), look, 1.7, 1.7)
 	end,
 	Roof = function(model, look)
 		builders.Roof(model, CFrame.new(0, 0, -2), look, { w = 5.5, d = 4, y = 0 })
