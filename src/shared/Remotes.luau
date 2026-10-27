@@ -10,6 +10,7 @@
 -- GetState        client -> server   returns snapshot once data has loaded
 -- GetDiscoveries  client -> server   returns { [speciesId] = discovery }
 -- Admin           client -> server   (command, args) admin panel; returns (ok, message)
+-- GuardianAttack  server -> clients  (zone, attackId, info) a guardian's attack, for effects
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -25,6 +26,7 @@ local KINDS = {
 	GetState = "RemoteFunction",
 	GetDiscoveries = "RemoteFunction",
 	Admin = "RemoteFunction",
+	GuardianAttack = "RemoteEvent",
 }
 
 local Remotes = {}

@@ -85,6 +85,7 @@ local function add(data: Instance)
 		position = position,
 		yaw = yaw,
 		label = label,
+		snap = data:GetAttribute("Snap") or 0,
 	}
 end
 
@@ -100,7 +101,12 @@ local function step(dt: number)
 		local speed = (data:GetAttribute("Speed") or 16) * 1.25
 		local offset = target - g.position
 		local distance = offset.Magnitude
-		if distance > 30 then
+		-- A teleport (Snap changed): jump straight there.
+		local snap = data:GetAttribute("Snap") or 0
+		if snap ~= g.snap then
+			g.snap = snap
+			g.position = target
+		elseif distance > 30 then
 			g.position = target -- too far behind (e.g. just streamed in): jump there
 		elseif distance > 0.01 then
 			g.position += offset.Unit * math.min(distance, speed * dt)
@@ -109,7 +115,9 @@ local function step(dt: number)
 		local goalYaw = data:GetAttribute("Yaw") or g.yaw
 		local diff = (goalYaw - g.yaw + math.pi) % (2 * math.pi) - math.pi
 		g.yaw += diff * math.min(1, dt * 10)
-		local ground = CFrame.new(g.position) * CFrame.Angles(0, g.yaw, 0)
+		-- Off the ground during a leap or swoop.
+		local lift = data:GetAttribute("Lift") or 0
+		local ground = CFrame.new(g.position + Vector3.new(0, lift, 0)) * CFrame.Angles(0, g.yaw, 0)
 		local walking = data:GetAttribute("Moving") == true
 		local sleeping = data:GetAttribute("Sleeping") == true and not walking
 		if sleeping then

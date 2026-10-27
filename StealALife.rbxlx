@@ -816,7 +816,7 @@ return Bricks
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-19", -- shown small in the corner of the screen and in Output: which build is running
+	BUILD = "life-20", -- shown small in the corner of the screen and in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join. Set to nil
 	-- before the game launches!
@@ -5005,6 +5005,103 @@ return GamePasses
       </Item>
       <Item class="ModuleScript" referent="15">
         <Properties>
+          <string name="Name">GuardianAttacks</string>
+          <string name="Source"><![CDATA[-- Each zone's guardian has a signature attack, on top of catching anyone it runs into.
+-- The server decides when an attack happens and whether it hits (ZoneService); every client
+-- draws it (client GuardianAttackFX). Attacks can be dodged and only start in range, so a
+-- player with the zone's Speed still gets away.
+--
+-- kinds:
+--   dash       a burst of speed at the target (mult x normal speed for `time` seconds); lift
+--              raises the guardian off the ground on the way (a swoop or a leap).
+--   projectile thrown or shot at where the target is heading (`lead` of its travel); flies
+--              at `speed`, hits anyone within `radius` of it. homing steers it after them.
+--              pull: a hit yanks the player back toward the guardian.
+--   teleport   vanishes and reappears `ahead` studs in front of the target.
+--   beam       aims at the target for `windup` seconds (a thin warning line), then fires a
+--              laser `width` wide down that line.
+--   strike     marks a circle where the target is heading, and after `windup` seconds
+--              lightning hits everything within `radius` of it.
+
+local GuardianAttacks = {}
+
+GuardianAttacks.list = {
+	charge = { kind = "dash", name = "Charge", range = 28, mult = 2.2, time = 0.9, cooldown = 3 },
+	pounce = { kind = "dash", name = "Pounce", range = 22, mult = 2.8, time = 0.6, cooldown = 2.6, lift = 6 },
+	swoop = { kind = "dash", name = "Swoop", range = 36, mult = 2.4, time = 1, cooldown = 3.4, lift = 16 },
+	pie = {
+		kind = "projectile",
+		name = "Pie Throw",
+		range = 40,
+		speed = 60,
+		radius = 3.5,
+		lead = 0.7,
+		cooldown = 2.4,
+		color = Color3.fromRGB(240, 205, 150),
+	},
+	bandage = {
+		kind = "projectile",
+		name = "Bandage Lash",
+		range = 34,
+		speed = 75,
+		radius = 3,
+		lead = 0.6,
+		cooldown = 2.8,
+		pull = true,
+		color = Color3.fromRGB(245, 240, 225),
+	},
+	magic = {
+		kind = "projectile",
+		name = "Magic Orb",
+		range = 44,
+		speed = 42,
+		radius = 4,
+		lead = 0.3,
+		homing = 1.4,
+		cooldown = 3,
+		color = Color3.fromRGB(255, 120, 220),
+	},
+	blink = { kind = "teleport", name = "Vanish", range = 70, ahead = 12, cooldown = 4.5 },
+	bats = {
+		kind = "projectile",
+		name = "Bat Swarm",
+		range = 46,
+		speed = 46,
+		radius = 5.5,
+		lead = 0.4,
+		homing = 1.6,
+		cooldown = 3.4,
+		color = Color3.fromRGB(60, 45, 80),
+	},
+	laser = { kind = "beam", name = "Eye Laser", range = 60, windup = 0.9, width = 3, cooldown = 3.6 },
+	lightning = { kind = "strike", name = "Lightning", range = 70, windup = 1.1, radius = 7, lead = 1, cooldown = 3 },
+}
+
+-- Which attack each guardian (by species) uses.
+GuardianAttacks.bySpecies = {
+	Oinkle = "charge",
+	Woofles = "pounce",
+	Hootsworth = "swoop",
+	Chuckles = "pie",
+	Mumbles = "bandage",
+	Glamora = "magic",
+	BooBoo = "blink",
+	CountFangula = "bats",
+	Blinky = "laser",
+	Stormy = "lightning",
+}
+
+function GuardianAttacks.forSpecies(species: string)
+	local id = GuardianAttacks.bySpecies[species] or "charge"
+	return id, GuardianAttacks.list[id]
+end
+
+return GuardianAttacks
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="16">
+        <Properties>
           <string name="Name">HouseModel</string>
           <string name="Source"><![CDATA[-- Builds houses and house parts out of simple parts, in the game's chunky cartoon style.
 --
@@ -6651,7 +6748,7 @@ return HouseModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">Hybrids</string>
           <string name="Source"><![CDATA[-- Hybrids: what you get when two different Freeks fuse.
@@ -6836,7 +6933,7 @@ return Hybrids
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">ItemModel</string>
           <string name="Source"><![CDATA[-- One model for any item (see Items.luau), standing on its pivot: a house part as a small
@@ -6899,7 +6996,7 @@ return ItemModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">Items</string>
           <string name="Source"><![CDATA[-- Everything you can own in Steal a Life, in four kinds:
@@ -7420,7 +7517,7 @@ return Items
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">Lego</string>
           <string name="Source"><![CDATA[-- The LEGO look: everything is shiny plastic with studs on every face (inlets underneath),
@@ -7657,7 +7754,7 @@ return Lego
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">LifeUtil</string>
           <string name="Source"><![CDATA[-- Helpers for a player's save, shared by the server and the UI.
@@ -7932,7 +8029,7 @@ return LifeUtil
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">Luck</string>
           <string name="Source"><![CDATA[-- Luck: Mystery Boxes, the daily Lucky Wheel and Lucky Hour events. Shared so the client
@@ -8136,7 +8233,7 @@ return Luck
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="22">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">Mutations</string>
           <string name="Source"><![CDATA[-- Mutations multiply a house part's income. Parts grow with them in the zone piles (chance
@@ -8202,7 +8299,7 @@ return Mutations
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="24">
         <Properties>
           <string name="Name">Parts</string>
           <string name="Source"><![CDATA[-- House parts: one of the four kinds of item (see Items.luau), hatched from Hardware Eggs
@@ -8305,7 +8402,7 @@ return Parts
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="25">
         <Properties>
           <string name="Name">PlantModel</string>
           <string name="Source"><![CDATA[-- Plants, built from bricks. PlantModel.build(itemId) returns a model standing on its pivot
@@ -8571,7 +8668,7 @@ return PlantModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
@@ -8600,7 +8697,7 @@ return Rarities
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">Remotes</string>
           <string name="Source"><![CDATA[-- One place that names every remote. The server creates them; clients wait for them.
@@ -8615,6 +8712,7 @@ return Rarities
 -- GetState        client -> server   returns snapshot once data has loaded
 -- GetDiscoveries  client -> server   returns { [speciesId] = discovery }
 -- Admin           client -> server   (command, args) admin panel; returns (ok, message)
+-- GuardianAttack  server -> clients  (zone, attackId, info) a guardian's attack, for effects
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -8630,6 +8728,7 @@ local KINDS = {
 	GetState = "RemoteFunction",
 	GetDiscoveries = "RemoteFunction",
 	Admin = "RemoteFunction",
+	GuardianAttack = "RemoteEvent",
 }
 
 local Remotes = {}
@@ -8661,7 +8760,7 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">Seasons</string>
           <string name="Source"><![CDATA[-- Limited events for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred
@@ -8798,7 +8897,7 @@ return Seasons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">YardModel</string>
           <string name="Source"><![CDATA[-- Yard items, built from bricks. YardModel.build(itemId) returns a model standing on its
@@ -9087,7 +9186,7 @@ return YardModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">ZoneLayout</string>
           <string name="Source"><![CDATA[-- Where the zones are. They run in a line west from the end of the town street: zone 1
@@ -9178,15 +9277,15 @@ return ZoneLayout
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="30">
+  <Item class="ServerScriptService" referent="31">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="31">
+    <Item class="Folder" referent="32">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="32">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -9521,7 +9620,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">AdminService</string>
           <string name="Source"><![CDATA[-- The admin panel's server side. Only admins (Config.ADMIN_NAMES / ADMIN_USER_IDS, or
@@ -9666,7 +9765,7 @@ return AdminService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -10001,7 +10100,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">Decor</string>
           <string name="Source"><![CDATA[-- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
@@ -10417,7 +10516,7 @@ return Decor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Catalog: the first player in the whole game to get each rare item (Legendary and up:
@@ -10572,7 +10671,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the parts on their house, plus offline earnings
@@ -10653,7 +10752,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">Environment</string>
           <string name="Source"><![CDATA[-- Lighting, sky, terrain and the town: the street between the two rows of homes, the
@@ -10937,7 +11036,7 @@ return Environment
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">EventService</string>
           <string name="Source"><![CDATA[-- Runs the scheduled events (see shared/Events.luau) and the ones the admin starts.
@@ -11176,7 +11275,7 @@ return EventService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">HalloweenDecor</string>
           <string name="Source"><![CDATA[-- Halloween props: ghosts, bats, cobwebs, tombstones, dead trees, a witch's cauldron,
@@ -11636,7 +11735,7 @@ return HalloweenDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">LuckService</string>
           <string name="Source"><![CDATA[-- Mystery Boxes, the daily Lucky Wheel and Lucky Hour events (rules and odds in
@@ -12142,7 +12241,7 @@ return LuckService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="42">
+      <Item class="Script" referent="43">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -12212,7 +12311,7 @@ print("[Steal a Life] Server started, build " .. require(ReplicatedStorage.Share
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">NestService</string>
           <string name="Source"><![CDATA[-- Eggs growing at home, and hatching them.
@@ -12423,7 +12522,7 @@ return NestService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="44">
+      <Item class="ModuleScript" referent="45">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -12496,7 +12595,7 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="45">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the town and gives every player a home: a big fenced yard with their house (see
@@ -13435,7 +13534,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="46">
+      <Item class="ModuleScript" referent="47">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -13703,7 +13802,7 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="47">
+      <Item class="ModuleScript" referent="48">
         <Properties>
           <string name="Name">SpeedService</string>
           <string name="Source"><![CDATA[-- Speed: trained on your treadmill, it decides how fast you run (Items.walkSpeed), which
@@ -13785,16 +13884,17 @@ return SpeedService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="48">
+      <Item class="ModuleScript" referent="49">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Carrying eggs home from the zones.
 --
--- Hold the Grab prompt on an egg in a zone (you need a free nest at home). The egg rides
--- over your head and you run a little slower (GamePasses.carrySlowdown) until you get it
--- inside your own yard, where it goes into a free nest to grow (NestService). If the zone's
--- guardian catches you, or you die or leave, you drop it and it's gone (the zone grows a new
--- one).
+-- Hold the Grab prompt on an egg in a zone (you need a free nest at home). You carry it in
+-- your arms and run a little slower (GamePasses.carrySlowdown) until you get it inside your
+-- own yard, where it goes into a free nest to grow (NestService). If the egg's guardian
+-- catches you in the egg's own zone (or you die or leave), the egg goes back where you took
+-- it from; if it catches you in a zone nearer town, the egg drops on the ground right there
+-- for anyone to grab (ZoneService.dropLoose).
 --
 -- Also gives players items (StealService.give), from hatching eggs, the Lucky Wheel and
 -- Mystery Boxes.
@@ -13835,10 +13935,13 @@ local function rootPart(player: Player): BasePart?
 	return character:FindFirstChild("HumanoidRootPart") :: BasePart?
 end
 
--- How far the arms swing up to hold an egg over the head (R15 characters).
-local HOLD_ANGLE = math.rad(165)
+-- How far the arms swing forward to hug an egg in front of the chest (R15 characters), how
+-- far they turn in toward it, and how big a carried egg is (it has to fit in their arms).
+local HOLD_ANGLE = math.rad(75)
+local HOLD_IN = math.rad(18)
+local CARRY_SCALE = 0.5
 
--- Puts the egg over the carrier's head. Returns false if the carrier has no character.
+-- Puts the egg in the carrier's arms. Returns false if the carrier has no character.
 local function pickUp(carrier: Player, carry): boolean
 	local character = carrier.Character
 	local root = rootPart(carrier)
@@ -13846,9 +13949,12 @@ local function pickUp(carrier: Player, carry): boolean
 		return false
 	end
 	local model = EggModel.build(carry.record.egg, carry.record.item)
-	Items.scaleModel(model, Items.weightScale(Items.weightFactor(carry.record)))
+	-- Heavier eggs are bigger in your arms too, up to an armful.
+	local scale = CARRY_SCALE * math.min(Items.weightScale(Items.weightFactor(carry.record)), 2.5)
+	Items.scaleModel(model, scale)
 	ItemModel.addMutationEffect(model, carry.record.mutations)
-	model:PivotTo(root.CFrame * CFrame.new(0, 3.2, 0))
+	-- Held against the chest, in front of the body.
+	model:PivotTo(root.CFrame * CFrame.new(0, -0.9, -1.2 - scale * 0.6))
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Anchored = false
@@ -13862,16 +13968,15 @@ local function pickUp(carrier: Player, carry): boolean
 		end
 	end
 
-	-- Arms up to hold it. Changing the shoulder joints' C0 (not Transform) keeps the pose
-	-- under the walk animation, and putDown puts them back.
+	-- Arms forward and in, hugging it. Changing the shoulder joints' C0 (not Transform) keeps
+	-- the pose under the walk animation, and putDown puts them back.
 	carry.shoulders = {}
-	for _, name in { "RightUpperArm.RightShoulder", "LeftUpperArm.LeftShoulder" } do
-		local armName, jointName = string.match(name, "^(.-)%.(.*)$")
-		local arm = character:FindFirstChild(armName)
-		local joint = arm and arm:FindFirstChild(jointName)
+	for _, entry in { { "RightUpperArm", "RightShoulder", 1 }, { "LeftUpperArm", "LeftShoulder", -1 } } do
+		local arm = character:FindFirstChild(entry[1])
+		local joint = arm and arm:FindFirstChild(entry[2])
 		if joint and joint:IsA("Motor6D") then
 			table.insert(carry.shoulders, { joint = joint, c0 = joint.C0 })
-			joint.C0 = joint.C0 * CFrame.Angles(HOLD_ANGLE, 0, 0)
+			joint.C0 = joint.C0 * CFrame.Angles(HOLD_ANGLE, 0, entry[3] * HOLD_IN)
 		end
 	end
 
@@ -13902,10 +14007,15 @@ local function putDown(carrier: Player, carry)
 	carry.shoulders = nil
 end
 
--- The carrier dropped it: it's gone and its pedestal grows a new one.
-local function drop(carrier: Player, carry, message: string?)
+-- The carrier dropped it: on the ground at dropAt (knocked loose outside the egg's own zone),
+-- otherwise back where it was taken from.
+local function drop(carrier: Player, carry, message: string?, dropAt: Vector3?)
 	putDown(carrier, carry)
-	ZoneService.release(carry.zone, carry.pedestal)
+	if dropAt then
+		ZoneService.dropLoose(carry.record, dropAt, carry.zone, carry.pedestal)
+	else
+		ZoneService.restore(carry.zone, carry.pedestal, carry.record)
+	end
 	if message then
 		notify(carrier, message, "error")
 	end
@@ -13946,7 +14056,7 @@ local function grab(prompt: ProximityPrompt, player: Player)
 	if problem then
 		return if problem ~= "" then notify(player, problem, "error") else nil
 	end
-	local record = ZoneService.take(zone, pedestal)
+	local record = ZoneService.take(zone, pedestal, prompt:GetAttribute("Loose"))
 	if not record then
 		return
 	end
@@ -13957,7 +14067,7 @@ local function grab(prompt: ProximityPrompt, player: Player)
 		pedestal = pedestal,
 	}
 	if not pickUp(player, carry) then
-		return ZoneService.release(zone, pedestal)
+		return ZoneService.restore(zone, pedestal, record)
 	end
 	notify(
 		player,
@@ -13983,13 +14093,14 @@ function StealService.carrying(player: Player)
 	return carry and carry.record
 end
 
--- Makes the player drop whatever they're carrying. Returns true if they were carrying.
-function StealService.drop(player: Player, message: string?): boolean
+-- Makes the player drop whatever they're carrying (on the ground at dropAt, or back where it
+-- came from). Returns true if they were carrying.
+function StealService.drop(player: Player, message: string?, dropAt: Vector3?): boolean
 	local carry = carries[player]
 	if not carry then
 		return false
 	end
-	drop(player, carry, message)
+	drop(player, carry, message, dropAt)
 	return true
 end
 
@@ -14041,7 +14152,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="49">
+      <Item class="ModuleScript" referent="50">
         <Properties>
           <string name="Name">ZoneDecor</string>
           <string name="Source"><![CDATA[-- The scenery of each zone: its ground, the cliffs along its sides, the entrance arch with
@@ -14875,7 +14986,7 @@ return ZoneDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="50">
+      <Item class="ModuleScript" referent="51">
         <Properties>
           <string name="Name">ZoneService</string>
           <string name="Source"><![CDATA[-- The zones: eggs to steal, each zone guarded by a giant Freek.
@@ -14905,6 +15016,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Events = require(ReplicatedStorage.Shared.Events)
 local Format = require(ReplicatedStorage.Shared.Format)
 local EggModel = require(ReplicatedStorage.Shared.EggModel)
+local GuardianAttacks = require(ReplicatedStorage.Shared.GuardianAttacks)
 local Items = require(ReplicatedStorage.Shared.Items)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
@@ -14917,14 +15029,17 @@ local ZoneService = {}
 
 local RESPAWN_MIN, RESPAWN_MAX = 6, 12 -- seconds before an empty pedestal grows a new egg
 local CATCH_RADIUS = 7
-local LEASH = 14 -- how far past its zone's edge a guardian keeps chasing
+local LEASH = 14 -- how far past its zone's edges a guardian keeps chasing
+local GIVE_UP_DISTANCE = 220 -- a thief this far ahead got away (reaching town always does)
 local PUBLISH_INTERVAL = 0.1
 
 local notifyRemote = Remotes.get("Notify")
 local knockbackRemote = Remotes.get("Knockback")
+local attackRemote = Remotes.get("GuardianAttack")
 local rng = Random.new()
 
-local zones = {} -- [index] = { pedestals = { { spot, part, model, ring, label, respawnAt, taken } }, guardian }
+local zones = {}
+local inReach, startAttack, stepAttacks -- guardian helpers, defined further down -- [index] = { pedestals = { { spot, part, model, ring, label, respawnAt, taken } }, guardian }
 local hooks = {
 	carrying = function(_player)
 		return nil
@@ -15083,7 +15198,9 @@ function ZoneService.eggName(record): string
 	return if top then top .. " " .. name else name
 end
 
-local function showEgg(index: number, pedestal, record)
+-- Shows an egg on a spot. keepSpot = true puts it back exactly where the spot was (an egg a
+-- guardian took back); otherwise it turns up somewhere new.
+local function showEgg(index: number, pedestal, record, keepSpot: boolean?)
 	if pedestal.model then
 		pedestal.model:Destroy()
 	end
@@ -15092,8 +15209,10 @@ local function showEgg(index: number, pedestal, record)
 	local zone = Items.ZONES[index]
 	local kind = Items.KINDS[zone.kind]
 	local color = Rarities.info[record.rarity].color
-	-- A new place on the ground for it.
-	pedestal.spot = pickSpot(index, record.rarity, zones[index].pedestals)
+	-- A new place on the ground for it (or the same place, for an egg put back).
+	if not keepSpot then
+		pedestal.spot = pickSpot(index, record.rarity, zones[index].pedestals)
+	end
 	pedestal.base.CFrame = pedestal.spot * CFrame.new(0, 0.5, 0)
 	pedestal.ring.CFrame = pedestal.spot * CFrame.new(0, 0.07, 0) * CFrame.Angles(0, 0, math.pi / 2)
 	pedestal.ring.Transparency = 0.35
@@ -15135,7 +15254,7 @@ local function showEgg(index: number, pedestal, record)
 	prompt:SetAttribute("Pedestal", table.find(zones[index].pedestals, pedestal))
 	prompt.Parent = pedestal.base
 
-	if Rarities.rank[record.rarity] >= Rarities.rank.Ultra or top == "Rainbow" or factor >= 10 then
+	if not keepSpot and (Rarities.rank[record.rarity] >= Rarities.rank.Ultra or top == "Rainbow" or factor >= 10) then
 		for _, player in Players:GetPlayers() do
 			notifyRemote:FireClient(
 				player,
@@ -15171,9 +15290,89 @@ local function clearPedestal(pedestal)
 	pedestal.labels.gui.Enabled = false
 end
 
--- Takes the egg off a pedestal for someone to carry. Returns its record, or nil if there's
--- nothing there.
-function ZoneService.take(index: number, n: number)
+--------------------------------------------------------------------------------
+-- Dropped eggs: knocked out of a thief's arms outside the egg's own zone, an egg lies on
+-- the ground where they were hit until someone grabs it (or LOOSE_SECONDS pass and it
+-- vanishes, freeing its spot back home to grow a new one).
+--------------------------------------------------------------------------------
+
+local LOOSE_SECONDS = 60
+local loose = {} -- [id] = { record, zone, pedestal, base, expiresAt }
+local nextLoose = 0
+local looseFolder
+
+-- Drops an egg (from spot n of zone `index`) on the ground at `position`.
+function ZoneService.dropLoose(record, position: Vector3, index: number, n: number)
+	nextLoose += 1
+	local id = nextLoose
+	local ground = CFrame.new(position.X, 0, position.Z)
+	local base = part({
+		Name = "DroppedEgg",
+		Size = Vector3.new(4, 1, 4),
+		CFrame = ground * CFrame.new(0, 0.5, 0),
+		Transparency = 1,
+		CanCollide = false,
+		CanQuery = false,
+		Parent = looseFolder,
+	})
+	local model, height = EggModel.build(record.egg, record.item)
+	local scale = Items.weightScale(Items.weightFactor(record))
+	Items.scaleModel(model, scale)
+	model:PivotTo(ground * CFrame.Angles(0, rng:NextNumber() * math.pi * 2, 0))
+	model.Parent = base
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromScale(8, 2)
+	gui.StudsOffset = Vector3.new(0, 2 + height * scale, 0)
+	gui.MaxDistance = 26
+	gui.LightInfluence = 0
+	gui.Parent = base
+	local name = textLine(gui, Enum.Font.FredokaOne, 0, 0.55)
+	name.Text = "🥚 " .. ZoneService.eggName(record)
+	local weight = textLine(gui, Enum.Font.FredokaOne, 0.55, 0.45)
+	weight.Text = "⚖ " .. Format.weight(record.weight or 1) .. " · DROPPED"
+	weight.TextColor3 = Color3.fromRGB(255, 215, 60)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "GrabPrompt"
+	prompt.ActionText = "Grab"
+	prompt.ObjectText = record.rarity .. " " .. ZoneService.eggName(record)
+	prompt.HoldDuration = Config.GRAB_HOLD_SECONDS
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt:SetAttribute("Zone", index)
+	prompt:SetAttribute("Pedestal", n)
+	prompt:SetAttribute("Loose", id)
+	prompt.Parent = base
+	loose[id] = { record = record, zone = index, pedestal = n, base = base, expiresAt = os.clock() + LOOSE_SECONDS }
+end
+
+local function removeLoose(id: number)
+	local entry = loose[id]
+	if not entry then
+		return nil
+	end
+	loose[id] = nil
+	-- Destroyed a moment later: other PromptTriggered handlers may still be looking at it.
+	entry.base.Parent = nil
+	task.defer(entry.base.Destroy, entry.base)
+	return entry
+end
+
+-- A thief was caught in the egg's own zone: the egg goes back exactly where it was taken.
+function ZoneService.restore(index: number?, n: number?, record)
+	local zone = index and zones[index]
+	local pedestal = zone and n and zone.pedestals[n]
+	if pedestal and record then
+		showEgg(index, pedestal, record, true)
+	end
+end
+
+-- Takes the egg off a spot (or, with looseId, a dropped egg) for someone to carry. Returns
+-- its record, or nil if there's nothing there. A dropped egg's spot back home stays taken.
+function ZoneService.take(index: number, n: number, looseId: number?)
+	if looseId then
+		local entry = removeLoose(looseId)
+		return entry and entry.record
+	end
 	local zone = zones[index]
 	local pedestal = zone and zone.pedestals[n]
 	if not pedestal or not pedestal.record or pedestal.taken then
@@ -15235,11 +15434,13 @@ end
 local function newGuardian(index: number)
 	local home = ZoneLayout.guardianHome(index)
 	local zone = Items.ZONES[index]
+	local attackId, attack = GuardianAttacks.forSpecies(zone.guardian)
 	local data = Instance.new("Configuration")
 	data.Name = "Guardian" .. index
 	data:SetAttribute("Zone", index)
 	data:SetAttribute("Species", zone.guardian)
 	data:SetAttribute("Title", zone.title)
+	data:SetAttribute("Attack", attackId)
 	data.Parent = guardianFolder
 	return {
 		index = index,
@@ -15252,6 +15453,12 @@ local function newGuardian(index: number)
 		data = data,
 		moving = false,
 		awake = false, -- guardians sleep at home until someone steals one of their eggs
+		attackId = attackId,
+		attack = attack,
+		attackReadyAt = 0,
+		dashUntil = 0,
+		projectiles = {},
+		pending = nil,
 	}
 end
 
@@ -15278,29 +15485,194 @@ local function flatten(v: Vector3): Vector3
 	return Vector3.new(v.X, 0, v.Z)
 end
 
-local function catch(guardian, player: Player, root: BasePart)
+-- The guardian got them (by running into them or with its attack). Caught in the egg's own
+-- zone, the egg goes back where it was taken from; caught in a zone nearer town, it drops on
+-- the ground right there. pull = yanked back toward the guardian instead of flung away.
+local function catch(guardian, player: Player, root: BasePart, how: string?, pull: boolean?)
 	local zone = Items.ZONES[guardian.index]
 	guardian.target = nil
 	guardian.cooldown = os.clock() + 2.5
-	hooks.drop(player, zone.title .. " caught you! You dropped the egg.")
+	guardian.projectiles = {}
+	guardian.pending = nil
+	guardian.dashUntil = 0
+	local home = ZoneLayout.inside(guardian.index, root.Position)
+	hooks.drop(
+		player,
+		zone.title .. (if how then "'s " .. how else "") .. " got you! You dropped the egg.",
+		if home then nil else root.Position
+	)
 	-- Fling them back toward town, along the zone and a little toward its middle, in a low
 	-- arc (well under the side walls, which also have invisible barriers above them).
 	local toMiddle = math.clamp(-root.Position.Z / (ZoneLayout.WIDTH / 2), -1, 1) * 0.3
 	local direction = Vector3.new(1, 0, toMiddle).Unit
-	knockbackRemote:FireClient(player, direction + Vector3.new(0, 0.25, 0), 80, 0.35)
+	if pull then
+		local back = flatten(guardian.position - root.Position)
+		direction = if back.Magnitude > 0.1 then back.Unit else direction
+	end
+	knockbackRemote:FireClient(player, direction + Vector3.new(0, 0.25, 0), if pull then 55 else 80, 0.35)
+end
+
+-- True if a position is somewhere a guardian keeps chasing: its own zone (plus LEASH) or
+-- the zones between it and town.
+function inReach(guardian, position: Vector3): boolean
+	if ZoneLayout.inside(guardian.index, position, LEASH) then
+		return true
+	end
+	local zone = ZoneLayout.zoneAt(position)
+	return zone ~= nil and zone <= guardian.index
+end
+
+-- How a target is moving (flat), or standing still if that can't be read.
+local function velocityOf(root: BasePart): Vector3
+	local ok, velocity = pcall(function()
+		return root.AssemblyLinearVelocity
+	end)
+	return if ok and typeof(velocity) == "Vector3" then flatten(velocity) else Vector3.zero
+end
+
+-- Where a target will be in `seconds` (flat, on the ground), from how it's moving now.
+local function predict(root: BasePart, seconds: number): Vector3
+	return flatten(root.Position) + velocityOf(root) * seconds
+end
+
+-- Keeps a point inside the zones a guardian can reach (for teleports).
+local function clampToZones(guardian, point: Vector3): Vector3
+	local _, west = ZoneLayout.edges(guardian.index)
+	local half = ZoneLayout.WIDTH / 2 - 6
+	return Vector3.new(math.clamp(point.X, west + 6, ZoneLayout.START_X - 6), 0, math.clamp(point.Z, -half, half))
+end
+
+-- Starts the guardian's signature attack on its target, if it's ready and in range.
+function startAttack(guardian, target: Player, root: BasePart, now: number)
+	local attack = guardian.attack
+	if guardian.pending or now < guardian.attackReadyAt or now < guardian.dashUntil then
+		return
+	end
+	local distance = (flatten(root.Position) - guardian.position).Magnitude
+	if distance > attack.range or distance < CATCH_RADIUS + 2 then
+		return
+	end
+	guardian.attackReadyAt = now + attack.cooldown
+	local from = guardian.position + Vector3.new(0, 5, 0)
+	if attack.kind == "dash" then
+		guardian.dashUntil = now + attack.time
+		guardian.dashStart = now
+		attackRemote:FireAllClients(guardian.index, guardian.attackId, { time = attack.time })
+	elseif attack.kind == "projectile" then
+		local aim = predict(root, distance / attack.speed * attack.lead) + Vector3.new(0, 2.5, 0)
+		local velocity = (aim - from).Unit * attack.speed
+		local duration = attack.range / attack.speed * 1.5
+		table.insert(
+			guardian.projectiles,
+			{ position = from, velocity = velocity, target = target, endsAt = now + duration }
+		)
+		attackRemote:FireAllClients(guardian.index, guardian.attackId, {
+			from = from,
+			velocity = velocity,
+			target = target.UserId,
+			duration = duration,
+		})
+	elseif attack.kind == "teleport" then
+		local velocity = velocityOf(root)
+		local ahead = if velocity.Magnitude > 1 then velocity.Unit else flatten(root.Position - guardian.position).Unit
+		local to = clampToZones(guardian, flatten(root.Position) + ahead * attack.ahead)
+		attackRemote:FireAllClients(guardian.index, guardian.attackId, { from = guardian.position, to = to })
+		guardian.position = to
+		guardian.snap = (guardian.snap or 0) + 1
+	elseif attack.kind == "beam" then
+		guardian.pending = { fireAt = now + attack.windup, target = target, slow = true }
+		attackRemote:FireAllClients(guardian.index, guardian.attackId, {
+			phase = "aim",
+			target = target.UserId,
+			windup = attack.windup,
+		})
+	elseif attack.kind == "strike" then
+		local spot = predict(root, attack.windup * attack.lead)
+		guardian.pending = { fireAt = now + attack.windup, spot = spot, target = target }
+		attackRemote:FireAllClients(guardian.index, guardian.attackId, {
+			phase = "mark",
+			spot = spot,
+			windup = attack.windup,
+			radius = attack.radius,
+		})
+	end
+end
+
+-- Moves projectiles and fires aimed attacks whose time has come; anything that hits its
+-- target catches them.
+function stepAttacks(guardian, dt: number, now: number)
+	local attack = guardian.attack
+	for i = #guardian.projectiles, 1, -1 do
+		local shot = guardian.projectiles[i]
+		local root = rootPart(shot.target)
+		if attack.homing and root then
+			local want = (root.Position - shot.position).Unit * attack.speed
+			shot.velocity = shot.velocity:Lerp(want, math.min(1, attack.homing * dt))
+		end
+		shot.position += shot.velocity * dt
+		if
+			root
+			and carryingOurs(guardian, shot.target)
+			and (root.Position - shot.position).Magnitude < attack.radius
+		then
+			catch(guardian, shot.target, root, attack.name, attack.pull)
+			return
+		end
+		if now > shot.endsAt then
+			table.remove(guardian.projectiles, i)
+		end
+	end
+	local pending = guardian.pending
+	if pending and now >= pending.fireAt then
+		guardian.pending = nil
+		local root = rootPart(pending.target)
+		if attack.kind == "beam" then
+			local from = guardian.position + Vector3.new(0, 5, 0)
+			local aimAt = if root then root.Position else from + Vector3.new(attack.range, 0, 0)
+			local direction = (aimAt - from).Unit
+			attackRemote:FireAllClients(guardian.index, guardian.attackId, {
+				phase = "fire",
+				from = from,
+				direction = direction,
+				range = attack.range,
+			})
+			if root and carryingOurs(guardian, pending.target) then
+				local rel = root.Position - from
+				local along = rel:Dot(direction)
+				local off = (rel - direction * along).Magnitude
+				if along > 0 and along < attack.range and off < attack.width then
+					catch(guardian, pending.target, root, attack.name)
+				end
+			end
+		elseif attack.kind == "strike" then
+			attackRemote:FireAllClients(guardian.index, guardian.attackId, {
+				phase = "fire",
+				spot = pending.spot,
+				radius = attack.radius,
+			})
+			if root and carryingOurs(guardian, pending.target) then
+				if (flatten(root.Position) - pending.spot).Magnitude < attack.radius then
+					catch(guardian, pending.target, root, attack.name)
+				end
+			end
+		end
+	end
 end
 
 local function stepGuardian(guardian, dt: number)
 	local now = os.clock()
 	local target = guardian.target
 	local targetRoot = target and rootPart(target)
-	-- Give up on anyone who got away, isn't carrying one of our eggs any more, or left.
+	-- Give up on anyone who got away (made it back to town, or outran us by a long way),
+	-- isn't carrying one of our eggs any more, or left. Guardians chase thieves out of their
+	-- own zone into the zones nearer town.
 	if
 		target
 		and (
 			not targetRoot
 			or not carryingOurs(guardian, target)
-			or not ZoneLayout.inside(guardian.index, targetRoot.Position, LEASH)
+			or not inReach(guardian, targetRoot.Position)
+			or (flatten(targetRoot.Position) - guardian.position).Magnitude > GIVE_UP_DISTANCE
 			or not target.Parent
 		)
 	then
@@ -15329,6 +15701,12 @@ local function stepGuardian(guardian, dt: number)
 	if target and targetRoot then
 		goal = flatten(targetRoot.Position)
 		speed = guardian.speed * Events.boost("guardianSpeed")
+		if now < (guardian.dashUntil or 0) then
+			speed *= guardian.attack.mult
+		elseif guardian.pending and guardian.pending.slow then
+			speed *= 0.3 -- nearly standing still while it aims
+		end
+		startAttack(guardian, target, targetRoot, now)
 	else
 		-- Nobody to chase: walk back home and, once there, go back to sleep.
 		goal = guardian.home
@@ -15348,7 +15726,9 @@ local function stepGuardian(guardian, dt: number)
 	end
 	if target and targetRoot and (flatten(targetRoot.Position) - guardian.position).Magnitude < CATCH_RADIUS then
 		catch(guardian, target, targetRoot)
+		return
 	end
+	stepAttacks(guardian, dt, now)
 end
 
 local function publish(guardian)
@@ -15359,6 +15739,15 @@ local function publish(guardian)
 	data:SetAttribute("Moving", guardian.moving)
 	data:SetAttribute("Chasing", guardian.target ~= nil)
 	data:SetAttribute("Sleeping", not guardian.awake)
+	-- Off the ground during a leap or swoop; Snap changes when it teleports.
+	local lift = 0
+	local now = os.clock()
+	if guardian.attack.lift and now < guardian.dashUntil then
+		local t = (now - (guardian.dashStart or now)) / guardian.attack.time
+		lift = guardian.attack.lift * math.sin(math.clamp(t, 0, 1) * math.pi)
+	end
+	data:SetAttribute("Lift", math.floor(lift * 10) / 10)
+	data:SetAttribute("Snap", guardian.snap or 0)
 	data:SetAttribute("Speed", guardian.speed)
 end
 
@@ -15374,6 +15763,9 @@ function ZoneService.init()
 	guardianFolder = Instance.new("Folder")
 	guardianFolder.Name = "Guardians"
 	guardianFolder.Parent = ReplicatedStorage
+	looseFolder = Instance.new("Folder")
+	looseFolder.Name = "DroppedEggs"
+	looseFolder.Parent = map
 
 	for index = 1, #Items.ZONES do
 		local folder = ZoneDecor.build(map, index)
@@ -15423,6 +15815,13 @@ function ZoneService.init()
 					end
 				end
 			end
+			-- Dropped eggs nobody picked up vanish, and their spot back home grows a new egg.
+			for id, entry in loose do
+				if now >= entry.expiresAt then
+					removeLoose(id)
+					ZoneService.release(entry.zone, entry.pedestal)
+				end
+			end
 		end
 	end)
 end
@@ -15433,19 +15832,19 @@ return ZoneService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="51">
+  <Item class="StarterPlayer" referent="52">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="52">
+    <Item class="StarterPlayerScripts" referent="53">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="53">
+      <Item class="Folder" referent="54">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="54">
+        <Item class="ModuleScript" referent="55">
           <Properties>
             <string name="Name">AdminPanel</string>
             <string name="Source"><![CDATA[-- The admin panel (only for admins: the server sets IsAdmin and checks every command).
@@ -15841,7 +16240,7 @@ return AdminPanel
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="55">
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -15915,7 +16314,7 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="56">
+        <Item class="ModuleScript" referent="57">
           <Properties>
             <string name="Name">EventFX</string>
             <string name="Source"><![CDATA[-- What big events and weather look like (see Events.luau), on each player's own screen:
@@ -16007,7 +16406,280 @@ return EventFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="57">
+        <Item class="ModuleScript" referent="58">
+          <Properties>
+            <string name="Name">GuardianAttackFX</string>
+            <string name="Source"><![CDATA[-- Draws the guardians' attacks (GuardianAttacks.luau) on this client, from the server's
+-- GuardianAttack events: a dust burst for a dash, the thing thrown for a projectile (a pie,
+-- a bandage, a magic orb, a bat swarm), a poof at both ends of a teleport, a warning line
+-- then a laser for a beam, and a warning circle then a lightning bolt for a strike. The
+-- server decides what hits; this is only the show.
+
+local Debris = game:GetService("Debris")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local GuardianAttacks = require(ReplicatedStorage.Shared.GuardianAttacks)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+
+local GuardianAttackFX = {}
+
+local folder
+local moving = {} -- { { model, velocity, target, homing, speed, endsAt, spin } }
+local beams = {} -- [zone] = { line, target, endsAt }
+
+local function part(props): BasePart
+	local p = Instance.new("Part")
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CastShadow = false
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	p.Material = Enum.Material.SmoothPlastic
+	for key, value in props do
+		p[key] = value
+	end
+	p.Parent = props.Parent or folder
+	return p
+end
+
+local function guardianPosition(zone: number): Vector3?
+	local guardians = ReplicatedStorage:FindFirstChild("Guardians")
+	local data = guardians and guardians:FindFirstChild("Guardian" .. zone)
+	if not data then
+		return nil
+	end
+	return Vector3.new(data:GetAttribute("X") or 0, 5, data:GetAttribute("Z") or 0)
+end
+
+local function rootOf(userId: number?): BasePart?
+	local player = userId and Players:GetPlayerByUserId(userId)
+	local character = player and player.Character
+	return character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
+-- A burst of little bricks flying out from a point and fading (dust, poofs, sparks).
+local function burst(at: Vector3, color: Color3, count: number, speed: number, material: Enum.Material?)
+	for _ = 1, count do
+		local direction = Vector3.new(math.random() - 0.5, math.random() * 0.8, math.random() - 0.5).Unit
+		local bit = part({
+			Size = Vector3.one * (0.5 + math.random() * 0.6),
+			CFrame = CFrame.new(at),
+			Color = color,
+			Material = material or Enum.Material.SmoothPlastic,
+		})
+		table.insert(moving, {
+			model = bit,
+			velocity = direction * speed,
+			endsAt = os.clock() + 0.6,
+			fade = true,
+			gravity = true,
+		})
+	end
+end
+
+-- The thing a projectile attack throws.
+local function projectileModel(attackId: string, color: Color3): Model
+	local model = Instance.new("Model")
+	model.Name = "Projectile"
+	if attackId == "pie" then
+		part({
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.6, 2.4, 2.4),
+			Color = color,
+			Parent = model,
+		})
+		part({
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * 1.6,
+			CFrame = CFrame.new(0.5, 0, 0),
+			Color = Color3.fromRGB(255, 250, 245),
+			Parent = model,
+		})
+	elseif attackId == "bandage" then
+		part({ Size = Vector3.new(0.5, 0.2, 5), Color = color, Parent = model })
+	elseif attackId == "bats" then
+		for k = 0, 3 do
+			local offset = Vector3.new(math.cos(k * 1.7) * 1.4, math.sin(k * 2.3) * 0.8, math.sin(k * 1.7) * 1.4)
+			part({ Size = Vector3.new(1.6, 0.2, 0.7), CFrame = CFrame.new(offset), Color = color, Parent = model })
+			part({
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.one * 0.6,
+				CFrame = CFrame.new(offset),
+				Color = color,
+				Parent = model,
+			})
+		end
+	else -- magic orb
+		local orb = part({
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * 2,
+			Color = color,
+			Material = Enum.Material.Neon,
+			Parent = model,
+		})
+		local light = Instance.new("PointLight")
+		light.Color = color
+		light.Range = 10
+		light.Brightness = 3
+		light.Parent = orb
+	end
+	model.PrimaryPart = model:FindFirstChildWhichIsA("BasePart")
+	model.Parent = folder
+	return model
+end
+
+local function onAttack(zone: number, attackId: string, info)
+	local attack = GuardianAttacks.list[attackId]
+	if not attack or typeof(info) ~= "table" then
+		return
+	end
+	local at = guardianPosition(zone)
+	if attack.kind == "dash" then
+		if at then
+			burst(at - Vector3.new(0, 4, 0), Color3.fromRGB(200, 185, 160), 10, 18)
+		end
+	elseif attack.kind == "projectile" then
+		local model = projectileModel(attackId, attack.color or Color3.new(1, 1, 1))
+		model:PivotTo(CFrame.new(info.from))
+		table.insert(moving, {
+			model = model,
+			velocity = info.velocity,
+			target = info.target,
+			homing = attack.homing,
+			speed = attack.speed,
+			radius = attack.radius,
+			endsAt = os.clock() + (info.duration or 2),
+			spin = attackId ~= "bandage",
+		})
+	elseif attack.kind == "teleport" then
+		local ghost = Color3.fromRGB(180, 200, 255)
+		burst(info.from + Vector3.new(0, 3, 0), ghost, 14, 14, Enum.Material.Neon)
+		burst(info.to + Vector3.new(0, 3, 0), ghost, 14, 14, Enum.Material.Neon)
+	elseif attack.kind == "beam" then
+		if info.phase == "aim" then
+			local line = part({
+				Name = "LaserAim",
+				Size = Vector3.new(0.25, 0.25, 1),
+				Color = Color3.fromRGB(255, 60, 60),
+				Material = Enum.Material.Neon,
+				Transparency = 0.3,
+			})
+			beams[zone] = { line = line, target = info.target, endsAt = os.clock() + (info.windup or 1) }
+			Debris:AddItem(line, (info.windup or 1) + 0.2)
+		elseif info.phase == "fire" then
+			if beams[zone] then
+				beams[zone].line:Destroy()
+				beams[zone] = nil
+			end
+			local length = info.range or 60
+			local laser = part({
+				Name = "Laser",
+				Size = Vector3.new(attack.width * 0.8, attack.width * 0.8, length),
+				CFrame = CFrame.lookAt(info.from, info.from + info.direction) * CFrame.new(0, 0, -length / 2),
+				Color = Color3.fromRGB(255, 40, 40),
+				Material = Enum.Material.Neon,
+				Transparency = 0.15,
+			})
+			Debris:AddItem(laser, 0.35)
+		end
+	elseif attack.kind == "strike" then
+		local radius = info.radius or 7
+		if info.phase == "mark" then
+			local mark = part({
+				Name = "StrikeMark",
+				Shape = Enum.PartType.Cylinder,
+				Size = Vector3.new(0.2, radius * 2, radius * 2),
+				CFrame = CFrame.new(info.spot + Vector3.new(0, 0.15, 0)) * CFrame.Angles(0, 0, math.pi / 2),
+				Color = Color3.fromRGB(255, 60, 60),
+				Material = Enum.Material.Neon,
+				Transparency = 0.6,
+			})
+			Debris:AddItem(mark, (info.windup or 1) + 0.1)
+		elseif info.phase == "fire" then
+			local bolt = part({
+				Name = "Lightning",
+				Size = Vector3.new(1.6, 70, 1.6),
+				CFrame = CFrame.new(info.spot + Vector3.new(0, 35, 0)),
+				Color = Color3.fromRGB(255, 240, 120),
+				Material = Enum.Material.Neon,
+			})
+			local light = Instance.new("PointLight")
+			light.Color = Color3.fromRGB(255, 240, 160)
+			light.Range = 30
+			light.Brightness = 8
+			light.Parent = bolt
+			Debris:AddItem(bolt, 0.3)
+			burst(info.spot + Vector3.new(0, 1, 0), Color3.fromRGB(255, 230, 90), 12, 20, Enum.Material.Neon)
+		end
+	end
+end
+
+local function step(dt: number)
+	local now = os.clock()
+	for i = #moving, 1, -1 do
+		local m = moving[i]
+		local model = m.model
+		if not model.Parent or now > m.endsAt then
+			model:Destroy()
+			table.remove(moving, i)
+			continue
+		end
+		local root = rootOf(m.target)
+		if m.homing and root then
+			local position = model:GetPivot().Position
+			m.velocity = m.velocity:Lerp((root.Position - position).Unit * m.speed, math.min(1, m.homing * dt))
+		end
+		if m.gravity then
+			m.velocity += Vector3.new(0, -60 * dt, 0)
+		end
+		local position = model:GetPivot().Position + m.velocity * dt
+		local facing = if m.velocity.Magnitude > 0.1
+			then CFrame.lookAt(position, position + m.velocity)
+			else CFrame.new(position)
+		if m.spin then
+			facing *= CFrame.Angles(0, 0, now * 8)
+		end
+		model:PivotTo(facing)
+		if m.fade and model:IsA("BasePart") then
+			model.Transparency = math.clamp(1 - (m.endsAt - now) / 0.6, 0, 1)
+		end
+		-- Gone once it reaches its target (the server decides whether it hit).
+		if root and m.radius and (root.Position - position).Magnitude < m.radius then
+			model:Destroy()
+			table.remove(moving, i)
+		end
+	end
+	-- Laser warning lines follow their target until the shot.
+	for zone, beam in beams do
+		local from = guardianPosition(zone)
+		local root = rootOf(beam.target)
+		if not beam.line.Parent or now > beam.endsAt or not from or not root then
+			beams[zone] = nil
+		else
+			local length = (root.Position - from).Magnitude
+			beam.line.Size = Vector3.new(0.25, 0.25, length)
+			beam.line.CFrame = CFrame.lookAt(from, root.Position) * CFrame.new(0, 0, -length / 2)
+		end
+	end
+end
+
+function GuardianAttackFX.start()
+	folder = Instance.new("Folder")
+	folder.Name = "GuardianAttackFX"
+	folder.Parent = Workspace
+	Remotes.get("GuardianAttack").OnClientEvent:Connect(onAttack)
+	RunService.RenderStepped:Connect(step)
+end
+
+return GuardianAttackFX
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="59">
           <Properties>
             <string name="Name">GuardianFX</string>
             <string name="Source"><![CDATA[-- The zone guardians, drawn on this client: a giant Freek per zone that walks after its
@@ -16097,6 +16769,7 @@ local function add(data: Instance)
 		position = position,
 		yaw = yaw,
 		label = label,
+		snap = data:GetAttribute("Snap") or 0,
 	}
 end
 
@@ -16112,7 +16785,12 @@ local function step(dt: number)
 		local speed = (data:GetAttribute("Speed") or 16) * 1.25
 		local offset = target - g.position
 		local distance = offset.Magnitude
-		if distance > 30 then
+		-- A teleport (Snap changed): jump straight there.
+		local snap = data:GetAttribute("Snap") or 0
+		if snap ~= g.snap then
+			g.snap = snap
+			g.position = target
+		elseif distance > 30 then
 			g.position = target -- too far behind (e.g. just streamed in): jump there
 		elseif distance > 0.01 then
 			g.position += offset.Unit * math.min(distance, speed * dt)
@@ -16121,7 +16799,9 @@ local function step(dt: number)
 		local goalYaw = data:GetAttribute("Yaw") or g.yaw
 		local diff = (goalYaw - g.yaw + math.pi) % (2 * math.pi) - math.pi
 		g.yaw += diff * math.min(1, dt * 10)
-		local ground = CFrame.new(g.position) * CFrame.Angles(0, g.yaw, 0)
+		-- Off the ground during a leap or swoop.
+		local lift = data:GetAttribute("Lift") or 0
+		local ground = CFrame.new(g.position + Vector3.new(0, lift, 0)) * CFrame.Angles(0, g.yaw, 0)
 		local walking = data:GetAttribute("Moving") == true
 		local sleeping = data:GetAttribute("Sleeping") == true and not walking
 		if sleeping then
@@ -16166,7 +16846,7 @@ return GuardianFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="58">
+        <Item class="ModuleScript" referent="60">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, Speed, event chip, menu buttons, leaderboard,
@@ -17436,7 +18116,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="59">
+        <Item class="ModuleScript" referent="61">
           <Properties>
             <string name="Name">ItemPictures</string>
             <string name="Source"><![CDATA[-- 3D pictures for shop items (the treadmill, game passes), items, eggs and the side menu,
@@ -18113,7 +18793,7 @@ return ItemPictures
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="60">
+        <Item class="ModuleScript" referent="62">
           <Properties>
             <string name="Name">LuckyWheel</string>
             <string name="Source"><![CDATA[-- The Lucky Wheel, drawn like the prize wheels in the big simulators: bright pie slices
@@ -18409,7 +19089,7 @@ return LuckyWheel
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="61">
+        <Item class="LocalScript" referent="63">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money and Speed, the side menu, and the Shop / Luck / My Life / Bag /
@@ -18472,6 +19152,7 @@ local Remotes = require(Shared.Remotes)
 local AdminPanel = require(script.Parent.AdminPanel)
 local Ambient = require(script.Parent.Ambient)
 local EventFX = require(script.Parent.EventFX)
+local GuardianAttackFX = require(script.Parent.GuardianAttackFX)
 local GuardianFX = require(script.Parent.GuardianFX)
 local Hud = require(script.Parent.Hud)
 local ItemPictures = require(script.Parent.ItemPictures)
@@ -20030,6 +20711,7 @@ Remotes.get("Knockback").OnClientEvent:Connect(function(direction: Vector3, stre
 end)
 
 GuardianFX.start()
+GuardianAttackFX.start()
 PetFX.start()
 TreadmillRun.start()
 Ambient.start()
@@ -20080,7 +20762,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="62">
+        <Item class="ModuleScript" referent="64">
           <Properties>
             <string name="Name">PackReveal</string>
             <string name="Source"><![CDATA[-- Hatching an egg (or opening a Mystery Box), done like a card-pack reveal in the big
@@ -21458,7 +22140,7 @@ return PackReveal
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="63">
+        <Item class="ModuleScript" referent="65">
           <Properties>
             <string name="Name">PetFX</string>
             <string name="Source"><![CDATA[-- Pets roaming their owner's front lawn, drawn on this client. The server lists each
@@ -21655,7 +22337,7 @@ return PetFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="64">
+        <Item class="ModuleScript" referent="66">
           <Properties>
             <string name="Name">TreadmillRun</string>
             <string name="Source"><![CDATA[-- Running on your treadmill by yourself: while you stand on your own treadmill's belt and
@@ -21721,7 +22403,7 @@ return TreadmillRun
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="65">
+        <Item class="ModuleScript" referent="67">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).

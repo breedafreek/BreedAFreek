@@ -25,6 +25,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Events = require(ReplicatedStorage.Shared.Events)
 local Format = require(ReplicatedStorage.Shared.Format)
 local EggModel = require(ReplicatedStorage.Shared.EggModel)
+local GuardianAttacks = require(ReplicatedStorage.Shared.GuardianAttacks)
 local Items = require(ReplicatedStorage.Shared.Items)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
@@ -37,14 +38,17 @@ local ZoneService = {}
 
 local RESPAWN_MIN, RESPAWN_MAX = 6, 12 -- seconds before an empty pedestal grows a new egg
 local CATCH_RADIUS = 7
-local LEASH = 14 -- how far past its zone's edge a guardian keeps chasing
+local LEASH = 14 -- how far past its zone's edges a guardian keeps chasing
+local GIVE_UP_DISTANCE = 220 -- a thief this far ahead got away (reaching town always does)
 local PUBLISH_INTERVAL = 0.1
 
 local notifyRemote = Remotes.get("Notify")
 local knockbackRemote = Remotes.get("Knockback")
+local attackRemote = Remotes.get("GuardianAttack")
 local rng = Random.new()
 
-local zones = {} -- [index] = { pedestals = { { spot, part, model, ring, label, respawnAt, taken } }, guardian }
+local zones = {}
+local inReach, startAttack, stepAttacks -- guardian helpers, defined further down -- [index] = { pedestals = { { spot, part, model, ring, label, respawnAt, taken } }, guardian }
 local hooks = {
 	carrying = function(_player)
 		return nil
@@ -203,7 +207,9 @@ function ZoneService.eggName(record): string
 	return if top then top .. " " .. name else name
 end
 
-local function showEgg(index: number, pedestal, record)
+-- Shows an egg on a spot. keepSpot = true puts it back exactly where the spot was (an egg a
+-- guardian took back); otherwise it turns up somewhere new.
+local function showEgg(index: number, pedestal, record, keepSpot: boolean?)
 	if pedestal.model then
 		pedestal.model:Destroy()
 	end
@@ -212,8 +218,10 @@ local function showEgg(index: number, pedestal, record)
 	local zone = Items.ZONES[index]
 	local kind = Items.KINDS[zone.kind]
 	local color = Rarities.info[record.rarity].color
-	-- A new place on the ground for it.
-	pedestal.spot = pickSpot(index, record.rarity, zones[index].pedestals)
+	-- A new place on the ground for it (or the same place, for an egg put back).
+	if not keepSpot then
+		pedestal.spot = pickSpot(index, record.rarity, zones[index].pedestals)
+	end
 	pedestal.base.CFrame = pedestal.spot * CFrame.new(0, 0.5, 0)
 	pedestal.ring.CFrame = pedestal.spot * CFrame.new(0, 0.07, 0) * CFrame.Angles(0, 0, math.pi / 2)
 	pedestal.ring.Transparency = 0.35
@@ -255,7 +263,7 @@ local function showEgg(index: number, pedestal, record)
 	prompt:SetAttribute("Pedestal", table.find(zones[index].pedestals, pedestal))
 	prompt.Parent = pedestal.base
 
-	if Rarities.rank[record.rarity] >= Rarities.rank.Ultra or top == "Rainbow" or factor >= 10 then
+	if not keepSpot and (Rarities.rank[record.rarity] >= Rarities.rank.Ultra or top == "Rainbow" or factor >= 10) then
 		for _, player in Players:GetPlayers() do
 			notifyRemote:FireClient(
 				player,
@@ -291,9 +299,89 @@ local function clearPedestal(pedestal)
 	pedestal.labels.gui.Enabled = false
 end
 
--- Takes the egg off a pedestal for someone to carry. Returns its record, or nil if there's
--- nothing there.
-function ZoneService.take(index: number, n: number)
+--------------------------------------------------------------------------------
+-- Dropped eggs: knocked out of a thief's arms outside the egg's own zone, an egg lies on
+-- the ground where they were hit until someone grabs it (or LOOSE_SECONDS pass and it
+-- vanishes, freeing its spot back home to grow a new one).
+--------------------------------------------------------------------------------
+
+local LOOSE_SECONDS = 60
+local loose = {} -- [id] = { record, zone, pedestal, base, expiresAt }
+local nextLoose = 0
+local looseFolder
+
+-- Drops an egg (from spot n of zone `index`) on the ground at `position`.
+function ZoneService.dropLoose(record, position: Vector3, index: number, n: number)
+	nextLoose += 1
+	local id = nextLoose
+	local ground = CFrame.new(position.X, 0, position.Z)
+	local base = part({
+		Name = "DroppedEgg",
+		Size = Vector3.new(4, 1, 4),
+		CFrame = ground * CFrame.new(0, 0.5, 0),
+		Transparency = 1,
+		CanCollide = false,
+		CanQuery = false,
+		Parent = looseFolder,
+	})
+	local model, height = EggModel.build(record.egg, record.item)
+	local scale = Items.weightScale(Items.weightFactor(record))
+	Items.scaleModel(model, scale)
+	model:PivotTo(ground * CFrame.Angles(0, rng:NextNumber() * math.pi * 2, 0))
+	model.Parent = base
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromScale(8, 2)
+	gui.StudsOffset = Vector3.new(0, 2 + height * scale, 0)
+	gui.MaxDistance = 26
+	gui.LightInfluence = 0
+	gui.Parent = base
+	local name = textLine(gui, Enum.Font.FredokaOne, 0, 0.55)
+	name.Text = "🥚 " .. ZoneService.eggName(record)
+	local weight = textLine(gui, Enum.Font.FredokaOne, 0.55, 0.45)
+	weight.Text = "⚖ " .. Format.weight(record.weight or 1) .. " · DROPPED"
+	weight.TextColor3 = Color3.fromRGB(255, 215, 60)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "GrabPrompt"
+	prompt.ActionText = "Grab"
+	prompt.ObjectText = record.rarity .. " " .. ZoneService.eggName(record)
+	prompt.HoldDuration = Config.GRAB_HOLD_SECONDS
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt:SetAttribute("Zone", index)
+	prompt:SetAttribute("Pedestal", n)
+	prompt:SetAttribute("Loose", id)
+	prompt.Parent = base
+	loose[id] = { record = record, zone = index, pedestal = n, base = base, expiresAt = os.clock() + LOOSE_SECONDS }
+end
+
+local function removeLoose(id: number)
+	local entry = loose[id]
+	if not entry then
+		return nil
+	end
+	loose[id] = nil
+	-- Destroyed a moment later: other PromptTriggered handlers may still be looking at it.
+	entry.base.Parent = nil
+	task.defer(entry.base.Destroy, entry.base)
+	return entry
+end
+
+-- A thief was caught in the egg's own zone: the egg goes back exactly where it was taken.
+function ZoneService.restore(index: number?, n: number?, record)
+	local zone = index and zones[index]
+	local pedestal = zone and n and zone.pedestals[n]
+	if pedestal and record then
+		showEgg(index, pedestal, record, true)
+	end
+end
+
+-- Takes the egg off a spot (or, with looseId, a dropped egg) for someone to carry. Returns
+-- its record, or nil if there's nothing there. A dropped egg's spot back home stays taken.
+function ZoneService.take(index: number, n: number, looseId: number?)
+	if looseId then
+		local entry = removeLoose(looseId)
+		return entry and entry.record
+	end
 	local zone = zones[index]
 	local pedestal = zone and zone.pedestals[n]
 	if not pedestal or not pedestal.record or pedestal.taken then
@@ -355,11 +443,13 @@ end
 local function newGuardian(index: number)
 	local home = ZoneLayout.guardianHome(index)
 	local zone = Items.ZONES[index]
+	local attackId, attack = GuardianAttacks.forSpecies(zone.guardian)
 	local data = Instance.new("Configuration")
 	data.Name = "Guardian" .. index
 	data:SetAttribute("Zone", index)
 	data:SetAttribute("Species", zone.guardian)
 	data:SetAttribute("Title", zone.title)
+	data:SetAttribute("Attack", attackId)
 	data.Parent = guardianFolder
 	return {
 		index = index,
@@ -372,6 +462,12 @@ local function newGuardian(index: number)
 		data = data,
 		moving = false,
 		awake = false, -- guardians sleep at home until someone steals one of their eggs
+		attackId = attackId,
+		attack = attack,
+		attackReadyAt = 0,
+		dashUntil = 0,
+		projectiles = {},
+		pending = nil,
 	}
 end
 
@@ -398,29 +494,194 @@ local function flatten(v: Vector3): Vector3
 	return Vector3.new(v.X, 0, v.Z)
 end
 
-local function catch(guardian, player: Player, root: BasePart)
+-- The guardian got them (by running into them or with its attack). Caught in the egg's own
+-- zone, the egg goes back where it was taken from; caught in a zone nearer town, it drops on
+-- the ground right there. pull = yanked back toward the guardian instead of flung away.
+local function catch(guardian, player: Player, root: BasePart, how: string?, pull: boolean?)
 	local zone = Items.ZONES[guardian.index]
 	guardian.target = nil
 	guardian.cooldown = os.clock() + 2.5
-	hooks.drop(player, zone.title .. " caught you! You dropped the egg.")
+	guardian.projectiles = {}
+	guardian.pending = nil
+	guardian.dashUntil = 0
+	local home = ZoneLayout.inside(guardian.index, root.Position)
+	hooks.drop(
+		player,
+		zone.title .. (if how then "'s " .. how else "") .. " got you! You dropped the egg.",
+		if home then nil else root.Position
+	)
 	-- Fling them back toward town, along the zone and a little toward its middle, in a low
 	-- arc (well under the side walls, which also have invisible barriers above them).
 	local toMiddle = math.clamp(-root.Position.Z / (ZoneLayout.WIDTH / 2), -1, 1) * 0.3
 	local direction = Vector3.new(1, 0, toMiddle).Unit
-	knockbackRemote:FireClient(player, direction + Vector3.new(0, 0.25, 0), 80, 0.35)
+	if pull then
+		local back = flatten(guardian.position - root.Position)
+		direction = if back.Magnitude > 0.1 then back.Unit else direction
+	end
+	knockbackRemote:FireClient(player, direction + Vector3.new(0, 0.25, 0), if pull then 55 else 80, 0.35)
+end
+
+-- True if a position is somewhere a guardian keeps chasing: its own zone (plus LEASH) or
+-- the zones between it and town.
+function inReach(guardian, position: Vector3): boolean
+	if ZoneLayout.inside(guardian.index, position, LEASH) then
+		return true
+	end
+	local zone = ZoneLayout.zoneAt(position)
+	return zone ~= nil and zone <= guardian.index
+end
+
+-- How a target is moving (flat), or standing still if that can't be read.
+local function velocityOf(root: BasePart): Vector3
+	local ok, velocity = pcall(function()
+		return root.AssemblyLinearVelocity
+	end)
+	return if ok and typeof(velocity) == "Vector3" then flatten(velocity) else Vector3.zero
+end
+
+-- Where a target will be in `seconds` (flat, on the ground), from how it's moving now.
+local function predict(root: BasePart, seconds: number): Vector3
+	return flatten(root.Position) + velocityOf(root) * seconds
+end
+
+-- Keeps a point inside the zones a guardian can reach (for teleports).
+local function clampToZones(guardian, point: Vector3): Vector3
+	local _, west = ZoneLayout.edges(guardian.index)
+	local half = ZoneLayout.WIDTH / 2 - 6
+	return Vector3.new(math.clamp(point.X, west + 6, ZoneLayout.START_X - 6), 0, math.clamp(point.Z, -half, half))
+end
+
+-- Starts the guardian's signature attack on its target, if it's ready and in range.
+function startAttack(guardian, target: Player, root: BasePart, now: number)
+	local attack = guardian.attack
+	if guardian.pending or now < guardian.attackReadyAt or now < guardian.dashUntil then
+		return
+	end
+	local distance = (flatten(root.Position) - guardian.position).Magnitude
+	if distance > attack.range or distance < CATCH_RADIUS + 2 then
+		return
+	end
+	guardian.attackReadyAt = now + attack.cooldown
+	local from = guardian.position + Vector3.new(0, 5, 0)
+	if attack.kind == "dash" then
+		guardian.dashUntil = now + attack.time
+		guardian.dashStart = now
+		attackRemote:FireAllClients(guardian.index, guardian.attackId, { time = attack.time })
+	elseif attack.kind == "projectile" then
+		local aim = predict(root, distance / attack.speed * attack.lead) + Vector3.new(0, 2.5, 0)
+		local velocity = (aim - from).Unit * attack.speed
+		local duration = attack.range / attack.speed * 1.5
+		table.insert(
+			guardian.projectiles,
+			{ position = from, velocity = velocity, target = target, endsAt = now + duration }
+		)
+		attackRemote:FireAllClients(guardian.index, guardian.attackId, {
+			from = from,
+			velocity = velocity,
+			target = target.UserId,
+			duration = duration,
+		})
+	elseif attack.kind == "teleport" then
+		local velocity = velocityOf(root)
+		local ahead = if velocity.Magnitude > 1 then velocity.Unit else flatten(root.Position - guardian.position).Unit
+		local to = clampToZones(guardian, flatten(root.Position) + ahead * attack.ahead)
+		attackRemote:FireAllClients(guardian.index, guardian.attackId, { from = guardian.position, to = to })
+		guardian.position = to
+		guardian.snap = (guardian.snap or 0) + 1
+	elseif attack.kind == "beam" then
+		guardian.pending = { fireAt = now + attack.windup, target = target, slow = true }
+		attackRemote:FireAllClients(guardian.index, guardian.attackId, {
+			phase = "aim",
+			target = target.UserId,
+			windup = attack.windup,
+		})
+	elseif attack.kind == "strike" then
+		local spot = predict(root, attack.windup * attack.lead)
+		guardian.pending = { fireAt = now + attack.windup, spot = spot, target = target }
+		attackRemote:FireAllClients(guardian.index, guardian.attackId, {
+			phase = "mark",
+			spot = spot,
+			windup = attack.windup,
+			radius = attack.radius,
+		})
+	end
+end
+
+-- Moves projectiles and fires aimed attacks whose time has come; anything that hits its
+-- target catches them.
+function stepAttacks(guardian, dt: number, now: number)
+	local attack = guardian.attack
+	for i = #guardian.projectiles, 1, -1 do
+		local shot = guardian.projectiles[i]
+		local root = rootPart(shot.target)
+		if attack.homing and root then
+			local want = (root.Position - shot.position).Unit * attack.speed
+			shot.velocity = shot.velocity:Lerp(want, math.min(1, attack.homing * dt))
+		end
+		shot.position += shot.velocity * dt
+		if
+			root
+			and carryingOurs(guardian, shot.target)
+			and (root.Position - shot.position).Magnitude < attack.radius
+		then
+			catch(guardian, shot.target, root, attack.name, attack.pull)
+			return
+		end
+		if now > shot.endsAt then
+			table.remove(guardian.projectiles, i)
+		end
+	end
+	local pending = guardian.pending
+	if pending and now >= pending.fireAt then
+		guardian.pending = nil
+		local root = rootPart(pending.target)
+		if attack.kind == "beam" then
+			local from = guardian.position + Vector3.new(0, 5, 0)
+			local aimAt = if root then root.Position else from + Vector3.new(attack.range, 0, 0)
+			local direction = (aimAt - from).Unit
+			attackRemote:FireAllClients(guardian.index, guardian.attackId, {
+				phase = "fire",
+				from = from,
+				direction = direction,
+				range = attack.range,
+			})
+			if root and carryingOurs(guardian, pending.target) then
+				local rel = root.Position - from
+				local along = rel:Dot(direction)
+				local off = (rel - direction * along).Magnitude
+				if along > 0 and along < attack.range and off < attack.width then
+					catch(guardian, pending.target, root, attack.name)
+				end
+			end
+		elseif attack.kind == "strike" then
+			attackRemote:FireAllClients(guardian.index, guardian.attackId, {
+				phase = "fire",
+				spot = pending.spot,
+				radius = attack.radius,
+			})
+			if root and carryingOurs(guardian, pending.target) then
+				if (flatten(root.Position) - pending.spot).Magnitude < attack.radius then
+					catch(guardian, pending.target, root, attack.name)
+				end
+			end
+		end
+	end
 end
 
 local function stepGuardian(guardian, dt: number)
 	local now = os.clock()
 	local target = guardian.target
 	local targetRoot = target and rootPart(target)
-	-- Give up on anyone who got away, isn't carrying one of our eggs any more, or left.
+	-- Give up on anyone who got away (made it back to town, or outran us by a long way),
+	-- isn't carrying one of our eggs any more, or left. Guardians chase thieves out of their
+	-- own zone into the zones nearer town.
 	if
 		target
 		and (
 			not targetRoot
 			or not carryingOurs(guardian, target)
-			or not ZoneLayout.inside(guardian.index, targetRoot.Position, LEASH)
+			or not inReach(guardian, targetRoot.Position)
+			or (flatten(targetRoot.Position) - guardian.position).Magnitude > GIVE_UP_DISTANCE
 			or not target.Parent
 		)
 	then
@@ -449,6 +710,12 @@ local function stepGuardian(guardian, dt: number)
 	if target and targetRoot then
 		goal = flatten(targetRoot.Position)
 		speed = guardian.speed * Events.boost("guardianSpeed")
+		if now < (guardian.dashUntil or 0) then
+			speed *= guardian.attack.mult
+		elseif guardian.pending and guardian.pending.slow then
+			speed *= 0.3 -- nearly standing still while it aims
+		end
+		startAttack(guardian, target, targetRoot, now)
 	else
 		-- Nobody to chase: walk back home and, once there, go back to sleep.
 		goal = guardian.home
@@ -468,7 +735,9 @@ local function stepGuardian(guardian, dt: number)
 	end
 	if target and targetRoot and (flatten(targetRoot.Position) - guardian.position).Magnitude < CATCH_RADIUS then
 		catch(guardian, target, targetRoot)
+		return
 	end
+	stepAttacks(guardian, dt, now)
 end
 
 local function publish(guardian)
@@ -479,6 +748,15 @@ local function publish(guardian)
 	data:SetAttribute("Moving", guardian.moving)
 	data:SetAttribute("Chasing", guardian.target ~= nil)
 	data:SetAttribute("Sleeping", not guardian.awake)
+	-- Off the ground during a leap or swoop; Snap changes when it teleports.
+	local lift = 0
+	local now = os.clock()
+	if guardian.attack.lift and now < guardian.dashUntil then
+		local t = (now - (guardian.dashStart or now)) / guardian.attack.time
+		lift = guardian.attack.lift * math.sin(math.clamp(t, 0, 1) * math.pi)
+	end
+	data:SetAttribute("Lift", math.floor(lift * 10) / 10)
+	data:SetAttribute("Snap", guardian.snap or 0)
 	data:SetAttribute("Speed", guardian.speed)
 end
 
@@ -494,6 +772,9 @@ function ZoneService.init()
 	guardianFolder = Instance.new("Folder")
 	guardianFolder.Name = "Guardians"
 	guardianFolder.Parent = ReplicatedStorage
+	looseFolder = Instance.new("Folder")
+	looseFolder.Name = "DroppedEggs"
+	looseFolder.Parent = map
 
 	for index = 1, #Items.ZONES do
 		local folder = ZoneDecor.build(map, index)
@@ -541,6 +822,13 @@ function ZoneService.init()
 					if not pedestal.record and not pedestal.taken and now >= pedestal.respawnAt then
 						showEgg(index, pedestal, rollEgg(index))
 					end
+				end
+			end
+			-- Dropped eggs nobody picked up vanish, and their spot back home grows a new egg.
+			for id, entry in loose do
+				if now >= entry.expiresAt then
+					removeLoose(id)
+					ZoneService.release(entry.zone, entry.pedestal)
 				end
 			end
 		end

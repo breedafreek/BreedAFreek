@@ -1,10 +1,11 @@
 -- Carrying eggs home from the zones.
 --
--- Hold the Grab prompt on an egg in a zone (you need a free nest at home). The egg rides
--- over your head and you run a little slower (GamePasses.carrySlowdown) until you get it
--- inside your own yard, where it goes into a free nest to grow (NestService). If the zone's
--- guardian catches you, or you die or leave, you drop it and it's gone (the zone grows a new
--- one).
+-- Hold the Grab prompt on an egg in a zone (you need a free nest at home). You carry it in
+-- your arms and run a little slower (GamePasses.carrySlowdown) until you get it inside your
+-- own yard, where it goes into a free nest to grow (NestService). If the egg's guardian
+-- catches you in the egg's own zone (or you die or leave), the egg goes back where you took
+-- it from; if it catches you in a zone nearer town, the egg drops on the ground right there
+-- for anyone to grab (ZoneService.dropLoose).
 --
 -- Also gives players items (StealService.give), from hatching eggs, the Lucky Wheel and
 -- Mystery Boxes.
@@ -45,10 +46,13 @@ local function rootPart(player: Player): BasePart?
 	return character:FindFirstChild("HumanoidRootPart") :: BasePart?
 end
 
--- How far the arms swing up to hold an egg over the head (R15 characters).
-local HOLD_ANGLE = math.rad(165)
+-- How far the arms swing forward to hug an egg in front of the chest (R15 characters), how
+-- far they turn in toward it, and how big a carried egg is (it has to fit in their arms).
+local HOLD_ANGLE = math.rad(75)
+local HOLD_IN = math.rad(18)
+local CARRY_SCALE = 0.5
 
--- Puts the egg over the carrier's head. Returns false if the carrier has no character.
+-- Puts the egg in the carrier's arms. Returns false if the carrier has no character.
 local function pickUp(carrier: Player, carry): boolean
 	local character = carrier.Character
 	local root = rootPart(carrier)
@@ -56,9 +60,12 @@ local function pickUp(carrier: Player, carry): boolean
 		return false
 	end
 	local model = EggModel.build(carry.record.egg, carry.record.item)
-	Items.scaleModel(model, Items.weightScale(Items.weightFactor(carry.record)))
+	-- Heavier eggs are bigger in your arms too, up to an armful.
+	local scale = CARRY_SCALE * math.min(Items.weightScale(Items.weightFactor(carry.record)), 2.5)
+	Items.scaleModel(model, scale)
 	ItemModel.addMutationEffect(model, carry.record.mutations)
-	model:PivotTo(root.CFrame * CFrame.new(0, 3.2, 0))
+	-- Held against the chest, in front of the body.
+	model:PivotTo(root.CFrame * CFrame.new(0, -0.9, -1.2 - scale * 0.6))
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Anchored = false
@@ -72,16 +79,15 @@ local function pickUp(carrier: Player, carry): boolean
 		end
 	end
 
-	-- Arms up to hold it. Changing the shoulder joints' C0 (not Transform) keeps the pose
-	-- under the walk animation, and putDown puts them back.
+	-- Arms forward and in, hugging it. Changing the shoulder joints' C0 (not Transform) keeps
+	-- the pose under the walk animation, and putDown puts them back.
 	carry.shoulders = {}
-	for _, name in { "RightUpperArm.RightShoulder", "LeftUpperArm.LeftShoulder" } do
-		local armName, jointName = string.match(name, "^(.-)%.(.*)$")
-		local arm = character:FindFirstChild(armName)
-		local joint = arm and arm:FindFirstChild(jointName)
+	for _, entry in { { "RightUpperArm", "RightShoulder", 1 }, { "LeftUpperArm", "LeftShoulder", -1 } } do
+		local arm = character:FindFirstChild(entry[1])
+		local joint = arm and arm:FindFirstChild(entry[2])
 		if joint and joint:IsA("Motor6D") then
 			table.insert(carry.shoulders, { joint = joint, c0 = joint.C0 })
-			joint.C0 = joint.C0 * CFrame.Angles(HOLD_ANGLE, 0, 0)
+			joint.C0 = joint.C0 * CFrame.Angles(HOLD_ANGLE, 0, entry[3] * HOLD_IN)
 		end
 	end
 
@@ -112,10 +118,15 @@ local function putDown(carrier: Player, carry)
 	carry.shoulders = nil
 end
 
--- The carrier dropped it: it's gone and its pedestal grows a new one.
-local function drop(carrier: Player, carry, message: string?)
+-- The carrier dropped it: on the ground at dropAt (knocked loose outside the egg's own zone),
+-- otherwise back where it was taken from.
+local function drop(carrier: Player, carry, message: string?, dropAt: Vector3?)
 	putDown(carrier, carry)
-	ZoneService.release(carry.zone, carry.pedestal)
+	if dropAt then
+		ZoneService.dropLoose(carry.record, dropAt, carry.zone, carry.pedestal)
+	else
+		ZoneService.restore(carry.zone, carry.pedestal, carry.record)
+	end
 	if message then
 		notify(carrier, message, "error")
 	end
@@ -156,7 +167,7 @@ local function grab(prompt: ProximityPrompt, player: Player)
 	if problem then
 		return if problem ~= "" then notify(player, problem, "error") else nil
 	end
-	local record = ZoneService.take(zone, pedestal)
+	local record = ZoneService.take(zone, pedestal, prompt:GetAttribute("Loose"))
 	if not record then
 		return
 	end
@@ -167,7 +178,7 @@ local function grab(prompt: ProximityPrompt, player: Player)
 		pedestal = pedestal,
 	}
 	if not pickUp(player, carry) then
-		return ZoneService.release(zone, pedestal)
+		return ZoneService.restore(zone, pedestal, record)
 	end
 	notify(
 		player,
@@ -193,13 +204,14 @@ function StealService.carrying(player: Player)
 	return carry and carry.record
 end
 
--- Makes the player drop whatever they're carrying. Returns true if they were carrying.
-function StealService.drop(player: Player, message: string?): boolean
+-- Makes the player drop whatever they're carrying (on the ground at dropAt, or back where it
+-- came from). Returns true if they were carrying.
+function StealService.drop(player: Player, message: string?, dropAt: Vector3?): boolean
 	local carry = carries[player]
 	if not carry then
 		return false
 	end
-	drop(player, carry, message)
+	drop(player, carry, message, dropAt)
 	return true
 end
 

@@ -82,8 +82,19 @@ rojo build -o StealALife.rbxlx    # or build a place file
   walks home to sleep again once nobody does; if your Speed meets the zone's requirement you can outrun it, if
   not it catches you, flings you toward town and you drop the egg. Guardians live on the
   server as plain data and every client animates its own copy (`src/client/GuardianFX.luau`).
-- **Carrying** (`src/server/StealService.luau`): you need a free nest to grab an egg. It
-  rides over your head; get inside your own yard and it goes into a nest.
+- **Carrying** (`src/server/StealService.luau`): you need a free nest to grab an egg. You
+  carry it in your arms; get inside your own yard and it goes into a nest. Caught by its
+  guardian in the egg's own zone (or if you die or leave), the egg goes back exactly where
+  you took it; caught after you've run into a zone nearer town, it drops on the ground
+  right there for anyone to grab (it vanishes after a minute and a new one grows back home).
+- **Guardian attacks** (`src/shared/GuardianAttacks.luau`, drawn by
+  `src/client/GuardianAttackFX.luau`): guardians chase thieves out of their zone toward
+  town, and each has a signature attack on top of grabbing you: Oinkle charges, Woofles
+  pounces, Hootsworth swoops, Chuckles throws pies, Mumbles lashes a bandage that yanks you
+  back, Glamora fires homing magic orbs, BooBoo vanishes and reappears in front of you,
+  Count Fangula sends a homing bat swarm, Blinky charges up an eye laser and Stormy calls
+  lightning where you're running. Thrown things aim where you're heading (zig-zag to dodge);
+  the laser and lightning show a warning first.
 - **Nests and hatching** (`src/server/NestService.luau`): 3 nests (5 with Extra Nests). An egg
   grows for 20 s (Common) up to 15 min (Secret), half with Fast Hatching, even while you're
   offline. When it's ready hold **Hatch** on the nest (or press HATCH in 🏡 My Life): out
