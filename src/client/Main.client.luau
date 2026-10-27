@@ -63,6 +63,7 @@ local ItemPictures = require(script.Parent.ItemPictures)
 local LuckyWheel = require(script.Parent.LuckyWheel)
 local PackReveal = require(script.Parent.PackReveal)
 local PetFX = require(script.Parent.PetFX)
+local TreadmillRun = require(script.Parent.TreadmillRun)
 local UI = require(script.Parent.UI)
 
 local player = Players.LocalPlayer
@@ -1567,6 +1568,7 @@ end)
 
 GuardianFX.start()
 PetFX.start()
+TreadmillRun.start()
 Ambient.start()
 
 -- The Mystery Boxes on the stand turn slowly and bob up and down.

@@ -140,7 +140,7 @@ local function buildGate(plot, folder: Instance)
 			Name = "GatePostBall",
 			Shape = Enum.PartType.Ball,
 			Size = Vector3.one * 2,
-			CFrame = spot * CFrame.new(0, postHeight + 1.8, 0),
+			CFrame = spot * CFrame.new(0, postHeight + 2, 0),
 			Color = accent,
 			Material = Enum.Material.Neon,
 			Parent = folder,
@@ -162,31 +162,47 @@ local function buildGate(plot, folder: Instance)
 		Color = Color3.fromRGB(255, 250, 235),
 		Parent = folder,
 	})
-	part({
-		Name = "NameBoardRim",
-		Size = Vector3.new(GATE_HALF * 2 - 0.4, 4.2, 0.4),
-		CFrame = origin * CFrame.new(0, postHeight + 1.6, FENCE_Z + 0.1),
-		Color = OUTLINE,
-		Parent = folder,
-	})
-	local sign = Instance.new("SurfaceGui")
-	sign.Face = Enum.NormalId.Front
-	sign.CanvasSize = Vector2.new(600, 140)
-	sign.LightInfluence = 0
-	sign.Parent = board
-	local name = Instance.new("TextLabel")
-	name.BackgroundTransparency = 1
-	name.Size = UDim2.fromScale(1, 1)
-	name.TextScaled = true
-	name.Font = Enum.Font.LuckiestGuy
-	name.TextColor3 = accent
-	name.Text = "EMPTY HOME"
-	name.Parent = sign
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = OUTLINE
-	stroke.Thickness = 5
-	stroke.Parent = name
-	plot.signLabel = name
+	-- A dark frame round the board (four bars, so nothing overlaps the board's faces).
+	local boardW, boardH = GATE_HALF * 2 - 1, 3.6
+	for _, bar in
+		{
+			{ Vector3.new(boardW + 0.8, 0.4, 0.8), Vector3.new(0, boardH / 2 + 0.2, 0) },
+			{ Vector3.new(boardW + 0.8, 0.4, 0.8), Vector3.new(0, -boardH / 2 - 0.2, 0) },
+			{ Vector3.new(0.4, boardH, 0.8), Vector3.new(boardW / 2 + 0.2, 0, 0) },
+			{ Vector3.new(0.4, boardH, 0.8), Vector3.new(-boardW / 2 - 0.2, 0, 0) },
+		}
+	do
+		part({
+			Name = "SignFrame",
+			Size = bar[1],
+			CFrame = origin * CFrame.new(0, postHeight + 1.6, FENCE_Z) * CFrame.new(bar[2]),
+			Color = OUTLINE,
+			Parent = folder,
+		})
+	end
+	-- The owner's name on both sides: the street side and the yard side.
+	plot.signLabels = {}
+	for _, faceId in { Enum.NormalId.Front, Enum.NormalId.Back } do
+		local sign = Instance.new("SurfaceGui")
+		sign.Face = faceId
+		sign.CanvasSize = Vector2.new(600, 140)
+		sign.LightInfluence = 0
+		sign.Parent = board
+		local name = Instance.new("TextLabel")
+		name.BackgroundTransparency = 1
+		name.Size = UDim2.fromScale(0.94, 0.9)
+		name.Position = UDim2.fromScale(0.03, 0.05)
+		name.TextScaled = true
+		name.Font = Enum.Font.LuckiestGuy
+		name.TextColor3 = accent
+		name.Text = "EMPTY HOME"
+		name.Parent = sign
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = OUTLINE
+		stroke.Thickness = 5
+		stroke.Parent = name
+		table.insert(plot.signLabels, name)
+	end
 
 	-- Floating text over the gate: what the home earns.
 	local gateGui = part({
@@ -289,14 +305,14 @@ local function buildTreadmill(plot, folder: Instance)
 	local signPart = part({
 		Name = "TreadmillSign",
 		Size = Vector3.one,
-		CFrame = spot * CFrame.new(0, 9.5, -2),
+		CFrame = spot * CFrame.new(0, 9, -2),
 		Transparency = 1,
 		CanCollide = false,
 		Parent = model,
 	})
-	local _, sign = billboard(signPart, UDim2.fromScale(10, 2.2), Vector3.zero, 70)
+	local _, sign = billboard(signPart, UDim2.fromScale(6.5, 1.4), Vector3.zero, 60)
 	sign.Font = Enum.Font.LuckiestGuy
-	sign.Text = "⚡ RUN TO TRAIN SPEED"
+	sign.Text = "⚡ TRAIN SPEED"
 	sign.TextColor3 = Color3.fromRGB(255, 225, 80)
 	plot.treadmill = { belt = belt, spot = spot }
 end
@@ -372,8 +388,8 @@ local function buildNests(plot, folder: Instance)
 			CanCollide = false,
 			Parent = model,
 		})
-		local gui, title = billboard(base, UDim2.fromScale(7, 1.2), Vector3.new(0, 6.6, 0), 70)
-		gui.Size = UDim2.fromScale(7, 2.6)
+		-- Narrower than the gap between nests, so neighbouring labels never overlap.
+		local gui, title = billboard(base, UDim2.fromScale(5, 2), Vector3.new(0, 5.8, 0), 55)
 		title.Size = UDim2.fromScale(1, 0.5)
 		title.Font = Enum.Font.LuckiestGuy
 		local timer = title:Clone()
@@ -565,7 +581,7 @@ local function updateNestLabels(plot)
 			nest.timer.Text = "Extra Nests"
 			nest.timer.TextColor3 = Color3.fromRGB(190, 190, 205)
 		elseif state == "empty" then
-			nest.title.Text = "EMPTY NEST"
+			nest.title.Text = "EMPTY"
 			nest.title.TextColor3 = Color3.new(1, 1, 1)
 			nest.timer.Text = "Steal an egg!"
 			nest.timer.TextColor3 = Color3.fromRGB(255, 215, 60)
@@ -638,7 +654,9 @@ function PlotService.render(player: Player)
 	end
 	updateNests(plot, data, player)
 	plot.folder:SetAttribute("Pets", petList(data))
-	plot.signLabel.Text = string.upper(player.DisplayName) .. "'S LIFE"
+	for _, label in plot.signLabels do
+		label.Text = string.upper(player.DisplayName) .. "'S LIFE"
+	end
 	local income = LifeUtil.totalIncome(data) * GamePasses.coinMultiplier(player)
 	plot.incomeLabel.Text = Format.money(income) .. "/s"
 	local gain = Config.treadmillGain(data.treadmill)
@@ -658,7 +676,9 @@ local function clearPlot(plot)
 	end
 	updateNests(plot, nil, nil)
 	plot.folder:SetAttribute("Pets", "")
-	plot.signLabel.Text = "EMPTY HOME"
+	for _, label in plot.signLabels do
+		label.Text = "EMPTY HOME"
+	end
 	plot.incomeLabel.Text = ""
 	plot.treadmillLabel.Text = "TREADMILL"
 end

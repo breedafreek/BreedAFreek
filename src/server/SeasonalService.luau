@@ -64,13 +64,14 @@ THEMES.Halloween = {
 	},
 	build = function(props: Folder)
 		local gateHalf, fenceZ = HouseModel.GATE_HALF, HouseModel.FENCE_Z
-		-- Every home: jack-o'-lanterns flanking the gate and in the yard, cobwebs on the gate
-		-- posts, and a pile of leaves in the back corners.
+		-- Every home: jack-o'-lanterns flanking the gate and either side of the path, cobwebs
+		-- on the gate posts, and a pile of leaves behind the house. (Spots kept clear of the
+		-- nests, beds, yard spots and treadmill: see PlotService.)
 		for i, origin in PlotService.origins() do
 			for _, side in { -1, 1 } do
 				Decor.pumpkin(props, origin * CFrame.new(side * (gateHalf + 4), 0.4, fenceZ - 2.5), 1)
-				Decor.pumpkin(props, origin * CFrame.new(side * 24, 0.4, -24) * CFrame.Angles(0, math.pi, 0), 0.8)
-				Decor.leafPile(props, origin * CFrame.new(side * 24, 0.4, 26), i * 10 + side)
+				Decor.pumpkin(props, origin * CFrame.new(side * 6, 0.4, fenceZ + 5) * CFrame.Angles(0, math.pi, 0), 0.8)
+				Decor.leafPile(props, origin * CFrame.new(side * 16, 0.4, 28), i * 10 + side)
 				HalloweenDecor.cobweb(
 					props,
 					origin
@@ -81,7 +82,7 @@ THEMES.Halloween = {
 			end
 		end
 		-- Pumpkins along both sidewalks, facing the road.
-		for x = -157.5, 157.5, 35 do
+		for x = -182, 182, 52 do
 			for _, z in { -14, 14 } do
 				Decor.pumpkin(props, facingSquare(Vector3.new(x, 0.5, z)), 0.9)
 			end
@@ -89,10 +90,10 @@ THEMES.Halloween = {
 		-- Hay bales topped with pumpkins by the spawn and the Mystery Box stand.
 		for _, spot in
 			{
-				Vector3.new(176, 0, -9),
-				Vector3.new(176, 0, 9),
-				Vector3.new(140, 0, -24),
-				Vector3.new(140, 0, 24),
+				Vector3.new(176, 0, -24),
+				Vector3.new(176, 0, 24),
+				Vector3.new(212, 0, -24),
+				Vector3.new(212, 0, 24),
 			}
 		do
 			local ground = facingSquare(spot)
@@ -101,42 +102,43 @@ THEMES.Halloween = {
 		end
 		-- Jack-o'-lanterns flanking the Mystery Box stand.
 		for _, z in { -21, 21 } do
-			Decor.pumpkin(props, CFrame.new(128, 0, z) * CFrame.Angles(0, math.pi / 2, 0), 1.4)
+			Decor.pumpkin(props, CFrame.new(190, 0, z) * CFrame.Angles(0, math.pi / 2, 0), 1.4)
 		end
-		-- Leaf piles along the hedges.
+		-- Leaf piles along the hedges at the back of the town.
 		for x = -190, 170, 38 do
-			for _, z in { -96, 96 } do
+			for _, z in { -129, 129 } do
 				Decor.leafPile(props, CFrame.new(x, 0, z), x + z)
 			end
 		end
 
 		-- String lights between the street lamps on both sidewalks, and low fog on the road.
-		for _, x in { -140, -70, 0, 70 } do
+		for x = -208, 156, 52 do
 			for _, z in { -17.5, 17.5 } do
-				HalloweenDecor.stringLights(props, Vector3.new(x, 7.6, z), Vector3.new(x + 70, 7.6, z), 24, 3)
+				HalloweenDecor.stringLights(props, Vector3.new(x, 7.6, z), Vector3.new(x + 52, 7.6, z), 18, 3)
 			end
 		end
 		for x = -180, 160, 40 do
 			HalloweenDecor.fog(props, Vector3.new(x, 0.5, 0))
 		end
 
-		-- A little graveyard by the way into the zones, with dead trees and a cauldron.
-		for row = 0, 1 do
-			for col = 0, 3 do
-				local ground = CFrame.new(-170 + col * 8, 0, 34 + row * 9) * CFrame.Angles(0, math.pi, 0)
+		-- A little graveyard by the way into the zones (in the strip between the last home and
+		-- the zones' wall), with dead trees and a cauldron.
+		for row = 0, 2 do
+			for col = 0, 2 do
+				local ground = CFrame.new(-225 + col * 6, 0, 34 + row * 8) * CFrame.Angles(0, -math.pi / 2, 0)
 				HalloweenDecor.tombstone(props, ground, row * 10 + col)
 			end
 		end
-		HalloweenDecor.deadTree(props, CFrame.new(-190, 0, -30), 1.2, 3)
-		HalloweenDecor.deadTree(props, CFrame.new(-190, 0, 30), 1.1, 4)
-		HalloweenDecor.deadTree(props, CFrame.new(185, 0, -24), 1.2, 1)
-		HalloweenDecor.cauldron(props, CFrame.new(-150, 0, 40))
+		HalloweenDecor.deadTree(props, CFrame.new(-218, 0, -26), 1.2, 3)
+		HalloweenDecor.deadTree(props, CFrame.new(-218, 0, 26), 1.1, 4)
+		HalloweenDecor.deadTree(props, CFrame.new(220, 0, -26), 1.2, 1)
+		HalloweenDecor.cauldron(props, CFrame.new(-216, 0, 64))
 
 		-- Ghosts drifting over the street; bats circling the title and the spawn.
 		for i, x in { -105, -35, 35, 105 } do
 			HalloweenDecor.ghost(props, Vector3.new(x, 0, 0), 16, 14, if i % 2 == 0 then 0.18 else -0.18, i)
 		end
-		HalloweenDecor.ghost(props, Vector3.new(-160, 0, 40), 14, 9, 0.3, 1)
+		HalloweenDecor.ghost(props, Vector3.new(-216, 0, 46), 14, 9, 0.3, 1)
 		for i = 1, 4 do
 			HalloweenDecor.bat(props, Vector3.new(170, 0, 0), 10 + i * 2, 14 + i, -0.7, i * 1.5)
 		end

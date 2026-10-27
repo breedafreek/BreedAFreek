@@ -12,6 +12,7 @@ local Lego = {}
 
 Lego.ENABLED = true
 Lego.SIDE_STUDS = true -- studs on every face of a brick, not just the top
+local MIN_STUD_FACE = 2 -- a face needs to be at least this many studs each way to get studs
 
 -- Materials that stay as they are.
 local KEEP = {
@@ -35,6 +36,7 @@ local SMOOTH = {
 	PathStone = true,
 	Belt = true,
 	Screen = true,
+	NameBoard = true, -- signs with writing on them
 	TroughWater = true,
 	Seam = true,
 }
@@ -68,14 +70,20 @@ function Lego.part(part: BasePart)
 	end
 	local isBlock = part:IsA("Part") and part.Shape == Enum.PartType.Block or part:IsA("SpawnLocation")
 	if isBlock and not SMOOTH[part.Name] and not part:FindFirstChildOfClass("SpecialMesh") then
-		part.TopSurface = Enum.SurfaceType.Studs
-		part.BottomSurface = Enum.SurfaceType.Inlet
+		-- Studs only on faces big enough to hold whole rows of them: on small trims, caps and
+		-- panes they'd be cut off at the edges, so those stay smooth like the round pieces.
+		local size = part.Size
+		local function face(a: number, b: number, kind: Enum.SurfaceType): Enum.SurfaceType
+			return if a >= MIN_STUD_FACE and b >= MIN_STUD_FACE then kind else Enum.SurfaceType.Smooth
+		end
+		part.TopSurface = face(size.X, size.Z, Enum.SurfaceType.Studs)
+		part.BottomSurface = face(size.X, size.Z, Enum.SurfaceType.Inlet)
 		if Lego.SIDE_STUDS then
 			-- The classic Roblox look: the stud texture on the sides as well.
-			part.FrontSurface = Enum.SurfaceType.Studs
-			part.BackSurface = Enum.SurfaceType.Studs
-			part.LeftSurface = Enum.SurfaceType.Studs
-			part.RightSurface = Enum.SurfaceType.Studs
+			part.FrontSurface = face(size.X, size.Y, Enum.SurfaceType.Studs)
+			part.BackSurface = face(size.X, size.Y, Enum.SurfaceType.Studs)
+			part.LeftSurface = face(size.Z, size.Y, Enum.SurfaceType.Studs)
+			part.RightSurface = face(size.Z, size.Y, Enum.SurfaceType.Studs)
 		end
 	end
 end

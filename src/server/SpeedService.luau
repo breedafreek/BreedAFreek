@@ -1,9 +1,9 @@
 -- Speed: trained on your treadmill, it decides how fast you run (Items.walkSpeed), which
 -- decides which zones' guardians you can outrun.
 --
--- Run on your own treadmill (your character moving while standing on its belt) and your
+-- Step onto your own treadmill and you run on it by yourself (client TreadmillRun) and your
 -- Speed goes up every second by the treadmill's gain (Config.treadmillGain), times rebirth
--- and pass bonuses. The belt runs as fast as you do, so you stay on it. Carrying a part
+-- and pass bonuses. The belt runs as fast as you do, so you stay on it. Carrying an egg
 -- slows you a little (GamePasses.carrySlowdown).
 
 local Players = game:GetService("Players")
@@ -37,7 +37,7 @@ local function update(player: Player, data)
 	end
 	local plot = PlotService.getPlot(player)
 	local training = false
-	if plot and PlotService.onTreadmill(plot, root.Position) and humanoid.MoveDirection.Magnitude > 0.1 then
+	if plot and PlotService.onTreadmill(plot, root.Position) then
 		training = true
 		data.speed += SpeedService.gain(player, data) * TICK
 	end
