@@ -27,7 +27,6 @@ local SERVICES = {
 	"StealService",
 	"SpeedService",
 	"NestService",
-	"RebirthService",
 	"PassService",
 	"LuckService",
 	"EventService",

@@ -42,7 +42,6 @@ local function defaultData()
 		nests = {}, -- ["1".."5"] = { zone, rarity, endsAt, mutations? }: eggs growing
 		nextUid = 1,
 		discovered = {}, -- [itemId] = true for every item this player has owned
-		rebirths = 0,
 		crates = {}, -- [crateId] = how many unopened Mystery Boxes (won on the wheel)
 		receipts = {}, -- recent Robux purchase IDs, so a purchase is never granted twice
 		lastSpin = 0, -- os.time() of the last Lucky Wheel spin
@@ -58,6 +57,7 @@ local function reconcile(data)
 			data[key] = value
 		end
 	end
+	data.rebirths = nil -- rebirths were taken out of the game
 	if Config.TEST_MONEY and data.money < Config.TEST_MONEY then
 		data.money = Config.TEST_MONEY
 	end

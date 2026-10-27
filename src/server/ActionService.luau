@@ -29,7 +29,6 @@ end
 -- What the client is allowed to see of its own save.
 local function snapshot(data)
 	return {
-		rebirths = data.rebirths,
 		money = data.money,
 		speed = data.speed,
 		treadmill = data.treadmill,

@@ -13,7 +13,7 @@ local DataService = require(script.Parent.DataService)
 
 local EconomyService = {}
 
--- House income including rebirths and game passes.
+-- Income including game passes.
 local function incomeFor(player: Player, data): number
 	return LifeUtil.totalIncome(data) * GamePasses.coinMultiplier(player)
 end
@@ -25,10 +25,6 @@ local function publish(player: Player, data, income: number)
 	local money = stats and stats:FindFirstChild("Money")
 	if money then
 		money.Value = math.floor(data.money)
-	end
-	local rebirths = stats and stats:FindFirstChild("Rebirths")
-	if rebirths then
-		rebirths.Value = data.rebirths
 	end
 	local speed = stats and stats:FindFirstChild("Speed")
 	if speed then
@@ -42,9 +38,6 @@ local function onLoaded(player: Player, data)
 	local money = Instance.new("NumberValue")
 	money.Name = "Money"
 	money.Parent = stats
-	local rebirths = Instance.new("IntValue")
-	rebirths.Name = "Rebirths"
-	rebirths.Parent = stats
 	local speed = Instance.new("NumberValue")
 	speed.Name = "Speed"
 	speed.Parent = stats

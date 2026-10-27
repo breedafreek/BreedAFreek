@@ -1,5 +1,5 @@
 -- The player's screen: money and Speed, the side menu, and the Shop / Luck / My Life / Bag /
--- Catalog / Rebirth / Store windows. The server is the source of truth; this only shows
+-- Catalog / Store windows. The server is the source of truth; this only shows
 -- state and sends requests.
 
 local CollectionService = game:GetService("CollectionService")
@@ -89,7 +89,7 @@ local screen = UI.new("ScreenGui", {
 	Parent = player:WaitForChild("PlayerGui"),
 })
 
-local setRebirthBoost = Hud.money(screen)
+Hud.money(screen)
 Hud.speed(screen)
 Hud.eventChip(screen)
 Hud.luckChip(screen)
@@ -422,7 +422,7 @@ end
 --------------------------------------------------------------------------------
 
 local function speedGain(level: number): number
-	return Config.treadmillGain(level) * Config.speedMultiplier(state.rebirths) * GamePasses.speedMultiplier(player)
+	return Config.treadmillGain(level) * GamePasses.speedMultiplier(player)
 end
 
 -- "Common 70% · Uncommon 25% · Rare 5%"
@@ -885,58 +885,6 @@ function renderers.Catalog()
 			card.Parent = grid
 		end
 	end
-end
-
---------------------------------------------------------------------------------
--- Rebirth
---------------------------------------------------------------------------------
-
-function renderers.Rebirth()
-	local rebirths = state.rebirths or 0
-	local cost = Config.rebirthCost(rebirths)
-	heading(
-		string.format(
-			"Rebirth %d  ·  Income x%s  ·  Speed x%s",
-			rebirths,
-			tostring(Config.incomeMultiplier(rebirths)),
-			tostring(Config.speedMultiplier(rebirths))
-		),
-		1
-	)
-	local grid = UI.grid(440, 270)
-	grid.LayoutOrder = 2
-	grid.Parent = body
-	local ready = state.money >= cost
-	UI.card({
-		lines = {
-			{ "Rebirth " .. (rebirths + 1), Color3.fromRGB(255, 210, 80), 30 },
-			{
-				"Everything you own earns x" .. tostring(Config.incomeMultiplier(rebirths + 1)) .. " forever",
-				colors.money,
-				22,
-			},
-			{
-				"Your treadmill trains x" .. tostring(Config.speedMultiplier(rebirths + 1)) .. " Speed forever",
-				Color3.fromRGB(150, 230, 255),
-				20,
-			},
-			{ "Resets: coins, Speed, treadmill level", colors.red:Lerp(Color3.new(1, 1, 1), 0.3), 18 },
-			{ "Keeps: your house, pets, yard, garden, eggs, backpack", colors.muted, 18 },
-			{
-				Format.money(state.money) .. " / " .. Format.money(cost),
-				if ready then colors.money else colors.text,
-				22,
-			},
-		},
-		buttons = {
-			if ready
-				then confirmButton("Rebirth for " .. Format.money(cost), Color3.fromRGB(230, 180, 40), function()
-					send("Rebirth")
-				end)
-				else UI.button("Need " .. Format.money(cost), colors.gray, function() end),
-		},
-	}).Parent =
-		grid
 end
 
 --------------------------------------------------------------------------------
@@ -1441,7 +1389,6 @@ local MENU = {
 	{ "Life", "🏡", colors.blue },
 	{ "Bag", "🎒", colors.orange },
 	{ "Catalog", "📖", colors.pink },
-	{ "Rebirth", "⭐", Color3.fromRGB(230, 170, 30) },
 	{ "Store", "💎", Color3.fromRGB(40, 180, 160) },
 	{ "Home", "🚪", colors.purple },
 }
@@ -1460,7 +1407,7 @@ setActiveTab, setBadge = Hud.menu(screen, MENU, function(name: string)
 end)
 
 -- Alert badges on the side buttons: a free spin or unopened boxes, upgrades waiting in the
--- backpack, a treadmill upgrade you can afford, enough coins to rebirth.
+-- backpack, eggs ready to hatch, a treadmill upgrade you can afford.
 task.spawn(function()
 	while true do
 		if state then
@@ -1499,8 +1446,6 @@ task.spawn(function()
 			local level = state.treadmill or 1
 			local canUpgrade = level < Config.TREADMILL_MAX and (state.money or 0) >= Config.treadmillCost(level)
 			setBadge("Shop", if canUpgrade then "⚡" else nil, colors.blue)
-			local canRebirth = (state.money or 0) >= Config.rebirthCost(state.rebirths or 0)
-			setBadge("Rebirth", if canRebirth then "!" else nil, colors.green)
 		end
 		task.wait(0.5)
 	end
@@ -1525,7 +1470,6 @@ Remotes.get("Notify").OnClientEvent:Connect(toast)
 
 Remotes.get("State").OnClientEvent:Connect(function(newState)
 	state = newState
-	setRebirthBoost(state.rebirths or 0)
 	render()
 end)
 
@@ -1628,7 +1572,4 @@ print("[Steal a Life] Client UI built, loading your data...")
 state = Remotes.get("GetState"):InvokeServer()
 print("[Steal a Life] Client ready")
 clientReady = true
-if state then
-	setRebirthBoost(state.rebirths or 0)
-end
 render()

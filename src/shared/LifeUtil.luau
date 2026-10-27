@@ -40,7 +40,7 @@ function LifeUtil.layout(data): { [string]: string }
 	return layout
 end
 
--- What one item earns a second (before rebirths and passes).
+-- What one item earns a second (before game passes).
 function LifeUtil.itemIncome(record): number
 	local item = record and Items.byId[record.id]
 	if not item then
@@ -68,7 +68,7 @@ function LifeUtil.placed(data): { [string]: string }
 	return where
 end
 
--- Everything out earning, including rebirths (passes are added by the server).
+-- Everything out earning (passes are added by the server).
 function LifeUtil.totalIncome(data): number
 	local total = 0
 	for _, slot in Parts.SLOTS do
@@ -80,7 +80,7 @@ function LifeUtil.totalIncome(data): number
 			total += LifeUtil.itemIncome(data.parts[uid])
 		end
 	end
-	return total * Config.incomeMultiplier(data.rebirths)
+	return total
 end
 LifeUtil.houseIncome = LifeUtil.totalIncome
 

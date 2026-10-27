@@ -688,9 +688,7 @@ function PlotService.render(player: Player)
 	end
 	local income = LifeUtil.totalIncome(data) * GamePasses.coinMultiplier(player)
 	plot.incomeLabel.Text = Format.money(income) .. "/s"
-	local gain = Config.treadmillGain(data.treadmill)
-		* Config.speedMultiplier(data.rebirths)
-		* GamePasses.speedMultiplier(player)
+	local gain = Config.treadmillGain(data.treadmill) * GamePasses.speedMultiplier(player)
 	plot.treadmillLabel.Text = "LV " .. data.treadmill .. "  +" .. Format.number(gain) .. " ⚡/s"
 end
 

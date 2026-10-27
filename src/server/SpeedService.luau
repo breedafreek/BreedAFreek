@@ -2,8 +2,8 @@
 -- decides which zones' guardians you can outrun.
 --
 -- Step onto your own treadmill and you run on it by yourself (client TreadmillRun) and your
--- Speed goes up every second by the treadmill's gain (Config.treadmillGain), times rebirth
--- and pass bonuses. The belt runs as fast as you do, so you stay on it. Carrying an egg
+-- Speed goes up every second by the treadmill's gain (Config.treadmillGain), times pass
+-- bonuses. The belt runs as fast as you do, so you stay on it. Carrying an egg
 -- slows you a little (GamePasses.carrySlowdown).
 
 local Players = game:GetService("Players")
@@ -23,9 +23,7 @@ local TICK = 0.2
 
 -- Speed a second this player gets from running on their treadmill.
 function SpeedService.gain(player: Player, data): number
-	return Config.treadmillGain(data.treadmill)
-		* Config.speedMultiplier(data.rebirths)
-		* GamePasses.speedMultiplier(player)
+	return Config.treadmillGain(data.treadmill) * GamePasses.speedMultiplier(player)
 end
 
 local function update(player: Player, data)

@@ -65,8 +65,8 @@ rojo build -o StealALife.rbxlx    # or build a place file
   1 in 35,000 is 100x. House parts keep their normal size on the house but still earn by
   weight. Boxes and the wheel roll a weight too; 10x-or-heavier finds are announced.
 - **Speed** (`src/server/SpeedService.luau`): run on your treadmill to train ⚡ Speed, which
-  makes you run faster (`Parts.walkSpeed`). Upgrade the treadmill in the Shop. Rebirths and
-  the 2x Speed pass multiply it.
+  makes you run faster (`Parts.walkSpeed`). Upgrade the treadmill in the Shop. The 2x Speed
+  pass doubles it.
 - **Zones** (`Items.ZONES`, `src/shared/ZoneLayout.luau`, `src/server/ZoneService.luau`,
   `src/server/ZoneDecor.luau`): ten zones in a row west of the town (140 studs wide; the
   first is 130 long and each one after is 25 studs longer), each growing one kind of
@@ -105,9 +105,6 @@ rojo build -o StealALife.rbxlx    # or build a place file
   **Weather** (Blood Moon, Gold Rush, Rainbow Rain) rolls in at half past most hours:
   everything you have out can catch its mutation and new eggs often grow with it. The admin
   panel (owner only, or anyone in Studio) can start events and spawn eggs.
-- **Rebirth:** costs 100K coins, then 4× more each time. Resets coins, Speed and the
-  treadmill; keeps everything you own. Each rebirth adds +50% income and +50% treadmill
-  speed forever.
 - **Offline:** you earn 50% while away, up to 8 hours.
 - **Seasonal themes** (`src/server/SeasonalService.luau`): Halloween dresses up the town with
   pumpkins, cobwebs, fog, a graveyard, ghosts and bats.

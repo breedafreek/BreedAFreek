@@ -816,10 +816,10 @@ return Bricks
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-14", -- shown small in the corner of the screen and in Output: which build is running
+	BUILD = "life-15", -- shown small in the corner of the screen and in Output: which build is running
 	START_MONEY = 50,
-	-- TESTING ONLY: every player is topped up to this many coins when they join (and after
-	-- a rebirth). Set to nil before the game launches!
+	-- TESTING ONLY: every player is topped up to this many coins when they join. Set to nil
+	-- before the game launches!
 	TEST_MONEY = 1_000_000,
 	-- Who can open the admin panel (events, part spawns, announcements). Usernames are
 	-- checked as well as user ids; anyone can use it in Studio for testing.
@@ -835,7 +835,6 @@ local Config = {
 	TREADMILL_BASE_COST = 150, -- coins for level 2
 	TREADMILL_COST_GROWTH = 2.8,
 	TREADMILL_MAX = 20,
-	REBIRTH_SPEED_BONUS = 0.5, -- each rebirth: +50% speed from the treadmill, forever
 
 	OFFLINE_RATE = 0.5, -- earn 50% of normal income while offline
 	OFFLINE_MAX_SECONDS = 8 * 60 * 60, -- capped at 8 hours
@@ -845,14 +844,10 @@ local Config = {
 
 	PLOT_COUNT = 8, -- 4 homes each side of the street; set the place's Max Players to this
 
-	REBIRTH_BASE_COST = 100000, -- coins needed for the first rebirth
-	REBIRTH_COST_GROWTH = 4, -- each rebirth costs this many times more than the last
-	REBIRTH_INCOME_BONUS = 0.5, -- +50% income per rebirth, forever
-
 	GRAB_HOLD_SECONDS = 0.5, -- how long to hold the prompt to grab an egg in a zone
 }
 
--- Speed a second from a treadmill of this level (before rebirth and pass bonuses).
+-- Speed a second from a treadmill of this level (before pass bonuses).
 function Config.treadmillGain(level: number): number
 	return Config.TREADMILL_BASE_GAIN * Config.TREADMILL_GAIN_GROWTH ^ (level - 1)
 end
@@ -860,18 +855,6 @@ end
 -- Coins to upgrade a treadmill from `level` to the next level.
 function Config.treadmillCost(level: number): number
 	return math.floor(Config.TREADMILL_BASE_COST * Config.TREADMILL_COST_GROWTH ^ (level - 1))
-end
-
-function Config.speedMultiplier(rebirths: number): number
-	return 1 + (rebirths or 0) * Config.REBIRTH_SPEED_BONUS
-end
-
-function Config.rebirthCost(rebirths: number): number
-	return math.floor(Config.REBIRTH_BASE_COST * Config.REBIRTH_COST_GROWTH ^ rebirths)
-end
-
-function Config.incomeMultiplier(rebirths: number): number
-	return 1 + (rebirths or 0) * Config.REBIRTH_INCOME_BONUS
 end
 
 return Config
@@ -7577,7 +7560,7 @@ function LifeUtil.layout(data): { [string]: string }
 	return layout
 end
 
--- What one item earns a second (before rebirths and passes).
+-- What one item earns a second (before game passes).
 function LifeUtil.itemIncome(record): number
 	local item = record and Items.byId[record.id]
 	if not item then
@@ -7605,7 +7588,7 @@ function LifeUtil.placed(data): { [string]: string }
 	return where
 end
 
--- Everything out earning, including rebirths (passes are added by the server).
+-- Everything out earning (passes are added by the server).
 function LifeUtil.totalIncome(data): number
 	local total = 0
 	for _, slot in Parts.SLOTS do
@@ -7617,7 +7600,7 @@ function LifeUtil.totalIncome(data): number
 			total += LifeUtil.itemIncome(data.parts[uid])
 		end
 	end
-	return total * Config.incomeMultiplier(data.rebirths)
+	return total
 end
 LifeUtil.houseIncome = LifeUtil.totalIncome
 
@@ -9072,7 +9055,6 @@ end
 -- What the client is allowed to see of its own save.
 local function snapshot(data)
 	return {
-		rebirths = data.rebirths,
 		money = data.money,
 		speed = data.speed,
 		treadmill = data.treadmill,
@@ -9503,7 +9485,6 @@ local function defaultData()
 		nests = {}, -- ["1".."5"] = { zone, rarity, endsAt, mutations? }: eggs growing
 		nextUid = 1,
 		discovered = {}, -- [itemId] = true for every item this player has owned
-		rebirths = 0,
 		crates = {}, -- [crateId] = how many unopened Mystery Boxes (won on the wheel)
 		receipts = {}, -- recent Robux purchase IDs, so a purchase is never granted twice
 		lastSpin = 0, -- os.time() of the last Lucky Wheel spin
@@ -9519,6 +9500,7 @@ local function reconcile(data)
 			data[key] = value
 		end
 	end
+	data.rebirths = nil -- rebirths were taken out of the game
 	if Config.TEST_MONEY and data.money < Config.TEST_MONEY then
 		data.money = Config.TEST_MONEY
 	end
@@ -10338,7 +10320,7 @@ local DataService = require(script.Parent.DataService)
 
 local EconomyService = {}
 
--- House income including rebirths and game passes.
+-- Income including game passes.
 local function incomeFor(player: Player, data): number
 	return LifeUtil.totalIncome(data) * GamePasses.coinMultiplier(player)
 end
@@ -10350,10 +10332,6 @@ local function publish(player: Player, data, income: number)
 	local money = stats and stats:FindFirstChild("Money")
 	if money then
 		money.Value = math.floor(data.money)
-	end
-	local rebirths = stats and stats:FindFirstChild("Rebirths")
-	if rebirths then
-		rebirths.Value = data.rebirths
 	end
 	local speed = stats and stats:FindFirstChild("Speed")
 	if speed then
@@ -10367,9 +10345,6 @@ local function onLoaded(player: Player, data)
 	local money = Instance.new("NumberValue")
 	money.Name = "Money"
 	money.Parent = stats
-	local rebirths = Instance.new("IntValue")
-	rebirths.Name = "Rebirths"
-	rebirths.Parent = stats
 	local speed = Instance.new("NumberValue")
 	speed.Name = "Speed"
 	speed.Parent = stats
@@ -11928,7 +11903,6 @@ local SERVICES = {
 	"StealService",
 	"SpeedService",
 	"NestService",
-	"RebirthService",
 	"PassService",
 	"LuckService",
 	"EventService",
@@ -12943,9 +12917,7 @@ function PlotService.render(player: Player)
 	end
 	local income = LifeUtil.totalIncome(data) * GamePasses.coinMultiplier(player)
 	plot.incomeLabel.Text = Format.money(income) .. "/s"
-	local gain = Config.treadmillGain(data.treadmill)
-		* Config.speedMultiplier(data.rebirths)
-		* GamePasses.speedMultiplier(player)
+	local gain = Config.treadmillGain(data.treadmill) * GamePasses.speedMultiplier(player)
 	plot.treadmillLabel.Text = "LV " .. data.treadmill .. "  +" .. Format.number(gain) .. " ⚡/s"
 end
 
@@ -13155,73 +13127,6 @@ return PlotService
         </Properties>
       </Item>
       <Item class="ModuleScript" referent="46">
-        <Properties>
-          <string name="Name">RebirthService</string>
-          <string name="Source"><![CDATA[-- Rebirth: pay Config.rebirthCost to start over with a permanent income bonus.
---
--- Resets: money (back to START_MONEY), Speed, and the treadmill level.
--- Keeps: everything you own (house, pets, yard, garden, backpack, eggs in nests) and the
--- Catalog. Each rebirth adds REBIRTH_INCOME_BONUS income and REBIRTH_SPEED_BONUS treadmill
--- speed, forever.
-
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local Config = require(ReplicatedStorage.Shared.Config)
-local Format = require(ReplicatedStorage.Shared.Format)
-local Remotes = require(ReplicatedStorage.Shared.Remotes)
-
-local ActionService = require(script.Parent.ActionService)
-local DataService = require(script.Parent.DataService)
-local StealService = require(script.Parent.StealService)
-
-local RebirthService = {}
-
-local notifyRemote = Remotes.get("Notify")
-
-local function notify(player: Player, message: string, kind: string?)
-	notifyRemote:FireClient(player, message, kind)
-end
-
-local function rebirth(player: Player, data)
-	local cost = Config.rebirthCost(data.rebirths)
-	if data.money < cost then
-		return notify(player, "You need " .. Format.money(cost) .. " to rebirth!", "error")
-	end
-	if StealService.isCarrying(player) then
-		return notify(player, "You can't rebirth while carrying an egg!", "error")
-	end
-
-	data.money = Config.TEST_MONEY or Config.START_MONEY
-	data.speed = 0
-	data.treadmill = 1
-	data.rebirths += 1
-
-	task.spawn(DataService.save, player)
-
-	local message = string.format(
-		"Rebirth %d! Your life now earns x%s and your treadmill trains x%s Speed, forever.",
-		data.rebirths,
-		tostring(Config.incomeMultiplier(data.rebirths)),
-		tostring(Config.speedMultiplier(data.rebirths))
-	)
-	notify(player, message, "discovery")
-	for _, other in Players:GetPlayers() do
-		if other ~= player then
-			notify(other, player.DisplayName .. " just reached Rebirth " .. data.rebirths .. "!", "discovery")
-		end
-	end
-end
-
-function RebirthService.init()
-	ActionService.register("Rebirth", rebirth)
-end
-
-return RebirthService
-]]></string>
-        </Properties>
-      </Item>
-      <Item class="ModuleScript" referent="47">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -13488,15 +13393,15 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="48">
+      <Item class="ModuleScript" referent="47">
         <Properties>
           <string name="Name">SpeedService</string>
           <string name="Source"><![CDATA[-- Speed: trained on your treadmill, it decides how fast you run (Items.walkSpeed), which
 -- decides which zones' guardians you can outrun.
 --
 -- Step onto your own treadmill and you run on it by yourself (client TreadmillRun) and your
--- Speed goes up every second by the treadmill's gain (Config.treadmillGain), times rebirth
--- and pass bonuses. The belt runs as fast as you do, so you stay on it. Carrying an egg
+-- Speed goes up every second by the treadmill's gain (Config.treadmillGain), times pass
+-- bonuses. The belt runs as fast as you do, so you stay on it. Carrying an egg
 -- slows you a little (GamePasses.carrySlowdown).
 
 local Players = game:GetService("Players")
@@ -13516,9 +13421,7 @@ local TICK = 0.2
 
 -- Speed a second this player gets from running on their treadmill.
 function SpeedService.gain(player: Player, data): number
-	return Config.treadmillGain(data.treadmill)
-		* Config.speedMultiplier(data.rebirths)
-		* GamePasses.speedMultiplier(player)
+	return Config.treadmillGain(data.treadmill) * GamePasses.speedMultiplier(player)
 end
 
 local function update(player: Player, data)
@@ -13572,7 +13475,7 @@ return SpeedService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="49">
+      <Item class="ModuleScript" referent="48">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Carrying eggs home from the zones.
@@ -13828,7 +13731,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="50">
+      <Item class="ModuleScript" referent="49">
         <Properties>
           <string name="Name">ZoneDecor</string>
           <string name="Source"><![CDATA[-- The scenery of each zone: its ground, the cliffs along its sides, the entrance arch with
@@ -14665,7 +14568,7 @@ return ZoneDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="51">
+      <Item class="ModuleScript" referent="50">
         <Properties>
           <string name="Name">ZoneService</string>
           <string name="Source"><![CDATA[-- The zones: eggs to steal, each zone guarded by a giant Freek.
@@ -15220,19 +15123,19 @@ return ZoneService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="52">
+  <Item class="StarterPlayer" referent="51">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="53">
+    <Item class="StarterPlayerScripts" referent="52">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="54">
+      <Item class="Folder" referent="53">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="55">
+        <Item class="ModuleScript" referent="54">
           <Properties>
             <string name="Name">AdminPanel</string>
             <string name="Source"><![CDATA[-- The admin panel (only for admins: the server sets IsAdmin and checks every command).
@@ -15628,7 +15531,7 @@ return AdminPanel
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="56">
+        <Item class="ModuleScript" referent="55">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -15702,7 +15605,7 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="57">
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">EventFX</string>
             <string name="Source"><![CDATA[-- What big events and weather look like (see Events.luau), on each player's own screen:
@@ -15794,7 +15697,7 @@ return EventFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="58">
+        <Item class="ModuleScript" referent="57">
           <Properties>
             <string name="Name">GuardianFX</string>
             <string name="Source"><![CDATA[-- The zone guardians, drawn on this client: a giant Freek per zone that walks after its
@@ -15939,7 +15842,7 @@ return GuardianFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="59">
+        <Item class="ModuleScript" referent="58">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, Speed, event chip, menu buttons, leaderboard,
@@ -16056,19 +15959,6 @@ function Hud.money(screen: ScreenGui)
 		TextColor3 = Color3.fromRGB(255, 240, 150),
 		Parent = pill,
 	})
-	local boost = UI.new("TextLabel", {
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -10, 0.5, 0),
-		Size = UDim2.fromOffset(46, 22),
-		BackgroundColor3 = colors.gold,
-		BackgroundTransparency = 0.75,
-		FontFace = UI.fonts.heavy,
-		TextSize = 14,
-		TextColor3 = colors.gold,
-		Visible = false,
-		Parent = pill,
-	}, { UI.corner(11) })
-
 	-- The number glides to its new value instead of jumping.
 	local shown = player:GetAttribute("Money") or 0
 	RunService.RenderStepped:Connect(function(dt)
@@ -16084,11 +15974,6 @@ function Hud.money(screen: ScreenGui)
 	end
 	player:GetAttributeChangedSignal("Income"):Connect(updateIncome)
 	updateIncome()
-
-	return function(rebirths: number)
-		boost.Visible = rebirths > 0
-		boost.Text = "x" .. tostring(Config.incomeMultiplier(rebirths))
-	end
 end
 
 --------------------------------------------------------------------------------
@@ -16999,7 +16884,7 @@ function Hud.leaderboard(screen: ScreenGui)
 			avatar.Image = thumbnails[other.UserId]
 		end)
 
-		-- Name, with little chips (rebirths, VIP, you) underneath.
+		-- Name, with little chips (VIP, you) underneath.
 		local name = text(other.DisplayName, 15, {
 			Position = UDim2.fromOffset(78, 3),
 			Size = UDim2.new(1, -168, 0, 18),
@@ -17022,7 +16907,6 @@ function Hud.leaderboard(screen: ScreenGui)
 		local you = chip(chips, 0, colors.green)
 		you.Text = "YOU"
 		you.Visible = isMe
-		local rebirth = chip(chips, 1, colors.purple)
 		local vip = chip(chips, 2, Color3.fromRGB(240, 170, 20))
 		vip.Text = "👑 VIP"
 
@@ -17056,7 +16940,6 @@ function Hud.leaderboard(screen: ScreenGui)
 			crown = crown,
 			name = name,
 			chips = chips,
-			rebirth = rebirth,
 			vip = vip,
 			money = money,
 			isMe = isMe,
@@ -17097,14 +16980,11 @@ function Hud.leaderboard(screen: ScreenGui)
 			row.medal.BackgroundColor3 = place.medal
 			row.crown.Visible = i == 1
 			row.money.Text = Format.money(stat(other, "Money"))
-			local rebirths = stat(other, "Rebirths")
-			row.rebirth.Visible = rebirths > 0
-			row.rebirth.Text = "⭐ " .. rebirths
 			local isVip = GamePasses.has(other, "VIP")
 			row.vip.Visible = isVip
 			row.name.TextColor3 = if isVip then Color3.fromRGB(255, 235, 120) else colors.text
 			-- No chips: centre the name in the row.
-			local anyChip = row.isMe or rebirths > 0 or isVip
+			local anyChip = row.isMe or isVip
 			row.name.Position = UDim2.fromOffset(78, if anyChip then 3 else 12)
 		end
 		count.Text = "👥 " .. #everyone .. "/" .. Config.PLOT_COUNT
@@ -17232,7 +17112,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="60">
+        <Item class="ModuleScript" referent="59">
           <Properties>
             <string name="Name">ItemPictures</string>
             <string name="Source"><![CDATA[-- 3D pictures for shop items (the treadmill, game passes), items, eggs and the side menu,
@@ -17497,20 +17377,6 @@ local function triangle(model, base: Vector3, across: Vector3, toward: Vector3, 
 	end
 end
 
--- A five-pointed star standing up, facing the camera.
-local function star(model, center: Vector3, outer: number, inner: number, depth: number, color: Color3)
-	local half = math.rad(36)
-	for k = 0, 4 do
-		local a = math.rad(k * 72)
-		local toward = Vector3.new(math.sin(a), math.cos(a), 0)
-		local across = Vector3.new(math.cos(a), -math.sin(a), 0)
-		local base = center + toward * inner * math.cos(half)
-		local width = 2 * inner * math.sin(half)
-		triangle(model, base, across, toward, width, outer - inner * math.cos(half), depth, color)
-		triangle(model, base, across, -toward, width, inner * math.cos(half), depth, color)
-	end
-end
-
 -- A little four-point sparkle.
 local function sparkle(model, position: Vector3, size: number)
 	local white = rgb(255, 255, 235)
@@ -17749,15 +17615,6 @@ BUILDERS.MenuHome = function(model)
 	sparkle(model, Vector3.new(2, 4.6, -0.8), 0.9)
 end
 
--- Rebirth: a big gold star with a bevel.
-BUILDERS.MenuRebirth = function(model)
-	star(model, Vector3.new(0, 2.4, 0), 2.4, 1.05, 0.8, rgb(255, 180, 30))
-	star(model, Vector3.new(0, 2.45, -0.42), 1.75, 0.76, 0.15, rgb(255, 225, 90))
-	ball(model, Vector3.new(-0.45, 2.95, -0.55), Vector3.new(0.35, 0.55, 0.1), rgb(255, 255, 230))
-	sparkle(model, Vector3.new(2.1, 4.3, -0.5), 0.9)
-	sparkle(model, Vector3.new(-2.2, 0.8, -0.5), 0.6)
-end
-
 -- Store: a cut diamond, built facet by facet.
 BUILDERS.MenuStore = function(model)
 	local girdle = Vector3.new(0, 2.6, 0)
@@ -17932,7 +17789,7 @@ return ItemPictures
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="61">
+        <Item class="ModuleScript" referent="60">
           <Properties>
             <string name="Name">LuckyWheel</string>
             <string name="Source"><![CDATA[-- The Lucky Wheel, drawn like the prize wheels in the big simulators: bright pie slices
@@ -18228,11 +18085,11 @@ return LuckyWheel
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="62">
+        <Item class="LocalScript" referent="61">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money and Speed, the side menu, and the Shop / Luck / My Life / Bag /
--- Catalog / Rebirth / Store windows. The server is the source of truth; this only shows
+-- Catalog / Store windows. The server is the source of truth; this only shows
 -- state and sends requests.
 
 local CollectionService = game:GetService("CollectionService")
@@ -18322,7 +18179,7 @@ local screen = UI.new("ScreenGui", {
 	Parent = player:WaitForChild("PlayerGui"),
 })
 
-local setRebirthBoost = Hud.money(screen)
+Hud.money(screen)
 Hud.speed(screen)
 Hud.eventChip(screen)
 Hud.luckChip(screen)
@@ -18655,7 +18512,7 @@ end
 --------------------------------------------------------------------------------
 
 local function speedGain(level: number): number
-	return Config.treadmillGain(level) * Config.speedMultiplier(state.rebirths) * GamePasses.speedMultiplier(player)
+	return Config.treadmillGain(level) * GamePasses.speedMultiplier(player)
 end
 
 -- "Common 70% · Uncommon 25% · Rare 5%"
@@ -19118,58 +18975,6 @@ function renderers.Catalog()
 			card.Parent = grid
 		end
 	end
-end
-
---------------------------------------------------------------------------------
--- Rebirth
---------------------------------------------------------------------------------
-
-function renderers.Rebirth()
-	local rebirths = state.rebirths or 0
-	local cost = Config.rebirthCost(rebirths)
-	heading(
-		string.format(
-			"Rebirth %d  ·  Income x%s  ·  Speed x%s",
-			rebirths,
-			tostring(Config.incomeMultiplier(rebirths)),
-			tostring(Config.speedMultiplier(rebirths))
-		),
-		1
-	)
-	local grid = UI.grid(440, 270)
-	grid.LayoutOrder = 2
-	grid.Parent = body
-	local ready = state.money >= cost
-	UI.card({
-		lines = {
-			{ "Rebirth " .. (rebirths + 1), Color3.fromRGB(255, 210, 80), 30 },
-			{
-				"Everything you own earns x" .. tostring(Config.incomeMultiplier(rebirths + 1)) .. " forever",
-				colors.money,
-				22,
-			},
-			{
-				"Your treadmill trains x" .. tostring(Config.speedMultiplier(rebirths + 1)) .. " Speed forever",
-				Color3.fromRGB(150, 230, 255),
-				20,
-			},
-			{ "Resets: coins, Speed, treadmill level", colors.red:Lerp(Color3.new(1, 1, 1), 0.3), 18 },
-			{ "Keeps: your house, pets, yard, garden, eggs, backpack", colors.muted, 18 },
-			{
-				Format.money(state.money) .. " / " .. Format.money(cost),
-				if ready then colors.money else colors.text,
-				22,
-			},
-		},
-		buttons = {
-			if ready
-				then confirmButton("Rebirth for " .. Format.money(cost), Color3.fromRGB(230, 180, 40), function()
-					send("Rebirth")
-				end)
-				else UI.button("Need " .. Format.money(cost), colors.gray, function() end),
-		},
-	}).Parent =
-		grid
 end
 
 --------------------------------------------------------------------------------
@@ -19674,7 +19479,6 @@ local MENU = {
 	{ "Life", "🏡", colors.blue },
 	{ "Bag", "🎒", colors.orange },
 	{ "Catalog", "📖", colors.pink },
-	{ "Rebirth", "⭐", Color3.fromRGB(230, 170, 30) },
 	{ "Store", "💎", Color3.fromRGB(40, 180, 160) },
 	{ "Home", "🚪", colors.purple },
 }
@@ -19693,7 +19497,7 @@ setActiveTab, setBadge = Hud.menu(screen, MENU, function(name: string)
 end)
 
 -- Alert badges on the side buttons: a free spin or unopened boxes, upgrades waiting in the
--- backpack, a treadmill upgrade you can afford, enough coins to rebirth.
+-- backpack, eggs ready to hatch, a treadmill upgrade you can afford.
 task.spawn(function()
 	while true do
 		if state then
@@ -19732,8 +19536,6 @@ task.spawn(function()
 			local level = state.treadmill or 1
 			local canUpgrade = level < Config.TREADMILL_MAX and (state.money or 0) >= Config.treadmillCost(level)
 			setBadge("Shop", if canUpgrade then "⚡" else nil, colors.blue)
-			local canRebirth = (state.money or 0) >= Config.rebirthCost(state.rebirths or 0)
-			setBadge("Rebirth", if canRebirth then "!" else nil, colors.green)
 		end
 		task.wait(0.5)
 	end
@@ -19758,7 +19560,6 @@ Remotes.get("Notify").OnClientEvent:Connect(toast)
 
 Remotes.get("State").OnClientEvent:Connect(function(newState)
 	state = newState
-	setRebirthBoost(state.rebirths or 0)
 	render()
 end)
 
@@ -19861,14 +19662,11 @@ print("[Steal a Life] Client UI built, loading your data...")
 state = Remotes.get("GetState"):InvokeServer()
 print("[Steal a Life] Client ready")
 clientReady = true
-if state then
-	setRebirthBoost(state.rebirths or 0)
-end
 render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="63">
+        <Item class="ModuleScript" referent="62">
           <Properties>
             <string name="Name">PackReveal</string>
             <string name="Source"><![CDATA[-- Hatching an egg (or opening a Mystery Box), done like a card-pack reveal in the big
@@ -21246,7 +21044,7 @@ return PackReveal
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="64">
+        <Item class="ModuleScript" referent="63">
           <Properties>
             <string name="Name">PetFX</string>
             <string name="Source"><![CDATA[-- Pets roaming their owner's front lawn, drawn on this client. The server lists each
@@ -21443,7 +21241,7 @@ return PetFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="65">
+        <Item class="ModuleScript" referent="64">
           <Properties>
             <string name="Name">TreadmillRun</string>
             <string name="Source"><![CDATA[-- Running on your treadmill by yourself: while you stand on your own treadmill's belt and
@@ -21509,7 +21307,7 @@ return TreadmillRun
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="66">
+        <Item class="ModuleScript" referent="65">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).

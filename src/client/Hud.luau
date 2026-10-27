@@ -112,19 +112,6 @@ function Hud.money(screen: ScreenGui)
 		TextColor3 = Color3.fromRGB(255, 240, 150),
 		Parent = pill,
 	})
-	local boost = UI.new("TextLabel", {
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -10, 0.5, 0),
-		Size = UDim2.fromOffset(46, 22),
-		BackgroundColor3 = colors.gold,
-		BackgroundTransparency = 0.75,
-		FontFace = UI.fonts.heavy,
-		TextSize = 14,
-		TextColor3 = colors.gold,
-		Visible = false,
-		Parent = pill,
-	}, { UI.corner(11) })
-
 	-- The number glides to its new value instead of jumping.
 	local shown = player:GetAttribute("Money") or 0
 	RunService.RenderStepped:Connect(function(dt)
@@ -140,11 +127,6 @@ function Hud.money(screen: ScreenGui)
 	end
 	player:GetAttributeChangedSignal("Income"):Connect(updateIncome)
 	updateIncome()
-
-	return function(rebirths: number)
-		boost.Visible = rebirths > 0
-		boost.Text = "x" .. tostring(Config.incomeMultiplier(rebirths))
-	end
 end
 
 --------------------------------------------------------------------------------
@@ -1055,7 +1037,7 @@ function Hud.leaderboard(screen: ScreenGui)
 			avatar.Image = thumbnails[other.UserId]
 		end)
 
-		-- Name, with little chips (rebirths, VIP, you) underneath.
+		-- Name, with little chips (VIP, you) underneath.
 		local name = text(other.DisplayName, 15, {
 			Position = UDim2.fromOffset(78, 3),
 			Size = UDim2.new(1, -168, 0, 18),
@@ -1078,7 +1060,6 @@ function Hud.leaderboard(screen: ScreenGui)
 		local you = chip(chips, 0, colors.green)
 		you.Text = "YOU"
 		you.Visible = isMe
-		local rebirth = chip(chips, 1, colors.purple)
 		local vip = chip(chips, 2, Color3.fromRGB(240, 170, 20))
 		vip.Text = "👑 VIP"
 
@@ -1112,7 +1093,6 @@ function Hud.leaderboard(screen: ScreenGui)
 			crown = crown,
 			name = name,
 			chips = chips,
-			rebirth = rebirth,
 			vip = vip,
 			money = money,
 			isMe = isMe,
@@ -1153,14 +1133,11 @@ function Hud.leaderboard(screen: ScreenGui)
 			row.medal.BackgroundColor3 = place.medal
 			row.crown.Visible = i == 1
 			row.money.Text = Format.money(stat(other, "Money"))
-			local rebirths = stat(other, "Rebirths")
-			row.rebirth.Visible = rebirths > 0
-			row.rebirth.Text = "⭐ " .. rebirths
 			local isVip = GamePasses.has(other, "VIP")
 			row.vip.Visible = isVip
 			row.name.TextColor3 = if isVip then Color3.fromRGB(255, 235, 120) else colors.text
 			-- No chips: centre the name in the row.
-			local anyChip = row.isMe or rebirths > 0 or isVip
+			local anyChip = row.isMe or isVip
 			row.name.Position = UDim2.fromOffset(78, if anyChip then 3 else 12)
 		end
 		count.Text = "👥 " .. #everyone .. "/" .. Config.PLOT_COUNT

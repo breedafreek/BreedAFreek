@@ -260,20 +260,6 @@ local function triangle(model, base: Vector3, across: Vector3, toward: Vector3, 
 	end
 end
 
--- A five-pointed star standing up, facing the camera.
-local function star(model, center: Vector3, outer: number, inner: number, depth: number, color: Color3)
-	local half = math.rad(36)
-	for k = 0, 4 do
-		local a = math.rad(k * 72)
-		local toward = Vector3.new(math.sin(a), math.cos(a), 0)
-		local across = Vector3.new(math.cos(a), -math.sin(a), 0)
-		local base = center + toward * inner * math.cos(half)
-		local width = 2 * inner * math.sin(half)
-		triangle(model, base, across, toward, width, outer - inner * math.cos(half), depth, color)
-		triangle(model, base, across, -toward, width, inner * math.cos(half), depth, color)
-	end
-end
-
 -- A little four-point sparkle.
 local function sparkle(model, position: Vector3, size: number)
 	local white = rgb(255, 255, 235)
@@ -510,15 +496,6 @@ BUILDERS.MenuHome = function(model)
 	end
 	item:Destroy()
 	sparkle(model, Vector3.new(2, 4.6, -0.8), 0.9)
-end
-
--- Rebirth: a big gold star with a bevel.
-BUILDERS.MenuRebirth = function(model)
-	star(model, Vector3.new(0, 2.4, 0), 2.4, 1.05, 0.8, rgb(255, 180, 30))
-	star(model, Vector3.new(0, 2.45, -0.42), 1.75, 0.76, 0.15, rgb(255, 225, 90))
-	ball(model, Vector3.new(-0.45, 2.95, -0.55), Vector3.new(0.35, 0.55, 0.1), rgb(255, 255, 230))
-	sparkle(model, Vector3.new(2.1, 4.3, -0.5), 0.9)
-	sparkle(model, Vector3.new(-2.2, 0.8, -0.5), 0.6)
 end
 
 -- Store: a cut diamond, built facet by facet.
