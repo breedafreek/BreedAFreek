@@ -267,7 +267,7 @@ end
 -- shine across the top, the title in white, a big picture on a glowing disc, then text
 -- lines and buttons. opts: accent (colour), border (a highlight outline, e.g. owned),
 -- picture (an ItemPictures key) / part (any item id, + mutations, silhouette) / egg (a zone
--- index) / box, lines = { { text,
+-- index, + eggItem for what's inside) / box, lines = { { text,
 -- colour?, height? } }, buttons, tag = { text, colour? }, onClick.
 function UI.card(opts)
 	local title = opts.lines and opts.lines[1] and opts.lines[1][1] or ""
@@ -354,7 +354,7 @@ function UI.card(opts)
 	elseif opts.part then
 		picture = ItemPictures.part(opts.part, opts.pictureHeight, opts.silhouette, opts.mutations)
 	elseif opts.egg then
-		picture = ItemPictures.egg(opts.egg, opts.pictureHeight)
+		picture = ItemPictures.egg(opts.egg, opts.pictureHeight, opts.eggItem)
 	end
 	if picture then
 		local holder = UI.new("Frame", {

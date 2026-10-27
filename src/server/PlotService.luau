@@ -610,7 +610,7 @@ local function updateNestLabels(plot)
 			else
 				nest.timer.Text = "🐣 " .. Format.weight(weight) .. " READY!"
 				nest.timer.TextColor3 = Color3.fromRGB(110, 235, 140)
-				nest.prompt.ObjectText = Items.eggName(egg.zone)
+				nest.prompt.ObjectText = Items.itemEggName(egg.zone, egg.item)
 				nest.prompt.Enabled = true
 			end
 		end
@@ -631,7 +631,7 @@ local function updateNests(plot, data, player: Player?)
 				nest.egg = nil
 			end
 			if egg then
-				local model = EggModel.build(egg.zone)
+				local model = EggModel.build(egg.zone, egg.item)
 				local weight = Items.eggWeightAt(egg, os.time())
 				local scale = Items.weightScale(weight / (egg.baseWeight or weight))
 				Items.scaleModel(model, scale)

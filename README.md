@@ -72,8 +72,12 @@ rojo build -o StealALife.rbxlx    # or build a place file
   first is 130 long and each one after is 25 studs longer), each growing one kind of
   egg: Backyard Garden (plants), Junkyard (house), Pine Woods (pets), Toy Town (yard), Sunny
   Desert (plants), Candy Land (house), Frosty Peaks (pets), Royal Kingdom (yard), Crystal
-  Caves (house), Sky Islands (pets). Deeper zones need more Speed and grow rarer eggs. Each
-  egg's rarity shows above it. Hold **Grab** and run! The zone's giant Freek guardian chases
+  Caves (house), Sky Islands (pets). Deeper zones need more Speed and grow rarer eggs. Eggs
+  lie scattered on the ground all over each zone (rarer ones deeper in, near the guardian)
+  and each is designed around the item inside (`src/shared/EggModel.luau`): the item's
+  colours, a pattern for its kind, and a little copy of the item poking out of a cracked
+  top. Its rarity, name ("Woofles Egg"), weight and hatch time float above it, and hatching
+  gives exactly that item. Hold **Grab** and run! The zone's giant Freek guardian chases
   anyone carrying an egg; if your Speed meets the zone's requirement you can outrun it, if
   not it catches you, flings you toward town and you drop the egg. Guardians live on the
   server as plain data and every client animates its own copy (`src/client/GuardianFX.luau`).

@@ -816,7 +816,7 @@ function PackReveal.play(result, done: () -> ())
 	camera.CFrame = state.camFrom
 	flash(Color3.new(0, 0, 0), 0.5)
 	moveCamera(Vector3.new(0, 7, -24), Vector3.new(0, 4, 0))
-	local egg = if result.egg then EggModel.build(result.egg) else BoxModel.build(result.crate)
+	local egg = if result.egg then EggModel.build(result.egg, result.part.id) else BoxModel.build(result.crate)
 	if result.egg then
 		Items.scaleModel(egg, 1.6 * math.clamp(Items.weightScale(result.eggFactor or 1), 0.7, 1.8))
 	end

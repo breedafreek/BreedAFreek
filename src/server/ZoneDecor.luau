@@ -723,6 +723,8 @@ function ZoneDecor.formatSpeed(n: number): string
 	return tostring(math.floor(n))
 end
 
+ZoneDecor.propSpots = {} -- [zone index] = { Vector3 } where the props stand
+
 function ZoneDecor.build(parent: Instance, index: number)
 	local theme = ZoneDecor.theme(index)
 	local east, west = ZoneLayout.edges(index)
@@ -803,7 +805,10 @@ function ZoneDecor.build(parent: Instance, index: number)
 	end
 	buildArch(folder, index, theme)
 
-	-- Themed props, kept off the path and out of the pile (more in bigger zones).
+	-- Themed props, kept off the path and out of the pile (more in bigger zones). Their spots
+	-- are kept (ZoneDecor.propSpots) so eggs don't land inside them.
+	local spots = {}
+	ZoneDecor.propSpots[index] = spots
 	local rng = Random.new(index * 7919)
 	local placed = 0
 	local tries = 0
@@ -816,6 +821,7 @@ function ZoneDecor.build(parent: Instance, index: number)
 		if math.abs(v) > 10 and not nearPile then
 			placed += 1
 			local cf = CFrame.new(east - u, 0, v) * CFrame.Angles(0, rng:NextNumber() * math.pi * 2, 0)
+			table.insert(spots, Vector3.new(east - u, 0, v))
 			props[LOOK[index]](folder, cf, rng, 0.9 + rng:NextNumber() * 0.5)
 		end
 	end

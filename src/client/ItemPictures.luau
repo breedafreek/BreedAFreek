@@ -648,9 +648,9 @@ function ItemPictures.part(itemId: string, height: number?, silhouette: boolean?
 	return framed(ItemModel.buildNormal(itemId, mutations), height, silhouette)
 end
 
--- A zone's egg.
-function ItemPictures.egg(zoneIndex: number, height: number?): ViewportFrame
-	return framed((EggModel.build(zoneIndex)), height)
+-- A zone's egg (designed around the item inside, if given).
+function ItemPictures.egg(zoneIndex: number, height: number?, itemId: string?): ViewportFrame
+	return framed((EggModel.build(zoneIndex, itemId)), height)
 end
 
 function ItemPictures.has(key: string): boolean

@@ -610,13 +610,14 @@ local function nestCards(grid: Instance)
 			}
 			card = UI.card({
 				egg = egg.zone,
+				eggItem = egg.item,
 				pictureHeight = 100,
 				accent = Rarities.info[egg.rarity].color,
 				border = if ready then colors.money else nil,
 				lines = {
 					{ "Nest " .. n, nil, 22 },
 					{
-						Items.KINDS[zone.kind].icon .. " " .. Items.eggName(egg.zone),
+						Items.KINDS[zone.kind].icon .. " " .. Items.itemEggName(egg.zone, egg.item),
 						Items.weightColor(weight / (egg.baseWeight or weight)),
 						19,
 					},

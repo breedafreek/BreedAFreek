@@ -12,8 +12,7 @@ ZoneLayout.START_X = -230 -- the east edge of zone 1 (the town street ends just 
 ZoneLayout.LENGTH = 130 -- zone 1's length
 ZoneLayout.GROWTH = 25 -- how much longer each zone is than the one before
 ZoneLayout.WIDTH = 140
-ZoneLayout.PEDESTALS = 6
-ZoneLayout.RING = 20 -- pedestal ring radius round the guardian's home
+ZoneLayout.RING = 20 -- how far round the guardian's home its patrol keeps closest
 ZoneLayout.HOME_BACK = 32 -- how far before a zone's back wall the guardian's home is
 
 -- How long zone `index` is.
@@ -55,15 +54,9 @@ function ZoneLayout.guardianHome(index: number): Vector3
 	return ZoneLayout.point(index, ZoneLayout.homeU(index), 0)
 end
 
--- The pedestals sit on the back half of a ring round the guardian's home, so you have to
--- get past it to reach them.
-function ZoneLayout.pedestal(index: number, n: number): Vector3
-	local a = math.rad(-90 + (n - 1) * 180 / (ZoneLayout.PEDESTALS - 1))
-	return ZoneLayout.point(
-		index,
-		ZoneLayout.homeU(index) + math.cos(a) * ZoneLayout.RING,
-		math.sin(a) * ZoneLayout.RING * 1.2
-	)
+-- How many eggs lie about zone `index` at once (more in the bigger zones).
+function ZoneLayout.eggCount(index: number): number
+	return 8 + index
 end
 
 -- Which zone a position is in (nil in town).

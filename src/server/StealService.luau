@@ -55,7 +55,7 @@ local function pickUp(carrier: Player, carry): boolean
 	if not character or not root then
 		return false
 	end
-	local model = EggModel.build(carry.record.egg)
+	local model = EggModel.build(carry.record.egg, carry.record.item)
 	Items.scaleModel(model, Items.weightScale(Items.weightFactor(carry.record)))
 	ItemModel.addMutationEffect(model, carry.record.mutations)
 	model:PivotTo(root.CFrame * CFrame.new(0, 3.2, 0))

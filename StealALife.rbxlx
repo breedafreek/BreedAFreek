@@ -816,7 +816,7 @@ return Bricks
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-11", -- shown small in the corner of the screen and in Output: which build is running
+	BUILD = "life-12", -- shown small in the corner of the screen and in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join (and after
 	-- a rebirth). Set to nil before the game launches!
@@ -881,14 +881,24 @@ return Config
       <Item class="ModuleScript" referent="8">
         <Properties>
           <string name="Name">EggModel</string>
-          <string name="Source"><![CDATA[-- The eggs you steal from the zones. Each zone's egg has its own colours (Items.ZONES:
--- eggColor with spotColor spots); deeper zones' eggs get fancier: a gold band from zone 5, a
--- crown from zone 9. EggModel.build(zoneIndex) returns the model (standing on its pivot,
--- PrimaryPart = the shell) and its height.
+          <string name="Source"><![CDATA[-- The eggs you steal from the zones. Each egg is designed around the item inside it: the
+-- shell is in the item's own colours with a pattern for its kind (round spots for pets,
+-- leaves for plants, stripes for yard items, bricks for house parts), the top is cracked
+-- open with a little copy of the item poking out, Legendary and up get a gold band and
+-- Mystic and up a glowing one. Without an item (the zone's egg in general, e.g. in the Shop)
+-- it's the zone's colours (Items.ZONES eggColor / spotColor) with spots.
+--
+-- EggModel.build(zoneIndex, itemId?) returns the model (standing on its pivot, the bottom
+-- of the egg; PrimaryPart = the shell) and its height.
 
+local ItemModel = require(script.Parent.ItemModel)
 local Items = require(script.Parent.Items)
+local Rarities = require(script.Parent.Rarities)
 
 local EggModel = {}
+
+local W, H = 2.6, 3.4 -- the shell's width and height
+local GOLD = Color3.fromRGB(255, 205, 60)
 
 local function part(model: Model, props)
 	local p = Instance.new("Part")
@@ -912,72 +922,177 @@ local function egg(model: Model, size: Vector3, cframe: CFrame, color: Color3, m
 	return p
 end
 
-function EggModel.build(zoneIndex: number): (Model, number)
+-- A point on the shell's surface at height fraction y (-1 bottom to 1 top) and angle a,
+-- facing outward.
+local function onShell(y: number, a: number): CFrame
+	local r = math.sqrt(math.max(1 - y * y, 0))
+	local normal = Vector3.new(math.cos(a) * r, y * 1.25, math.sin(a) * r).Unit
+	local spot = Vector3.new(math.cos(a) * r * W / 2, H / 2 + y * H / 2, math.sin(a) * r * W / 2)
+	return CFrame.lookAt(spot, spot + normal) * CFrame.new(0, 0, -0.02)
+end
+
+local function brightness(c: Color3): number
+	return c.R * 0.3 + c.G * 0.59 + c.B * 0.11
+end
+
+-- The item's two main colours: the colours covering the most of it, by volume.
+local function palette(model: Model): (Color3, Color3)
+	local totals, colors = {}, {}
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") and p.Transparency < 0.5 then
+			local key = string.format("%d,%d,%d", p.Color.R * 20, p.Color.G * 20, p.Color.B * 20)
+			local s = p.Size
+			totals[key] = (totals[key] or 0) + math.min(s.X * s.Y * s.Z, 60)
+			colors[key] = p.Color
+		end
+	end
+	local order = {}
+	for key in totals do
+		table.insert(order, key)
+	end
+	table.sort(order, function(a, b)
+		return totals[a] > totals[b]
+	end)
+	local main = order[1] and colors[order[1]] or Color3.fromRGB(240, 240, 240)
+	local second = nil
+	for i = 2, #order do
+		local c = colors[order[i]]
+		local d = math.abs(c.R - main.R) + math.abs(c.G - main.G) + math.abs(c.B - main.B)
+		if d > 0.35 then
+			second = c
+			break
+		end
+	end
+	if not second then
+		-- One-colour items get a lighter or darker shade for their pattern.
+		second = if brightness(main) > 0.6
+			then main:Lerp(Color3.new(0, 0, 0), 0.35)
+			else main:Lerp(Color3.new(1, 1, 1), 0.45)
+	end
+	return main, second
+end
+
+-- The pattern on the shell, by what kind of thing is inside.
+local function pattern(model: Model, kind: string?, color: Color3, rng: Random)
+	if kind == "Yard" then
+		-- Two bold stripes round the egg.
+		for _, y in { 0.3, 0.62 } do
+			part(model, {
+				Name = "Stripe",
+				Shape = Enum.PartType.Cylinder,
+				Size = Vector3.new(0.4, W * 0.98, W * 0.98),
+				CFrame = CFrame.new(0, H * y, 0) * CFrame.Angles(0, 0, math.pi / 2),
+				Color = color,
+			})
+		end
+		return
+	end
+	if kind == "House" then
+		-- Rows of little bricks.
+		for row, y in { -0.45, -0.1, 0.25 } do
+			for k = 0, 6 do
+				local a = (k + (row % 2) * 0.5) / 7 * math.pi * 2
+				part(model, {
+					Name = "Brick",
+					Size = Vector3.new(0.75, 0.32, 0.12),
+					CFrame = onShell(y, a),
+					Color = color,
+				})
+			end
+		end
+		return
+	end
+	for _ = 1, 11 do
+		local a = rng:NextNumber() * math.pi * 2
+		local y = rng:NextNumber(-0.75, 0.55)
+		local size = rng:NextNumber(0.55, 0.9)
+		if kind == "Plant" then
+			-- Leaves, at an angle.
+			egg(
+				model,
+				Vector3.new(size * 1.3, size * 0.55, 0.22),
+				onShell(y, a) * CFrame.Angles(0, 0, rng:NextNumber(-0.8, 0.8)),
+				color
+			)
+		else
+			egg(model, Vector3.new(size, size, 0.25), onShell(y, a), color)
+		end
+	end
+end
+
+-- A cracked-open top: a ring of jagged shell shards with the item poking out.
+local function crackedTop(model: Model, shell: Color3, itemId: string)
+	local y = 0.56 -- where the crack runs round (fraction of half-height above the middle)
+	for k = 0, 9 do
+		local a = k / 10 * math.pi * 2
+		local tall = if k % 2 == 0 then 0.55 else 0.32
+		part(model, {
+			Name = "Shard",
+			Size = Vector3.new(0.5, tall, 0.14),
+			CFrame = onShell(y, a) * CFrame.Angles(math.rad(-20), 0, math.rad(45)) * CFrame.new(0, 0, 0.02),
+			Color = shell:Lerp(Color3.new(1, 1, 1), 0.25),
+		})
+	end
+	-- The item itself, small, sitting in the top of the egg.
+	local item = ItemModel.buildNormal(itemId)
+	local _, size = item:GetBoundingBox()
+	local fit = 1.9 / math.max(size.X, size.Y * 0.8, size.Z, 0.1)
+	Items.scaleModel(item, fit)
+	item:PivotTo(CFrame.new(0, H * 0.72, 0))
+	for _, p in item:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = true
+			p.CanCollide = false
+			p.Parent = model
+		elseif p:IsA("Sparkles") or p:IsA("ParticleEmitter") or p:IsA("PointLight") then
+			p:Destroy()
+		end
+	end
+	item:Destroy()
+	return H * 0.72 + size.Y * fit
+end
+
+function EggModel.build(zoneIndex: number, itemId: string?): (Model, number)
 	local zone = Items.ZONES[zoneIndex] or Items.ZONES[1]
+	local info = itemId and Items.byId[itemId]
 	local model = Instance.new("Model")
 	model.Name = "Egg"
 	model:SetAttribute("Zone", zoneIndex)
-	local w, h = 2.6, 3.4
-	local shell = egg(model, Vector3.new(w, h, w), CFrame.new(0, h / 2, 0), zone.eggColor)
+	if info then
+		model:SetAttribute("Item", itemId)
+	end
+
+	local main, second = zone.eggColor, zone.spotColor
+	if info then
+		local sample = ItemModel.buildNormal(itemId)
+		main, second = palette(sample)
+		sample:Destroy()
+	end
+	local shell = egg(model, Vector3.new(W, H, W), CFrame.new(0, H / 2, 0), main)
 	shell.Name = "Shell"
 	-- The model's pivot is the bottom of the egg, so it stands on whatever it's put on.
-	shell.PivotOffset = CFrame.new(0, -h / 2, 0)
+	shell.PivotOffset = CFrame.new(0, -H / 2, 0)
 	model.PrimaryPart = shell
-	-- Spots all over, squashed onto the shell.
-	local rng = Random.new(zoneIndex * 97)
-	for _ = 1, 11 do
-		local a = rng:NextNumber() * math.pi * 2
-		local y = rng:NextNumber(-0.75, 0.75)
-		local r = math.sqrt(1 - y * y)
-		local normal = Vector3.new(math.cos(a) * r, y * 1.25, math.sin(a) * r).Unit
-		local spot = Vector3.new(math.cos(a) * r * w / 2, h / 2 + y * h / 2, math.sin(a) * r * w / 2)
-		local size = rng:NextNumber(0.55, 0.9)
-		egg(
-			model,
-			Vector3.new(size, size, 0.25),
-			CFrame.lookAt(spot, spot + normal) * CFrame.new(0, 0, -0.02),
-			zone.spotColor
-		)
-	end
-	if zoneIndex >= 5 then
-		-- A shiny band round the middle.
+
+	pattern(model, info and info.kind, second, Random.new(if itemId then #itemId * 131 + zoneIndex else zoneIndex * 97))
+
+	local rank = Rarities.rank[if info then info.rarity else "Common"] or 1
+	if (info and rank >= Rarities.rank.Legendary) or (not info and zoneIndex >= 5) then
+		-- A band round the middle: gold, or glowing in the rarity's colour for Mystic and up.
+		local glowing = info and rank >= Rarities.rank.Mystic
 		local band = part(model, {
 			Shape = Enum.PartType.Cylinder,
-			Size = Vector3.new(0.35, w * 1.02, w * 1.02),
-			CFrame = CFrame.new(0, h * 0.48, 0) * CFrame.Angles(0, 0, math.pi / 2),
-			Color = Color3.fromRGB(255, 205, 60),
-			Material = Enum.Material.Foil,
+			Size = Vector3.new(0.35, W * 1.03, W * 1.03),
+			CFrame = CFrame.new(0, H * 0.46, 0) * CFrame.Angles(0, 0, math.pi / 2),
+			Color = if glowing then Rarities.info[info.rarity].color else GOLD,
+			Material = if glowing then Enum.Material.Neon else Enum.Material.Foil,
 		})
 		band.Name = "Band"
 	end
-	local top = h
-	if zoneIndex >= 9 then
-		-- A little gold crown with gems.
-		local crownY = h - 0.15
-		part(model, {
-			Shape = Enum.PartType.Cylinder,
-			Size = Vector3.new(0.5, 1.3, 1.3),
-			CFrame = CFrame.new(0, crownY + 0.25, 0) * CFrame.Angles(0, 0, math.pi / 2),
-			Color = Color3.fromRGB(255, 205, 60),
-			Material = Enum.Material.Foil,
-		})
-		for k = 0, 4 do
-			local a = k / 5 * math.pi * 2
-			part(model, {
-				Size = Vector3.new(0.3, 0.6, 0.3),
-				CFrame = CFrame.new(math.sin(a) * 0.55, crownY + 0.75, math.cos(a) * 0.55),
-				Color = Color3.fromRGB(255, 205, 60),
-				Material = Enum.Material.Foil,
-			})
-		end
-		part(model, {
-			Shape = Enum.PartType.Ball,
-			Size = Vector3.one * 0.35,
-			CFrame = CFrame.new(0, crownY + 0.3, -0.62),
-			Color = Color3.fromRGB(255, 60, 100),
-			Material = Enum.Material.Neon,
-		})
-		top = crownY + 1.1
+
+	local top = H
+	if info then
+		top = math.max(top, crackedTop(model, main, itemId))
 	end
 	return model, top
 end
@@ -7170,6 +7285,25 @@ function Items.oddsList(zoneIndex: number)
 	return list
 end
 
+-- A random item of a kind and rarity (falling back to the next rarity down if there are
+-- none of that rarity).
+function Items.rollItem(kind: string, rarity: string, rng: Random): string
+	for rank = Rarities.rank[rarity] or 1, 1, -1 do
+		local pool = Items.pool(kind, Rarities.order[rank])
+		if #pool > 0 then
+			return pool[rng:NextInteger(1, #pool)]
+		end
+	end
+	return Items.pool(kind, "Common")[1]
+end
+
+-- An egg's name from what's inside it: "Woofles Egg", "Swimming Pool Egg" (or the zone's
+-- egg name, "Garden Egg", if it doesn't say).
+function Items.itemEggName(zoneIndex: number, itemId: string?): string
+	local item = itemId and Items.byId[itemId]
+	return if item then item.name .. " Egg" else Items.eggName(zoneIndex)
+end
+
 -- Rolls an egg's rarity from a zone's odds. `boost` (>= 1) makes everything above Common
 -- that many times likelier.
 function Items.rollRarity(zoneIndex: number, rng: Random, boost: number?): string
@@ -8806,8 +8940,7 @@ ZoneLayout.START_X = -230 -- the east edge of zone 1 (the town street ends just 
 ZoneLayout.LENGTH = 130 -- zone 1's length
 ZoneLayout.GROWTH = 25 -- how much longer each zone is than the one before
 ZoneLayout.WIDTH = 140
-ZoneLayout.PEDESTALS = 6
-ZoneLayout.RING = 20 -- pedestal ring radius round the guardian's home
+ZoneLayout.RING = 20 -- how far round the guardian's home its patrol keeps closest
 ZoneLayout.HOME_BACK = 32 -- how far before a zone's back wall the guardian's home is
 
 -- How long zone `index` is.
@@ -8849,15 +8982,9 @@ function ZoneLayout.guardianHome(index: number): Vector3
 	return ZoneLayout.point(index, ZoneLayout.homeU(index), 0)
 end
 
--- The pedestals sit on the back half of a ring round the guardian's home, so you have to
--- get past it to reach them.
-function ZoneLayout.pedestal(index: number, n: number): Vector3
-	local a = math.rad(-90 + (n - 1) * 180 / (ZoneLayout.PEDESTALS - 1))
-	return ZoneLayout.point(
-		index,
-		ZoneLayout.homeU(index) + math.cos(a) * ZoneLayout.RING,
-		math.sin(a) * ZoneLayout.RING * 1.2
-	)
+-- How many eggs lie about zone `index` at once (more in the bigger zones).
+function ZoneLayout.eggCount(index: number): number
+	return 8 + index
 end
 
 -- Which zone a position is in (nil in town).
@@ -11891,6 +12018,7 @@ function NestService.addEgg(player: Player, record): string?
 		zone = record.egg,
 		rarity = record.rarity,
 		mutations = Mutations.pack(record.mutations),
+		item = record.item,
 		weight = record.weight or Items.eggBaseWeight(record.egg),
 		baseWeight = record.baseWeight or Items.eggBaseWeight(record.egg),
 		growth = Items.rollGrowth(rng),
@@ -11906,13 +12034,7 @@ end
 -- A random item of a kind and rarity (falling back to the next rarity down if there are
 -- none of that rarity).
 function NestService.rollItem(kind: string, rarity: string): string
-	for rank = Rarities.rank[rarity], 1, -1 do
-		local pool = Items.pool(kind, Rarities.order[rank])
-		if #pool > 0 then
-			return pool[rng:NextInteger(1, #pool)]
-		end
-	end
-	return Items.pool(kind, "Common")[1]
+	return Items.rollItem(kind, rarity, rng)
 end
 
 -- Adds an item to a player's save and puts it out if it beats what's there. Whatever it
@@ -12000,7 +12122,8 @@ function NestService.hatch(player: Player, n: number): string?
 	end
 	data.nests[key] = nil
 	local zone = Items.ZONES[egg.zone] or Items.ZONES[1]
-	local itemId = NestService.rollItem(zone.kind, egg.rarity)
+	-- Eggs from the zones know what's inside (their design shows it); older ones roll now.
+	local itemId = if egg.item and Items.byId[egg.item] then egg.item else NestService.rollItem(zone.kind, egg.rarity)
 	-- It hatches at its full grown weight.
 	local weight = (egg.weight or Items.eggBaseWeight(egg.zone)) * (egg.growth or 1)
 	local base = egg.baseWeight or Items.eggBaseWeight(egg.zone)
@@ -12726,7 +12849,7 @@ local function updateNestLabels(plot)
 			else
 				nest.timer.Text = "🐣 " .. Format.weight(weight) .. " READY!"
 				nest.timer.TextColor3 = Color3.fromRGB(110, 235, 140)
-				nest.prompt.ObjectText = Items.eggName(egg.zone)
+				nest.prompt.ObjectText = Items.itemEggName(egg.zone, egg.item)
 				nest.prompt.Enabled = true
 			end
 		end
@@ -12747,7 +12870,7 @@ local function updateNests(plot, data, player: Player?)
 				nest.egg = nil
 			end
 			if egg then
-				local model = EggModel.build(egg.zone)
+				local model = EggModel.build(egg.zone, egg.item)
 				local weight = Items.eggWeightAt(egg, os.time())
 				local scale = Items.weightScale(weight / (egg.baseWeight or weight))
 				Items.scaleModel(model, scale)
@@ -13493,7 +13616,7 @@ local function pickUp(carrier: Player, carry): boolean
 	if not character or not root then
 		return false
 	end
-	local model = EggModel.build(carry.record.egg)
+	local model = EggModel.build(carry.record.egg, carry.record.item)
 	Items.scaleModel(model, Items.weightScale(Items.weightFactor(carry.record)))
 	ItemModel.addMutationEffect(model, carry.record.mutations)
 	model:PivotTo(root.CFrame * CFrame.new(0, 3.2, 0))
@@ -14417,6 +14540,8 @@ function ZoneDecor.formatSpeed(n: number): string
 	return tostring(math.floor(n))
 end
 
+ZoneDecor.propSpots = {} -- [zone index] = { Vector3 } where the props stand
+
 function ZoneDecor.build(parent: Instance, index: number)
 	local theme = ZoneDecor.theme(index)
 	local east, west = ZoneLayout.edges(index)
@@ -14497,7 +14622,10 @@ function ZoneDecor.build(parent: Instance, index: number)
 	end
 	buildArch(folder, index, theme)
 
-	-- Themed props, kept off the path and out of the pile (more in bigger zones).
+	-- Themed props, kept off the path and out of the pile (more in bigger zones). Their spots
+	-- are kept (ZoneDecor.propSpots) so eggs don't land inside them.
+	local spots = {}
+	ZoneDecor.propSpots[index] = spots
 	local rng = Random.new(index * 7919)
 	local placed = 0
 	local tries = 0
@@ -14510,6 +14638,7 @@ function ZoneDecor.build(parent: Instance, index: number)
 		if math.abs(v) > 10 and not nearPile then
 			placed += 1
 			local cf = CFrame.new(east - u, 0, v) * CFrame.Angles(0, rng:NextNumber() * math.pi * 2, 0)
+			table.insert(spots, Vector3.new(east - u, 0, v))
 			props[LOOK[index]](folder, cf, rng, 0.9 + rng:NextNumber() * 0.5)
 		end
 	end
@@ -14523,12 +14652,15 @@ return ZoneDecor
       <Item class="ModuleScript" referent="51">
         <Properties>
           <string name="Name">ZoneService</string>
-          <string name="Source"><![CDATA[-- The zones: nests of eggs to steal, each guarded by a giant Freek.
+          <string name="Source"><![CDATA[-- The zones: eggs to steal, each zone guarded by a giant Freek.
 --
--- Every zone has a ring of pedestals at its far end. Each pedestal grows one of the zone's
--- eggs (Items.ZONES: what kind of thing hatches from it, and the odds of each rarity). The
--- rarity is rolled when the egg appears and shown above it, sometimes with a mutation the
--- hatched item keeps. Hold Grab on one and run! The zone's guardian chases anyone carrying
+-- Eggs lie scattered on the ground all over each zone (ZoneLayout.eggCount at a time; when
+-- one is taken a new one turns up somewhere else a few seconds later). Each is one of the
+-- zone's eggs (Items.ZONES: what kind of thing hatches from it and the odds of each rarity):
+-- what's inside is decided when it appears, and the egg is designed around it (EggModel).
+-- Rarer eggs lie deeper in, nearer the guardian. Each shows its rarity, what's inside, its
+-- weight and hatch time, sometimes with a mutation the hatched item keeps. Hold Grab on one
+-- and run! The zone's guardian chases anyone carrying
 -- an egg inside its zone. It runs at Items.guardianSpeed: a bit slower than a player who has
 -- the zone's Speed, so if you trained enough you get away, and if you didn't it catches you,
 -- flings you toward town and you drop the egg.
@@ -14610,33 +14742,36 @@ local function textLine(parent: Instance, font: Enum.Font, y: number, h: number)
 	return label
 end
 
+-- An egg spot: where one egg lies on the ground (it moves to a new random place each time a
+-- new egg turns up), with a glowing ring round it in the egg's rarity colour and floating
+-- text. `base` is an invisible part at the spot that holds the Grab prompt and the text.
 local function buildPedestal(parent: Instance, index: number, n: number)
-	local spot = CFrame.new(ZoneLayout.pedestal(index, n))
-	local theme = ZoneDecor.theme(index)
 	local base = part({
-		Name = "Pedestal",
-		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(2, 6, 6),
-		CFrame = spot * CFrame.new(0, 1, 0) * CFrame.Angles(0, 0, math.pi / 2),
-		Color = theme.cliff:Lerp(Color3.new(1, 1, 1), 0.3),
-		Material = Enum.Material.Marble,
+		Name = "EggSpot" .. n,
+		Size = Vector3.new(4, 1, 4),
+		CFrame = CFrame.new(ZoneLayout.guardianHome(index)),
+		Transparency = 1,
+		CanCollide = false,
+		CanQuery = false,
 		Parent = parent,
 	})
 	local ring = part({
-		Name = "PedestalRing",
+		Name = "EggRing",
 		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(0.3, 6.4, 6.4),
-		CFrame = spot * CFrame.new(0, 2.05, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		Size = Vector3.new(0.12, 5, 5),
+		CFrame = base.CFrame * CFrame.Angles(0, 0, math.pi / 2),
 		Color = Color3.fromRGB(200, 200, 200),
 		Material = Enum.Material.Neon,
+		Transparency = 0.35,
 		CanCollide = false,
+		CanQuery = false,
 		Parent = parent,
 	})
-	-- Floating text: rarity, egg name, what hatches and how long it takes.
+	-- Floating text: rarity, what's inside, weight and hatch time.
 	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromScale(9, 3.6)
-	gui.StudsOffset = Vector3.new(0, 8, 0)
-	gui.MaxDistance = 90
+	gui.Size = UDim2.fromScale(8, 3.2)
+	gui.StudsOffset = Vector3.new(0, 6, 0)
+	gui.MaxDistance = 70
 	gui.LightInfluence = 0
 	gui.AlwaysOnTop = false
 	gui.Parent = base
@@ -14645,7 +14780,7 @@ local function buildPedestal(parent: Instance, index: number, n: number)
 	local income = textLine(gui, Enum.Font.FredokaOne, 0.68, 0.32)
 	income.TextColor3 = Color3.fromRGB(255, 215, 60)
 	return {
-		spot = spot * CFrame.new(0, 2.1, 0),
+		spot = base.CFrame,
 		base = base,
 		ring = ring,
 		labels = { rarity = rarity, name = name, income = income, gui = gui },
@@ -14656,8 +14791,39 @@ local function buildPedestal(parent: Instance, index: number, n: number)
 	}
 end
 
--- Picks the egg that grows next on a pedestal in this zone:
--- { egg = zone, rarity, mutations, weight, baseWeight } (weights in kg, see Items).
+-- A random place on the ground in zone `index` for a new egg: rarer eggs lie deeper in, near
+-- the guardian; nowhere inside the scenery or right on top of another egg.
+local function pickSpot(index: number, rarity: string, others): CFrame
+	local length, width = ZoneLayout.length(index), ZoneLayout.WIDTH
+	local homeU = ZoneLayout.homeU(index)
+	local depth = ((Rarities.rank[rarity] or 1) - 1) / (#Rarities.order - 1) -- 0 common .. 1 secret
+	local nearest = 22 + depth * (homeU - 40) -- how close to the entrance it may lie
+	local props = ZoneDecor.propSpots[index] or {}
+	local best, bestRoom = nil, -1
+	for _ = 1, 30 do
+		local u = rng:NextNumber(nearest, length - 8)
+		local v = rng:NextNumber(-width / 2 + 8, width / 2 - 8)
+		local point = ZoneLayout.point(index, u, v)
+		local room = math.huge
+		for _, prop in props do
+			room = math.min(room, (prop - point).Magnitude - 6)
+		end
+		for _, other in others do
+			if other.record and other.spot then
+				room = math.min(room, (other.spot.Position - point).Magnitude - 7)
+			end
+		end
+		if room > 0 then
+			return CFrame.new(point)
+		elseif room > bestRoom then
+			best, bestRoom = point, room
+		end
+	end
+	return CFrame.new(best or ZoneLayout.point(index, length - 12, 0))
+end
+
+-- Picks the egg that turns up next in this zone, and what's inside it:
+-- { egg = zone, rarity, item, mutations, weight, baseWeight } (weights in kg, see Items).
 local function rollEgg(index: number)
 	local rarity = Items.rollRarity(index, rng, Events.boost("rareBoost"))
 	local mutations = {}
@@ -14675,16 +14841,17 @@ local function rollEgg(index: number)
 	return {
 		egg = index,
 		rarity = rarity,
+		item = Items.rollItem(Items.ZONES[index].kind, rarity, rng),
 		mutations = Mutations.pack(mutations),
 		weight = Items.eggBaseWeight(index) * Items.rollWeightFactor(rng, Events.boost("rareBoost")),
 		baseWeight = Items.eggBaseWeight(index),
 	}
 end
 
--- "Golden Garden Egg"
+-- "Golden Woofles Egg"
 function ZoneService.eggName(record): string
 	local top = Mutations.top(record.mutations)
-	local name = Items.eggName(record.egg)
+	local name = Items.itemEggName(record.egg, record.item)
 	return if top then top .. " " .. name else name
 end
 
@@ -14697,13 +14864,19 @@ local function showEgg(index: number, pedestal, record)
 	local zone = Items.ZONES[index]
 	local kind = Items.KINDS[zone.kind]
 	local color = Rarities.info[record.rarity].color
-	local model, height = EggModel.build(index)
+	-- A new place on the ground for it.
+	pedestal.spot = pickSpot(index, record.rarity, zones[index].pedestals)
+	pedestal.base.CFrame = pedestal.spot * CFrame.new(0, 0.5, 0)
+	pedestal.ring.CFrame = pedestal.spot * CFrame.new(0, 0.07, 0) * CFrame.Angles(0, 0, math.pi / 2)
+	pedestal.ring.Transparency = 0.35
+	local model, height = EggModel.build(index, record.item)
 	local factor = Items.weightFactor(record)
 	local scale = Items.weightScale(factor)
 	Items.scaleModel(model, scale)
 	model:PivotTo(pedestal.spot * CFrame.Angles(0, math.rad(180 + (rng:NextNumber() - 0.5) * 40), 0))
-	-- The floating text clears the top of the egg, however big it is.
-	pedestal.labels.gui.StudsOffset = Vector3.new(0, 3.5 + height * scale, 0)
+	-- The ring fits round the egg and the floating text clears its top, however big it is.
+	pedestal.ring.Size = Vector3.new(0.12, 3.6 * scale + 1.6, 3.6 * scale + 1.6)
+	pedestal.labels.gui.StudsOffset = Vector3.new(0, 2.5 + height * scale, 0)
 	local top = Mutations.top(record.mutations)
 	if top and model.PrimaryPart then
 		local sparkles = Instance.new("Sparkles")
@@ -14766,7 +14939,7 @@ local function clearPedestal(pedestal)
 		task.defer(prompt.Destroy, prompt)
 	end
 	pedestal.record = nil
-	pedestal.ring.Color = Color3.fromRGB(120, 120, 130)
+	pedestal.ring.Transparency = 1
 	pedestal.labels.gui.Enabled = false
 end
 
@@ -14919,11 +15092,20 @@ local function stepGuardian(guardian, dt: number)
 		goal = flatten(targetRoot.Position)
 		speed = guardian.speed * Events.boost("guardianSpeed")
 	else
-		-- Wander round the pile.
+		-- Patrol: mostly round its home at the back, now and then out across the zone.
 		if now >= guardian.wanderAt then
-			guardian.wanderAt = now + rng:NextNumber(2.5, 5)
-			local a = rng:NextNumber() * math.pi * 2
-			guardian.wanderTo = guardian.home + Vector3.new(math.cos(a), 0, math.sin(a)) * rng:NextNumber(0, 9)
+			guardian.wanderAt = now + rng:NextNumber(3, 6)
+			if rng:NextNumber() < 0.6 then
+				local a = rng:NextNumber() * math.pi * 2
+				guardian.wanderTo = guardian.home
+					+ Vector3.new(math.cos(a), 0, math.sin(a)) * rng:NextNumber(0, ZoneLayout.RING)
+			else
+				guardian.wanderTo = ZoneLayout.point(
+					guardian.index,
+					rng:NextNumber(30, ZoneLayout.length(guardian.index) - 10),
+					rng:NextNumber(-ZoneLayout.WIDTH / 2 + 12, ZoneLayout.WIDTH / 2 - 12)
+				)
+			end
 		end
 		goal = guardian.wanderTo
 		speed = guardian.speed * 0.45
@@ -14967,11 +15149,11 @@ function ZoneService.init()
 	for index = 1, #Items.ZONES do
 		local folder = ZoneDecor.build(map, index)
 		local pile = Instance.new("Folder")
-		pile.Name = "Pile"
+		pile.Name = "Eggs"
 		pile.Parent = folder
 		local zone = { pedestals = {}, guardian = newGuardian(index) }
 		zones[index] = zone
-		for n = 1, ZoneLayout.PEDESTALS do
+		for n = 1, ZoneLayout.eggCount(index) do
 			zone.pedestals[n] = buildPedestal(pile, index, n)
 		end
 		for _, pedestal in zone.pedestals do
@@ -17687,9 +17869,9 @@ function ItemPictures.part(itemId: string, height: number?, silhouette: boolean?
 	return framed(ItemModel.buildNormal(itemId, mutations), height, silhouette)
 end
 
--- A zone's egg.
-function ItemPictures.egg(zoneIndex: number, height: number?): ViewportFrame
-	return framed((EggModel.build(zoneIndex)), height)
+-- A zone's egg (designed around the item inside, if given).
+function ItemPictures.egg(zoneIndex: number, height: number?, itemId: string?): ViewportFrame
+	return framed((EggModel.build(zoneIndex, itemId)), height)
 end
 
 function ItemPictures.has(key: string): boolean
@@ -18645,13 +18827,14 @@ local function nestCards(grid: Instance)
 			}
 			card = UI.card({
 				egg = egg.zone,
+				eggItem = egg.item,
 				pictureHeight = 100,
 				accent = Rarities.info[egg.rarity].color,
 				border = if ready then colors.money else nil,
 				lines = {
 					{ "Nest " .. n, nil, 22 },
 					{
-						Items.KINDS[zone.kind].icon .. " " .. Items.eggName(egg.zone),
+						Items.KINDS[zone.kind].icon .. " " .. Items.itemEggName(egg.zone, egg.item),
 						Items.weightColor(weight / (egg.baseWeight or weight)),
 						19,
 					},
@@ -20469,7 +20652,7 @@ function PackReveal.play(result, done: () -> ())
 	camera.CFrame = state.camFrom
 	flash(Color3.new(0, 0, 0), 0.5)
 	moveCamera(Vector3.new(0, 7, -24), Vector3.new(0, 4, 0))
-	local egg = if result.egg then EggModel.build(result.egg) else BoxModel.build(result.crate)
+	local egg = if result.egg then EggModel.build(result.egg, result.part.id) else BoxModel.build(result.crate)
 	if result.egg then
 		Items.scaleModel(egg, 1.6 * math.clamp(Items.weightScale(result.eggFactor or 1), 0.7, 1.8))
 	end
@@ -21561,7 +21744,7 @@ end
 -- shine across the top, the title in white, a big picture on a glowing disc, then text
 -- lines and buttons. opts: accent (colour), border (a highlight outline, e.g. owned),
 -- picture (an ItemPictures key) / part (any item id, + mutations, silhouette) / egg (a zone
--- index) / box, lines = { { text,
+-- index, + eggItem for what's inside) / box, lines = { { text,
 -- colour?, height? } }, buttons, tag = { text, colour? }, onClick.
 function UI.card(opts)
 	local title = opts.lines and opts.lines[1] and opts.lines[1][1] or ""
@@ -21648,7 +21831,7 @@ function UI.card(opts)
 	elseif opts.part then
 		picture = ItemPictures.part(opts.part, opts.pictureHeight, opts.silhouette, opts.mutations)
 	elseif opts.egg then
-		picture = ItemPictures.egg(opts.egg, opts.pictureHeight)
+		picture = ItemPictures.egg(opts.egg, opts.pictureHeight, opts.eggItem)
 	end
 	if picture then
 		local holder = UI.new("Frame", {

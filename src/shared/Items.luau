@@ -414,6 +414,25 @@ function Items.oddsList(zoneIndex: number)
 	return list
 end
 
+-- A random item of a kind and rarity (falling back to the next rarity down if there are
+-- none of that rarity).
+function Items.rollItem(kind: string, rarity: string, rng: Random): string
+	for rank = Rarities.rank[rarity] or 1, 1, -1 do
+		local pool = Items.pool(kind, Rarities.order[rank])
+		if #pool > 0 then
+			return pool[rng:NextInteger(1, #pool)]
+		end
+	end
+	return Items.pool(kind, "Common")[1]
+end
+
+-- An egg's name from what's inside it: "Woofles Egg", "Swimming Pool Egg" (or the zone's
+-- egg name, "Garden Egg", if it doesn't say).
+function Items.itemEggName(zoneIndex: number, itemId: string?): string
+	local item = itemId and Items.byId[itemId]
+	return if item then item.name .. " Egg" else Items.eggName(zoneIndex)
+end
+
 -- Rolls an egg's rarity from a zone's odds. `boost` (>= 1) makes everything above Common
 -- that many times likelier.
 function Items.rollRarity(zoneIndex: number, rng: Random, boost: number?): string

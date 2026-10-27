@@ -63,6 +63,7 @@ function NestService.addEgg(player: Player, record): string?
 		zone = record.egg,
 		rarity = record.rarity,
 		mutations = Mutations.pack(record.mutations),
+		item = record.item,
 		weight = record.weight or Items.eggBaseWeight(record.egg),
 		baseWeight = record.baseWeight or Items.eggBaseWeight(record.egg),
 		growth = Items.rollGrowth(rng),
@@ -78,13 +79,7 @@ end
 -- A random item of a kind and rarity (falling back to the next rarity down if there are
 -- none of that rarity).
 function NestService.rollItem(kind: string, rarity: string): string
-	for rank = Rarities.rank[rarity], 1, -1 do
-		local pool = Items.pool(kind, Rarities.order[rank])
-		if #pool > 0 then
-			return pool[rng:NextInteger(1, #pool)]
-		end
-	end
-	return Items.pool(kind, "Common")[1]
+	return Items.rollItem(kind, rarity, rng)
 end
 
 -- Adds an item to a player's save and puts it out if it beats what's there. Whatever it
@@ -172,7 +167,8 @@ function NestService.hatch(player: Player, n: number): string?
 	end
 	data.nests[key] = nil
 	local zone = Items.ZONES[egg.zone] or Items.ZONES[1]
-	local itemId = NestService.rollItem(zone.kind, egg.rarity)
+	-- Eggs from the zones know what's inside (their design shows it); older ones roll now.
+	local itemId = if egg.item and Items.byId[egg.item] then egg.item else NestService.rollItem(zone.kind, egg.rarity)
 	-- It hatches at its full grown weight.
 	local weight = (egg.weight or Items.eggBaseWeight(egg.zone)) * (egg.growth or 1)
 	local base = egg.baseWeight or Items.eggBaseWeight(egg.zone)
