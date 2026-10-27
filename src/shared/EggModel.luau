@@ -1,10 +1,11 @@
--- The eggs you steal from the zones. Each egg is designed around the item inside it: the
--- shell is in the item's own colours with a pattern for its kind (round spots for pets,
--- leaves for plants, stripes for yard items, bricks for house parts), the top is cracked
--- open with a little copy of the item poking out, Legendary and up get a gold band and
--- Mystic and up a glowing one. Secret eggs glow and flash in every colour (an aura round
--- the shell and a light, tagged SECRET_TAG; each client animates them, see Main). Without an item (the zone's egg in general, e.g. in the Shop)
--- it's the zone's colours (Items.ZONES eggColor / spotColor) with spots.
+-- The eggs you steal from the zones: plain egg shapes covered in LEGO studs, coloured by
+-- what's inside. The shell is the item's main colour, and its second colour picks out a
+-- pattern in the studs for its kind (spots for pets, a zig-zag band of grass for plants,
+-- stripes for yard items, alternating rows like bricks for house parts). Legendary and up
+-- get a gold band, Mystic and up a glowing one. Secret eggs glow and flash in every colour
+-- (an aura round the shell and a light, tagged SECRET_TAG; each client animates them, see
+-- Main). Without an item (the zone's egg in general, e.g. in the Shop) it's the zone's
+-- colours (Items.ZONES eggColor / spotColor) with spots.
 --
 -- EggModel.build(zoneIndex, itemId?) returns the model (standing on its pivot, the bottom
 -- of the egg; PrimaryPart = the shell) and its height.
@@ -40,15 +41,6 @@ local function egg(model: Model, size: Vector3, cframe: CFrame, color: Color3, m
 	mesh.MeshType = Enum.MeshType.Sphere
 	mesh.Parent = p
 	return p
-end
-
--- A point on the shell's surface at height fraction y (-1 bottom to 1 top) and angle a,
--- facing outward.
-local function onShell(y: number, a: number): CFrame
-	local r = math.sqrt(math.max(1 - y * y, 0))
-	local normal = Vector3.new(math.cos(a) * r, y * 1.25, math.sin(a) * r).Unit
-	local spot = Vector3.new(math.cos(a) * r * W / 2, H / 2 + y * H / 2, math.sin(a) * r * W / 2)
-	return CFrame.lookAt(spot, spot + normal) * CFrame.new(0, 0, -0.02)
 end
 
 local function brightness(c: Color3): number
@@ -93,83 +85,81 @@ local function palette(model: Model): (Color3, Color3)
 end
 
 -- The pattern on the shell, by what kind of thing is inside.
-local function pattern(model: Model, kind: string?, color: Color3, rng: Random)
-	if kind == "Yard" then
-		-- Two bold stripes round the egg.
-		for _, y in { 0.3, 0.62 } do
-			part(model, {
-				Name = "Stripe",
+local STUD = 0.42 -- stud diameter
+local STUD_HEIGHT = 0.12 -- how far a stud stands out of the shell
+local STUD_GAP = 0.66 -- distance between stud centres
+
+-- Covers the shell in rows of studs. Each stud's colour comes from `colorAt(ring, rings,
+-- angle, y)` (ring 1 is the lowest; y is -1 at the bottom to 1 at the top).
+local function studs(model: Model, colorAt: (number, number, number, number) -> Color3, skipY: number?)
+	local rings = 11
+	for ring = 1, rings do
+		local phi = math.rad(-72 + (ring - 1) * 144 / (rings - 1)) -- latitude, bottom to top
+		local y = math.sin(phi)
+		if skipY and math.abs(y - skipY) < 0.12 then
+			continue -- leave room for the band
+		end
+		local r = math.cos(phi) * W / 2
+		local count = math.max(3, math.floor(2 * math.pi * r / STUD_GAP))
+		local twist = (ring % 2) * 0.5
+		for k = 0, count - 1 do
+			local a = (k + twist) / count * math.pi * 2
+			local spot = Vector3.new(math.cos(a) * r, H / 2 + y * H / 2, math.sin(a) * r)
+			-- The shell's surface normal there (it's an ellipsoid).
+			local normal = Vector3.new(spot.X / (W / 2) ^ 2, (spot.Y - H / 2) / (H / 2) ^ 2, spot.Z / (W / 2) ^ 2).Unit
+			local stud = part(model, {
+				Name = "Stud",
 				Shape = Enum.PartType.Cylinder,
-				Size = Vector3.new(0.4, W * 0.98, W * 0.98),
-				CFrame = CFrame.new(0, H * y, 0) * CFrame.Angles(0, 0, math.pi / 2),
-				Color = color,
+				Size = Vector3.new(STUD_HEIGHT * 2, STUD, STUD),
+				-- The cylinder's axis (its X) points out of the shell; half of it is inside.
+				CFrame = CFrame.lookAt(spot, spot + normal) * CFrame.Angles(0, math.pi / 2, 0),
+				Color = colorAt(ring, rings, a, y),
 			})
-		end
-		return
-	end
-	if kind == "House" then
-		-- Rows of little bricks.
-		for row, y in { -0.45, -0.1, 0.25 } do
-			for k = 0, 6 do
-				local a = (k + (row % 2) * 0.5) / 7 * math.pi * 2
-				part(model, {
-					Name = "Brick",
-					Size = Vector3.new(0.75, 0.32, 0.12),
-					CFrame = onShell(y, a),
-					Color = color,
-				})
-			end
-		end
-		return
-	end
-	for _ = 1, 11 do
-		local a = rng:NextNumber() * math.pi * 2
-		local y = rng:NextNumber(-0.75, 0.55)
-		local size = rng:NextNumber(0.55, 0.9)
-		if kind == "Plant" then
-			-- Leaves, at an angle.
-			egg(
-				model,
-				Vector3.new(size * 1.3, size * 0.55, 0.22),
-				onShell(y, a) * CFrame.Angles(0, 0, rng:NextNumber(-0.8, 0.8)),
-				color
-			)
-		else
-			egg(model, Vector3.new(size, size, 0.25), onShell(y, a), color)
+			stud.CastShadow = false
 		end
 	end
+	-- One on the very top.
+	part(model, {
+		Name = "Stud",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(STUD_HEIGHT * 2, STUD, STUD),
+		CFrame = CFrame.new(0, H, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		Color = colorAt(rings + 1, rings, 0, 1),
+	})
 end
 
--- A cracked-open top: a ring of jagged shell shards with the item poking out.
-local function crackedTop(model: Model, shell: Color3, itemId: string)
-	local y = 0.56 -- where the crack runs round (fraction of half-height above the middle)
-	for k = 0, 9 do
-		local a = k / 10 * math.pi * 2
-		local tall = if k % 2 == 0 then 0.55 else 0.32
-		part(model, {
-			Name = "Shard",
-			Size = Vector3.new(0.5, tall, 0.14),
-			CFrame = onShell(y, a) * CFrame.Angles(math.rad(-20), 0, math.rad(45)) * CFrame.new(0, 0, 0.02),
-			Color = shell:Lerp(Color3.new(1, 1, 1), 0.25),
-		})
-	end
-	-- The item itself, small, sitting in the top of the egg.
-	local item = ItemModel.buildNormal(itemId)
-	local _, size = item:GetBoundingBox()
-	local fit = 1.9 / math.max(size.X, size.Y * 0.8, size.Z, 0.1)
-	Items.scaleModel(item, fit)
-	item:PivotTo(CFrame.new(0, H * 0.72, 0))
-	for _, p in item:GetDescendants() do
-		if p:IsA("BasePart") then
-			p.Anchored = true
-			p.CanCollide = false
-			p.Parent = model
-		elseif p:IsA("Sparkles") or p:IsA("ParticleEmitter") or p:IsA("PointLight") then
-			p:Destroy()
+-- How the studs are coloured for each kind of item: the pattern, in the second colour.
+local function patternFor(kind: string?, main: Color3, second: Color3, rng: Random)
+	local stud = main:Lerp(Color3.new(1, 1, 1), 0.1) -- plain studs, a touch lighter than the shell
+	if kind == "Yard" then
+		return function(ring)
+			return if ring == 3 or ring == 6 then second else stud
+		end
+	elseif kind == "House" then
+		return function(ring)
+			return if ring % 2 == 0 then second else stud
+		end
+	elseif kind == "Plant" then
+		return function(_ring, _rings, a, y)
+			-- A zig-zag band of grass round the bottom.
+			local edge = -0.35 + 0.22 * math.abs(math.sin(a * 3))
+			return if y < edge then second else stud
 		end
 	end
-	item:Destroy()
-	return H * 0.72 + size.Y * fit
+	-- Spots: a few round patches of the second colour.
+	local centres = {}
+	for _ = 1, 5 do
+		table.insert(centres, { a = rng:NextNumber() * math.pi * 2, y = rng:NextNumber(-0.7, 0.7) })
+	end
+	return function(_ring, _rings, a, y)
+		for _, c in centres do
+			local da = math.abs((a - c.a + math.pi) % (2 * math.pi) - math.pi)
+			if da * da * 0.5 + (y - c.y) ^ 2 < 0.16 then
+				return second
+			end
+		end
+		return stud
+	end
 end
 
 function EggModel.build(zoneIndex: number, itemId: string?): (Model, number)
@@ -194,26 +184,25 @@ function EggModel.build(zoneIndex: number, itemId: string?): (Model, number)
 	shell.PivotOffset = CFrame.new(0, -H / 2, 0)
 	model.PrimaryPart = shell
 
-	pattern(model, info and info.kind, second, Random.new(if itemId then #itemId * 131 + zoneIndex else zoneIndex * 97))
-
 	local rank = Rarities.rank[if info then info.rarity else "Common"] or 1
-	if (info and rank >= Rarities.rank.Legendary) or (not info and zoneIndex >= 5) then
+	local banded = (info and rank >= Rarities.rank.Legendary) or (not info and zoneIndex >= 5)
+	local rng = Random.new(if itemId then #itemId * 131 + zoneIndex else zoneIndex * 97)
+	studs(model, patternFor(info and info.kind, main, second, rng), if banded then -0.08 else nil)
+
+	if banded then
 		-- A band round the middle: gold, or glowing in the rarity's colour for Mystic and up.
 		local glowing = info and rank >= Rarities.rank.Mystic
 		local band = part(model, {
 			Shape = Enum.PartType.Cylinder,
-			Size = Vector3.new(0.35, W * 1.03, W * 1.03),
 			CFrame = CFrame.new(0, H * 0.46, 0) * CFrame.Angles(0, 0, math.pi / 2),
+			Size = Vector3.new(0.5, W * 1.08, W * 1.08),
 			Color = if glowing then Rarities.info[info.rarity].color else GOLD,
 			Material = if glowing then Enum.Material.Neon else Enum.Material.Foil,
 		})
 		band.Name = "Band"
 	end
 
-	local top = H
-	if info then
-		top = math.max(top, crackedTop(model, main, itemId))
-	end
+	local top = H + 0.15
 	if info and info.rarity == "Secret" then
 		-- A glowing aura round the shell, a light and sparkles; clients make them flash.
 		local glow = egg(

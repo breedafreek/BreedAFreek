@@ -74,9 +74,8 @@ rojo build -o StealALife.rbxlx    # or build a place file
   Desert (plants), Candy Land (house), Frosty Peaks (pets), Royal Kingdom (yard), Crystal
   Caves (house), Sky Islands (pets). Deeper zones need more Speed and grow rarer eggs. Eggs
   lie scattered on the ground all over each zone (rarer ones deeper in, near the guardian)
-  and each is designed around the item inside (`src/shared/EggModel.luau`): the item's
-  colours, a pattern for its kind, and a little copy of the item poking out of a cracked
-  top. Its rarity, name ("Woofles Egg"), weight and hatch time float above it, and hatching
+  and each is coloured by the item inside (`src/shared/EggModel.luau`): a plain egg covered
+  in LEGO studs, in the item's colours, with a stud pattern for its kind. Its rarity, name ("Woofles Egg"), weight and hatch time float above it, and hatching
   gives exactly that item. Hold **Grab** and run! The zone's giant Freek guardian chases
   anyone carrying an egg; if your Speed meets the zone's requirement you can outrun it, if
   not it catches you, flings you toward town and you drop the egg. Guardians live on the
