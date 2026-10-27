@@ -251,6 +251,9 @@ function PlantModel.build(itemId: string): Model
 	if builder then
 		builder(model)
 	end
+	-- Stand it on its base. Roblox puts a new model's pivot in the middle of its parts, which
+	-- would sink it halfway into whatever it's put on.
+	model.WorldPivot = CFrame.identity
 	return model
 end
 

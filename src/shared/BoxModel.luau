@@ -57,6 +57,8 @@ function BoxModel.build(crateId: string): (Model, number)
 		CFrame = CFrame.new(0, size * 0.425, 0),
 		Color = color,
 	})
+	-- The model's pivot is the bottom of the box, so it stands on whatever it's put on.
+	box.PivotOffset = CFrame.new(0, -size * 0.425, 0)
 	model.PrimaryPart = box
 	-- The lid, a bit wider.
 	part(model, {

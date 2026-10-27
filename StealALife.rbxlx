@@ -641,6 +641,8 @@ function BoxModel.build(crateId: string): (Model, number)
 		CFrame = CFrame.new(0, size * 0.425, 0),
 		Color = color,
 	})
+	-- The model's pivot is the bottom of the box, so it stands on whatever it's put on.
+	box.PivotOffset = CFrame.new(0, -size * 0.425, 0)
 	model.PrimaryPart = box
 	-- The lid, a bit wider.
 	part(model, {
@@ -6480,6 +6482,9 @@ function HouseModel.item(partId: string): Model
 			p.CanCollide = false
 		end
 	end
+	-- Stand it on its base. Roblox puts a new model's pivot in the middle of its parts, which
+	-- would sink it halfway into whatever it's put on.
+	model.WorldPivot = CFrame.identity
 	return model
 end
 
@@ -8101,6 +8106,9 @@ function PlantModel.build(itemId: string): Model
 	if builder then
 		builder(model)
 	end
+	-- Stand it on its base. Roblox puts a new model's pivot in the middle of its parts, which
+	-- would sink it halfway into whatever it's put on.
+	model.WorldPivot = CFrame.identity
 	return model
 end
 
@@ -8614,6 +8622,9 @@ function YardModel.build(itemId: string): Model
 	if builder then
 		builder(model)
 	end
+	-- Stand it on its base. Roblox puts a new model's pivot in the middle of its parts, which
+	-- would sink it halfway into whatever it's put on.
+	model.WorldPivot = CFrame.identity
 	return model
 end
 
