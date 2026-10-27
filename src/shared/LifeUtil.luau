@@ -10,6 +10,7 @@
 -- data.nests = { ["1".."5"] = { zone, rarity, endsAt, mutations? } }: eggs growing at home.
 
 local Config = require(script.Parent.Config)
+local Format = require(script.Parent.Format)
 local Items = require(script.Parent.Items)
 local Mutations = require(script.Parent.Mutations)
 local Parts = require(script.Parent.Parts)
@@ -45,7 +46,7 @@ function LifeUtil.itemIncome(record): number
 	if not item then
 		return 0
 	end
-	return item.income * Mutations.mult(record.mutations) * Items.size(record.size).mult
+	return item.income * Mutations.mult(record.mutations) * Items.weightFactor(record)
 end
 LifeUtil.partIncome = LifeUtil.itemIncome
 
@@ -110,13 +111,20 @@ function LifeUtil.sellPrice(record): number
 	return math.floor(LifeUtil.itemIncome(record) * Config.SELL_MULTIPLIER)
 end
 
--- "Massive Golden Candy Roof"
+-- "Golden Candy Roof" (weights are shown separately: LifeUtil.weightText)
 function LifeUtil.displayName(record): string
 	local item = Items.byId[record.id]
 	local name = if item then item.name else record.id
 	local top = Mutations.top(record.mutations)
-	name = if top then top .. " " .. name else name
-	return if record.size and Items.sizeById[record.size] then record.size .. " " .. name else name
+	return if top then top .. " " .. name else name
+end
+
+-- "⚖ 4.21 kg" (or "" for something with no weight).
+function LifeUtil.weightText(record): string
+	if not record or type(record.weight) ~= "number" then
+		return ""
+	end
+	return "⚖ " .. Format.weight(record.weight)
 end
 
 -- The pets out in the yard, as a list of uids.

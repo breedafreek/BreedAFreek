@@ -49,8 +49,9 @@ function NestService.freeNest(player: Player, data): string?
 	return nil
 end
 
--- Puts an egg ({ egg = zone, rarity, mutations }) into a free nest. Returns the nest, or
--- nil if there was no room.
+-- Puts an egg ({ egg = zone, rarity, mutations, weight, baseWeight }) into a free nest,
+-- where it grows a random amount (Items.rollGrowth) in random spurts until it hatches.
+-- Returns the nest, or nil if there was no room.
 function NestService.addEgg(player: Player, record): string?
 	local data = DataService.get(player)
 	local nest = data and NestService.freeNest(player, data)
@@ -62,7 +63,11 @@ function NestService.addEgg(player: Player, record): string?
 		zone = record.egg,
 		rarity = record.rarity,
 		mutations = Mutations.pack(record.mutations),
-		size = record.size,
+		weight = record.weight or Items.eggBaseWeight(record.egg),
+		baseWeight = record.baseWeight or Items.eggBaseWeight(record.egg),
+		growth = Items.rollGrowth(rng),
+		seed = rng:NextInteger(1, 1e6),
+		startAt = os.time(),
 		endsAt = os.time() + seconds,
 	}
 	DataService.changed(player)
@@ -88,7 +93,12 @@ end
 -- made selling, if any.
 function NestService.give(player: Player, data, record): (string, number)
 	local uid = DataService.newUid(data)
-	data.parts[uid] = { id = record.id, mutations = Mutations.pack(record.mutations), size = record.size }
+	data.parts[uid] = {
+		id = record.id,
+		mutations = Mutations.pack(record.mutations),
+		weight = record.weight,
+		baseWeight = record.baseWeight,
+	}
 	data.discovered[record.id] = true
 	task.spawn(DiscoveryService.claim, player, record.id)
 	local where = LifeUtil.placeIfBetter(data, uid)
@@ -104,9 +114,18 @@ function NestService.give(player: Player, data, record): (string, number)
 end
 
 -- Gives an item and shows the reveal on the player's screen. reveal = { kind, ... } (what
--- it came from: "egg", "wheel", "crate"); size = its size (Items.SIZES, nil = Normal).
-function NestService.reward(player: Player, data, itemId: string, mutations, reveal, size: string?)
-	local record = { id = itemId, mutations = Mutations.pack(mutations), size = size }
+-- it came from: "egg", "wheel", "crate"); weight / baseWeight = its weight and the normal
+-- weight it's measured against (kg).
+function NestService.reward(
+	player: Player,
+	data,
+	itemId: string,
+	mutations,
+	reveal,
+	weight: number?,
+	baseWeight: number?
+)
+	local record = { id = itemId, mutations = Mutations.pack(mutations), weight = weight, baseWeight = baseWeight }
 	reveal.isNew = not data.discovered[itemId]
 	local where, sold = NestService.give(player, data, record)
 	reveal.where = where
@@ -120,13 +139,14 @@ function NestService.reward(player: Player, data, itemId: string, mutations, rev
 			"money"
 		)
 	end
-	if Rarities.rank[reveal.rarity] >= Rarities.rank.Mystic or Items.size(size).rank >= Items.sizeById.Giant.rank then
+	if Rarities.rank[reveal.rarity] >= Rarities.rank.Mystic or Items.weightFactor(record) >= 10 then
 		for _, other in Players:GetPlayers() do
 			notify(
 				other,
 				"🐣 "
 					.. player.DisplayName
 					.. " got a "
+					.. (if weight then Format.weight(weight) .. " " else "")
 					.. reveal.rarity
 					.. " "
 					.. LifeUtil.displayName(record)
@@ -153,13 +173,17 @@ function NestService.hatch(player: Player, n: number): string?
 	data.nests[key] = nil
 	local zone = Items.ZONES[egg.zone] or Items.ZONES[1]
 	local itemId = NestService.rollItem(zone.kind, egg.rarity)
+	-- It hatches at its full grown weight.
+	local weight = (egg.weight or Items.eggBaseWeight(egg.zone)) * (egg.growth or 1)
+	local base = egg.baseWeight or Items.eggBaseWeight(egg.zone)
 	NestService.reward(
 		player,
 		data,
 		itemId,
 		egg.mutations,
-		{ kind = "egg", egg = egg.zone, nest = n, eggSize = egg.size },
-		egg.size
+		{ kind = "egg", egg = egg.zone, nest = n, eggFactor = weight / base },
+		weight,
+		base
 	)
 	return nil
 end

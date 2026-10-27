@@ -533,7 +533,13 @@ end
 -- Puts the right item model on a bed or yard spot (record = nil for none).
 local function updateSpot(plot, spot, record)
 	local key = record
-		and (record.id .. ":" .. table.concat(Mutations.normalize(record.mutations), ",") .. ":" .. (record.size or ""))
+		and (
+			record.id
+			.. ":"
+			.. table.concat(Mutations.normalize(record.mutations), ",")
+			.. ":"
+			.. tostring(record.weight)
+		)
 	if spot.key == key then
 		return
 	end
@@ -543,7 +549,7 @@ local function updateSpot(plot, spot, record)
 		spot.model = nil
 	end
 	if record then
-		local model = ItemModel.build(record.id, record.mutations, record.size)
+		local model = ItemModel.build(record)
 		model:PivotTo(spot.spot)
 		model.Parent = plot.items
 		spot.model = model
@@ -587,14 +593,22 @@ local function updateNestLabels(plot)
 			nest.timer.Text = "Steal an egg!"
 			nest.timer.TextColor3 = Color3.fromRGB(255, 215, 60)
 		else
-			nest.title.Text = (if egg.size then string.upper(egg.size) .. " " else "") .. string.upper(egg.rarity)
+			nest.title.Text = string.upper(egg.rarity)
 			nest.title.TextColor3 = Rarities.info[egg.rarity].color
+			-- The egg grows while it waits: the weight climbs and the egg gets bigger.
+			local weight = Items.eggWeightAt(egg, now)
+			local scale = Items.weightScale(weight / (egg.baseWeight or weight))
+			if nest.egg and nest.eggScale and math.abs(scale / nest.eggScale - 1) > 0.01 then
+				Items.scaleModel(nest.egg, scale / nest.eggScale)
+				nest.egg:PivotTo(nest.spot)
+				nest.eggScale = scale
+			end
 			local left = egg.endsAt - now
 			if left > 0 then
-				nest.timer.Text = "⏱ " .. Format.time(left)
+				nest.timer.Text = "⚖ " .. Format.weight(weight) .. " · " .. Format.time(left)
 				nest.timer.TextColor3 = Color3.new(1, 1, 1)
 			else
-				nest.timer.Text = "🐣 READY!"
+				nest.timer.Text = "🐣 " .. Format.weight(weight) .. " READY!"
 				nest.timer.TextColor3 = Color3.fromRGB(110, 235, 140)
 				nest.prompt.ObjectText = Items.eggName(egg.zone)
 				nest.prompt.Enabled = true
@@ -609,7 +623,7 @@ local function updateNests(plot, data, player: Player?)
 		if data and player then
 			state, egg = nestState(data, player, n)
 		end
-		local key = if egg then egg.zone .. ":" .. egg.rarity .. ":" .. egg.endsAt .. ":" .. (egg.size or "") else state
+		local key = if egg then egg.zone .. ":" .. egg.rarity .. ":" .. egg.endsAt else state
 		if nest.key ~= key then
 			nest.key = key
 			if nest.egg then
@@ -618,23 +632,36 @@ local function updateNests(plot, data, player: Player?)
 			end
 			if egg then
 				local model = EggModel.build(egg.zone)
-				Items.scaleModel(model, Items.size(egg.size).scale)
+				local weight = Items.eggWeightAt(egg, os.time())
+				local scale = Items.weightScale(weight / (egg.baseWeight or weight))
+				Items.scaleModel(model, scale)
 				ItemModel.addMutationEffect(model, egg.mutations)
 				model:PivotTo(nest.spot)
 				model.Parent = plot.items
 				nest.egg = model
+				nest.eggScale = scale
 			end
 		end
 	end
 	updateNestLabels(plot)
 end
 
--- The pets out in the yard, for the clients to draw: "Pet_Oinkle:Golden:Huge,Pet_Woofles::".
+-- The pets out in the yard, for the clients to draw, with their mutation, weight (kg) and
+-- how big to draw them: "Pet_Oinkle:Golden:4.21:1.62,Pet_Woofles::0.88:0.93".
 local function petList(data): string
 	local list = {}
 	for _, uid in LifeUtil.pets(data) do
 		local record = data.parts[uid]
-		table.insert(list, record.id .. ":" .. (Mutations.top(record.mutations) or "") .. ":" .. (record.size or ""))
+		table.insert(
+			list,
+			string.format(
+				"%s:%s:%s:%.3f",
+				record.id,
+				Mutations.top(record.mutations) or "",
+				if record.weight then string.format("%.2f", record.weight) else "",
+				Items.weightScale(Items.weightFactor(record))
+			)
+		)
 	end
 	return table.concat(list, ",")
 end

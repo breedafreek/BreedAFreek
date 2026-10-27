@@ -22,13 +22,13 @@ function ItemModel.addMutationEffect(model: Model, mutations)
 	end
 end
 
--- size = a size id from Items.SIZES (nil = Normal): house parts stay their normal size
--- (they have to fit their slot); everything else is scaled.
-function ItemModel.build(itemId: string, mutations, size: string?): Model
-	local model = ItemModel.buildNormal(itemId, mutations)
-	local item = Items.byId[itemId]
+-- record = { id, mutations, weight?, baseWeight? }. Heavier items are drawn bigger
+-- (Items.weightScale); house parts stay their normal size (they have to fit their slot).
+function ItemModel.build(record): Model
+	local model = ItemModel.buildNormal(record.id, record.mutations)
+	local item = Items.byId[record.id]
 	if item and item.kind ~= "House" then
-		Items.scaleModel(model, Items.size(size).scale)
+		Items.scaleModel(model, Items.weightScale(Items.weightFactor(record)))
 	end
 	return model
 end

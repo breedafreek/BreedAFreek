@@ -90,7 +90,8 @@ local function openCrate(player: Player, data, crate)
 		pickItem(rollWeighted(Luck.crateOdds(crate))),
 		rollMutations(crate.mutation),
 		{ kind = "crate", crate = crate.id },
-		Items.rollSize(rng, crate.mutation)
+		Items.rollWeightFactor(rng, crate.mutation),
+		1
 	)
 end
 
@@ -289,7 +290,8 @@ local function spin(player: Player, data)
 			itemId,
 			{ if slice.rainbow then "Rainbow" else "Golden" },
 			reveal,
-			Items.rollSize(rng)
+			Items.eggBaseWeight(zone) * Items.rollWeightFactor(rng),
+			Items.eggBaseWeight(zone)
 		)
 	end
 	if slice.crate then

@@ -14,6 +14,7 @@ local Workspace = game:GetService("Workspace")
 
 local BoxModel = require(ReplicatedStorage.Shared.BoxModel)
 local EggModel = require(ReplicatedStorage.Shared.EggModel)
+local Format = require(ReplicatedStorage.Shared.Format)
 local ItemModel = require(ReplicatedStorage.Shared.ItemModel)
 local Items = require(ReplicatedStorage.Shared.Items)
 local LifeUtil = require(ReplicatedStorage.Shared.LifeUtil)
@@ -817,7 +818,7 @@ function PackReveal.play(result, done: () -> ())
 	moveCamera(Vector3.new(0, 7, -24), Vector3.new(0, 4, 0))
 	local egg = if result.egg then EggModel.build(result.egg) else BoxModel.build(result.crate)
 	if result.egg then
-		Items.scaleModel(egg, 1.6 * math.clamp(Items.size(result.eggSize).scale, 0.7, 1.6))
+		Items.scaleModel(egg, 1.6 * math.clamp(Items.weightScale(result.eggFactor or 1), 0.7, 1.8))
 	end
 	Lego.apply(egg)
 	egg.Parent = stage
@@ -1231,12 +1232,12 @@ function PackReveal.play(result, done: () -> ())
 	end)
 
 	-- The card lifts up and back; the part pops out onto the pedestal.
-	local freek = ItemModel.build(result.part.id, result.part.mutations)
+	local freek = ItemModel.buildNormal(result.part.id, result.part.mutations)
 	Lego.apply(freek)
 	-- Everything fits about the same space in front of the card, a bit bigger or smaller
 	-- for big and small sizes.
 	local _, size = freek:GetBoundingBox()
-	local room = 6.5 * math.clamp(Items.size(result.part.size).scale, 0.7, 1.6)
+	local room = 6.5 * math.clamp(Items.weightScale(Items.weightFactor(result.part)), 0.7, 1.8)
 	Items.scaleModel(freek, math.clamp(room / math.max(size.X, size.Y, size.Z, 0.1), 0.3, 2))
 	for _, p in freek:GetDescendants() do
 		if p:IsA("BasePart") then
@@ -1278,7 +1279,7 @@ function PackReveal.play(result, done: () -> ())
 	animate(0.2, function(a)
 		nameScale.Scale = 2.2 - 1.2 * easeOut(a)
 	end)
-	local sizeWord = if result.part.size then string.upper(result.part.size) .. "  ·  " else ""
+	local sizeWord = if result.part.weight then Format.weight(result.part.weight):upper() .. "  ·  " else ""
 	UI.label(sizeWord .. string.upper(rarity) .. "  ·  " .. string.upper(series.name), {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.86, -50),

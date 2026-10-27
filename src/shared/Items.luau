@@ -288,42 +288,101 @@ Items.ZONES = {
 	},
 }
 
--- Sizes: every egg grows in a random size, and what hatches from it keeps that size. Bigger
--- things show bigger (scale) and earn more (mult). weight = how often each size turns up
--- (Massive is very rare). Saved on records as `size` (nil = Normal).
-Items.SIZES = {
-	{ id = "Tiny", scale = 0.6, mult = 0.5, weight = 22, color = Color3.fromRGB(190, 200, 220) },
-	{ id = "Small", scale = 0.8, mult = 0.75, weight = 28, color = Color3.fromRGB(210, 220, 235) },
-	{ id = "Normal", scale = 1, mult = 1, weight = 32, color = Color3.fromRGB(255, 255, 255) },
-	{ id = "Big", scale = 1.35, mult = 1.6, weight = 12, color = Color3.fromRGB(120, 220, 255) },
-	{ id = "Huge", scale = 1.9, mult = 3, weight = 4.5, color = Color3.fromRGB(255, 200, 60) },
-	{ id = "Giant", scale = 2.6, mult = 6, weight = 1.3, color = Color3.fromRGB(255, 120, 60) },
-	{ id = "Massive", scale = 3.6, mult = 15, weight = 0.2, color = Color3.fromRGB(255, 70, 160) },
-}
-Items.sizeById = {}
-for index, size in Items.SIZES do
-	size.rank = index
-	Items.sizeById[size.id] = size
+-- Weights, like Steal an Egg: every egg has a random weight in kg, and grows a random amount
+-- (in random spurts) while it sits in a nest. What hatches keeps the egg's final weight.
+-- There's no top limit: weights come from a long-tailed roll, so each step heavier is
+-- rarer than the last. Counting nest growth, a hatched item ranges from about a third of
+-- normal up: 3x normal is about 1 in 14, 10x about 1 in 190, 30x about 1 in 2,000, 100x
+-- about 1 in 35,000, and so on with no end.
+--
+-- On item records: weight (kg) and baseWeight (the normal weight of the egg it came from).
+-- weight / baseWeight is the item's "factor": it multiplies income and sets how big it's
+-- drawn (Items.weightScale). Records without a weight count as factor 1.
+local WEIGHT_SCALE = 0.66 -- sets where the typical egg lands (about 1x normal)
+local WEIGHT_TAIL = 2.2 -- how fast heavier eggs get rarer (bigger = rarer)
+local GROWTH_MIN = 0.5 -- the growth roll's scale (half of eggs grow +13% or more, 1 in 10 +58%)
+local GROWTH_TAIL = 3 -- how fast bigger growth gets rarer (1 in 100 nearly triples)
+
+-- The normal weight of a zone's eggs (kg): deeper zones lay heavier eggs.
+function Items.eggBaseWeight(zoneIndex: number): number
+	return 1 + (zoneIndex - 1) * 0.75
 end
 
-function Items.size(id: string?)
-	return Items.sizeById[id or "Normal"] or Items.sizeById.Normal
+-- A random weight factor (1 = normal). `boost` (>= 1, from lucky events) makes heavy ones
+-- likelier.
+function Items.rollWeightFactor(rng: Random, boost: number?): number
+	local tail = WEIGHT_TAIL / (boost or 1) ^ 0.25
+	-- A spread round normal (0.5x to 1.5x), times a long tail with no top.
+	return WEIGHT_SCALE * (0.5 + rng:NextNumber()) * (1 - rng:NextNumber()) ^ (-1 / tail)
 end
 
--- Rolls a size. `boost` (>= 1) makes Big and up that many times likelier.
-function Items.rollSize(rng: Random, boost: number?): string?
-	local total = 0
-	for _, size in Items.SIZES do
-		total += size.weight * (if size.scale > 1 then boost or 1 else 1)
+-- A random amount an egg grows by in its nest (1 = not at all, 2 = doubles).
+function Items.rollGrowth(rng: Random): number
+	return 1 + GROWTH_MIN * ((1 - rng:NextNumber()) ^ (-1 / GROWTH_TAIL) - 1)
+end
+
+-- How far through its growth an egg is (0 to 1) at fraction t of its hatch time: random
+-- spurts and pauses, the same every time for the same seed (so the server and the clients
+-- agree).
+function Items.growthCurve(seed: number, t: number): number
+	t = math.clamp(t, 0, 1)
+	local rng = Random.new(seed)
+	local steps, total = {}, 0
+	for k = 1, 6 do
+		steps[k] = rng:NextNumber() ^ 2 + 0.02
+		total += steps[k]
 	end
-	local roll = rng:NextNumber() * total
-	for _, size in Items.SIZES do
-		roll -= size.weight * (if size.scale > 1 then boost or 1 else 1)
-		if roll <= 0 then
-			return if size.id == "Normal" then nil else size.id
+	local done = 0
+	local position = t * 6
+	for k = 1, 6 do
+		local share = steps[k] / total
+		if position >= k then
+			done += share
+		else
+			local a = math.clamp(position - (k - 1), 0, 1)
+			done += share * a * a * (3 - 2 * a) -- smoothstep: a spurt within the step
+			break
 		end
 	end
-	return nil
+	return math.min(done, 1)
+end
+
+-- An egg's weight (kg) at time `now` (os.time() on the server, Items.now() on clients). Eggs
+-- on pedestals or carried don't grow; eggs in nests have startAt / endsAt / growth / seed.
+function Items.eggWeightAt(egg, now: number?): number
+	local weight = egg.weight or Items.eggBaseWeight(egg.egg or egg.zone or 1)
+	if not egg.growth or not egg.startAt or not egg.endsAt or not now then
+		return weight
+	end
+	local t = (now - egg.startAt) / math.max(egg.endsAt - egg.startAt, 1)
+	return weight * egg.growth ^ Items.growthCurve(egg.seed or 1, t)
+end
+
+-- An item's (or egg's) weight factor: weight / normal weight (1 if it has none).
+function Items.weightFactor(record): number
+	local weight, base = record and record.weight, record and record.baseWeight
+	if type(weight) ~= "number" or type(base) ~= "number" or base <= 0 then
+		return 1
+	end
+	return weight / base
+end
+
+-- The colour heavy things are named in: white, then blue, gold, and hot pink for monsters.
+function Items.weightColor(factor: number): Color3
+	if factor >= 10 then
+		return Color3.fromRGB(255, 80, 170)
+	elseif factor >= 3 then
+		return Color3.fromRGB(255, 205, 60)
+	elseif factor >= 1.5 then
+		return Color3.fromRGB(130, 225, 255)
+	end
+	return Color3.new(1, 1, 1)
+end
+
+-- How big something of this weight factor is drawn (a heavy thing is bigger, but not as
+-- many times bigger as it is heavier).
+function Items.weightScale(factor: number): number
+	return math.max(factor, 0.05) ^ 0.45
 end
 
 -- How long an egg of each rarity grows in a nest (seconds).

@@ -14,6 +14,7 @@ local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local EggModel = require(ReplicatedStorage.Shared.EggModel)
+local Format = require(ReplicatedStorage.Shared.Format)
 local ItemModel = require(ReplicatedStorage.Shared.ItemModel)
 local Items = require(ReplicatedStorage.Shared.Items)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -55,7 +56,7 @@ local function pickUp(carrier: Player, carry): boolean
 		return false
 	end
 	local model = EggModel.build(carry.record.egg)
-	Items.scaleModel(model, Items.size(carry.record.size).scale)
+	Items.scaleModel(model, Items.weightScale(Items.weightFactor(carry.record)))
 	ItemModel.addMutationEffect(model, carry.record.mutations)
 	model:PivotTo(root.CFrame * CFrame.new(0, 3.2, 0))
 	for _, descendant in model:GetDescendants() do
@@ -88,7 +89,10 @@ local function pickUp(carrier: Player, carry): boolean
 	model.Parent = character
 	carry.model = model
 	carries[carrier] = carry
-	carrier:SetAttribute("Carrying", carry.record.rarity .. " " .. carry.name)
+	carrier:SetAttribute(
+		"Carrying",
+		Format.weight(carry.record.weight or 1) .. " " .. carry.record.rarity .. " " .. carry.name
+	)
 	return true
 end
 

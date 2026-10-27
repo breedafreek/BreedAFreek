@@ -27,6 +27,16 @@ function Format.number(n: number): string
 	return (string.gsub(Format.money(n), "^%$", ""))
 end
 
+-- A weight: "0.82 kg", "12.4 kg", "1,250 kg".
+function Format.weight(kg: number): string
+	if kg < 10 then
+		return string.format("%.2f kg", kg)
+	elseif kg < 100 then
+		return string.format("%.1f kg", kg)
+	end
+	return Format.number(math.floor(kg + 0.5)) .. " kg"
+end
+
 function Format.time(seconds: number): string
 	seconds = math.max(0, math.ceil(seconds))
 	local h = seconds // 3600

@@ -1,5 +1,6 @@
 -- Pets roaming their owner's front lawn, drawn on this client. The server lists each
--- home's pets on its plot (attribute "Pets" = "Pet_Oinkle:Golden:Huge,Pet_Woofles::"); this
+-- home's pets on its plot (attribute "Pets" = "Pet_Oinkle:Golden:4.21:1.62,..." with each
+-- pet's mutation, weight in kg and how big to draw it); this
 -- builds a Freek for each and wanders it round the lawn (plot attributes PetMin / PetMax,
 -- in plot space), animated with FreekAnimator: walk somewhere, stop, look about, walk on.
 
@@ -7,6 +8,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Format = require(ReplicatedStorage.Shared.Format)
 local FreekAnimator = require(ReplicatedStorage.Shared.FreekAnimator)
 local ItemModel = require(ReplicatedStorage.Shared.ItemModel)
 local Items = require(ReplicatedStorage.Shared.Items)
@@ -48,10 +50,10 @@ local function nameTag(model: Model, text: string, color: Color3, height: number
 	stroke.Parent = label
 end
 
--- A Freek, scaled up round its feet (more for bigger sizes).
-local function build(itemId: string, mutation: string?, size: string?): (Model, number)
+-- A Freek, scaled up round its feet (more for heavier pets).
+local function build(itemId: string, mutation: string?, weightScale: number): (Model, number)
 	local model = ItemModel.buildNormal(itemId, if mutation ~= "" then mutation else nil)
-	local scale = SCALE * Items.size(size).scale
+	local scale = SCALE * weightScale
 	local pivot = model:GetPivot()
 	local top = 0
 	for _, p in model:GetDescendants() do
@@ -105,19 +107,20 @@ local function refresh(plot: Model)
 	end
 	for i, entry in string.split(list, ",") do
 		local parts = string.split(entry, ":")
-		local itemId, mutation, size = parts[1], parts[2] or "", parts[3] or ""
+		local itemId, mutation = parts[1], parts[2] or ""
+		local weight, weightScale = tonumber(parts[3] or ""), tonumber(parts[4] or "") or 1
 		local info = itemId and Items.byId[itemId]
 		if info and info.kind == "Pet" then
-			local model, height = build(itemId, mutation, if size ~= "" then size else nil)
+			local model, height = build(itemId, mutation, weightScale)
 			local position = randomSpot(plot)
 			local yaw = rng:NextNumber(0, math.pi * 2)
 			local ground = CFrame.new(position) * CFrame.Angles(0, yaw, 0)
 			model:PivotTo(ground)
 			model.Name = "Pet_" .. info.species
 			model.Parent = plot
-			local title = (if size ~= "" then size .. " " else "")
-				.. (if mutation ~= "" then mutation .. " " else "")
+			local title = (if mutation ~= "" then mutation .. " " else "")
 				.. info.name
+				.. (if weight then " · " .. Format.weight(weight) else "")
 			nameTag(model, title, Items.color(itemId), height)
 			table.insert(home.pets, {
 				model = model,

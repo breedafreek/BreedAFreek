@@ -476,7 +476,7 @@ BUILDERS.MenuLife = function(model)
 	for _, entry in
 		{ { "Plant_Sunflower", CFrame.new(3.6, 0, -0.4), 0.45 }, { "Pet_Oinkle", CFrame.new(-3.4, 0, -1.2), 0.9 } }
 	do
-		local item = ItemModel.build(entry[1])
+		local item = ItemModel.buildNormal(entry[1])
 		local pivot = item:GetPivot()
 		for _, p in item:GetDescendants() do
 			if p:IsA("BasePart") then
@@ -645,7 +645,7 @@ end
 -- Any item (house part, pet, yard item, plant). silhouette = true draws it solid black
 -- ("???" in the Catalog).
 function ItemPictures.part(itemId: string, height: number?, silhouette: boolean?, mutations): ViewportFrame
-	return framed(ItemModel.build(itemId, mutations), height, silhouette)
+	return framed(ItemModel.buildNormal(itemId, mutations), height, silhouette)
 end
 
 -- A zone's egg.

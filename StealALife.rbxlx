@@ -816,7 +816,7 @@ return Bricks
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-8", -- shown small in the corner of the screen and in Output: which build is running
+	BUILD = "life-9", -- shown small in the corner of the screen and in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join (and after
 	-- a rebirth). Set to nil before the game launches!
@@ -1215,6 +1215,16 @@ end
 -- A big number with a suffix and no "$" (Speed: 12.5K).
 function Format.number(n: number): string
 	return (string.gsub(Format.money(n), "^%$", ""))
+end
+
+-- A weight: "0.82 kg", "12.4 kg", "1,250 kg".
+function Format.weight(kg: number): string
+	if kg < 10 then
+		return string.format("%.2f kg", kg)
+	elseif kg < 100 then
+		return string.format("%.1f kg", kg)
+	end
+	return Format.number(math.floor(kg + 0.5)) .. " kg"
 end
 
 function Format.time(seconds: number): string
@@ -6705,13 +6715,13 @@ function ItemModel.addMutationEffect(model: Model, mutations)
 	end
 end
 
--- size = a size id from Items.SIZES (nil = Normal): house parts stay their normal size
--- (they have to fit their slot); everything else is scaled.
-function ItemModel.build(itemId: string, mutations, size: string?): Model
-	local model = ItemModel.buildNormal(itemId, mutations)
-	local item = Items.byId[itemId]
+-- record = { id, mutations, weight?, baseWeight? }. Heavier items are drawn bigger
+-- (Items.weightScale); house parts stay their normal size (they have to fit their slot).
+function ItemModel.build(record): Model
+	local model = ItemModel.buildNormal(record.id, record.mutations)
+	local item = Items.byId[record.id]
 	if item and item.kind ~= "House" then
-		Items.scaleModel(model, Items.size(size).scale)
+		Items.scaleModel(model, Items.weightScale(Items.weightFactor(record)))
 	end
 	return model
 end
@@ -7034,42 +7044,101 @@ Items.ZONES = {
 	},
 }
 
--- Sizes: every egg grows in a random size, and what hatches from it keeps that size. Bigger
--- things show bigger (scale) and earn more (mult). weight = how often each size turns up
--- (Massive is very rare). Saved on records as `size` (nil = Normal).
-Items.SIZES = {
-	{ id = "Tiny", scale = 0.6, mult = 0.5, weight = 22, color = Color3.fromRGB(190, 200, 220) },
-	{ id = "Small", scale = 0.8, mult = 0.75, weight = 28, color = Color3.fromRGB(210, 220, 235) },
-	{ id = "Normal", scale = 1, mult = 1, weight = 32, color = Color3.fromRGB(255, 255, 255) },
-	{ id = "Big", scale = 1.35, mult = 1.6, weight = 12, color = Color3.fromRGB(120, 220, 255) },
-	{ id = "Huge", scale = 1.9, mult = 3, weight = 4.5, color = Color3.fromRGB(255, 200, 60) },
-	{ id = "Giant", scale = 2.6, mult = 6, weight = 1.3, color = Color3.fromRGB(255, 120, 60) },
-	{ id = "Massive", scale = 3.6, mult = 15, weight = 0.2, color = Color3.fromRGB(255, 70, 160) },
-}
-Items.sizeById = {}
-for index, size in Items.SIZES do
-	size.rank = index
-	Items.sizeById[size.id] = size
+-- Weights, like Steal an Egg: every egg has a random weight in kg, and grows a random amount
+-- (in random spurts) while it sits in a nest. What hatches keeps the egg's final weight.
+-- There's no top limit: weights come from a long-tailed roll, so each step heavier is
+-- rarer than the last. Counting nest growth, a hatched item ranges from about a third of
+-- normal up: 3x normal is about 1 in 14, 10x about 1 in 190, 30x about 1 in 2,000, 100x
+-- about 1 in 35,000, and so on with no end.
+--
+-- On item records: weight (kg) and baseWeight (the normal weight of the egg it came from).
+-- weight / baseWeight is the item's "factor": it multiplies income and sets how big it's
+-- drawn (Items.weightScale). Records without a weight count as factor 1.
+local WEIGHT_SCALE = 0.66 -- sets where the typical egg lands (about 1x normal)
+local WEIGHT_TAIL = 2.2 -- how fast heavier eggs get rarer (bigger = rarer)
+local GROWTH_MIN = 0.5 -- the growth roll's scale (half of eggs grow +13% or more, 1 in 10 +58%)
+local GROWTH_TAIL = 3 -- how fast bigger growth gets rarer (1 in 100 nearly triples)
+
+-- The normal weight of a zone's eggs (kg): deeper zones lay heavier eggs.
+function Items.eggBaseWeight(zoneIndex: number): number
+	return 1 + (zoneIndex - 1) * 0.75
 end
 
-function Items.size(id: string?)
-	return Items.sizeById[id or "Normal"] or Items.sizeById.Normal
+-- A random weight factor (1 = normal). `boost` (>= 1, from lucky events) makes heavy ones
+-- likelier.
+function Items.rollWeightFactor(rng: Random, boost: number?): number
+	local tail = WEIGHT_TAIL / (boost or 1) ^ 0.25
+	-- A spread round normal (0.5x to 1.5x), times a long tail with no top.
+	return WEIGHT_SCALE * (0.5 + rng:NextNumber()) * (1 - rng:NextNumber()) ^ (-1 / tail)
 end
 
--- Rolls a size. `boost` (>= 1) makes Big and up that many times likelier.
-function Items.rollSize(rng: Random, boost: number?): string?
-	local total = 0
-	for _, size in Items.SIZES do
-		total += size.weight * (if size.scale > 1 then boost or 1 else 1)
+-- A random amount an egg grows by in its nest (1 = not at all, 2 = doubles).
+function Items.rollGrowth(rng: Random): number
+	return 1 + GROWTH_MIN * ((1 - rng:NextNumber()) ^ (-1 / GROWTH_TAIL) - 1)
+end
+
+-- How far through its growth an egg is (0 to 1) at fraction t of its hatch time: random
+-- spurts and pauses, the same every time for the same seed (so the server and the clients
+-- agree).
+function Items.growthCurve(seed: number, t: number): number
+	t = math.clamp(t, 0, 1)
+	local rng = Random.new(seed)
+	local steps, total = {}, 0
+	for k = 1, 6 do
+		steps[k] = rng:NextNumber() ^ 2 + 0.02
+		total += steps[k]
 	end
-	local roll = rng:NextNumber() * total
-	for _, size in Items.SIZES do
-		roll -= size.weight * (if size.scale > 1 then boost or 1 else 1)
-		if roll <= 0 then
-			return if size.id == "Normal" then nil else size.id
+	local done = 0
+	local position = t * 6
+	for k = 1, 6 do
+		local share = steps[k] / total
+		if position >= k then
+			done += share
+		else
+			local a = math.clamp(position - (k - 1), 0, 1)
+			done += share * a * a * (3 - 2 * a) -- smoothstep: a spurt within the step
+			break
 		end
 	end
-	return nil
+	return math.min(done, 1)
+end
+
+-- An egg's weight (kg) at time `now` (os.time() on the server, Items.now() on clients). Eggs
+-- on pedestals or carried don't grow; eggs in nests have startAt / endsAt / growth / seed.
+function Items.eggWeightAt(egg, now: number?): number
+	local weight = egg.weight or Items.eggBaseWeight(egg.egg or egg.zone or 1)
+	if not egg.growth or not egg.startAt or not egg.endsAt or not now then
+		return weight
+	end
+	local t = (now - egg.startAt) / math.max(egg.endsAt - egg.startAt, 1)
+	return weight * egg.growth ^ Items.growthCurve(egg.seed or 1, t)
+end
+
+-- An item's (or egg's) weight factor: weight / normal weight (1 if it has none).
+function Items.weightFactor(record): number
+	local weight, base = record and record.weight, record and record.baseWeight
+	if type(weight) ~= "number" or type(base) ~= "number" or base <= 0 then
+		return 1
+	end
+	return weight / base
+end
+
+-- The colour heavy things are named in: white, then blue, gold, and hot pink for monsters.
+function Items.weightColor(factor: number): Color3
+	if factor >= 10 then
+		return Color3.fromRGB(255, 80, 170)
+	elseif factor >= 3 then
+		return Color3.fromRGB(255, 205, 60)
+	elseif factor >= 1.5 then
+		return Color3.fromRGB(130, 225, 255)
+	end
+	return Color3.new(1, 1, 1)
+end
+
+-- How big something of this weight factor is drawn (a heavy thing is bigger, but not as
+-- many times bigger as it is heavier).
+function Items.weightScale(factor: number): number
+	return math.max(factor, 0.05) ^ 0.45
 end
 
 -- How long an egg of each rarity grows in a nest (seconds).
@@ -7328,6 +7397,7 @@ return Lego
 -- data.nests = { ["1".."5"] = { zone, rarity, endsAt, mutations? } }: eggs growing at home.
 
 local Config = require(script.Parent.Config)
+local Format = require(script.Parent.Format)
 local Items = require(script.Parent.Items)
 local Mutations = require(script.Parent.Mutations)
 local Parts = require(script.Parent.Parts)
@@ -7363,7 +7433,7 @@ function LifeUtil.itemIncome(record): number
 	if not item then
 		return 0
 	end
-	return item.income * Mutations.mult(record.mutations) * Items.size(record.size).mult
+	return item.income * Mutations.mult(record.mutations) * Items.weightFactor(record)
 end
 LifeUtil.partIncome = LifeUtil.itemIncome
 
@@ -7428,13 +7498,20 @@ function LifeUtil.sellPrice(record): number
 	return math.floor(LifeUtil.itemIncome(record) * Config.SELL_MULTIPLIER)
 end
 
--- "Massive Golden Candy Roof"
+-- "Golden Candy Roof" (weights are shown separately: LifeUtil.weightText)
 function LifeUtil.displayName(record): string
 	local item = Items.byId[record.id]
 	local name = if item then item.name else record.id
 	local top = Mutations.top(record.mutations)
-	name = if top then top .. " " .. name else name
-	return if record.size and Items.sizeById[record.size] then record.size .. " " .. name else name
+	return if top then top .. " " .. name else name
+end
+
+-- "⚖ 4.21 kg" (or "" for something with no weight).
+function LifeUtil.weightText(record): string
+	if not record or type(record.weight) ~= "number" then
+		return ""
+	end
+	return "⚖ " .. Format.weight(record.weight)
 end
 
 -- The pets out in the yard, as a list of uids.
@@ -9286,8 +9363,12 @@ local function reconcile(data)
 			data.parts[uid] = nil
 		else
 			record.mutations = Mutations.pack(record.mutations)
-			if record.size ~= nil and (not Items.sizeById[record.size] or record.size == "Normal") then
-				record.size = nil
+			record.size = nil -- the old size tiers, replaced by weights
+			local function valid(n)
+				return type(n) == "number" and n > 0 and n < math.huge
+			end
+			if not valid(record.weight) or not valid(record.baseWeight) then
+				record.weight, record.baseWeight = nil, nil
 			end
 		end
 	end
@@ -11238,7 +11319,8 @@ local function openCrate(player: Player, data, crate)
 		pickItem(rollWeighted(Luck.crateOdds(crate))),
 		rollMutations(crate.mutation),
 		{ kind = "crate", crate = crate.id },
-		Items.rollSize(rng, crate.mutation)
+		Items.rollWeightFactor(rng, crate.mutation),
+		1
 	)
 end
 
@@ -11437,7 +11519,8 @@ local function spin(player: Player, data)
 			itemId,
 			{ if slice.rainbow then "Rainbow" else "Golden" },
 			reveal,
-			Items.rollSize(rng)
+			Items.eggBaseWeight(zone) * Items.rollWeightFactor(rng),
+			Items.eggBaseWeight(zone)
 		)
 	end
 	if slice.crate then
@@ -11772,8 +11855,9 @@ function NestService.freeNest(player: Player, data): string?
 	return nil
 end
 
--- Puts an egg ({ egg = zone, rarity, mutations }) into a free nest. Returns the nest, or
--- nil if there was no room.
+-- Puts an egg ({ egg = zone, rarity, mutations, weight, baseWeight }) into a free nest,
+-- where it grows a random amount (Items.rollGrowth) in random spurts until it hatches.
+-- Returns the nest, or nil if there was no room.
 function NestService.addEgg(player: Player, record): string?
 	local data = DataService.get(player)
 	local nest = data and NestService.freeNest(player, data)
@@ -11785,7 +11869,11 @@ function NestService.addEgg(player: Player, record): string?
 		zone = record.egg,
 		rarity = record.rarity,
 		mutations = Mutations.pack(record.mutations),
-		size = record.size,
+		weight = record.weight or Items.eggBaseWeight(record.egg),
+		baseWeight = record.baseWeight or Items.eggBaseWeight(record.egg),
+		growth = Items.rollGrowth(rng),
+		seed = rng:NextInteger(1, 1e6),
+		startAt = os.time(),
 		endsAt = os.time() + seconds,
 	}
 	DataService.changed(player)
@@ -11811,7 +11899,12 @@ end
 -- made selling, if any.
 function NestService.give(player: Player, data, record): (string, number)
 	local uid = DataService.newUid(data)
-	data.parts[uid] = { id = record.id, mutations = Mutations.pack(record.mutations), size = record.size }
+	data.parts[uid] = {
+		id = record.id,
+		mutations = Mutations.pack(record.mutations),
+		weight = record.weight,
+		baseWeight = record.baseWeight,
+	}
 	data.discovered[record.id] = true
 	task.spawn(DiscoveryService.claim, player, record.id)
 	local where = LifeUtil.placeIfBetter(data, uid)
@@ -11827,9 +11920,18 @@ function NestService.give(player: Player, data, record): (string, number)
 end
 
 -- Gives an item and shows the reveal on the player's screen. reveal = { kind, ... } (what
--- it came from: "egg", "wheel", "crate"); size = its size (Items.SIZES, nil = Normal).
-function NestService.reward(player: Player, data, itemId: string, mutations, reveal, size: string?)
-	local record = { id = itemId, mutations = Mutations.pack(mutations), size = size }
+-- it came from: "egg", "wheel", "crate"); weight / baseWeight = its weight and the normal
+-- weight it's measured against (kg).
+function NestService.reward(
+	player: Player,
+	data,
+	itemId: string,
+	mutations,
+	reveal,
+	weight: number?,
+	baseWeight: number?
+)
+	local record = { id = itemId, mutations = Mutations.pack(mutations), weight = weight, baseWeight = baseWeight }
 	reveal.isNew = not data.discovered[itemId]
 	local where, sold = NestService.give(player, data, record)
 	reveal.where = where
@@ -11843,13 +11945,14 @@ function NestService.reward(player: Player, data, itemId: string, mutations, rev
 			"money"
 		)
 	end
-	if Rarities.rank[reveal.rarity] >= Rarities.rank.Mystic or Items.size(size).rank >= Items.sizeById.Giant.rank then
+	if Rarities.rank[reveal.rarity] >= Rarities.rank.Mystic or Items.weightFactor(record) >= 10 then
 		for _, other in Players:GetPlayers() do
 			notify(
 				other,
 				"🐣 "
 					.. player.DisplayName
 					.. " got a "
+					.. (if weight then Format.weight(weight) .. " " else "")
 					.. reveal.rarity
 					.. " "
 					.. LifeUtil.displayName(record)
@@ -11876,13 +11979,17 @@ function NestService.hatch(player: Player, n: number): string?
 	data.nests[key] = nil
 	local zone = Items.ZONES[egg.zone] or Items.ZONES[1]
 	local itemId = NestService.rollItem(zone.kind, egg.rarity)
+	-- It hatches at its full grown weight.
+	local weight = (egg.weight or Items.eggBaseWeight(egg.zone)) * (egg.growth or 1)
+	local base = egg.baseWeight or Items.eggBaseWeight(egg.zone)
 	NestService.reward(
 		player,
 		data,
 		itemId,
 		egg.mutations,
-		{ kind = "egg", egg = egg.zone, nest = n, eggSize = egg.size },
-		egg.size
+		{ kind = "egg", egg = egg.zone, nest = n, eggFactor = weight / base },
+		weight,
+		base
 	)
 	return nil
 end
@@ -12520,7 +12627,13 @@ end
 -- Puts the right item model on a bed or yard spot (record = nil for none).
 local function updateSpot(plot, spot, record)
 	local key = record
-		and (record.id .. ":" .. table.concat(Mutations.normalize(record.mutations), ",") .. ":" .. (record.size or ""))
+		and (
+			record.id
+			.. ":"
+			.. table.concat(Mutations.normalize(record.mutations), ",")
+			.. ":"
+			.. tostring(record.weight)
+		)
 	if spot.key == key then
 		return
 	end
@@ -12530,7 +12643,7 @@ local function updateSpot(plot, spot, record)
 		spot.model = nil
 	end
 	if record then
-		local model = ItemModel.build(record.id, record.mutations, record.size)
+		local model = ItemModel.build(record)
 		model:PivotTo(spot.spot)
 		model.Parent = plot.items
 		spot.model = model
@@ -12574,14 +12687,22 @@ local function updateNestLabels(plot)
 			nest.timer.Text = "Steal an egg!"
 			nest.timer.TextColor3 = Color3.fromRGB(255, 215, 60)
 		else
-			nest.title.Text = (if egg.size then string.upper(egg.size) .. " " else "") .. string.upper(egg.rarity)
+			nest.title.Text = string.upper(egg.rarity)
 			nest.title.TextColor3 = Rarities.info[egg.rarity].color
+			-- The egg grows while it waits: the weight climbs and the egg gets bigger.
+			local weight = Items.eggWeightAt(egg, now)
+			local scale = Items.weightScale(weight / (egg.baseWeight or weight))
+			if nest.egg and nest.eggScale and math.abs(scale / nest.eggScale - 1) > 0.01 then
+				Items.scaleModel(nest.egg, scale / nest.eggScale)
+				nest.egg:PivotTo(nest.spot)
+				nest.eggScale = scale
+			end
 			local left = egg.endsAt - now
 			if left > 0 then
-				nest.timer.Text = "⏱ " .. Format.time(left)
+				nest.timer.Text = "⚖ " .. Format.weight(weight) .. " · " .. Format.time(left)
 				nest.timer.TextColor3 = Color3.new(1, 1, 1)
 			else
-				nest.timer.Text = "🐣 READY!"
+				nest.timer.Text = "🐣 " .. Format.weight(weight) .. " READY!"
 				nest.timer.TextColor3 = Color3.fromRGB(110, 235, 140)
 				nest.prompt.ObjectText = Items.eggName(egg.zone)
 				nest.prompt.Enabled = true
@@ -12596,7 +12717,7 @@ local function updateNests(plot, data, player: Player?)
 		if data and player then
 			state, egg = nestState(data, player, n)
 		end
-		local key = if egg then egg.zone .. ":" .. egg.rarity .. ":" .. egg.endsAt .. ":" .. (egg.size or "") else state
+		local key = if egg then egg.zone .. ":" .. egg.rarity .. ":" .. egg.endsAt else state
 		if nest.key ~= key then
 			nest.key = key
 			if nest.egg then
@@ -12605,23 +12726,36 @@ local function updateNests(plot, data, player: Player?)
 			end
 			if egg then
 				local model = EggModel.build(egg.zone)
-				Items.scaleModel(model, Items.size(egg.size).scale)
+				local weight = Items.eggWeightAt(egg, os.time())
+				local scale = Items.weightScale(weight / (egg.baseWeight or weight))
+				Items.scaleModel(model, scale)
 				ItemModel.addMutationEffect(model, egg.mutations)
 				model:PivotTo(nest.spot)
 				model.Parent = plot.items
 				nest.egg = model
+				nest.eggScale = scale
 			end
 		end
 	end
 	updateNestLabels(plot)
 end
 
--- The pets out in the yard, for the clients to draw: "Pet_Oinkle:Golden:Huge,Pet_Woofles::".
+-- The pets out in the yard, for the clients to draw, with their mutation, weight (kg) and
+-- how big to draw them: "Pet_Oinkle:Golden:4.21:1.62,Pet_Woofles::0.88:0.93".
 local function petList(data): string
 	local list = {}
 	for _, uid in LifeUtil.pets(data) do
 		local record = data.parts[uid]
-		table.insert(list, record.id .. ":" .. (Mutations.top(record.mutations) or "") .. ":" .. (record.size or ""))
+		table.insert(
+			list,
+			string.format(
+				"%s:%s:%s:%.3f",
+				record.id,
+				Mutations.top(record.mutations) or "",
+				if record.weight then string.format("%.2f", record.weight) else "",
+				Items.weightScale(Items.weightFactor(record))
+			)
+		)
 	end
 	return table.concat(list, ",")
 end
@@ -13296,6 +13430,7 @@ local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local EggModel = require(ReplicatedStorage.Shared.EggModel)
+local Format = require(ReplicatedStorage.Shared.Format)
 local ItemModel = require(ReplicatedStorage.Shared.ItemModel)
 local Items = require(ReplicatedStorage.Shared.Items)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -13337,7 +13472,7 @@ local function pickUp(carrier: Player, carry): boolean
 		return false
 	end
 	local model = EggModel.build(carry.record.egg)
-	Items.scaleModel(model, Items.size(carry.record.size).scale)
+	Items.scaleModel(model, Items.weightScale(Items.weightFactor(carry.record)))
 	ItemModel.addMutationEffect(model, carry.record.mutations)
 	model:PivotTo(root.CFrame * CFrame.new(0, 3.2, 0))
 	for _, descendant in model:GetDescendants() do
@@ -13370,7 +13505,10 @@ local function pickUp(carrier: Player, carry): boolean
 	model.Parent = character
 	carry.model = model
 	carries[carrier] = carry
-	carrier:SetAttribute("Carrying", carry.record.rarity .. " " .. carry.name)
+	carrier:SetAttribute(
+		"Carrying",
+		Format.weight(carry.record.weight or 1) .. " " .. carry.record.rarity .. " " .. carry.name
+	)
 	return true
 end
 
@@ -14488,7 +14626,7 @@ local function buildPedestal(parent: Instance, index: number, n: number)
 end
 
 -- Picks the egg that grows next on a pedestal in this zone:
--- { egg = zone, rarity, mutations, size } (size: Items.SIZES, nil = Normal).
+-- { egg = zone, rarity, mutations, weight, baseWeight } (weights in kg, see Items).
 local function rollEgg(index: number)
 	local rarity = Items.rollRarity(index, rng, Events.boost("rareBoost"))
 	local mutations = {}
@@ -14507,16 +14645,16 @@ local function rollEgg(index: number)
 		egg = index,
 		rarity = rarity,
 		mutations = Mutations.pack(mutations),
-		size = Items.rollSize(rng, Events.boost("rareBoost")),
+		weight = Items.eggBaseWeight(index) * Items.rollWeightFactor(rng, Events.boost("rareBoost")),
+		baseWeight = Items.eggBaseWeight(index),
 	}
 end
 
--- "Massive Golden Garden Egg"
+-- "Golden Garden Egg"
 function ZoneService.eggName(record): string
 	local top = Mutations.top(record.mutations)
 	local name = Items.eggName(record.egg)
-	name = if top then top .. " " .. name else name
-	return if record.size then record.size .. " " .. name else name
+	return if top then top .. " " .. name else name
 end
 
 local function showEgg(index: number, pedestal, record)
@@ -14529,11 +14667,12 @@ local function showEgg(index: number, pedestal, record)
 	local kind = Items.KINDS[zone.kind]
 	local color = Rarities.info[record.rarity].color
 	local model, height = EggModel.build(index)
-	local size = Items.size(record.size)
-	Items.scaleModel(model, size.scale)
+	local factor = Items.weightFactor(record)
+	local scale = Items.weightScale(factor)
+	Items.scaleModel(model, scale)
 	model:PivotTo(pedestal.spot * CFrame.Angles(0, math.rad(180 + (rng:NextNumber() - 0.5) * 40), 0))
 	-- The floating text clears the top of the egg, however big it is.
-	pedestal.labels.gui.StudsOffset = Vector3.new(0, 3.5 + height * size.scale, 0)
+	pedestal.labels.gui.StudsOffset = Vector3.new(0, 3.5 + height * scale, 0)
 	local top = Mutations.top(record.mutations)
 	if top and model.PrimaryPart then
 		local sparkles = Instance.new("Sparkles")
@@ -14545,11 +14684,10 @@ local function showEgg(index: number, pedestal, record)
 	pedestal.ring.Color = color
 	pedestal.labels.rarity.Text = string.upper(record.rarity)
 	pedestal.labels.rarity.TextColor3 = color
-	pedestal.labels.name.Text = ZoneService.eggName(record)
-	pedestal.labels.name.TextColor3 = size.color
-	pedestal.labels.income.Text = kind.icon
-		.. " "
-		.. kind.name
+	pedestal.labels.name.Text = kind.icon .. " " .. ZoneService.eggName(record)
+	pedestal.labels.name.TextColor3 = Items.weightColor(factor)
+	pedestal.labels.income.Text = "⚖ "
+		.. Format.weight(record.weight)
 		.. " · ⏱ "
 		.. Format.time(Items.HATCH_SECONDS[record.rarity])
 	pedestal.labels.gui.Enabled = true
@@ -14565,15 +14703,13 @@ local function showEgg(index: number, pedestal, record)
 	prompt:SetAttribute("Pedestal", table.find(zones[index].pedestals, pedestal))
 	prompt.Parent = pedestal.base
 
-	if
-		Rarities.rank[record.rarity] >= Rarities.rank.Ultra
-		or top == "Rainbow"
-		or size.rank >= Items.sizeById.Giant.rank
-	then
+	if Rarities.rank[record.rarity] >= Rarities.rank.Ultra or top == "Rainbow" or factor >= 10 then
 		for _, player in Players:GetPlayers() do
 			notifyRemote:FireClient(
 				player,
 				"🥚 A "
+					.. Format.weight(record.weight)
+					.. " "
 					.. string.upper(record.rarity)
 					.. " "
 					.. ZoneService.eggName(record)
@@ -17347,7 +17483,7 @@ BUILDERS.MenuLife = function(model)
 	for _, entry in
 		{ { "Plant_Sunflower", CFrame.new(3.6, 0, -0.4), 0.45 }, { "Pet_Oinkle", CFrame.new(-3.4, 0, -1.2), 0.9 } }
 	do
-		local item = ItemModel.build(entry[1])
+		local item = ItemModel.buildNormal(entry[1])
 		local pivot = item:GetPivot()
 		for _, p in item:GetDescendants() do
 			if p:IsA("BasePart") then
@@ -17516,7 +17652,7 @@ end
 -- Any item (house part, pet, yard item, plant). silhouette = true draws it solid black
 -- ("???" in the Catalog).
 function ItemPictures.part(itemId: string, height: number?, silhouette: boolean?, mutations): ViewportFrame
-	return framed(ItemModel.build(itemId, mutations), height, silhouette)
+	return framed(ItemModel.buildNormal(itemId, mutations), height, silhouette)
 end
 
 -- A zone's egg.
@@ -18106,7 +18242,7 @@ local body = UI.new("ScrollingFrame", {
 
 local currentWindow = nil
 local renderers = {}
-local liveTimers = {} -- { { label, endsAt } } counting down on the Nests tab
+local liveTimers = {} -- { { label, egg } } counting down (and weighing) on the Nests tab
 
 local function clearBody()
 	table.clear(liveTimers)
@@ -18419,6 +18555,7 @@ local function placedCard(uid: string, title: string)
 		lines = {
 			{ title, nil, 22 },
 			{ LifeUtil.displayName(record), partColor(record):Lerp(Color3.new(1, 1, 1), 0.2), 20 },
+			{ LifeUtil.weightText(record), Items.weightColor(Items.weightFactor(record)), 18 },
 			{ Format.money(LifeUtil.itemIncome(record)) .. "/s", colors.money, 20 },
 		},
 		buttons = {
@@ -18466,10 +18603,13 @@ local function nestCards(grid: Instance)
 		else
 			local ready = egg.endsAt <= now
 			local zone = Items.ZONES[egg.zone]
+			local weight = Items.eggWeightAt(egg, now)
 			local timer = {
-				if ready then "🐣 READY!" else "⏱ " .. Format.time(egg.endsAt - now),
+				if ready
+					then "🐣 READY! · " .. Format.weight(weight)
+					else "⏱ " .. Format.time(egg.endsAt - now) .. " · " .. Format.weight(weight),
 				if ready then colors.money else colors.text,
-				22,
+				20,
 			}
 			card = UI.card({
 				egg = egg.zone,
@@ -18479,11 +18619,8 @@ local function nestCards(grid: Instance)
 				lines = {
 					{ "Nest " .. n, nil, 22 },
 					{
-						Items.KINDS[zone.kind].icon
-							.. " "
-							.. (if egg.size then egg.size .. " " else "")
-							.. Items.eggName(egg.zone),
-						Items.size(egg.size).color,
+						Items.KINDS[zone.kind].icon .. " " .. Items.eggName(egg.zone),
+						Items.weightColor(weight / (egg.baseWeight or weight)),
 						19,
 					},
 					timer,
@@ -18499,7 +18636,7 @@ local function nestCards(grid: Instance)
 				-- The third text line is the timer: count it down without re-rendering.
 				for _, label in card:GetDescendants() do
 					if label:IsA("TextLabel") and string.sub(label.Text, 1, 3) == "⏱" then
-						table.insert(liveTimers, { label = label, endsAt = egg.endsAt })
+						table.insert(liveTimers, { label = label, egg = egg })
 					end
 				end
 			end
@@ -18622,7 +18759,9 @@ function renderers.Bag()
 			lines = {
 				{ LifeUtil.displayName(record), nil, 22 },
 				{
-					kind.icon .. " " .. (info.slot or kind.name) .. " · " .. info.rarity,
+					kind.icon .. " " .. (info.slot or kind.name) .. " · " .. info.rarity .. (if record.weight
+						then " · " .. Format.weight(record.weight)
+						else ""),
 					partColor(record):Lerp(Color3.new(1, 1, 1), 0.2),
 					18,
 				},
@@ -19351,8 +19490,11 @@ task.spawn(function()
 			-- Nest timers in the open window.
 			for _, timer in liveTimers do
 				if timer.label.Parent then
-					local left = timer.endsAt - eggNow
-					timer.label.Text = if left > 0 then "⏱ " .. Format.time(left) else "🐣 READY!"
+					local left = timer.egg.endsAt - eggNow
+					local weight = Format.weight(Items.eggWeightAt(timer.egg, eggNow))
+					timer.label.Text = if left > 0
+						then "⏱ " .. Format.time(left) .. " · " .. weight
+						else "🐣 READY! · " .. weight
 				end
 			end
 			local level = state.treadmill or 1
@@ -19493,6 +19635,7 @@ local Workspace = game:GetService("Workspace")
 
 local BoxModel = require(ReplicatedStorage.Shared.BoxModel)
 local EggModel = require(ReplicatedStorage.Shared.EggModel)
+local Format = require(ReplicatedStorage.Shared.Format)
 local ItemModel = require(ReplicatedStorage.Shared.ItemModel)
 local Items = require(ReplicatedStorage.Shared.Items)
 local LifeUtil = require(ReplicatedStorage.Shared.LifeUtil)
@@ -20296,7 +20439,7 @@ function PackReveal.play(result, done: () -> ())
 	moveCamera(Vector3.new(0, 7, -24), Vector3.new(0, 4, 0))
 	local egg = if result.egg then EggModel.build(result.egg) else BoxModel.build(result.crate)
 	if result.egg then
-		Items.scaleModel(egg, 1.6 * math.clamp(Items.size(result.eggSize).scale, 0.7, 1.6))
+		Items.scaleModel(egg, 1.6 * math.clamp(Items.weightScale(result.eggFactor or 1), 0.7, 1.8))
 	end
 	Lego.apply(egg)
 	egg.Parent = stage
@@ -20710,12 +20853,12 @@ function PackReveal.play(result, done: () -> ())
 	end)
 
 	-- The card lifts up and back; the part pops out onto the pedestal.
-	local freek = ItemModel.build(result.part.id, result.part.mutations)
+	local freek = ItemModel.buildNormal(result.part.id, result.part.mutations)
 	Lego.apply(freek)
 	-- Everything fits about the same space in front of the card, a bit bigger or smaller
 	-- for big and small sizes.
 	local _, size = freek:GetBoundingBox()
-	local room = 6.5 * math.clamp(Items.size(result.part.size).scale, 0.7, 1.6)
+	local room = 6.5 * math.clamp(Items.weightScale(Items.weightFactor(result.part)), 0.7, 1.8)
 	Items.scaleModel(freek, math.clamp(room / math.max(size.X, size.Y, size.Z, 0.1), 0.3, 2))
 	for _, p in freek:GetDescendants() do
 		if p:IsA("BasePart") then
@@ -20757,7 +20900,7 @@ function PackReveal.play(result, done: () -> ())
 	animate(0.2, function(a)
 		nameScale.Scale = 2.2 - 1.2 * easeOut(a)
 	end)
-	local sizeWord = if result.part.size then string.upper(result.part.size) .. "  ·  " else ""
+	local sizeWord = if result.part.weight then Format.weight(result.part.weight):upper() .. "  ·  " else ""
 	UI.label(sizeWord .. string.upper(rarity) .. "  ·  " .. string.upper(series.name), {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.86, -50),
@@ -20855,7 +20998,8 @@ return PackReveal
           <Properties>
             <string name="Name">PetFX</string>
             <string name="Source"><![CDATA[-- Pets roaming their owner's front lawn, drawn on this client. The server lists each
--- home's pets on its plot (attribute "Pets" = "Pet_Oinkle:Golden:Huge,Pet_Woofles::"); this
+-- home's pets on its plot (attribute "Pets" = "Pet_Oinkle:Golden:4.21:1.62,..." with each
+-- pet's mutation, weight in kg and how big to draw it); this
 -- builds a Freek for each and wanders it round the lawn (plot attributes PetMin / PetMax,
 -- in plot space), animated with FreekAnimator: walk somewhere, stop, look about, walk on.
 
@@ -20863,6 +21007,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Format = require(ReplicatedStorage.Shared.Format)
 local FreekAnimator = require(ReplicatedStorage.Shared.FreekAnimator)
 local ItemModel = require(ReplicatedStorage.Shared.ItemModel)
 local Items = require(ReplicatedStorage.Shared.Items)
@@ -20904,10 +21049,10 @@ local function nameTag(model: Model, text: string, color: Color3, height: number
 	stroke.Parent = label
 end
 
--- A Freek, scaled up round its feet (more for bigger sizes).
-local function build(itemId: string, mutation: string?, size: string?): (Model, number)
+-- A Freek, scaled up round its feet (more for heavier pets).
+local function build(itemId: string, mutation: string?, weightScale: number): (Model, number)
 	local model = ItemModel.buildNormal(itemId, if mutation ~= "" then mutation else nil)
-	local scale = SCALE * Items.size(size).scale
+	local scale = SCALE * weightScale
 	local pivot = model:GetPivot()
 	local top = 0
 	for _, p in model:GetDescendants() do
@@ -20961,19 +21106,20 @@ local function refresh(plot: Model)
 	end
 	for i, entry in string.split(list, ",") do
 		local parts = string.split(entry, ":")
-		local itemId, mutation, size = parts[1], parts[2] or "", parts[3] or ""
+		local itemId, mutation = parts[1], parts[2] or ""
+		local weight, weightScale = tonumber(parts[3] or ""), tonumber(parts[4] or "") or 1
 		local info = itemId and Items.byId[itemId]
 		if info and info.kind == "Pet" then
-			local model, height = build(itemId, mutation, if size ~= "" then size else nil)
+			local model, height = build(itemId, mutation, weightScale)
 			local position = randomSpot(plot)
 			local yaw = rng:NextNumber(0, math.pi * 2)
 			local ground = CFrame.new(position) * CFrame.Angles(0, yaw, 0)
 			model:PivotTo(ground)
 			model.Name = "Pet_" .. info.species
 			model.Parent = plot
-			local title = (if size ~= "" then size .. " " else "")
-				.. (if mutation ~= "" then mutation .. " " else "")
+			local title = (if mutation ~= "" then mutation .. " " else "")
 				.. info.name
+				.. (if weight then " · " .. Format.weight(weight) else "")
 			nameTag(model, title, Items.color(itemId), height)
 			table.insert(home.pets, {
 				model = model,

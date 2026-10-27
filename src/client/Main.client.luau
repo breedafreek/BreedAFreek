@@ -239,7 +239,7 @@ local body = UI.new("ScrollingFrame", {
 
 local currentWindow = nil
 local renderers = {}
-local liveTimers = {} -- { { label, endsAt } } counting down on the Nests tab
+local liveTimers = {} -- { { label, egg } } counting down (and weighing) on the Nests tab
 
 local function clearBody()
 	table.clear(liveTimers)
@@ -552,6 +552,7 @@ local function placedCard(uid: string, title: string)
 		lines = {
 			{ title, nil, 22 },
 			{ LifeUtil.displayName(record), partColor(record):Lerp(Color3.new(1, 1, 1), 0.2), 20 },
+			{ LifeUtil.weightText(record), Items.weightColor(Items.weightFactor(record)), 18 },
 			{ Format.money(LifeUtil.itemIncome(record)) .. "/s", colors.money, 20 },
 		},
 		buttons = {
@@ -599,10 +600,13 @@ local function nestCards(grid: Instance)
 		else
 			local ready = egg.endsAt <= now
 			local zone = Items.ZONES[egg.zone]
+			local weight = Items.eggWeightAt(egg, now)
 			local timer = {
-				if ready then "🐣 READY!" else "⏱ " .. Format.time(egg.endsAt - now),
+				if ready
+					then "🐣 READY! · " .. Format.weight(weight)
+					else "⏱ " .. Format.time(egg.endsAt - now) .. " · " .. Format.weight(weight),
 				if ready then colors.money else colors.text,
-				22,
+				20,
 			}
 			card = UI.card({
 				egg = egg.zone,
@@ -612,11 +616,8 @@ local function nestCards(grid: Instance)
 				lines = {
 					{ "Nest " .. n, nil, 22 },
 					{
-						Items.KINDS[zone.kind].icon
-							.. " "
-							.. (if egg.size then egg.size .. " " else "")
-							.. Items.eggName(egg.zone),
-						Items.size(egg.size).color,
+						Items.KINDS[zone.kind].icon .. " " .. Items.eggName(egg.zone),
+						Items.weightColor(weight / (egg.baseWeight or weight)),
 						19,
 					},
 					timer,
@@ -632,7 +633,7 @@ local function nestCards(grid: Instance)
 				-- The third text line is the timer: count it down without re-rendering.
 				for _, label in card:GetDescendants() do
 					if label:IsA("TextLabel") and string.sub(label.Text, 1, 3) == "⏱" then
-						table.insert(liveTimers, { label = label, endsAt = egg.endsAt })
+						table.insert(liveTimers, { label = label, egg = egg })
 					end
 				end
 			end
@@ -755,7 +756,9 @@ function renderers.Bag()
 			lines = {
 				{ LifeUtil.displayName(record), nil, 22 },
 				{
-					kind.icon .. " " .. (info.slot or kind.name) .. " · " .. info.rarity,
+					kind.icon .. " " .. (info.slot or kind.name) .. " · " .. info.rarity .. (if record.weight
+						then " · " .. Format.weight(record.weight)
+						else ""),
 					partColor(record):Lerp(Color3.new(1, 1, 1), 0.2),
 					18,
 				},
@@ -1484,8 +1487,11 @@ task.spawn(function()
 			-- Nest timers in the open window.
 			for _, timer in liveTimers do
 				if timer.label.Parent then
-					local left = timer.endsAt - eggNow
-					timer.label.Text = if left > 0 then "⏱ " .. Format.time(left) else "🐣 READY!"
+					local left = timer.egg.endsAt - eggNow
+					local weight = Format.weight(Items.eggWeightAt(timer.egg, eggNow))
+					timer.label.Text = if left > 0
+						then "⏱ " .. Format.time(left) .. " · " .. weight
+						else "🐣 READY! · " .. weight
 				end
 			end
 			local level = state.treadmill or 1

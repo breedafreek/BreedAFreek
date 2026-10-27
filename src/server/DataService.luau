@@ -67,8 +67,12 @@ local function reconcile(data)
 			data.parts[uid] = nil
 		else
 			record.mutations = Mutations.pack(record.mutations)
-			if record.size ~= nil and (not Items.sizeById[record.size] or record.size == "Normal") then
-				record.size = nil
+			record.size = nil -- the old size tiers, replaced by weights
+			local function valid(n)
+				return type(n) == "number" and n > 0 and n < math.huge
+			end
+			if not valid(record.weight) or not valid(record.baseWeight) then
+				record.weight, record.baseWeight = nil, nil
 			end
 		end
 	end
