@@ -6,8 +6,10 @@
 -- what's inside is decided when it appears, and the egg is designed around it (EggModel).
 -- Rarer eggs lie deeper in, nearer the guardian. Each shows its rarity, what's inside, its
 -- weight and hatch time, sometimes with a mutation the hatched item keeps. Hold Grab on one
--- and run! The zone's guardian chases anyone carrying
--- an egg inside its zone. It runs at Items.guardianSpeed: a bit slower than a player who has
+-- and run! Each zone's guardian sleeps at the back of its zone until someone grabs one of
+-- its eggs; then it wakes and chases whoever is carrying an egg from its zone (only its own
+-- eggs: carrying another zone's egg past it is safe), and once nobody is, it walks home and
+-- goes back to sleep. It runs at Items.guardianSpeed: a bit slower than a player who has
 -- the zone's Speed, so if you trained enough you get away, and if you didn't it catches you,
 -- flings you toward town and you drop the egg.
 --
@@ -366,20 +368,30 @@ local function newGuardian(index: number)
 		yaw = -math.pi / 2, -- facing the entrance (+X)
 		target = nil,
 		cooldown = 0,
-		wanderAt = 0,
-		wanderTo = home,
 		speed = Items.guardianSpeed(index),
 		data = data,
 		moving = false,
+		awake = false, -- guardians sleep at home until someone steals one of their eggs
 	}
 end
 
--- Sends a guardian after a player right away (they just grabbed an egg).
+-- Wakes a zone's guardian and sends it after a player right away (they just grabbed one of
+-- its eggs).
 function ZoneService.alert(index: number, player: Player)
 	local zone = zones[index]
-	if zone and zone.guardian.cooldown <= os.clock() then
-		zone.guardian.target = player
+	if zone then
+		zone.guardian.awake = true
+		if zone.guardian.cooldown <= os.clock() then
+			zone.guardian.target = player
+		end
 	end
+end
+
+-- True if a player is carrying an egg that came from this guardian's zone (guardians only
+-- care about their own eggs: carrying another zone's egg through here is safe).
+local function carryingOurs(guardian, player: Player): boolean
+	local record = hooks.carrying(player)
+	return record ~= nil and record.egg == guardian.index
 end
 
 local function flatten(v: Vector3): Vector3
@@ -402,12 +414,12 @@ local function stepGuardian(guardian, dt: number)
 	local now = os.clock()
 	local target = guardian.target
 	local targetRoot = target and rootPart(target)
-	-- Give up on anyone who got away, isn't carrying anything, or left.
+	-- Give up on anyone who got away, isn't carrying one of our eggs any more, or left.
 	if
 		target
 		and (
 			not targetRoot
-			or not hooks.carrying(target)
+			or not carryingOurs(guardian, target)
 			or not ZoneLayout.inside(guardian.index, targetRoot.Position, LEASH)
 			or not target.Parent
 		)
@@ -415,12 +427,12 @@ local function stepGuardian(guardian, dt: number)
 		guardian.target = nil
 		target, targetRoot = nil, nil
 	end
-	-- Look for thieves in the zone.
-	if not target and guardian.cooldown <= now then
+	-- While awake, look for anyone in the zone carrying one of our eggs.
+	if not target and guardian.awake and guardian.cooldown <= now then
 		local best, bestDistance = nil, math.huge
 		for _, player in Players:GetPlayers() do
 			local root = rootPart(player)
-			if root and hooks.carrying(player) and ZoneLayout.inside(guardian.index, root.Position) then
+			if root and carryingOurs(guardian, player) and ZoneLayout.inside(guardian.index, root.Position) then
 				local distance = (flatten(root.Position) - guardian.position).Magnitude
 				if distance < bestDistance then
 					best, bestDistance = player, distance
@@ -438,23 +450,13 @@ local function stepGuardian(guardian, dt: number)
 		goal = flatten(targetRoot.Position)
 		speed = guardian.speed * Events.boost("guardianSpeed")
 	else
-		-- Patrol: mostly round its home at the back, now and then out across the zone.
-		if now >= guardian.wanderAt then
-			guardian.wanderAt = now + rng:NextNumber(3, 6)
-			if rng:NextNumber() < 0.6 then
-				local a = rng:NextNumber() * math.pi * 2
-				guardian.wanderTo = guardian.home
-					+ Vector3.new(math.cos(a), 0, math.sin(a)) * rng:NextNumber(0, ZoneLayout.RING)
-			else
-				guardian.wanderTo = ZoneLayout.point(
-					guardian.index,
-					rng:NextNumber(30, ZoneLayout.length(guardian.index) - 10),
-					rng:NextNumber(-ZoneLayout.WIDTH / 2 + 12, ZoneLayout.WIDTH / 2 - 12)
-				)
-			end
+		-- Nobody to chase: walk back home and, once there, go back to sleep.
+		goal = guardian.home
+		speed = guardian.speed * 0.6
+		if guardian.awake and (guardian.position - guardian.home).Magnitude < 1 and guardian.cooldown <= now then
+			guardian.awake = false
+			guardian.yaw = -math.pi / 2 -- curled up facing the entrance
 		end
-		goal = guardian.wanderTo
-		speed = guardian.speed * 0.45
 	end
 	local offset = goal - guardian.position
 	local distance = offset.Magnitude
@@ -476,6 +478,7 @@ local function publish(guardian)
 	data:SetAttribute("Yaw", math.floor(guardian.yaw * 100) / 100)
 	data:SetAttribute("Moving", guardian.moving)
 	data:SetAttribute("Chasing", guardian.target ~= nil)
+	data:SetAttribute("Sleeping", not guardian.awake)
 	data:SetAttribute("Speed", guardian.speed)
 end
 

@@ -76,8 +76,10 @@ rojo build -o StealALife.rbxlx    # or build a place file
   lie scattered on the ground all over each zone (rarer ones deeper in, near the guardian)
   and each is coloured by the item inside (`src/shared/EggModel.luau`): a plain egg covered
   in LEGO studs, in the item's colours, with a stud pattern for its kind. Its rarity, name ("Woofles Egg"), weight and hatch time float above it, and hatching
-  gives exactly that item. Hold **Grab** and run! The zone's giant Freek guardian chases
-  anyone carrying an egg; if your Speed meets the zone's requirement you can outrun it, if
+  gives exactly that item. Hold **Grab** and run! Each zone's giant Freek guardian sleeps at the back of its
+  zone (💤) until someone grabs one of its eggs; then it wakes and chases whoever carries an
+  egg from its zone (only its own eggs: carrying another zone's egg past it is safe), and
+  walks home to sleep again once nobody does; if your Speed meets the zone's requirement you can outrun it, if
   not it catches you, flings you toward town and you drop the egg. Guardians live on the
   server as plain data and every client animates its own copy (`src/client/GuardianFX.luau`).
 - **Carrying** (`src/server/StealService.luau`): you need a free nest to grab an egg. It

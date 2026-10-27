@@ -2,8 +2,9 @@
 -- target. The server keeps each guardian as plain data on ReplicatedStorage.Guardians
 -- (X, Z, Yaw, Moving, Chasing, Speed); this builds the model once, glides it toward the
 -- latest position every frame (so it moves smoothly between the server's updates) and
--- animates it walking or idling with FreekAnimator. A name tag shows over its head, red
--- and angry while it's chasing someone.
+-- animates it walking or idling with FreekAnimator. A name tag shows over its head: 💤 and
+-- drifting z's while it sleeps (it dozes, leaning forward and breathing slowly), red and
+-- angry while it's chasing someone.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -110,16 +111,29 @@ local function step(dt: number)
 		g.yaw += diff * math.min(1, dt * 10)
 		local ground = CFrame.new(g.position) * CFrame.Angles(0, g.yaw, 0)
 		local walking = data:GetAttribute("Moving") == true
+		local sleeping = data:GetAttribute("Sleeping") == true and not walking
+		if sleeping then
+			-- Dozing: leaning forward a little, breathing slowly.
+			ground *= CFrame.Angles(math.rad(-10 + math.sin(t * 1.2) * 2), 0, 0)
+		end
 		if g.rig then
-			FreekAnimator.pose(g.rig, ground, t * (if data:GetAttribute("Chasing") then 1.6 else 1), walking)
+			local pace = if data:GetAttribute("Chasing") then 1.6 elseif sleeping then 0.3 else 1
+			FreekAnimator.pose(g.rig, ground, t * pace, walking)
 		else
 			g.model:PivotTo(ground)
 		end
 		if g.label then
 			local chasing = data:GetAttribute("Chasing") == true
-			g.label.TextColor3 = if chasing then Color3.fromRGB(255, 80, 80) else Color3.new(1, 1, 1)
 			local title = string.upper(data:GetAttribute("Title") or "")
-			g.label.Text = if chasing then "😡 " .. title else title
+			if sleeping then
+				-- Drifting z's.
+				local zs = ({ "z", "zZ", "zZz" })[math.floor(t * 1.5) % 3 + 1]
+				g.label.TextColor3 = Color3.fromRGB(170, 200, 255)
+				g.label.Text = "💤 " .. title .. " " .. zs
+			else
+				g.label.TextColor3 = if chasing then Color3.fromRGB(255, 80, 80) else Color3.new(1, 1, 1)
+				g.label.Text = if chasing then "😡 " .. title else title
+			end
 		end
 	end
 end
