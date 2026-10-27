@@ -739,12 +739,80 @@ function PlotService.nestPosition(plot, n: number): Vector3
 	return plot.nests[n].spot.Position
 end
 
+-- Looks straight down at a few spots in every yard for anything covering the lawn (a
+-- place's own terrain or parts). Terrain is cleared; anything else is reported in Output
+-- and on the ReplicatedStorage attribute GroundProblems, so it can be tracked down.
+local GROUND_SPOTS = {
+	Vector3.new(22, 0, -16),
+	Vector3.new(0, 0, -30),
+	Vector3.new(-30, 0, -30),
+	Vector3.new(30, 0, -38),
+	Vector3.new(38, 0, -16),
+}
+local function checkGround()
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	local exclude = {}
+	for _, plot in plots do
+		table.insert(exclude, plot.folder)
+	end
+	for _, player in Players:GetPlayers() do
+		if player.Character then
+			table.insert(exclude, player.Character)
+		end
+	end
+	params.FilterDescendantsInstances = exclude
+	local problems = {}
+	for _, plot in plots do
+		for _, spot in GROUND_SPOTS do
+			local from = plot.origin:PointToWorldSpace(spot + Vector3.new(0, 80, 0))
+			local hit = Workspace:Raycast(from, Vector3.new(0, -100, 0), params)
+			if hit and hit.Position.Y > 0.5 then
+				if hit.Instance:IsA("Terrain") then
+					pcall(function()
+						Workspace.Terrain:FillBlock(
+							plot.origin * CFrame.new(0, 30, 0),
+							Vector3.new(PLOT_SIZE + 8, 84, PLOT_SIZE + 8),
+							Enum.Material.Air
+						)
+					end)
+					table.insert(problems, "terrain over yard " .. plot.index .. " (cleared)")
+				else
+					table.insert(
+						problems,
+						string.format(
+							"%s over yard %d at y=%.1f",
+							hit.Instance:GetFullName(),
+							plot.index,
+							hit.Position.Y
+						)
+					)
+				end
+				break
+			end
+		end
+	end
+	if #problems > 0 then
+		warn("[PlotService] Something covers the yards: " .. table.concat(problems, "; "))
+	end
+	ReplicatedStorage:SetAttribute("GroundProblems", if #problems > 0 then table.concat(problems, "; ") else nil)
+end
+
 function PlotService.init()
 	local plotsFolder = Instance.new("Folder")
 	plotsFolder.Name = "Plots"
 	plotsFolder.Parent = Workspace
 	for i = 1, Config.PLOT_COUNT do
 		clearPlot(buildPlot(i))
+	end
+	-- Once the rest of the map is built.
+	for _, delay in { 5, 20 } do
+		task.delay(delay, function()
+			local ok, err = pcall(checkGround)
+			if not ok then
+				warn("[PlotService] ground check failed: " .. tostring(err))
+			end
+		end)
 	end
 
 	Players.PlayerAdded:Connect(onPlayerAdded)

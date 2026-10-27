@@ -61,4 +61,4 @@ for _, name in SERVICES do
 	end
 end
 setStatus("Server started")
-print("[Steal a Life] Server started")
+print("[Steal a Life] Server started, build " .. require(ReplicatedStorage.Shared.Config).BUILD)

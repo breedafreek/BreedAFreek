@@ -100,6 +100,27 @@ Hud.zoneBanner(screen)
 Hud.carrying(screen)
 local toast = Hud.toasts(screen)
 
+-- Which build is running (and anything the server found covering the yards), small in
+-- the bottom-left corner.
+do
+	local label = UI.label("", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 8, 1, -4),
+		Size = UDim2.new(0.6, 0, 0, 18),
+		TextScaled = false,
+		TextSize = 14,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = Color3.fromRGB(220, 225, 255),
+		Parent = screen,
+	})
+	local function update()
+		local problems = ReplicatedStorage:GetAttribute("GroundProblems")
+		label.Text = "build " .. Config.BUILD .. (if problems then "  ·  ⚠ " .. problems else "")
+	end
+	ReplicatedStorage:GetAttributeChangedSignal("GroundProblems"):Connect(update)
+	update()
+end
+
 -- Windows: a light body under a header bar in the window's own colour, with a slanted
 -- title tab in the game's purple-to-pink sticking out over the top-left corner and a red
 -- square X (the clean simulator style of Pet Simulator and PLS DONATE).
