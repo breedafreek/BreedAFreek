@@ -1,6 +1,7 @@
 -- Where the zones are. They run in a line west from the end of the town street: zone 1
--- starts at START_X and each one is LENGTH studs long and WIDTH wide (centred on z = 0).
--- Each zone has a pile of part pedestals in a ring at its far end, round the guardian's
+-- starts at START_X and is LENGTH studs long; each zone after it is GROWTH studs longer
+-- than the last, so the deeper zones are longer runs. All are WIDTH wide (centred on z = 0).
+-- Each zone has a pile of egg pedestals in a ring near its far end, round the guardian's
 -- home. Shared so the server builds them and the client knows which zone you're in.
 
 local Items = require(script.Parent.Items)
@@ -8,16 +9,36 @@ local Items = require(script.Parent.Items)
 local ZoneLayout = {}
 
 ZoneLayout.START_X = -230 -- the east edge of zone 1 (the town street ends just before it)
-ZoneLayout.LENGTH = 130
-ZoneLayout.WIDTH = 110
+ZoneLayout.LENGTH = 130 -- zone 1's length
+ZoneLayout.GROWTH = 25 -- how much longer each zone is than the one before
+ZoneLayout.WIDTH = 140
 ZoneLayout.PEDESTALS = 6
 ZoneLayout.RING = 20 -- pedestal ring radius round the guardian's home
-ZoneLayout.HOME_U = 98 -- how far into the zone the guardian's home is
+ZoneLayout.HOME_BACK = 32 -- how far before a zone's back wall the guardian's home is
+
+-- How long zone `index` is.
+function ZoneLayout.length(index: number): number
+	return ZoneLayout.LENGTH + (index - 1) * ZoneLayout.GROWTH
+end
+
+-- How far into zone `index` (from its entrance) the guardian's home and the pile are.
+function ZoneLayout.homeU(index: number): number
+	return ZoneLayout.length(index) - ZoneLayout.HOME_BACK
+end
 
 -- A zone's east (entrance) and west (back) x.
 function ZoneLayout.edges(index: number): (number, number)
-	local east = ZoneLayout.START_X - (index - 1) * ZoneLayout.LENGTH
-	return east, east - ZoneLayout.LENGTH
+	local east = ZoneLayout.START_X
+	for i = 1, index - 1 do
+		east -= ZoneLayout.length(i)
+	end
+	return east, east - ZoneLayout.length(index)
+end
+
+-- The west end of the last zone (the end of the map).
+function ZoneLayout.westEnd(): number
+	local _, west = ZoneLayout.edges(#Items.ZONES)
+	return west
 end
 
 -- A point in a zone from (u = studs in from the entrance, v = z).
@@ -27,11 +48,11 @@ function ZoneLayout.point(index: number, u: number, v: number): Vector3
 end
 
 function ZoneLayout.center(index: number): Vector3
-	return ZoneLayout.point(index, ZoneLayout.LENGTH / 2, 0)
+	return ZoneLayout.point(index, ZoneLayout.length(index) / 2, 0)
 end
 
 function ZoneLayout.guardianHome(index: number): Vector3
-	return ZoneLayout.point(index, ZoneLayout.HOME_U, 0)
+	return ZoneLayout.point(index, ZoneLayout.homeU(index), 0)
 end
 
 -- The pedestals sit on the back half of a ring round the guardian's home, so you have to
@@ -40,7 +61,7 @@ function ZoneLayout.pedestal(index: number, n: number): Vector3
 	local a = math.rad(-90 + (n - 1) * 180 / (ZoneLayout.PEDESTALS - 1))
 	return ZoneLayout.point(
 		index,
-		ZoneLayout.HOME_U + math.cos(a) * ZoneLayout.RING,
+		ZoneLayout.homeU(index) + math.cos(a) * ZoneLayout.RING,
 		math.sin(a) * ZoneLayout.RING * 1.2
 	)
 end
@@ -50,12 +71,13 @@ function ZoneLayout.zoneAt(position: Vector3): number?
 	if math.abs(position.Z) > ZoneLayout.WIDTH / 2 + 2 then
 		return nil
 	end
-	local u = ZoneLayout.START_X - position.X
-	if u < 0 then
-		return nil
+	for index = 1, #Items.ZONES do
+		local east, west = ZoneLayout.edges(index)
+		if position.X <= east and position.X > west then
+			return index
+		end
 	end
-	local index = math.floor(u / ZoneLayout.LENGTH) + 1
-	return if index <= #Items.ZONES then index else nil
+	return nil
 end
 
 -- True if a position is inside zone `index` (plus `margin` studs all round).

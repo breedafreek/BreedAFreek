@@ -726,7 +726,8 @@ end
 function ZoneDecor.build(parent: Instance, index: number)
 	local theme = ZoneDecor.theme(index)
 	local east, west = ZoneLayout.edges(index)
-	local length, width = ZoneLayout.LENGTH, ZoneLayout.WIDTH
+	local length, width = ZoneLayout.length(index), ZoneLayout.WIDTH
+	local homeU = ZoneLayout.homeU(index)
 	local centerX = (east + west) / 2
 	local folder = Instance.new("Folder")
 	folder.Name = "Zone" .. index .. "_" .. Items.ZONES[index].name
@@ -751,8 +752,8 @@ function ZoneDecor.build(parent: Instance, index: number)
 	end
 	local path = block(
 		folder,
-		Vector3.new(ZoneLayout.HOME_U - 12, 0.2, 10),
-		CFrame.new(east - (ZoneLayout.HOME_U - 12) / 2, 0.12, 0),
+		Vector3.new(homeU - 12, 0.2, 10),
+		CFrame.new(east - (homeU - 12) / 2, 0.12, 0),
 		theme.path,
 		if index == 8 then M.Fabric else theme.groundMat
 	)
@@ -802,15 +803,16 @@ function ZoneDecor.build(parent: Instance, index: number)
 	end
 	buildArch(folder, index, theme)
 
-	-- Themed props, kept off the path and out of the pile.
+	-- Themed props, kept off the path and out of the pile (more in bigger zones).
 	local rng = Random.new(index * 7919)
 	local placed = 0
 	local tries = 0
-	while placed < 22 and tries < 200 do
+	local count = math.floor(22 * (length * width) / (130 * 110))
+	while placed < count and tries < count * 9 do
 		tries += 1
 		local u = rng:NextNumber(8, length - 6)
 		local v = rng:NextNumber(-width / 2 + 7, width / 2 - 7)
-		local nearPile = (Vector2.new(u, v) - Vector2.new(ZoneLayout.HOME_U, 0)).Magnitude < ZoneLayout.RING * 1.6
+		local nearPile = (Vector2.new(u, v) - Vector2.new(homeU, 0)).Magnitude < ZoneLayout.RING * 1.6
 		if math.abs(v) > 10 and not nearPile then
 			placed += 1
 			local cf = CFrame.new(east - u, 0, v) * CFrame.Angles(0, rng:NextNumber() * math.pi * 2, 0)

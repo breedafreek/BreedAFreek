@@ -64,7 +64,7 @@ local function setupTerrain()
 	-- and the zones have their own brick floors at y = 0; terrain is stored in 4-stud voxels,
 	-- so even grass meant to stop at y = 0 can bulge up through them and bury the yards.
 	-- Done in small chunks: one huge fill can fail outright.
-	local west = ZoneLayout.START_X - ZoneLayout.LENGTH * 10 - 100
+	local west = ZoneLayout.westEnd() - 100
 	local CHUNK = 256
 	local function fill(x0: number, x1: number, z0: number, z1: number, y0: number, y1: number, material)
 		for x = x0, x1 - 1, CHUNK do

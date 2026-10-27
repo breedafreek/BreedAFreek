@@ -68,7 +68,8 @@ rojo build -o StealALife.rbxlx    # or build a place file
   makes you run faster (`Parts.walkSpeed`). Upgrade the treadmill in the Shop. Rebirths and
   the 2x Speed pass multiply it.
 - **Zones** (`Items.ZONES`, `src/shared/ZoneLayout.luau`, `src/server/ZoneService.luau`,
-  `src/server/ZoneDecor.luau`): ten zones in a row west of the town, each growing one kind of
+  `src/server/ZoneDecor.luau`): ten zones in a row west of the town (140 studs wide; the
+  first is 130 long and each one after is 25 studs longer), each growing one kind of
   egg: Backyard Garden (plants), Junkyard (house), Pine Woods (pets), Toy Town (yard), Sunny
   Desert (plants), Candy Land (house), Frosty Peaks (pets), Royal Kingdom (yard), Crystal
   Caves (house), Sky Islands (pets). Deeper zones need more Speed and grow rarer eggs. Each
