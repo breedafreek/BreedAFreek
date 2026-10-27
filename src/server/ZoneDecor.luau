@@ -623,15 +623,20 @@ function ZoneDecor.build(parent: Instance, index: number)
 	for _, side in { -1, 1 } do
 		local z = side * (width / 2 + 3)
 		block(folder, Vector3.new(length, 22, 6), CFrame.new(centerX, 11, z), theme.cliff, theme.cliffMat, true)
-		-- Lumpy tops.
-		for i = 0, 7 do
-			local x = east - (i + 0.5) * length / 8
-			ball(
+		-- Brick-stack tops: blocks of different heights, like a wall of LEGO bricks.
+		local brickRng = Random.new(index * 31 + side)
+		for i = 0, 15 do
+			local x = east - (i + 0.5) * length / 16
+			local height = brickRng:NextInteger(2, 6) * 1.2
+			local color =
+				theme.cliff:Lerp(Color3.new(1, 1, 1), if index == 5 or index == 10 then 0.4 else (i % 3) * 0.06)
+			block(
 				folder,
-				Vector3.new(length / 7, 8, 9),
-				CFrame.new(x, 22, z),
-				theme.cliff:Lerp(rgb(255, 255, 255), if index == 5 or index == 10 then 0.5 else 0.08),
-				theme.cliffMat
+				Vector3.new(length / 16, height, 7),
+				CFrame.new(x, 22 + height / 2, z),
+				color,
+				theme.cliffMat,
+				true
 			)
 		end
 		if index == 8 then

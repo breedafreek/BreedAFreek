@@ -9,6 +9,7 @@
 -- HouseModel.item(partId) builds one part on its own at carrying size (about 5 studs), for
 -- the zone piles, carrying over your head and the UI pictures.
 
+local Lego = require(script.Parent.Lego)
 local Parts = require(script.Parent.Parts)
 
 local HouseModel = {}
@@ -333,6 +334,40 @@ function builders.Walls(model, cf: CFrame, look, size)
 	block(model, Vector3.new(w + t, t * 0.8, t), cf * CFrame.new(0, base + h - t * 0.4, 0), look.trim, trimMat)
 	block(model, Vector3.new(w + t, t * 0.8, t), cf * CFrame.new(0, base + h - t * 0.4, d), look.trim, trimMat)
 	local front = -0.08 -- just in front of the front face
+
+	-- LEGO bricks: seams between the courses and staggered joints, on the front and sides.
+	if Lego.ENABLED and not look.logs and not look.stripes and not look.rainbow and look.wallMat ~= M.Glass then
+		local seam = look.wall:Lerp(rgb(0, 0, 0), 0.22)
+		local course = math.max(0.6, math.min(1.2, h / 4))
+		local brick = course * 3.2
+		local rows = math.floor(h / course)
+		local faces = {
+			{ cf * CFrame.new(0, 0, -0.03), w }, -- front
+			{ cf * CFrame.new(w / 2 + 0.03, 0, d / 2) * CFrame.Angles(0, -math.pi / 2, 0), d }, -- right side
+			{ cf * CFrame.new(-w / 2 - 0.03, 0, d / 2) * CFrame.Angles(0, math.pi / 2, 0), d }, -- left side
+		}
+		for _, face in faces do
+			local faceCf, width = face[1], face[2]
+			for row = 1, rows - 1 do
+				block(model, Vector3.new(width, 0.1, 0.06), faceCf * CFrame.new(0, base + row * course, 0), seam).Name =
+					"Seam"
+			end
+			for row = 0, rows - 1 do
+				local shift = if row % 2 == 0 then 0 else brick / 2
+				local x = -width / 2 + shift + brick
+				while x < width / 2 - 0.2 do
+					block(
+						model,
+						Vector3.new(0.1, course, 0.06),
+						faceCf * CFrame.new(x, base + (row + 0.5) * course, 0),
+						seam
+					).Name =
+						"Seam"
+					x += brick
+				end
+			end
+		end
+	end
 
 	if look.logs then
 		-- Logs stacked up the front with their round ends poking out at the corners.

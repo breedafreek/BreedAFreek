@@ -5,6 +5,7 @@ local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
+local Lego = require(ReplicatedStorage.Shared.Lego)
 local ZoneLayout = require(ReplicatedStorage.Shared.ZoneLayout)
 
 local Decor = require(script.Parent.Decor)
@@ -103,6 +104,15 @@ local function buildScenery()
 	local folder = Instance.new("Folder")
 	folder.Name = "Scenery"
 	folder.Parent = Workspace
+
+	-- A big green baseplate under the whole town, studs and all.
+	Decor.part({
+		Name = "Baseplate",
+		Size = Vector3.new(STREET_EAST - STREET_WEST + 20, 1, TOWN_HALF * 2 + 4),
+		CFrame = CFrame.new((STREET_EAST + STREET_WEST) / 2, -0.48, 0),
+		Color = Color3.fromRGB(75, 151, 75),
+		Parent = folder,
+	})
 
 	-- The street: a road with a dashed line, sidewalks with curbs, lamps.
 	local length = STREET_EAST - STREET_WEST
@@ -244,6 +254,8 @@ local function buildScenery()
 end
 
 function Environment.init()
+	-- Everything built from here on gets the LEGO look (Environment starts first).
+	Lego.watch(Workspace)
 	setupLighting()
 	setupTerrain()
 	buildScenery()

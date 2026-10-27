@@ -7,6 +7,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local HouseModel = require(ReplicatedStorage.Shared.HouseModel)
+local Lego = require(ReplicatedStorage.Shared.Lego)
 local WeaponModel = require(ReplicatedStorage.Shared.WeaponModel)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 
@@ -605,6 +606,7 @@ function ItemPictures.icon(key: string): (ViewportFrame, (number) -> ())
 
 	local model = Instance.new("Model")
 	BUILDERS[key](model)
+	Lego.apply(model)
 	model.Parent = frame
 
 	local lo, hi = visibleBounds(model)
@@ -636,6 +638,7 @@ function ItemPictures.part(partId: string, height: number?, silhouette: boolean?
 	frame.LightDirection = Vector3.new(-1, -1.4, 1)
 	frame.ImageColor3 = if silhouette then Color3.new(0, 0, 0) else Color3.new(1, 1, 1)
 	local model = HouseModel.item(partId)
+	Lego.apply(model)
 	model.Parent = frame
 	local lo, hi = visibleBounds(model)
 	local center = (lo + hi) / 2
@@ -669,6 +672,7 @@ function ItemPictures.view(key: string, height: number?): ViewportFrame
 	elseif BUILDERS[key] then
 		BUILDERS[key](model)
 	end
+	Lego.apply(model)
 	model.Parent = frame
 
 	local lo, hi = visibleBounds(model)

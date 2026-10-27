@@ -4633,6 +4633,7 @@ return GamePasses
 -- HouseModel.item(partId) builds one part on its own at carrying size (about 5 studs), for
 -- the zone piles, carrying over your head and the UI pictures.
 
+local Lego = require(script.Parent.Lego)
 local Parts = require(script.Parent.Parts)
 
 local HouseModel = {}
@@ -4957,6 +4958,40 @@ function builders.Walls(model, cf: CFrame, look, size)
 	block(model, Vector3.new(w + t, t * 0.8, t), cf * CFrame.new(0, base + h - t * 0.4, 0), look.trim, trimMat)
 	block(model, Vector3.new(w + t, t * 0.8, t), cf * CFrame.new(0, base + h - t * 0.4, d), look.trim, trimMat)
 	local front = -0.08 -- just in front of the front face
+
+	-- LEGO bricks: seams between the courses and staggered joints, on the front and sides.
+	if Lego.ENABLED and not look.logs and not look.stripes and not look.rainbow and look.wallMat ~= M.Glass then
+		local seam = look.wall:Lerp(rgb(0, 0, 0), 0.22)
+		local course = math.max(0.6, math.min(1.2, h / 4))
+		local brick = course * 3.2
+		local rows = math.floor(h / course)
+		local faces = {
+			{ cf * CFrame.new(0, 0, -0.03), w }, -- front
+			{ cf * CFrame.new(w / 2 + 0.03, 0, d / 2) * CFrame.Angles(0, -math.pi / 2, 0), d }, -- right side
+			{ cf * CFrame.new(-w / 2 - 0.03, 0, d / 2) * CFrame.Angles(0, math.pi / 2, 0), d }, -- left side
+		}
+		for _, face in faces do
+			local faceCf, width = face[1], face[2]
+			for row = 1, rows - 1 do
+				block(model, Vector3.new(width, 0.1, 0.06), faceCf * CFrame.new(0, base + row * course, 0), seam).Name =
+					"Seam"
+			end
+			for row = 0, rows - 1 do
+				local shift = if row % 2 == 0 then 0 else brick / 2
+				local x = -width / 2 + shift + brick
+				while x < width / 2 - 0.2 do
+					block(
+						model,
+						Vector3.new(0.1, course, 0.06),
+						faceCf * CFrame.new(x, base + (row + 0.5) * course, 0),
+						seam
+					).Name =
+						"Seam"
+					x += brick
+				end
+			end
+		end
+	end
 
 	if look.logs then
 		-- Logs stacked up the front with their round ends poking out at the corners.
@@ -6522,6 +6557,120 @@ return Hybrids
       </Item>
       <Item class="ModuleScript" referent="16">
         <Properties>
+          <string name="Name">Lego</string>
+          <string name="Source"><![CDATA[-- The LEGO look: everything is shiny plastic with studs on top (and inlets underneath),
+-- like the classic Roblox bricks. Glowing (Neon), see-through (Glass), gold (Foil) and the
+-- gate's force field keep their look, like the special pieces in a real set. Flat things
+-- you walk or drive on (roads, sidewalks, paths, the treadmill belt) stay smooth, like
+-- LEGO tiles.
+--
+-- The server applies it to everything in the Workspace as it's built (Lego.watch), and the
+-- client to models it builds itself (guardians, pictures). Set ENABLED = false to go back to
+-- the smooth cartoon look.
+
+local Lego = {}
+
+Lego.ENABLED = true
+
+-- Materials that stay as they are.
+local KEEP = {
+	[Enum.Material.Neon] = true,
+	[Enum.Material.Glass] = true,
+	[Enum.Material.Foil] = true,
+	[Enum.Material.ForceField] = true,
+}
+
+-- Ice becomes clear "trans" plastic.
+local TRANSLUCENT = {
+	[Enum.Material.Ice] = 0.25,
+}
+
+-- Parts with these names stay smooth on top (tiles).
+local SMOOTH = {
+	Road = true,
+	RoadLine = true,
+	Sidewalk = true,
+	Curb = true,
+	PathStone = true,
+	Belt = true,
+	Screen = true,
+	TroughWater = true,
+	Seam = true,
+}
+
+local function isAvatar(part: BasePart): boolean
+	-- Players' own bodies are left alone (but what they carry isn't).
+	local model = part:FindFirstAncestorOfClass("Model")
+	while model do
+		if model.Name == "CarriedPart" then
+			return false
+		end
+		if model:FindFirstChildOfClass("Humanoid") then
+			return true
+		end
+		model = model:FindFirstAncestorOfClass("Model")
+	end
+	return false
+end
+
+function Lego.part(part: BasePart)
+	if not Lego.ENABLED or part.Transparency >= 1 or part:IsA("Terrain") then
+		return
+	end
+	if KEEP[part.Material] then
+		return
+	end
+	local clear = TRANSLUCENT[part.Material]
+	part.Material = Enum.Material.Plastic
+	if clear then
+		part.Transparency = math.max(part.Transparency, clear)
+	end
+	local isBlock = part:IsA("Part") and part.Shape == Enum.PartType.Block or part:IsA("SpawnLocation")
+	if isBlock and not SMOOTH[part.Name] and not part:FindFirstChildOfClass("SpecialMesh") then
+		part.TopSurface = Enum.SurfaceType.Studs
+		part.BottomSurface = Enum.SurfaceType.Inlet
+	end
+end
+
+-- Applies the look to everything under `root`.
+function Lego.apply(root: Instance)
+	if not Lego.ENABLED then
+		return
+	end
+	if root:IsA("BasePart") then
+		Lego.part(root)
+	end
+	for _, descendant in root:GetDescendants() do
+		if descendant:IsA("BasePart") and not isAvatar(descendant) then
+			Lego.part(descendant)
+		end
+	end
+end
+
+-- Applies the look to everything under `root` now and to anything added later.
+function Lego.watch(root: Instance)
+	if not Lego.ENABLED then
+		return
+	end
+	Lego.apply(root)
+	root.DescendantAdded:Connect(function(descendant)
+		if descendant:IsA("BasePart") then
+			-- Next frame: let whoever built it finish setting its material first.
+			task.defer(function()
+				if descendant.Parent and not isAvatar(descendant) then
+					Lego.part(descendant)
+				end
+			end)
+		end
+	end)
+end
+
+return Lego
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="17">
+        <Properties>
           <string name="Name">Luck</string>
           <string name="Source"><![CDATA[-- Luck: Mystery Boxes, the daily Lucky Wheel and Lucky Hour events. Shared so the client
 -- can show every chance on screen (players always see the odds before buying), while the
@@ -6725,7 +6874,7 @@ return Luck
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">Mutations</string>
           <string name="Source"><![CDATA[-- Mutations multiply a house part's income. Parts grow with them in the zone piles (chance
@@ -6791,7 +6940,7 @@ return Mutations
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">Parts</string>
           <string name="Source"><![CDATA[-- House parts: what players steal from the zones and snap onto their house.
@@ -6928,7 +7077,7 @@ return Parts
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
@@ -6957,7 +7106,7 @@ return Rarities
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">Remotes</string>
           <string name="Source"><![CDATA[-- One place that names every remote. The server creates them; clients wait for them.
@@ -7018,7 +7167,7 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">Seasons</string>
           <string name="Source"><![CDATA[-- Limited events for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred
@@ -7155,7 +7304,7 @@ return Seasons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="22">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">WeaponModel</string>
           <string name="Source"><![CDATA[-- Builds the Tool for a weapon from its part list in Weapons.luau.
@@ -7241,7 +7390,7 @@ return WeaponModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="24">
         <Properties>
           <string name="Name">Weapons</string>
           <string name="Source"><![CDATA[-- Weapons. Everyone has the STARTER weapon; the rest unlock at a number of rebirths
@@ -7530,7 +7679,7 @@ return Weapons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="25">
         <Properties>
           <string name="Name">ZoneLayout</string>
           <string name="Source"><![CDATA[-- Where the zones are. They run in a line west from the end of the town street: zone 1
@@ -7606,15 +7755,15 @@ return ZoneLayout
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="25">
+  <Item class="ServerScriptService" referent="26">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="26">
+    <Item class="Folder" referent="27">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -7847,7 +7996,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">AdminService</string>
           <string name="Source"><![CDATA[-- The admin panel's server side. Only admins (Config.ADMIN_NAMES / ADMIN_USER_IDS, or
@@ -7991,7 +8140,7 @@ return AdminService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">Carried</string>
           <string name="Source"><![CDATA[-- Which house parts are being carried off by a thief right now. Kept in memory only: if the
@@ -8031,7 +8180,7 @@ return Carried
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -8301,7 +8450,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="31">
+      <Item class="ModuleScript" referent="32">
         <Properties>
           <string name="Name">Decor</string>
           <string name="Source"><![CDATA[-- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
@@ -8339,36 +8488,40 @@ local LEAF_COLORS = {
 	Color3.fromRGB(60, 140, 75),
 }
 
--- A round cartoon tree. scale 1 is about 14 studs tall.
+-- A LEGO-style tree: a square brick trunk and stacked layers of leaf bricks, each smaller
+-- than the one below, with studs on every layer. scale 1 is about 14 studs tall.
 function Decor.tree(parent: Instance, ground: CFrame, scale: number?, seed: number?)
 	local s = scale or 1
 	local rng = Random.new(seed or 1)
+	local turn = ground * CFrame.Angles(0, rng:NextNumber() * math.pi / 2, 0)
 	part({
 		Name = "Trunk",
-		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(7 * s, 1.6 * s, 1.6 * s),
-		CFrame = ground * CFrame.new(0, 3.5 * s, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		Size = Vector3.new(2 * s, 7 * s, 2 * s),
+		CFrame = turn * CFrame.new(0, 3.5 * s, 0),
 		Color = Color3.fromRGB(120, 85, 55),
 		Material = Enum.Material.Wood,
 		Parent = parent,
 	})
-	for i = 1, 3 do
-		local size = (5.5 + rng:NextNumber() * 2) * s
-		local offset =
-			Vector3.new((rng:NextNumber() - 0.5) * 3 * s, (7.5 + i * 1.6) * s, (rng:NextNumber() - 0.5) * 3 * s)
+	local color = LEAF_COLORS[rng:NextInteger(1, #LEAF_COLORS)]
+	local layers = { { 9, 2.2 }, { 7, 2 }, { 5, 1.8 }, { 3, 1.6 } }
+	local y = 6 * s
+	for i, layer in layers do
+		local width, height = layer[1] * s, layer[2] * s
 		Decor.tag(
 			part({
 				Name = "Leaves",
-				Shape = Enum.PartType.Ball,
-				Size = Vector3.one * size,
-				CFrame = ground * CFrame.new(offset),
-				Color = LEAF_COLORS[rng:NextInteger(1, #LEAF_COLORS)],
+				Size = Vector3.new(width, height, width),
+				CFrame = turn
+					* CFrame.new(0, y + height / 2, 0)
+					* CFrame.Angles(0, if i % 2 == 0 then math.rad(45) else 0, 0),
+				Color = color:Lerp(Color3.fromRGB(150, 220, 110), (i - 1) * 0.08),
 				Material = Enum.Material.Grass,
 				CanCollide = false,
 				Parent = parent,
 			}),
 			Decor.TAGS.leaves
 		)
+		y += height
 	end
 end
 
@@ -8679,7 +8832,7 @@ return Decor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="32">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Catalog: the first player in the whole game to get each rare house part (Legendary
@@ -8834,7 +8987,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the parts on their house, plus offline earnings
@@ -8922,7 +9075,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">Environment</string>
           <string name="Source"><![CDATA[-- Lighting, sky, terrain and the town: the street between the two rows of homes, the
@@ -8932,6 +9085,7 @@ local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
+local Lego = require(ReplicatedStorage.Shared.Lego)
 local ZoneLayout = require(ReplicatedStorage.Shared.ZoneLayout)
 
 local Decor = require(script.Parent.Decor)
@@ -9030,6 +9184,15 @@ local function buildScenery()
 	local folder = Instance.new("Folder")
 	folder.Name = "Scenery"
 	folder.Parent = Workspace
+
+	-- A big green baseplate under the whole town, studs and all.
+	Decor.part({
+		Name = "Baseplate",
+		Size = Vector3.new(STREET_EAST - STREET_WEST + 20, 1, TOWN_HALF * 2 + 4),
+		CFrame = CFrame.new((STREET_EAST + STREET_WEST) / 2, -0.48, 0),
+		Color = Color3.fromRGB(75, 151, 75),
+		Parent = folder,
+	})
 
 	-- The street: a road with a dashed line, sidewalks with curbs, lamps.
 	local length = STREET_EAST - STREET_WEST
@@ -9171,6 +9334,8 @@ local function buildScenery()
 end
 
 function Environment.init()
+	-- Everything built from here on gets the LEGO look (Environment starts first).
+	Lego.watch(Workspace)
 	setupLighting()
 	setupTerrain()
 	buildScenery()
@@ -9180,7 +9345,7 @@ return Environment
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">EventService</string>
           <string name="Source"><![CDATA[-- Runs the scheduled events (see shared/Events.luau) and the ones the admin starts.
@@ -9419,7 +9584,7 @@ return EventService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">HalloweenDecor</string>
           <string name="Source"><![CDATA[-- Halloween props: ghosts, bats, cobwebs, tombstones, dead trees, a witch's cauldron,
@@ -9879,7 +10044,7 @@ return HalloweenDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">LuckService</string>
           <string name="Source"><![CDATA[-- Mystery Boxes, the daily Lucky Wheel and Lucky Hour events (rules and odds in
@@ -10388,7 +10553,7 @@ return LuckService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="38">
+      <Item class="Script" referent="39">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -10459,7 +10624,7 @@ print("[Steal a Home] Server started")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -10532,7 +10697,7 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the town and gives every player a home: a yard with a fence, a gate, a treadmill
@@ -11237,7 +11402,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">RebirthService</string>
           <string name="Source"><![CDATA[-- Rebirth: pay Config.rebirthCost to start over with a permanent income bonus.
@@ -11317,7 +11482,7 @@ return RebirthService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -11582,7 +11747,7 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">SpeedService</string>
           <string name="Source"><![CDATA[-- Speed: trained on your treadmill, it decides how fast you run (Parts.walkSpeed), which
@@ -11666,7 +11831,7 @@ return SpeedService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="44">
+      <Item class="ModuleScript" referent="45">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Carrying house parts home: from the zone piles, or pried off other players' houses.
@@ -12138,7 +12303,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="45">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- Weapons: giving them out, buying them, and what happens when they hit.
@@ -12465,7 +12630,7 @@ return WeaponService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="46">
+      <Item class="ModuleScript" referent="47">
         <Properties>
           <string name="Name">ZoneDecor</string>
           <string name="Source"><![CDATA[-- The scenery of each zone: its ground, the cliffs along its sides, the entrance arch with
@@ -13093,15 +13258,20 @@ function ZoneDecor.build(parent: Instance, index: number)
 	for _, side in { -1, 1 } do
 		local z = side * (width / 2 + 3)
 		block(folder, Vector3.new(length, 22, 6), CFrame.new(centerX, 11, z), theme.cliff, theme.cliffMat, true)
-		-- Lumpy tops.
-		for i = 0, 7 do
-			local x = east - (i + 0.5) * length / 8
-			ball(
+		-- Brick-stack tops: blocks of different heights, like a wall of LEGO bricks.
+		local brickRng = Random.new(index * 31 + side)
+		for i = 0, 15 do
+			local x = east - (i + 0.5) * length / 16
+			local height = brickRng:NextInteger(2, 6) * 1.2
+			local color =
+				theme.cliff:Lerp(Color3.new(1, 1, 1), if index == 5 or index == 10 then 0.4 else (i % 3) * 0.06)
+			block(
 				folder,
-				Vector3.new(length / 7, 8, 9),
-				CFrame.new(x, 22, z),
-				theme.cliff:Lerp(rgb(255, 255, 255), if index == 5 or index == 10 then 0.5 else 0.08),
-				theme.cliffMat
+				Vector3.new(length / 16, height, 7),
+				CFrame.new(x, 22 + height / 2, z),
+				color,
+				theme.cliffMat,
+				true
 			)
 		end
 		if index == 8 then
@@ -13144,7 +13314,7 @@ return ZoneDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="47">
+      <Item class="ModuleScript" referent="48">
         <Properties>
           <string name="Name">ZoneService</string>
           <string name="Source"><![CDATA[-- The zones: piles of house parts to steal, each guarded by a giant Freek.
@@ -13622,19 +13792,19 @@ return ZoneService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="48">
+  <Item class="StarterPlayer" referent="49">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="49">
+    <Item class="StarterPlayerScripts" referent="50">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="50">
+      <Item class="Folder" referent="51">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="51">
+        <Item class="ModuleScript" referent="52">
           <Properties>
             <string name="Name">AdminPanel</string>
             <string name="Source"><![CDATA[-- The admin panel (only for admins: the server sets IsAdmin and checks every command).
@@ -14032,7 +14202,7 @@ return AdminPanel
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="52">
+        <Item class="ModuleScript" referent="53">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -14106,7 +14276,7 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="53">
+        <Item class="ModuleScript" referent="54">
           <Properties>
             <string name="Name">EventFX</string>
             <string name="Source"><![CDATA[-- What big events and weather look like (see Events.luau), on each player's own screen:
@@ -14198,7 +14368,7 @@ return EventFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="54">
+        <Item class="ModuleScript" referent="55">
           <Properties>
             <string name="Name">GuardianFX</string>
             <string name="Source"><![CDATA[-- The zone guardians, drawn on this client: a giant Freek per zone that walks after its
@@ -14214,6 +14384,7 @@ local Workspace = game:GetService("Workspace")
 
 local FreekAnimator = require(ReplicatedStorage.Shared.FreekAnimator)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
+local Lego = require(ReplicatedStorage.Shared.Lego)
 
 local GuardianFX = {}
 
@@ -14234,6 +14405,7 @@ local function giant(species: string): (Model, number)
 			p.CanQuery = false
 		end
 	end
+	Lego.apply(model)
 	return model, height * SCALE
 end
 
@@ -14341,7 +14513,7 @@ return GuardianFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="55">
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on-screen parts of the UI: money, Speed, event chip, menu buttons, leaderboard,
@@ -15680,7 +15852,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="56">
+        <Item class="ModuleScript" referent="57">
           <Properties>
             <string name="Name">ItemPictures</string>
             <string name="Source"><![CDATA[-- 3D pictures for shop items (the treadmill, weapons, game passes), house parts and the
@@ -15692,6 +15864,7 @@ return Hud
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local HouseModel = require(ReplicatedStorage.Shared.HouseModel)
+local Lego = require(ReplicatedStorage.Shared.Lego)
 local WeaponModel = require(ReplicatedStorage.Shared.WeaponModel)
 local Weapons = require(ReplicatedStorage.Shared.Weapons)
 
@@ -16290,6 +16463,7 @@ function ItemPictures.icon(key: string): (ViewportFrame, (number) -> ())
 
 	local model = Instance.new("Model")
 	BUILDERS[key](model)
+	Lego.apply(model)
 	model.Parent = frame
 
 	local lo, hi = visibleBounds(model)
@@ -16321,6 +16495,7 @@ function ItemPictures.part(partId: string, height: number?, silhouette: boolean?
 	frame.LightDirection = Vector3.new(-1, -1.4, 1)
 	frame.ImageColor3 = if silhouette then Color3.new(0, 0, 0) else Color3.new(1, 1, 1)
 	local model = HouseModel.item(partId)
+	Lego.apply(model)
 	model.Parent = frame
 	local lo, hi = visibleBounds(model)
 	local center = (lo + hi) / 2
@@ -16354,6 +16529,7 @@ function ItemPictures.view(key: string, height: number?): ViewportFrame
 	elseif BUILDERS[key] then
 		BUILDERS[key](model)
 	end
+	Lego.apply(model)
 	model.Parent = frame
 
 	local lo, hi = visibleBounds(model)
@@ -16378,7 +16554,7 @@ return ItemPictures
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="57">
+        <Item class="ModuleScript" referent="58">
           <Properties>
             <string name="Name">LuckyWheel</string>
             <string name="Source"><![CDATA[-- The Lucky Wheel, drawn like the prize wheels in the big simulators: bright pie slices
@@ -16674,7 +16850,7 @@ return LuckyWheel
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="58">
+        <Item class="LocalScript" referent="59">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's screen: money and Speed, the side menu, and the Shop / Luck / House / Bag /
@@ -18122,7 +18298,7 @@ render()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="59">
+        <Item class="ModuleScript" referent="60">
           <Properties>
             <string name="Name">PackReveal</string>
             <string name="Source"><![CDATA[-- Mystery Box opening, done like a card-pack reveal in the big sports games, in 3D.
@@ -18141,6 +18317,7 @@ local Workspace = game:GetService("Workspace")
 local BoxModel = require(ReplicatedStorage.Shared.BoxModel)
 local HouseModel = require(ReplicatedStorage.Shared.HouseModel)
 local HouseUtil = require(ReplicatedStorage.Shared.HouseUtil)
+local Lego = require(ReplicatedStorage.Shared.Lego)
 local Luck = require(ReplicatedStorage.Shared.Luck)
 local Parts = require(ReplicatedStorage.Shared.Parts)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
@@ -18932,6 +19109,7 @@ function PackReveal.play(result, done: () -> ())
 	flash(Color3.new(0, 0, 0), 0.5)
 	moveCamera(Vector3.new(0, 7, -24), Vector3.new(0, 4, 0))
 	local egg = BoxModel.build(result.crate)
+	Lego.apply(egg)
 	egg.Parent = stage
 	local eggRest = at(0, PEDESTAL_TOP, 0) * CFrame.Angles(0, math.pi, 0)
 	animate(0.8, function(a)
@@ -19343,6 +19521,7 @@ function PackReveal.play(result, done: () -> ())
 
 	-- The card lifts up and back; the part pops out onto the pedestal.
 	local freek = HouseModel.item(result.part.id)
+	Lego.apply(freek)
 	pcall(freek.ScaleTo, freek, 1.3)
 	for _, p in freek:GetDescendants() do
 		if p:IsA("BasePart") then
@@ -19471,7 +19650,7 @@ return PackReveal
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="60">
+        <Item class="ModuleScript" referent="61">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).
@@ -19484,6 +19663,7 @@ return PackReveal
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local BoxModel = require(ReplicatedStorage.Shared.BoxModel)
+local Lego = require(ReplicatedStorage.Shared.Lego)
 local Parts = require(ReplicatedStorage.Shared.Parts)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local ItemPictures = require(script.Parent.ItemPictures)
@@ -19680,6 +19860,7 @@ function UI.boxViewport(crateId: string, size: number?)
 		LightDirection = Vector3.new(-1, -1, 1),
 	})
 	local model, height = BoxModel.build(crateId)
+	Lego.apply(model)
 	model:PivotTo(CFrame.new())
 	model.Parent = frame
 	local camera = Instance.new("Camera")

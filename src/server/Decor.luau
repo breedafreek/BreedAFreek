@@ -33,36 +33,40 @@ local LEAF_COLORS = {
 	Color3.fromRGB(60, 140, 75),
 }
 
--- A round cartoon tree. scale 1 is about 14 studs tall.
+-- A LEGO-style tree: a square brick trunk and stacked layers of leaf bricks, each smaller
+-- than the one below, with studs on every layer. scale 1 is about 14 studs tall.
 function Decor.tree(parent: Instance, ground: CFrame, scale: number?, seed: number?)
 	local s = scale or 1
 	local rng = Random.new(seed or 1)
+	local turn = ground * CFrame.Angles(0, rng:NextNumber() * math.pi / 2, 0)
 	part({
 		Name = "Trunk",
-		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(7 * s, 1.6 * s, 1.6 * s),
-		CFrame = ground * CFrame.new(0, 3.5 * s, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		Size = Vector3.new(2 * s, 7 * s, 2 * s),
+		CFrame = turn * CFrame.new(0, 3.5 * s, 0),
 		Color = Color3.fromRGB(120, 85, 55),
 		Material = Enum.Material.Wood,
 		Parent = parent,
 	})
-	for i = 1, 3 do
-		local size = (5.5 + rng:NextNumber() * 2) * s
-		local offset =
-			Vector3.new((rng:NextNumber() - 0.5) * 3 * s, (7.5 + i * 1.6) * s, (rng:NextNumber() - 0.5) * 3 * s)
+	local color = LEAF_COLORS[rng:NextInteger(1, #LEAF_COLORS)]
+	local layers = { { 9, 2.2 }, { 7, 2 }, { 5, 1.8 }, { 3, 1.6 } }
+	local y = 6 * s
+	for i, layer in layers do
+		local width, height = layer[1] * s, layer[2] * s
 		Decor.tag(
 			part({
 				Name = "Leaves",
-				Shape = Enum.PartType.Ball,
-				Size = Vector3.one * size,
-				CFrame = ground * CFrame.new(offset),
-				Color = LEAF_COLORS[rng:NextInteger(1, #LEAF_COLORS)],
+				Size = Vector3.new(width, height, width),
+				CFrame = turn
+					* CFrame.new(0, y + height / 2, 0)
+					* CFrame.Angles(0, if i % 2 == 0 then math.rad(45) else 0, 0),
+				Color = color:Lerp(Color3.fromRGB(150, 220, 110), (i - 1) * 0.08),
 				Material = Enum.Material.Grass,
 				CanCollide = false,
 				Parent = parent,
 			}),
 			Decor.TAGS.leaves
 		)
+		y += height
 	end
 end
 

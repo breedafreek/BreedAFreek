@@ -34,6 +34,11 @@ match it.
   rarities use `Rarities.info[r].color`.
 
 **World:**
+- The LEGO look (`src/shared/Lego.luau`): everything is shiny Plastic with studs on top
+  and inlets underneath, on a studded green baseplate. Neon, Glass, Foil and ForceField
+  keep their look; roads, sidewalks and paths are smooth "tiles" (the SMOOTH list). House
+  walls get brick seams; trees and cliff tops are stacked bricks. Build new things as
+  bricks (blocks) where you can, so they get studs.
 - Floating text (zone piles, gates, signs): Luckiest Guy / Fredoka One with a thick dark
   `UIStroke`. Parts on pedestals show rarity, name and $/s.
 - Models are built from simple parts (balls, blocks, cylinders, wedges) with bold, flat,

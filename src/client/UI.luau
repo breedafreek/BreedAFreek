@@ -8,6 +8,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local BoxModel = require(ReplicatedStorage.Shared.BoxModel)
+local Lego = require(ReplicatedStorage.Shared.Lego)
 local Parts = require(ReplicatedStorage.Shared.Parts)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local ItemPictures = require(script.Parent.ItemPictures)
@@ -204,6 +205,7 @@ function UI.boxViewport(crateId: string, size: number?)
 		LightDirection = Vector3.new(-1, -1, 1),
 	})
 	local model, height = BoxModel.build(crateId)
+	Lego.apply(model)
 	model:PivotTo(CFrame.new())
 	model.Parent = frame
 	local camera = Instance.new("Camera")

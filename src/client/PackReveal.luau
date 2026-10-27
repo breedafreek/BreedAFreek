@@ -14,6 +14,7 @@ local Workspace = game:GetService("Workspace")
 local BoxModel = require(ReplicatedStorage.Shared.BoxModel)
 local HouseModel = require(ReplicatedStorage.Shared.HouseModel)
 local HouseUtil = require(ReplicatedStorage.Shared.HouseUtil)
+local Lego = require(ReplicatedStorage.Shared.Lego)
 local Luck = require(ReplicatedStorage.Shared.Luck)
 local Parts = require(ReplicatedStorage.Shared.Parts)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
@@ -805,6 +806,7 @@ function PackReveal.play(result, done: () -> ())
 	flash(Color3.new(0, 0, 0), 0.5)
 	moveCamera(Vector3.new(0, 7, -24), Vector3.new(0, 4, 0))
 	local egg = BoxModel.build(result.crate)
+	Lego.apply(egg)
 	egg.Parent = stage
 	local eggRest = at(0, PEDESTAL_TOP, 0) * CFrame.Angles(0, math.pi, 0)
 	animate(0.8, function(a)
@@ -1216,6 +1218,7 @@ function PackReveal.play(result, done: () -> ())
 
 	-- The card lifts up and back; the part pops out onto the pedestal.
 	local freek = HouseModel.item(result.part.id)
+	Lego.apply(freek)
 	pcall(freek.ScaleTo, freek, 1.3)
 	for _, p in freek:GetDescendants() do
 		if p:IsA("BasePart") then

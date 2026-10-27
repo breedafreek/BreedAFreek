@@ -11,6 +11,7 @@ local Workspace = game:GetService("Workspace")
 
 local FreekAnimator = require(ReplicatedStorage.Shared.FreekAnimator)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
+local Lego = require(ReplicatedStorage.Shared.Lego)
 
 local GuardianFX = {}
 
@@ -31,6 +32,7 @@ local function giant(species: string): (Model, number)
 			p.CanQuery = false
 		end
 	end
+	Lego.apply(model)
 	return model, height * SCALE
 end
 
