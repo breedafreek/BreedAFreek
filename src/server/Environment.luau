@@ -60,9 +60,10 @@ end
 
 local function setupTerrain()
 	local terrain = Workspace.Terrain
-	-- Clear any terrain above ground level over the whole map (a place's own terrain would
-	-- bury the yards, the treadmills and everything standing on them), then grass under the
-	-- town with its top at y = 0. Done in small chunks: one huge fill can fail outright.
+	-- Clear all terrain near or above ground level over the whole map. The town, the yards
+	-- and the zones have their own brick floors at y = 0; terrain is stored in 4-stud voxels,
+	-- so even grass meant to stop at y = 0 can bulge up through them and bury the yards.
+	-- Done in small chunks: one huge fill can fail outright.
 	local west = ZoneLayout.START_X - ZoneLayout.LENGTH * 10 - 100
 	local CHUNK = 256
 	local function fill(x0: number, x1: number, z0: number, z1: number, y0: number, y1: number, material)
@@ -82,8 +83,7 @@ local function setupTerrain()
 			end
 		end
 	end
-	fill(west, 512, -512, 512, 0, 256, Enum.Material.Air)
-	fill(-268, 268, -180, 180, -8, 0, Enum.Material.Grass)
+	fill(west, 512, -512, 512, -12, 256, Enum.Material.Air)
 	terrain:SetMaterialColor(Enum.Material.Grass, Color3.fromRGB(95, 175, 80))
 	terrain:SetMaterialColor(Enum.Material.Pavement, Color3.fromRGB(196, 190, 180))
 	-- No tall grass blades: they hide the feet of anything standing on the grass.
