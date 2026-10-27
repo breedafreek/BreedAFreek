@@ -83,7 +83,9 @@ rojo build -o StealALife.rbxlx    # or build a place file
   not it catches you, flings you toward town and you drop the egg. Guardians live on the
   server as plain data and every client animates its own copy (`src/client/GuardianFX.luau`).
 - **Carrying** (`src/server/StealService.luau`): you need a free nest to grab an egg. You
-  carry it in your arms; get inside your own yard and it goes into a nest. Caught by its
+  carry it in your arms, slower the heavier it is (a normal egg -8% speed, a 2x egg -20%,
+  4x -32%, 8x -44%, never below half speed; `Items.carrySpeed`); get inside your own yard
+  and it goes into a nest. Caught by its
   guardian in the egg's own zone (or if you die or leave), the egg goes back exactly where
   you took it; caught after you've run into a zone nearer town, it drops on the ground
   right there for anyone to grab (it vanishes after a minute and a new one grows back home).

@@ -4,7 +4,7 @@
 -- Step onto your own treadmill and you run on it by yourself (client TreadmillRun) and your
 -- Speed goes up every second by the treadmill's gain (Config.treadmillGain), times pass
 -- bonuses. The belt runs as fast as you do, so you stay on it. Carrying an egg
--- slows you a little (GamePasses.carrySlowdown).
+-- slows you down, the more the heavier it is (Items.carrySpeed).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -43,8 +43,9 @@ local function update(player: Player, data)
 	player:SetAttribute("Speed", math.floor(data.speed))
 
 	local walk = Items.walkSpeed(data.speed)
-	if StealService.isCarrying(player) then
-		walk *= GamePasses.carrySlowdown(player)
+	local carrying = StealService.carrying(player)
+	if carrying then
+		walk *= Items.carrySpeed(carrying)
 	end
 	if math.abs(humanoid.WalkSpeed - walk) > 0.05 then
 		humanoid.WalkSpeed = walk

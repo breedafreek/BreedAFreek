@@ -1,7 +1,7 @@
 -- Carrying eggs home from the zones.
 --
 -- Hold the Grab prompt on an egg in a zone (you need a free nest at home). You carry it in
--- your arms and run a little slower (GamePasses.carrySlowdown) until you get it inside your
+-- your arms and run slower, the heavier it is (Items.carrySpeed), until you get it inside your
 -- own yard, where it goes into a free nest to grow (NestService). If the egg's guardian
 -- catches you in the egg's own zone (or you die or leave), the egg goes back where you took
 -- it from; if it catches you in a zone nearer town, the egg drops on the ground right there
@@ -95,9 +95,17 @@ local function pickUp(carrier: Player, carry): boolean
 	model.Parent = character
 	carry.model = model
 	carries[carrier] = carry
+	local slower = math.floor((1 - Items.carrySpeed(carry.record)) * 100 + 0.5)
 	carrier:SetAttribute(
 		"Carrying",
-		Format.weight(carry.record.weight or 1) .. " " .. carry.record.rarity .. " " .. carry.name
+		Format.weight(carry.record.weight or 1)
+			.. " "
+			.. carry.record.rarity
+			.. " "
+			.. carry.name
+			.. " · 🐢 -"
+			.. slower
+			.. "% SPEED"
 	)
 	return true
 end

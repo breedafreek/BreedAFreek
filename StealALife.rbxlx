@@ -816,7 +816,7 @@ return Bricks
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-20", -- shown small in the corner of the screen and in Output: which build is running
+	BUILD = "life-21", -- shown small in the corner of the screen and in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join. Set to nil
 	-- before the game launches!
@@ -4995,9 +4995,6 @@ function GamePasses.backpackSize(player: Player): number
 end
 
 -- How much carrying an egg slows the player (1 = not at all).
-function GamePasses.carrySlowdown(_player: Player): number
-	return 0.9
-end
 
 return GamePasses
 ]]></string>
@@ -7366,6 +7363,14 @@ function Items.weightFactor(record): number
 		return 1
 	end
 	return weight / base
+end
+
+-- How fast you run carrying an egg (a multiplier on your walk speed): a normal or lighter
+-- egg slows you a little, and every time an egg is twice as heavy you're about 12% slower,
+-- down to half speed. So a monster egg is a real risk to run home with.
+function Items.carrySpeed(record): number
+	local factor = Items.weightFactor(record)
+	return math.clamp(0.92 - 0.12 * math.log(math.max(factor, 1), 2), 0.5, 0.92)
 end
 
 -- The colour heavy things are named in: white, then blue, gold, and hot pink for monsters.
@@ -13811,7 +13816,7 @@ return SeasonalService
 -- Step onto your own treadmill and you run on it by yourself (client TreadmillRun) and your
 -- Speed goes up every second by the treadmill's gain (Config.treadmillGain), times pass
 -- bonuses. The belt runs as fast as you do, so you stay on it. Carrying an egg
--- slows you a little (GamePasses.carrySlowdown).
+-- slows you down, the more the heavier it is (Items.carrySpeed).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13850,8 +13855,9 @@ local function update(player: Player, data)
 	player:SetAttribute("Speed", math.floor(data.speed))
 
 	local walk = Items.walkSpeed(data.speed)
-	if StealService.isCarrying(player) then
-		walk *= GamePasses.carrySlowdown(player)
+	local carrying = StealService.carrying(player)
+	if carrying then
+		walk *= Items.carrySpeed(carrying)
 	end
 	if math.abs(humanoid.WalkSpeed - walk) > 0.05 then
 		humanoid.WalkSpeed = walk
@@ -13890,7 +13896,7 @@ return SpeedService
           <string name="Source"><![CDATA[-- Carrying eggs home from the zones.
 --
 -- Hold the Grab prompt on an egg in a zone (you need a free nest at home). You carry it in
--- your arms and run a little slower (GamePasses.carrySlowdown) until you get it inside your
+-- your arms and run slower, the heavier it is (Items.carrySpeed), until you get it inside your
 -- own yard, where it goes into a free nest to grow (NestService). If the egg's guardian
 -- catches you in the egg's own zone (or you die or leave), the egg goes back where you took
 -- it from; if it catches you in a zone nearer town, the egg drops on the ground right there
@@ -13984,9 +13990,17 @@ local function pickUp(carrier: Player, carry): boolean
 	model.Parent = character
 	carry.model = model
 	carries[carrier] = carry
+	local slower = math.floor((1 - Items.carrySpeed(carry.record)) * 100 + 0.5)
 	carrier:SetAttribute(
 		"Carrying",
-		Format.weight(carry.record.weight or 1) .. " " .. carry.record.rarity .. " " .. carry.name
+		Format.weight(carry.record.weight or 1)
+			.. " "
+			.. carry.record.rarity
+			.. " "
+			.. carry.name
+			.. " · 🐢 -"
+			.. slower
+			.. "% SPEED"
 	)
 	return true
 end

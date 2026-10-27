@@ -142,8 +142,5 @@ function GamePasses.backpackSize(player: Player): number
 end
 
 -- How much carrying an egg slows the player (1 = not at all).
-function GamePasses.carrySlowdown(_player: Player): number
-	return 0.9
-end
 
 return GamePasses

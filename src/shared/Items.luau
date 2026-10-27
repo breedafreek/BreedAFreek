@@ -367,6 +367,14 @@ function Items.weightFactor(record): number
 	return weight / base
 end
 
+-- How fast you run carrying an egg (a multiplier on your walk speed): a normal or lighter
+-- egg slows you a little, and every time an egg is twice as heavy you're about 12% slower,
+-- down to half speed. So a monster egg is a real risk to run home with.
+function Items.carrySpeed(record): number
+	local factor = Items.weightFactor(record)
+	return math.clamp(0.92 - 0.12 * math.log(math.max(factor, 1), 2), 0.5, 0.92)
+end
+
 -- The colour heavy things are named in: white, then blue, gold, and hot pink for monsters.
 function Items.weightColor(factor: number): Color3
 	if factor >= 10 then
