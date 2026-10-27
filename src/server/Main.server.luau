@@ -26,7 +26,7 @@ local SERVICES = {
 	"ZoneService",
 	"StealService",
 	"SpeedService",
-	"WeaponService",
+	"NestService",
 	"RebirthService",
 	"PassService",
 	"LuckService",
@@ -48,7 +48,7 @@ for _, name in SERVICES do
 		end, debug.traceback)
 		done = true
 		if not ok then
-			warn("[Steal a Home] " .. name .. " failed to start:\n" .. tostring(err))
+			warn("[Steal a Life] " .. name .. " failed to start:\n" .. tostring(err))
 			table.insert(problems, name .. " failed: " .. tostring(err))
 		end
 	end)
@@ -57,8 +57,8 @@ for _, name in SERVICES do
 		task.wait()
 	end
 	if not done then
-		warn("[Steal a Home] " .. name .. " is slow to start (still going after " .. STARTUP_WAIT .. "s); carrying on")
+		warn("[Steal a Life] " .. name .. " is slow to start (still going after " .. STARTUP_WAIT .. "s); carrying on")
 	end
 end
 setStatus("Server started")
-print("[Steal a Home] Server started")
+print("[Steal a Life] Server started")

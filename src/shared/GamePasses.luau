@@ -36,23 +36,23 @@ GamePasses.list = {
 		name = "2x Coins",
 		icon = "💰",
 		price = 499,
-		description = "Double coins from your house, forever.",
+		description = "Double coins from everything you own, forever.",
 		color = Color3.fromRGB(255, 200, 60),
 	},
 	FastBreeding = {
 		id = 2037644787,
-		name = "2x Speed",
-		icon = "⚡",
+		name = "Fast Hatching",
+		icon = "🐣",
 		price = 999,
-		description = "Your treadmill trains twice as much Speed.",
+		description = "Eggs hatch twice as fast.",
 		color = Color3.fromRGB(90, 200, 255),
 	},
 	LongerLock = {
 		id = 2039660564,
-		name = "Longer Gate Lock",
-		icon = "🔒",
+		name = "2x Speed",
+		icon = "⚡",
 		price = 499,
-		description = "Your gate stays locked for 5 minutes instead of 3.",
+		description = "Your treadmill trains twice as much Speed.",
 		color = Color3.fromRGB(235, 90, 90),
 	},
 	ExtraSlot1 = {
@@ -60,7 +60,7 @@ GamePasses.list = {
 		name = "Bigger Backpack 1",
 		icon = "🎒",
 		price = 199,
-		description = "+20 backpack space for house parts.",
+		description = "+20 backpack space.",
 		color = Color3.fromRGB(230, 150, 90),
 		backpack = true,
 	},
@@ -69,7 +69,7 @@ GamePasses.list = {
 		name = "Bigger Backpack 2",
 		icon = "🎒",
 		price = 299,
-		description = "+20 more backpack space for house parts.",
+		description = "+20 more backpack space.",
 		color = Color3.fromRGB(230, 150, 90),
 		backpack = true,
 	},
@@ -78,16 +78,16 @@ GamePasses.list = {
 		name = "Bigger Backpack 3",
 		icon = "🎒",
 		price = 349,
-		description = "+20 more backpack space for house parts.",
+		description = "+20 more backpack space.",
 		color = Color3.fromRGB(230, 150, 90),
 		backpack = true,
 	},
 	ExtraPen = {
 		id = 2037308784,
-		name = "Strong Arms",
-		icon = "💪",
+		name = "Extra Nests",
+		icon = "🪺",
 		price = 399,
-		description = "Carrying a part never slows you down.",
+		description = "+2 nests, so you can grow 5 eggs at once.",
 		color = Color3.fromRGB(255, 130, 190),
 	},
 	VIP = {
@@ -118,11 +118,16 @@ function GamePasses.coinMultiplier(player: Player): number
 end
 
 function GamePasses.speedMultiplier(player: Player): number
-	return if GamePasses.has(player, "FastBreeding") then 2 else 1
+	return if GamePasses.has(player, "LongerLock") then 2 else 1
 end
 
-function GamePasses.gateLockSeconds(player: Player): number
-	return if GamePasses.has(player, "LongerLock") then 300 else Config.GATE_LOCK_SECONDS
+-- How long eggs take compared to normal.
+function GamePasses.hatchMultiplier(player: Player): number
+	return if GamePasses.has(player, "FastBreeding") then 0.5 else 1
+end
+
+function GamePasses.extraNests(player: Player): boolean
+	return GamePasses.has(player, "ExtraPen")
 end
 
 -- How many parts the player's backpack holds.
@@ -136,9 +141,9 @@ function GamePasses.backpackSize(player: Player): number
 	return size
 end
 
--- How much carrying a part slows the player (1 = not at all).
-function GamePasses.carrySlowdown(player: Player): number
-	return if GamePasses.has(player, "ExtraPen") then 1 else 0.9
+-- How much carrying an egg slows the player (1 = not at all).
+function GamePasses.carrySlowdown(_player: Player): number
+	return 0.9
 end
 
 return GamePasses

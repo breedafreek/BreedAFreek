@@ -1,4 +1,4 @@
--- Speed: trained on your treadmill, it decides how fast you run (Parts.walkSpeed), which
+-- Speed: trained on your treadmill, it decides how fast you run (Items.walkSpeed), which
 -- decides which zones' guardians you can outrun.
 --
 -- Run on your own treadmill (your character moving while standing on its belt) and your
@@ -11,7 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
-local Parts = require(ReplicatedStorage.Shared.Parts)
+local Items = require(ReplicatedStorage.Shared.Items)
 
 local DataService = require(script.Parent.DataService)
 local PlotService = require(script.Parent.PlotService)
@@ -44,7 +44,7 @@ local function update(player: Player, data)
 	player:SetAttribute("Training", training)
 	player:SetAttribute("Speed", math.floor(data.speed))
 
-	local walk = Parts.walkSpeed(data.speed)
+	local walk = Items.walkSpeed(data.speed)
 	if StealService.isCarrying(player) then
 		walk *= GamePasses.carrySlowdown(player)
 	end
@@ -54,7 +54,7 @@ local function update(player: Player, data)
 	-- The belt runs as fast as its owner, pushing back toward the house.
 	if plot then
 		local belt = plot.treadmill.belt
-		belt.AssemblyLinearVelocity = belt.CFrame:VectorToWorldSpace(Vector3.new(0, 0, Parts.walkSpeed(data.speed)))
+		belt.AssemblyLinearVelocity = belt.CFrame:VectorToWorldSpace(Vector3.new(0, 0, Items.walkSpeed(data.speed)))
 	end
 end
 

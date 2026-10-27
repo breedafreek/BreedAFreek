@@ -1,5 +1,5 @@
--- The Catalog: the first player in the whole game to get each rare house part (Legendary
--- and up) has their name saved forever. Claims go through UpdateAsync so two servers can't
+-- The Catalog: the first player in the whole game to get each rare item (Legendary and up:
+-- house parts, pets, yard items and plants) has their name saved forever. Claims go through UpdateAsync so two servers can't
 -- both win, and MessagingService tells every other server right away.
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -7,18 +7,18 @@ local MessagingService = game:GetService("MessagingService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
-local Parts = require(ReplicatedStorage.Shared.Parts)
+local Items = require(ReplicatedStorage.Shared.Items)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
-local STORE_NAME = "StealAHome_Discoveries_v1"
+local STORE_NAME = "StealALife_Discoveries_v1"
 local TOPIC = "PartDiscovered"
 
 -- Only parts this rare or rarer can be claimed.
 local MIN_RANK = Rarities.rank.Legendary
 
 local function claimable(partId: string): boolean
-	local part = Parts.byId[partId]
+	local part = Items.byId[partId]
 	return part ~= nil and Rarities.rank[part.rarity] >= MIN_RANK
 end
 
@@ -52,7 +52,7 @@ local function announce(partId: string, discovery)
 	discoveryUpdate:FireAllClients(partId, discovery)
 	if isNew then
 		notify:FireAllClients(
-			string.format("%s found the first %s ever!", discovery.name, Parts.byId[partId].name),
+			string.format("%s found the first %s ever!", discovery.name, Items.byId[partId].name),
 			"discovery"
 		)
 	end
@@ -62,7 +62,7 @@ local function loadAll()
 	if not store then
 		return
 	end
-	for _, part in Parts.list do
+	for _, part in Items.list do
 		if claimable(part.id) and not cache[part.id] then
 			local ok, value = pcall(store.GetAsync, store, part.id)
 			if ok and value then

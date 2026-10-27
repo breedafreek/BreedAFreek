@@ -33,10 +33,7 @@ local Config = {
 	REBIRTH_COST_GROWTH = 4, -- each rebirth costs this many times more than the last
 	REBIRTH_INCOME_BONUS = 0.5, -- +50% income per rebirth, forever
 
-	GATE_LOCK_SECONDS = 180, -- how long the gate stays locked each time the owner locks it
-	STEAL_HOLD_SECONDS = 1.5, -- how long a thief holds the prompt to pry a part off a house
-	GRAB_HOLD_SECONDS = 0.5, -- how long to hold the prompt to grab a part from a zone pile
-	SNATCH_HOLD_SECONDS = 1, -- how long another player holds the prompt to snatch a carried part
+	GRAB_HOLD_SECONDS = 0.5, -- how long to hold the prompt to grab an egg in a zone
 }
 
 -- Speed a second from a treadmill of this level (before rebirth and pass bonuses).

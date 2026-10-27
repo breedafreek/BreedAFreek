@@ -1,6 +1,6 @@
 -- Small helpers for building the UI in code (so there's nothing to set up in Studio).
 -- Style: the clean cartoon look of the big Roblox simulators (Pet Simulator, PLS DONATE,
--- Grow a Garden) in Steal a Home colours: light windows with a coloured header and a
+-- Grow a Garden) in Steal a Life colours: light windows with a coloured header and a
 -- slanted title tab, bright glossy gradient cards with a big 3D picture, black price
 -- pills, chunky shaded buttons that squish when pressed, Luckiest Guy titles, Fredoka One
 -- text, and every bit of text outlined in dark navy.
@@ -9,7 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local BoxModel = require(ReplicatedStorage.Shared.BoxModel)
 local Lego = require(ReplicatedStorage.Shared.Lego)
-local Parts = require(ReplicatedStorage.Shared.Parts)
+local Items = require(ReplicatedStorage.Shared.Items)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local ItemPictures = require(script.Parent.ItemPictures)
 
@@ -266,13 +266,14 @@ end
 -- A bright glossy card (like Pet Simulator's shop): a gradient in the card's colour with a
 -- shine across the top, the title in white, a big picture on a glowing disc, then text
 -- lines and buttons. opts: accent (colour), border (a highlight outline, e.g. owned),
--- picture (an ItemPictures key) / part (+ mutations, silhouette) / box, lines = { { text,
+-- picture (an ItemPictures key) / part (any item id, + mutations, silhouette) / egg (a zone
+-- index) / box, lines = { { text,
 -- colour?, height? } }, buttons, tag = { text, colour? }, onClick.
 function UI.card(opts)
 	local title = opts.lines and opts.lines[1] and opts.lines[1][1] or ""
 	local accent = opts.accent
 	if not accent and opts.part then
-		local part = Parts.byId[opts.part]
+		local part = Items.byId[opts.part]
 		local rarity = part and part.rarity
 		if rarity and rarity ~= "Common" then
 			accent = Rarities.info[rarity].color
@@ -351,7 +352,9 @@ function UI.card(opts)
 	elseif opts.box then
 		picture = UI.boxViewport(opts.box)
 	elseif opts.part then
-		picture = ItemPictures.part(opts.part, opts.pictureHeight, opts.silhouette)
+		picture = ItemPictures.part(opts.part, opts.pictureHeight, opts.silhouette, opts.mutations)
+	elseif opts.egg then
+		picture = ItemPictures.egg(opts.egg, opts.pictureHeight)
 	end
 	if picture then
 		local holder = UI.new("Frame", {

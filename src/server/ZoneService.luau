@@ -1,11 +1,12 @@
--- The zones: piles of house parts to steal, each guarded by a giant Freek.
+-- The zones: nests of eggs to steal, each guarded by a giant Freek.
 --
--- Every zone has a ring of pedestals at its far end. Each pedestal grows a random part in
--- the zone's style (sometimes with a mutation; the last zone sometimes grows Rainbow ones).
--- Hold Grab on one and run! The zone's guardian chases anyone carrying a part inside its
--- zone. It runs at Parts.guardianSpeed: a bit slower than a player who has the zone's Speed,
--- so if you trained enough you get away, and if you didn't it catches you, flings you
--- toward town and you drop the part.
+-- Every zone has a ring of pedestals at its far end. Each pedestal grows one of the zone's
+-- eggs (Items.ZONES: what kind of thing hatches from it, and the odds of each rarity). The
+-- rarity is rolled when the egg appears and shown above it, sometimes with a mutation the
+-- hatched item keeps. Hold Grab on one and run! The zone's guardian chases anyone carrying
+-- an egg inside its zone. It runs at Items.guardianSpeed: a bit slower than a player who has
+-- the zone's Speed, so if you trained enough you get away, and if you didn't it catches you,
+-- flings you toward town and you drop the egg.
 --
 -- Guardians live on the server as plain data (position, heading, who they're chasing) and
 -- are published as attributes on ReplicatedStorage.Guardians, so every client builds and
@@ -18,10 +19,9 @@ local Workspace = game:GetService("Workspace")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Events = require(ReplicatedStorage.Shared.Events)
 local Format = require(ReplicatedStorage.Shared.Format)
-local HouseModel = require(ReplicatedStorage.Shared.HouseModel)
-local HouseUtil = require(ReplicatedStorage.Shared.HouseUtil)
+local EggModel = require(ReplicatedStorage.Shared.EggModel)
+local Items = require(ReplicatedStorage.Shared.Items)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
-local Parts = require(ReplicatedStorage.Shared.Parts)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local ZoneLayout = require(ReplicatedStorage.Shared.ZoneLayout)
@@ -30,7 +30,7 @@ local ZoneDecor = require(script.Parent.ZoneDecor)
 
 local ZoneService = {}
 
-local RESPAWN_MIN, RESPAWN_MAX = 6, 12 -- seconds before an empty pedestal grows a new part
+local RESPAWN_MIN, RESPAWN_MAX = 6, 12 -- seconds before an empty pedestal grows a new egg
 local CATCH_RADIUS = 7
 local LEASH = 14 -- how far past its zone's edge a guardian keeps chasing
 local PUBLISH_INTERVAL = 0.1
@@ -48,9 +48,8 @@ local hooks = {
 		return false
 	end,
 }
--- Mutations a part can grow with (only on pedestals; rolled once per part).
+-- Mutations an egg can grow with (the item that hatches keeps them).
 local MUTATION_FACTOR = 0.6
-local RARE_CHANCE = 0.03 -- chance a pedestal grows the next zone's style instead
 
 --------------------------------------------------------------------------------
 -- Pedestals
@@ -88,7 +87,7 @@ end
 
 local function buildPedestal(parent: Instance, index: number, n: number)
 	local spot = CFrame.new(ZoneLayout.pedestal(index, n))
-	local theme = ZoneDecor.THEMES[index]
+	local theme = ZoneDecor.theme(index)
 	local base = part({
 		Name = "Pedestal",
 		Shape = Enum.PartType.Cylinder,
@@ -108,7 +107,7 @@ local function buildPedestal(parent: Instance, index: number, n: number)
 		CanCollide = false,
 		Parent = parent,
 	})
-	-- Floating text: rarity, name, income.
+	-- Floating text: rarity, egg name, what hatches and how long it takes.
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromScale(9, 3.6)
 	gui.StudsOffset = Vector3.new(0, 8, 0)
@@ -118,8 +117,8 @@ local function buildPedestal(parent: Instance, index: number, n: number)
 	gui.Parent = base
 	local rarity = textLine(gui, Enum.Font.LuckiestGuy, 0, 0.32)
 	local name = textLine(gui, Enum.Font.FredokaOne, 0.32, 0.36)
-	local income = textLine(gui, Enum.Font.LuckiestGuy, 0.68, 0.32)
-	income.TextColor3 = Color3.fromRGB(110, 235, 140)
+	local income = textLine(gui, Enum.Font.FredokaOne, 0.68, 0.32)
+	income.TextColor3 = Color3.fromRGB(255, 215, 60)
 	return {
 		spot = spot * CFrame.new(0, 2.1, 0),
 		base = base,
@@ -132,18 +131,9 @@ local function buildPedestal(parent: Instance, index: number, n: number)
 	}
 end
 
--- Picks what grows next on a pedestal in this zone.
-local function rollPart(index: number)
-	local zone = Parts.ZONES[index]
-	local style = zone.style
-	local rare = Events.boost("rareBoost")
-	if index == #Parts.ZONES and rng:NextNumber() < Parts.RAINBOW_CHANCE * rare then
-		style = "Rainbow"
-	elseif index < #Parts.ZONES and rng:NextNumber() < RARE_CHANCE * rare then
-		-- Now and then, a part from the next zone along.
-		style = Parts.ZONES[index + 1].style
-	end
-	local slot = Parts.SLOTS[rng:NextInteger(1, #Parts.SLOTS)]
+-- Picks the egg that grows next on a pedestal in this zone: { egg = zone, rarity, mutations }.
+local function rollEgg(index: number)
+	local rarity = Items.rollRarity(index, rng, Events.boost("rareBoost"))
 	local mutations = {}
 	for _, mutation in Mutations.list do
 		if rng:NextNumber() < mutation.chance * MUTATION_FACTOR * Events.boost("mutationBoost") then
@@ -151,44 +141,55 @@ local function rollPart(index: number)
 			break
 		end
 	end
-	-- Weather events give every new part a good chance of their mutation.
+	-- Weather events give every new egg a good chance of their mutation.
 	local weather = Events.weather()
 	if weather and rng:NextNumber() < 0.25 then
 		mutations = { weather.mutation }
 	end
-	return { id = style .. "_" .. slot.id, mutations = Mutations.pack(mutations) }
+	return { egg = index, rarity = rarity, mutations = Mutations.pack(mutations) }
 end
 
-local function showPart(index: number, pedestal, record)
+-- "Golden Garden Egg"
+function ZoneService.eggName(record): string
+	local top = Mutations.top(record.mutations)
+	local name = Items.eggName(record.egg)
+	return if top then top .. " " .. name else name
+end
+
+local function showEgg(index: number, pedestal, record)
 	if pedestal.model then
 		pedestal.model:Destroy()
 	end
 	pedestal.record = record
 	pedestal.taken = false
-	local info = Parts.byId[record.id]
-	local color = Rarities.info[info.rarity].color
-	local model = HouseModel.item(record.id)
+	local zone = Items.ZONES[index]
+	local kind = Items.KINDS[zone.kind]
+	local color = Rarities.info[record.rarity].color
+	local model = EggModel.build(index)
 	model:PivotTo(pedestal.spot * CFrame.Angles(0, math.rad(180 + (rng:NextNumber() - 0.5) * 40), 0))
 	local top = Mutations.top(record.mutations)
-	local first = model:FindFirstChildWhichIsA("BasePart")
-	if top and first then
+	if top and model.PrimaryPart then
 		local sparkles = Instance.new("Sparkles")
 		sparkles.SparkleColor = Mutations.byId[top].color
-		sparkles.Parent = first
+		sparkles.Parent = model.PrimaryPart
 	end
 	model.Parent = pedestal.base.Parent
 	pedestal.model = model
 	pedestal.ring.Color = color
-	pedestal.labels.rarity.Text = string.upper(info.rarity)
+	pedestal.labels.rarity.Text = string.upper(record.rarity)
 	pedestal.labels.rarity.TextColor3 = color
-	pedestal.labels.name.Text = HouseUtil.displayName(record)
-	pedestal.labels.income.Text = Format.money(HouseUtil.partIncome(record)) .. "/s"
+	pedestal.labels.name.Text = ZoneService.eggName(record)
+	pedestal.labels.income.Text = kind.icon
+		.. " "
+		.. kind.name
+		.. " · ⏱ "
+		.. Format.time(Items.HATCH_SECONDS[record.rarity])
 	pedestal.labels.gui.Enabled = true
 
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "GrabPrompt"
 	prompt.ActionText = "Grab"
-	prompt.ObjectText = HouseUtil.displayName(record)
+	prompt.ObjectText = record.rarity .. " " .. ZoneService.eggName(record)
 	prompt.HoldDuration = Config.GRAB_HOLD_SECONDS
 	prompt.MaxActivationDistance = 10
 	prompt.RequiresLineOfSight = false
@@ -196,11 +197,17 @@ local function showPart(index: number, pedestal, record)
 	prompt:SetAttribute("Pedestal", table.find(zones[index].pedestals, pedestal))
 	prompt.Parent = pedestal.base
 
-	if info.rarity == "Secret" or (top == "Rainbow") then
+	if Rarities.rank[record.rarity] >= Rarities.rank.Ultra or top == "Rainbow" then
 		for _, player in Players:GetPlayers() do
 			notifyRemote:FireClient(
 				player,
-				"🌈 A " .. HouseUtil.displayName(record) .. " just appeared in " .. Parts.ZONES[index].name .. "!",
+				"🥚 A "
+					.. string.upper(record.rarity)
+					.. " "
+					.. ZoneService.eggName(record)
+					.. " just appeared in "
+					.. zone.name
+					.. "!",
 				"discovery"
 			)
 		end
@@ -224,7 +231,7 @@ local function clearPedestal(pedestal)
 	pedestal.labels.gui.Enabled = false
 end
 
--- Takes the part off a pedestal for someone to carry. Returns its record, or nil if there's
+-- Takes the egg off a pedestal for someone to carry. Returns its record, or nil if there's
 -- nothing there.
 function ZoneService.take(index: number, n: number)
 	local zone = zones[index]
@@ -238,7 +245,7 @@ function ZoneService.take(index: number, n: number)
 	return record
 end
 
--- The carried part was delivered or dropped: the pedestal can grow a new one.
+-- The carried egg was delivered or dropped: the pedestal can grow a new one.
 function ZoneService.release(index: number?, n: number?)
 	local zone = index and zones[index]
 	local pedestal = zone and n and zone.pedestals[n]
@@ -248,20 +255,22 @@ function ZoneService.release(index: number?, n: number?)
 	end
 end
 
--- Fills every empty pedestal of zone `index` right away with parts of `style` (admin).
-function ZoneService.spawnNow(index: number, partId: string?, mutations: { string }?)
+-- Fills every empty pedestal of zone `index` right away (admin). With a rarity, only one
+-- egg of that rarity.
+function ZoneService.spawnNow(index: number, rarity: string?, mutations: { string }?)
 	local zone = zones[index]
 	if not zone then
 		return
 	end
 	for _, pedestal in zone.pedestals do
 		if not pedestal.taken then
-			showPart(
-				index,
-				pedestal,
-				if partId then { id = partId, mutations = Mutations.pack(mutations) } else rollPart(index)
-			)
-			if partId then
+			local record = rollEgg(index)
+			if rarity then
+				record.rarity = rarity
+				record.mutations = Mutations.pack(mutations)
+			end
+			showEgg(index, pedestal, record)
+			if rarity then
 				return
 			end
 		end
@@ -285,7 +294,7 @@ end
 
 local function newGuardian(index: number)
 	local home = ZoneLayout.guardianHome(index)
-	local zone = Parts.ZONES[index]
+	local zone = Items.ZONES[index]
 	local data = Instance.new("Configuration")
 	data.Name = "Guardian" .. index
 	data:SetAttribute("Zone", index)
@@ -301,13 +310,13 @@ local function newGuardian(index: number)
 		cooldown = 0,
 		wanderAt = 0,
 		wanderTo = home,
-		speed = Parts.guardianSpeed(index),
+		speed = Items.guardianSpeed(index),
 		data = data,
 		moving = false,
 	}
 end
 
--- Sends a guardian after a player right away (they just grabbed a part).
+-- Sends a guardian after a player right away (they just grabbed an egg).
 function ZoneService.alert(index: number, player: Player)
 	local zone = zones[index]
 	if zone and zone.guardian.cooldown <= os.clock() then
@@ -320,10 +329,10 @@ local function flatten(v: Vector3): Vector3
 end
 
 local function catch(guardian, player: Player, root: BasePart)
-	local zone = Parts.ZONES[guardian.index]
+	local zone = Items.ZONES[guardian.index]
 	guardian.target = nil
 	guardian.cooldown = os.clock() + 2.5
-	hooks.drop(player, zone.title .. " caught you! You dropped it.")
+	hooks.drop(player, zone.title .. " caught you! You dropped the egg.")
 	-- Fling them toward town.
 	local away = flatten(root.Position - guardian.position)
 	local direction = (Vector3.new(1, 0, 0) + (if away.Magnitude > 0.1 then away.Unit else Vector3.zero)).Unit
@@ -415,7 +424,7 @@ function ZoneService.init()
 	guardianFolder.Name = "Guardians"
 	guardianFolder.Parent = ReplicatedStorage
 
-	for index = 1, #Parts.ZONES do
+	for index = 1, #Items.ZONES do
 		local folder = ZoneDecor.build(map, index)
 		local pile = Instance.new("Folder")
 		pile.Name = "Pile"
@@ -426,7 +435,7 @@ function ZoneService.init()
 			zone.pedestals[n] = buildPedestal(pile, index, n)
 		end
 		for _, pedestal in zone.pedestals do
-			showPart(index, pedestal, rollPart(index))
+			showEgg(index, pedestal, rollEgg(index))
 		end
 		publish(zone.guardian)
 	end
@@ -459,7 +468,7 @@ function ZoneService.init()
 			for index, zone in zones do
 				for _, pedestal in zone.pedestals do
 					if not pedestal.record and not pedestal.taken and now >= pedestal.respawnAt then
-						showPart(index, pedestal, rollPart(index))
+						showEgg(index, pedestal, rollEgg(index))
 					end
 				end
 			end

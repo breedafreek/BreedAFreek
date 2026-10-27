@@ -6,7 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
-local HouseUtil = require(ReplicatedStorage.Shared.HouseUtil)
+local LifeUtil = require(ReplicatedStorage.Shared.LifeUtil)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local DataService = require(script.Parent.DataService)
@@ -15,7 +15,7 @@ local EconomyService = {}
 
 -- House income including rebirths and game passes.
 local function incomeFor(player: Player, data): number
-	return HouseUtil.houseIncome(data) * GamePasses.coinMultiplier(player)
+	return LifeUtil.totalIncome(data) * GamePasses.coinMultiplier(player)
 end
 
 local function publish(player: Player, data, income: number)

@@ -1482,8 +1482,8 @@ end
 -- Where each slot goes on a full house (plot space: origin at the plot's centre, front -Z).
 --------------------------------------------------------------------------------
 
-local HOUSE_Z = 2 -- the front wall's z
-local FENCE_Z = -30.5
+local HOUSE_Z = 6 -- the front wall's z
+local FENCE_Z = -46.5
 local GATE_HALF = 8
 
 local PLACEMENTS = {
@@ -1514,14 +1514,14 @@ local PLACEMENTS = {
 		builders.Tower(model, CFrame.new(-BODY.w / 2 - 4.5, 0, HOUSE_Z + BODY.d * 0.45), look, { r = 5.5, h = 24 })
 	end,
 	Garden = function(model, look)
-		builders.Garden(model, CFrame.new(-17, 0, -13), look, { w = 16, d = 9 })
+		builders.Garden(model, CFrame.new(-31, 0, -12), look, { w = 16, d = 9 })
 	end,
 	Mailbox = function(model, look)
 		builders.Mailbox(model, CFrame.new(GATE_HALF + 3, 0, FENCE_Z + 3), look, { h = 4 })
 	end,
 	Fence = function(model, look)
 		local h = 3.2
-		local edge = 31
+		local edge = 47
 		builders.Fence(model, CFrame.new(-edge, 0, FENCE_Z), look, { length = edge - GATE_HALF, h = h })
 		builders.Fence(model, CFrame.new(GATE_HALF, 0, FENCE_Z), look, { length = edge - GATE_HALF, h = h })
 		-- Down both sides and along the back.
@@ -1553,9 +1553,9 @@ HouseModel.ANCHORS = {
 	Chimney = Vector3.new(BODY.w * 0.3, BASE + BODY.h + 6, HOUSE_Z + BODY.d * 0.6),
 	Porch = Vector3.new(4, 2, HOUSE_Z - 4),
 	Tower = Vector3.new(-BODY.w / 2 - 4.5, 4, HOUSE_Z + BODY.d * 0.45 - 6),
-	Garden = Vector3.new(-17, 1.5, -13),
+	Garden = Vector3.new(-31, 1.5, -12),
 	Mailbox = Vector3.new(GATE_HALF + 3, 3, FENCE_Z + 3),
-	Fence = Vector3.new(-18, 2, FENCE_Z + 1),
+	Fence = Vector3.new(-26, 2, FENCE_Z + 1),
 }
 
 --------------------------------------------------------------------------------

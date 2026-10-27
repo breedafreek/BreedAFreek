@@ -74,9 +74,9 @@ end
 
 local OUTLINE = Color3.fromRGB(20, 22, 48)
 
-local STREET_EAST = 190
+local STREET_EAST = 232
 local STREET_WEST = ZoneLayout.START_X
-local TOWN_HALF = 102 -- how far north and south the town goes (past the back of the homes)
+local TOWN_HALF = 134 -- how far north and south the town goes (past the back of the homes)
 
 local function outlinedBillboard(parent: Instance, text: string, color: Color3, size: UDim2, maxDistance: number)
 	local gui = Instance.new("BillboardGui")
@@ -155,12 +155,12 @@ local function buildScenery()
 			Material = Enum.Material.Concrete,
 			Parent = folder,
 		})
-		for x = -140, 140, 70 do
+		for x = -208, 208, 52 do
 			Decor.lamp(folder, CFrame.new(x, 0.5, side * 17.5))
 		end
 		-- Trees on the verge between the homes.
-		for x = -105, 105, 70 do
-			Decor.tree(folder, CFrame.new(x + 35, 0, side * 25), 1.1, math.abs(x) + side)
+		for x = -104, 104, 104 do
+			Decor.tree(folder, CFrame.new(x, 0, side * 26), 1.2, math.abs(x) + side)
 		end
 	end
 
@@ -190,7 +190,7 @@ local function buildScenery()
 		CanCollide = false,
 		Parent = folder,
 	})
-	outlinedBillboard(title, "STEAL A HOME", Color3.fromRGB(255, 225, 80), UDim2.fromScale(44, 9), 500)
+	outlinedBillboard(title, "STEAL A LIFE", Color3.fromRGB(255, 225, 80), UDim2.fromScale(44, 9), 500)
 
 	-- A signpost at the west end of the street pointing to the zones.
 	local signpost = CFrame.new(STREET_WEST + 10, 0, -14)
@@ -210,7 +210,7 @@ local function buildScenery()
 		Material = Enum.Material.WoodPlanks,
 		Parent = folder,
 	})
-	outlinedBillboard(board, "⚔️ ZONES ➜", Color3.fromRGB(255, 120, 80), UDim2.fromScale(12, 3), 160)
+	outlinedBillboard(board, "🥚 EGG ZONES ➜", Color3.fromRGB(255, 120, 80), UDim2.fromScale(12, 3), 160)
 
 	-- Edges of the map: hedges along the back of the homes, invisible walls all round the
 	-- town (the zones have their own cliffs).

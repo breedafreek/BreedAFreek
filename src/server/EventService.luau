@@ -15,7 +15,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local Events = require(ReplicatedStorage.Shared.Events)
-local HouseUtil = require(ReplicatedStorage.Shared.HouseUtil)
+local LifeUtil = require(ReplicatedStorage.Shared.LifeUtil)
 local Luck = require(ReplicatedStorage.Shared.Luck)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -24,7 +24,7 @@ local DataService = require(script.Parent.DataService)
 
 local EventService = {}
 
-local TOPIC = "StealAHomeAdmin"
+local TOPIC = "StealALifeAdmin"
 local STORE_KEY = "AdminEvents"
 
 local notifyRemote = Remotes.get("Notify")
@@ -106,13 +106,13 @@ local function pick(kind: string, scheduled)
 	return scheduled
 end
 
--- Weather mutations: every part on a house has a chance to catch it.
+-- Weather mutations: every item that's out (house, pets, yard, garden) has a chance to catch it.
 local function weatherTick(weather)
 	for _, player in Players:GetPlayers() do
 		local data = DataService.get(player)
 		if data then
 			local changed = false
-			for _, uid in data.house do
+			for uid in LifeUtil.placed(data) do
 				local record = data.parts[uid]
 				local mutations = record and Mutations.normalize(record.mutations)
 				if record and not table.find(mutations, weather.mutation) and rng:NextNumber() < weather.chance then
@@ -123,7 +123,7 @@ local function weatherTick(weather)
 						player,
 						weather.icon
 							.. " Your "
-							.. HouseUtil.displayName(record)
+							.. LifeUtil.displayName(record)
 							.. " caught the "
 							.. weather.name
 							.. "!",
@@ -140,7 +140,7 @@ end
 
 function EventService.init()
 	local ok, result = pcall(function()
-		return DataStoreService:GetDataStore("StealAHomeEvents")
+		return DataStoreService:GetDataStore("StealALifeEvents")
 	end)
 	store = ok and result or nil
 

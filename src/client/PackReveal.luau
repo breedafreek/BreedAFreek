@@ -1,10 +1,11 @@
--- Mystery Box opening, done like a card-pack reveal in the big sports games, in 3D.
--- The camera cuts to a dark arena (built on this client only, high above the map): the
--- box drops onto a glowing pedestal under sweeping spotlights, shakes, and bursts into a
--- face-down card. Then the clues slam onto the screen one at a time (first which SLOT of
--- the house the part is for, then its RARITY, with every light in the arena turning that
--- colour) before the card flips over in 3D and the part pops out in front of it with its
--- name. The rarer the part, the longer the suspense and the wilder the lights.
+-- Hatching an egg (or opening a Mystery Box), done like a card-pack reveal in the big
+-- sports games, in 3D. The camera cuts to a dark arena (built on this client only, high
+-- above the map): the egg or box drops onto a glowing pedestal under sweeping spotlights,
+-- shakes, and bursts into a face-down card. Then the clues slam onto the screen one at a
+-- time (first what KIND of thing it is, or which SLOT of the house for a house part, then
+-- its RARITY, with every light in the arena turning that colour) before the card flips over
+-- in 3D and the item pops out in front of it with its name. The rarer the item, the longer
+-- the suspense and the wilder the lights.
 -- Tapping the screen speeds it up.
 
 local Players = game:GetService("Players")
@@ -12,8 +13,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local BoxModel = require(ReplicatedStorage.Shared.BoxModel)
-local HouseModel = require(ReplicatedStorage.Shared.HouseModel)
-local HouseUtil = require(ReplicatedStorage.Shared.HouseUtil)
+local EggModel = require(ReplicatedStorage.Shared.EggModel)
+local ItemModel = require(ReplicatedStorage.Shared.ItemModel)
+local Items = require(ReplicatedStorage.Shared.Items)
+local LifeUtil = require(ReplicatedStorage.Shared.LifeUtil)
 local Lego = require(ReplicatedStorage.Shared.Lego)
 local Luck = require(ReplicatedStorage.Shared.Luck)
 local Parts = require(ReplicatedStorage.Shared.Parts)
@@ -414,17 +417,24 @@ local function hideHud(playerGui: Instance, keep: Instance): () -> ()
 	end
 end
 
--- result = { crate, rarity, isNew, where = "installed"|"backpack", part = { id, mutations } }
+-- result = { kind = "egg"|"crate"|"wheel", egg? (zone index), crate?, rarity, isNew,
+--            where = "house"|"pen"|"yard"|"garden"|"backpack", part = { id, mutations } }
 function PackReveal.play(result, done: () -> ())
 	local player = Players.LocalPlayer
 	local playerGui = player:WaitForChild("PlayerGui")
-	local partInfo = Parts.byId[result.part.id]
+	local partInfo = Items.byId[result.part.id]
 	local rarity = result.rarity
 	local tier = Rarities.rank[rarity] or 1
 	local rarityColor = Rarities.info[rarity] and Rarities.info[rarity].color or Color3.new(1, 1, 1)
-	-- The first clue is which slot of the house it's for.
-	local slot = Parts.slotById[partInfo.slot]
-	local series = { icon = slot.icon, name = slot.name, color = UI.cardColor(slot.name) }
+	-- The first clue is what kind of thing it is (for a house part, which slot it's for).
+	local series
+	if partInfo.kind == "House" then
+		local slot = Parts.slotById[partInfo.slot]
+		series = { clue = "SLOT", icon = slot.icon, name = slot.name, color = UI.cardColor(slot.name) }
+	else
+		local kind = Items.KINDS[partInfo.kind]
+		series = { clue = "KIND", icon = kind.icon, name = kind.name, color = kind.color }
+	end
 	local random = Random.new()
 
 	----------------------------------------------------------------------------
@@ -805,7 +815,10 @@ function PackReveal.play(result, done: () -> ())
 	camera.CFrame = state.camFrom
 	flash(Color3.new(0, 0, 0), 0.5)
 	moveCamera(Vector3.new(0, 7, -24), Vector3.new(0, 4, 0))
-	local egg = BoxModel.build(result.crate)
+	local egg = if result.egg then EggModel.build(result.egg) else BoxModel.build(result.crate)
+	if result.egg then
+		pcall(egg.ScaleTo, egg, 1.6)
+	end
 	Lego.apply(egg)
 	egg.Parent = stage
 	local eggRest = at(0, PEDESTAL_TOP, 0) * CFrame.Angles(0, math.pi, 0)
@@ -832,11 +845,12 @@ function PackReveal.play(result, done: () -> ())
 	-- 3. Burst! A face-down card spins up out of the light.
 	----------------------------------------------------------------------------
 	flash(Color3.new(1, 1, 1), 0.45)
-	burst(
-		Vector3.new(0, PEDESTAL_TOP + 2, 0),
-		18,
-		{ (Luck.crateById[result.crate] and Luck.crateById[result.crate].color) or GOLD, Color3.new(1, 1, 1) }
-	)
+	burst(Vector3.new(0, PEDESTAL_TOP + 2, 0), 18, {
+		if result.egg and Items.ZONES[result.egg]
+			then Items.ZONES[result.egg].eggColor
+			else (Luck.crateById[result.crate] and Luck.crateById[result.crate].color) or GOLD,
+		Color3.new(1, 1, 1),
+	})
 	egg:Destroy()
 	state.shake = 1
 	state.sweep = 0.6
@@ -948,7 +962,7 @@ function PackReveal.play(result, done: () -> ())
 	----------------------------------------------------------------------------
 	state.color = series.color
 	state.brightness = 0.7
-	slam("SLOT", series.icon .. " " .. string.upper(series.name), series.color)
+	slam(series.clue, series.icon .. " " .. string.upper(series.name), series.color)
 	setRim(series.color)
 	camTime = 2
 	moveCamera(Vector3.new(-5, 8, -18), CARD_HOME)
@@ -1217,9 +1231,11 @@ function PackReveal.play(result, done: () -> ())
 	end)
 
 	-- The card lifts up and back; the part pops out onto the pedestal.
-	local freek = HouseModel.item(result.part.id)
+	local freek = ItemModel.build(result.part.id, result.part.mutations)
 	Lego.apply(freek)
-	pcall(freek.ScaleTo, freek, 1.3)
+	-- Everything fits about the same space in front of the card.
+	local _, size = freek:GetBoundingBox()
+	pcall(freek.ScaleTo, freek, math.clamp(6.5 / math.max(size.X, size.Y, size.Z, 0.1), 0.3, 1.3))
 	for _, p in freek:GetDescendants() do
 		if p:IsA("BasePart") then
 			p.Anchored = true
@@ -1246,7 +1262,7 @@ function PackReveal.play(result, done: () -> ())
 	state.shake = 0.6
 
 	-- 7. The name slams in, with NEW! if it's new to them.
-	local nameLabel = UI.label(string.upper(HouseUtil.displayName(result.part)), {
+	local nameLabel = UI.label(string.upper(LifeUtil.displayName(result.part)), {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.86),
 		Size = UDim2.fromOffset(800, 70),
@@ -1289,7 +1305,13 @@ function PackReveal.play(result, done: () -> ())
 			stampScale.Scale = 2 - easeOut(a)
 		end)
 	end
-	UI.label(if result.where == "installed" then "It's on your house!" else "It's in your backpack!", {
+	local WHERE_TEXT = {
+		house = "It's on your house!",
+		pen = "It's roaming your yard!",
+		yard = "It's in your yard!",
+		garden = "It's in your garden!",
+	}
+	UI.label(WHERE_TEXT[result.where] or "It's in your backpack!", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.86, 48),
 		Size = UDim2.fromOffset(400, 26),

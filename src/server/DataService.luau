@@ -11,9 +11,10 @@ local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
+local Items = require(ReplicatedStorage.Shared.Items)
 local Parts = require(ReplicatedStorage.Shared.Parts)
 
-local STORE_NAME = "StealAHome_Players_v1"
+local STORE_NAME = "StealALife_Players_v1"
 
 local DataService = {}
 
@@ -33,10 +34,14 @@ local function defaultData()
 		money = Config.START_MONEY,
 		speed = 0, -- trained on the treadmill; decides how fast you run
 		treadmill = 1, -- treadmill level
-		parts = {}, -- [uid] = { id = partId, mutations? }
+		parts = {}, -- [uid] = { id = itemId, mutations? }: everything owned (see LifeUtil)
 		house = {}, -- [slotId] = uid of the part installed there (none = Basic)
+		pen = {}, -- [uid] = true for pets out in the yard
+		yard = {}, -- ["1".."6"] = uid of the yard item on that spot
+		garden = {}, -- ["1".."6"] = uid of the plant in that bed
+		nests = {}, -- ["1".."5"] = { zone, rarity, endsAt, mutations? }: eggs growing
 		nextUid = 1,
-		discovered = {}, -- [partId] = true for every part this player has owned
+		discovered = {}, -- [itemId] = true for every item this player has owned
 		rebirths = 0,
 		crates = {}, -- [crateId] = how many unopened Mystery Boxes (won on the wheel)
 		receipts = {}, -- recent Robux purchase IDs, so a purchase is never granted twice
@@ -56,9 +61,9 @@ local function reconcile(data)
 	if Config.TEST_MONEY and data.money < Config.TEST_MONEY then
 		data.money = Config.TEST_MONEY
 	end
-	-- Parts that no longer exist are dropped, and slots pointing at missing parts emptied.
+	-- Items that no longer exist are dropped, and places pointing at missing items emptied.
 	for uid, record in data.parts do
-		if not Parts.byId[record.id] or Parts.isBasic(record.id) then
+		if not Items.byId[record.id] or Parts.isBasic(record.id) then
 			data.parts[uid] = nil
 		else
 			record.mutations = Mutations.pack(record.mutations)
@@ -66,14 +71,28 @@ local function reconcile(data)
 	end
 	for slotId, uid in data.house do
 		local record = data.parts[uid]
-		if not Parts.slotById[slotId] or not record or Parts.byId[record.id].slot ~= slotId then
+		if not Parts.slotById[slotId] or not record or Items.byId[record.id].slot ~= slotId then
 			data.house[slotId] = nil
+		end
+	end
+	for uid in data.pen do
+		local record = data.parts[uid]
+		if not record or Items.byId[record.id].kind ~= "Pet" then
+			data.pen[uid] = nil
+		end
+	end
+	for kind, where in { Yard = data.yard, Plant = data.garden } do
+		for spot, uid in where do
+			local record = data.parts[uid]
+			if not record or Items.byId[record.id].kind ~= kind then
+				where[spot] = nil
+			end
 		end
 	end
 	return data
 end
 
--- A fresh uid for a new part.
+-- A fresh uid for a new item.
 function DataService.newUid(data): string
 	local uid = "p" .. data.nextUid
 	data.nextUid += 1

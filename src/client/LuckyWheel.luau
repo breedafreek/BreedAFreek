@@ -26,10 +26,10 @@ local SLICE_COLORS = {
 local ICONS = {
 	Coins = "💰",
 	["Big Coins"] = "💵",
-	["Golden Part"] = "⭐",
+	["Golden Egg"] = "⭐",
 	["Mystery Box"] = "📦",
 	["Huge Coins"] = "🤑",
-	["Rainbow Part"] = "🌈",
+	["Rainbow Egg"] = "🌈",
 	["Mega Box"] = "🎁",
 	JACKPOT = "👑",
 }
@@ -38,10 +38,10 @@ local ICONS = {
 local SHORT = {
 	Coins = "COINS",
 	["Big Coins"] = "BIG $",
-	["Golden Part"] = "GOLDEN",
+	["Golden Egg"] = "GOLDEN",
 	["Mystery Box"] = "BOX",
 	["Huge Coins"] = "HUGE $",
-	["Rainbow Part"] = "RAINBOW",
+	["Rainbow Egg"] = "RAINBOW",
 	["Mega Box"] = "MEGA BOX",
 	JACKPOT = "JACKPOT",
 }

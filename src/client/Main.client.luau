@@ -1,4 +1,4 @@
--- The player's screen: money and Speed, the side menu, and the Shop / Luck / House / Bag /
+-- The player's screen: money and Speed, the side menu, and the Shop / Luck / My Life / Bag /
 -- Catalog / Rebirth / Store windows. The server is the source of truth; this only shows
 -- state and sends requests.
 
@@ -10,7 +10,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
-print("[Steal a Home] Client starting")
+print("[Steal a Life] Client starting")
 
 -- If the game hasn't loaded after a few seconds, show what the server is stuck on.
 local clientReady = false
@@ -47,13 +47,13 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Format = require(Shared.Format)
 local GamePasses = require(Shared.GamePasses)
-local HouseUtil = require(Shared.HouseUtil)
+local LifeUtil = require(Shared.LifeUtil)
 local Luck = require(Shared.Luck)
 local Mutations = require(Shared.Mutations)
+local Items = require(Shared.Items)
 local Parts = require(Shared.Parts)
 local Rarities = require(Shared.Rarities)
 local Remotes = require(Shared.Remotes)
-local Weapons = require(Shared.Weapons)
 local AdminPanel = require(script.Parent.AdminPanel)
 local Ambient = require(script.Parent.Ambient)
 local EventFX = require(script.Parent.EventFX)
@@ -62,6 +62,7 @@ local Hud = require(script.Parent.Hud)
 local ItemPictures = require(script.Parent.ItemPictures)
 local LuckyWheel = require(script.Parent.LuckyWheel)
 local PackReveal = require(script.Parent.PackReveal)
+local PetFX = require(script.Parent.PetFX)
 local UI = require(script.Parent.UI)
 
 local player = Players.LocalPlayer
@@ -80,7 +81,7 @@ local discoveries = {}
 --------------------------------------------------------------------------------
 
 local screen = UI.new("ScreenGui", {
-	Name = "StealAHomeUI",
+	Name = "StealALifeUI",
 	ResetOnSpawn = false,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 	Parent = player:WaitForChild("PlayerGui"),
@@ -216,9 +217,10 @@ local body = UI.new("ScrollingFrame", {
 
 local currentWindow = nil
 local renderers = {}
-local catalogStyle = "Scrap" -- which style the Catalog is showing
+local liveTimers = {} -- { { label, endsAt } } counting down on the Nests tab
 
 local function clearBody()
+	table.clear(liveTimers)
 	for _, child in body:GetChildren() do
 		if not child:IsA("UIListLayout") and not child:IsA("UIPadding") then
 			child:Destroy()
@@ -247,7 +249,7 @@ local function open(name: string)
 	end
 	currentWindow = name
 	setActiveTab(name)
-	windowTitle.Text = (TAB_ICONS[name] or "") .. " " .. string.upper(name)
+	windowTitle.Text = (TAB_ICONS[name] or "") .. " " .. (if name == "Life" then "MY LIFE" else string.upper(name))
 	paintHeader(TAB_COLORS[name] or colors.blue)
 	window.Visible = true
 	body.CanvasPosition = Vector2.zero
@@ -320,13 +322,13 @@ local function confirmButton(text: string, color: Color3, onConfirm: () -> ())
 	return button
 end
 
--- A part's name, coloured by its mutation (or rarity).
+-- An item's name, coloured by its mutation (or rarity).
 local function partColor(record): Color3
 	local top = Mutations.top(record.mutations)
 	if top then
 		return Mutations.byId[top].color
 	end
-	return Parts.color(record.id)
+	return Items.color(record.id)
 end
 
 -- A wide glossy banner card (treadmill, Starter Pack, box bundles, VIP): returns the frame.
@@ -393,11 +395,16 @@ local function boxRow(parent: Instance, crateId: string, count: number, x: numbe
 end
 
 --------------------------------------------------------------------------------
--- Shop: the treadmill, the zones and weapons
+-- Shop: the treadmill and the zones
 --------------------------------------------------------------------------------
 
 local function speedGain(level: number): number
 	return Config.treadmillGain(level) * Config.speedMultiplier(state.rebirths) * GamePasses.speedMultiplier(player)
+end
+
+-- "Common 70% · Uncommon 25% · Rare 5%"
+local function percentText(percent: number): string
+	return if percent < 1 then string.format("%.1f%%", percent) else string.format("%.0f%%", percent)
 end
 
 function renderers.Shop()
@@ -433,20 +440,22 @@ function renderers.Shop()
 			end)
 	)
 
-	-- The zones and the Speed each one needs.
+	-- The zones, their eggs and the Speed each one needs.
 	local speed = player:GetAttribute("Speed") or state.speed or 0
 	heading("Zones", 2)
-	heading("Each zone's guardian is fast! Train enough ⚡ Speed to outrun it with a part.", 3)
-	local grid = UI.grid(200, 250)
+	heading("Grab an egg and outrun the guardian! Train ⚡ Speed to reach the deeper zones.", 3)
+	local grid = UI.grid(210, 300)
 	grid.LayoutOrder = 4
 	grid.Parent = body
-	for i, zone in Parts.ZONES do
-		local style = Parts.styleById[zone.style]
+	for i, zone in Items.ZONES do
+		local kind = Items.KINDS[zone.kind]
 		local ready = speed >= zone.speed
+		local odds = Items.oddsList(i)
+		local best = odds[#odds]
 		local card = UI.card({
-			part = zone.style .. "_Door",
+			egg = i,
 			pictureHeight = 100,
-			accent = Rarities.info[style.rarity].color,
+			accent = zone.eggColor,
 			border = if ready then colors.money else nil,
 			lines = {
 				{ zone.name, nil, 24 },
@@ -455,7 +464,12 @@ function renderers.Shop()
 					Color3.fromRGB(150, 230, 255),
 					20,
 				},
-				{ style.name .. " parts · " .. style.rarity, colors.text, 18 },
+				{ kind.icon .. " " .. Items.eggName(i) .. "s", colors.text, 18 },
+				{
+					"Up to " .. best.rarity .. " (" .. percentText(best.percent) .. ")",
+					Rarities.info[best.rarity].color:Lerp(Color3.new(1, 1, 1), 0.3),
+					17,
+				},
 				{
 					if ready
 						then "✅ You're fast enough!"
@@ -468,100 +482,229 @@ function renderers.Shop()
 		card.LayoutOrder = i
 		card.Parent = grid
 	end
-
-	heading("Weapons", 5)
-	heading("Bonk a thief carrying a part and they drop it!", 6)
-	local weapons = UI.grid(220, 250)
-	weapons.LayoutOrder = 7
-	weapons.Parent = body
-	for i, weaponId in Weapons.order do
-		local weapon = Weapons.list[weaponId]
-		local owned = weaponId == Weapons.STARTER or (state.rebirths or 0) >= (weapon.rebirth or math.huge)
-		local card = UI.card({
-			picture = weaponId,
-			lines = {
-				{ weapon.name, weapon.color:Lerp(Color3.new(1, 1, 1), 0.3), 24 },
-				{ weapon.description, colors.muted, 44 },
-			},
-			buttons = {
-				UI.button(
-					if owned then "Unlocked" else "Unlocks at Rebirth " .. weapon.rebirth,
-					if owned then colors.green else colors.gray,
-					function()
-						if not owned then
-							open("Rebirth")
-						end
-					end
-				),
-			},
-		})
-		card.LayoutOrder = i
-		card.Parent = weapons
-	end
 end
 
 --------------------------------------------------------------------------------
--- House: what's in each slot
+-- My Life: the nests, the house, the pets, the yard and the garden
 --------------------------------------------------------------------------------
 
-function renderers.House()
-	local income = HouseUtil.houseIncome(state) * GamePasses.coinMultiplier(player)
-	heading("Your house earns " .. Format.money(income) .. "/s", 1, colors.money)
-	heading("Steal better parts from the zones! A better part snaps on by itself.", 2)
-	buttonRow(3, {
-		UI.button("⬆ INSTALL BEST", colors.green, function()
-			send("InstallBest")
-		end),
+local lifeTab = "Nests"
+local LIFE_TABS = {
+	{ "Nests", "🥚", Color3.fromRGB(255, 190, 60) },
+	{ "House", "🏠", Items.KINDS.House.color },
+	{ "Pets", "🐾", Items.KINDS.Pet.color },
+	{ "Yard", "🛝", Items.KINDS.Yard.color },
+	{ "Garden", "🌷", Items.KINDS.Plant.color },
+}
+local function tabRow(order: number, tabs, current: string, onPick: (string) -> ())
+	local row = UI.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = order,
+		Parent = body,
+	}, {
+		UI.new("UIGridLayout", {
+			CellSize = UDim2.fromOffset(132, 40),
+			CellPadding = UDim2.fromOffset(6, 6),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
 	})
-	local grid = UI.grid(200, 270)
-	grid.LayoutOrder = 4
-	grid.Parent = body
-	for i, slot in Parts.SLOTS do
-		local record = HouseUtil.installedRecord(state, slot.id) or { id = Parts.basic(slot.id) }
-		local basic = Parts.isBasic(record.id)
-		local card = UI.card({
-			part = record.id,
-			pictureHeight = 110,
-			accent = if basic then Color3.fromRGB(150, 150, 170) else nil,
-			lines = {
-				{ slot.icon .. " " .. slot.name, nil, 24 },
-				{ HouseUtil.displayName(record), partColor(record):Lerp(Color3.new(1, 1, 1), 0.2), 20 },
-				{ Format.money(HouseUtil.partIncome(record)) .. "/s", colors.money, 20 },
-			},
-			buttons = {
-				if basic
-					then UI.button("Steal a better one!", colors.gray, function()
-						open("Shop")
-					end, { Size = UDim2.new(1, 0, 0, 36) })
-					else UI.button("TAKE OFF", colors.blue, function()
-						send("Uninstall", slot.id)
+	for i, tab in tabs do
+		local button = UI.button(tab[2] .. " " .. tab[1], if tab[1] == current then tab[3] else colors.gray, function()
+			onPick(tab[1])
+		end)
+		button.LayoutOrder = i
+		button.Parent = row
+	end
+end
+
+-- A card for an item that's out, with a TAKE OFF button.
+local function placedCard(uid: string, title: string)
+	local record = state.parts[uid]
+	local info = Items.byId[record.id]
+	return UI.card({
+		part = record.id,
+		mutations = record.mutations,
+		pictureHeight = 110,
+		lines = {
+			{ title, nil, 22 },
+			{ LifeUtil.displayName(record), partColor(record):Lerp(Color3.new(1, 1, 1), 0.2), 20 },
+			{ Format.money(LifeUtil.itemIncome(record)) .. "/s", colors.money, 20 },
+		},
+		buttons = {
+			UI.button("TAKE OFF", colors.blue, function()
+				send("TakeOff", uid)
+			end, { Size = UDim2.new(1, 0, 0, 36) }),
+		},
+		tag = { info.rarity:upper(), Items.color(record.id) },
+	})
+end
+
+-- An empty spot: hatch more eggs!
+local function emptyCard(title: string, hint: string)
+	return UI.card({
+		accent = Color3.fromRGB(150, 150, 170),
+		lines = { { title, nil, 22 }, { hint, colors.muted, 36 } },
+		buttons = {
+			UI.button("Find eggs!", colors.gray, function()
+				open("Shop")
+			end, { Size = UDim2.new(1, 0, 0, 36) }),
+		},
+	})
+end
+
+local function nestCards(grid: Instance)
+	local count = LifeUtil.nestCount(GamePasses.extraNests(player))
+	local now = Items.now()
+	for n = 1, Items.NESTS + 2 do
+		local egg = state.nests and state.nests[tostring(n)]
+		local card
+		if n > count then
+			card = UI.card({
+				picture = "ExtraPen",
+				pictureHeight = 100,
+				accent = Color3.fromRGB(150, 150, 170),
+				lines = { { "Nest " .. n, nil, 22 }, { "🔒 Extra Nests pass", colors.muted, 20 } },
+				buttons = {
+					UI.button("STORE", colors.pink, function()
+						open("Store")
 					end, { Size = UDim2.new(1, 0, 0, 36) }),
-			},
-			tag = if basic then nil else { Parts.byId[record.id].rarity:upper(), Parts.color(record.id) },
-		})
-		card.LayoutOrder = i
+				},
+			})
+		elseif not egg then
+			card = emptyCard("Nest " .. n, "Empty! Grab an egg in a zone and run it home.")
+		else
+			local ready = egg.endsAt <= now
+			local zone = Items.ZONES[egg.zone]
+			local timer = {
+				if ready then "🐣 READY!" else "⏱ " .. Format.time(egg.endsAt - now),
+				if ready then colors.money else colors.text,
+				22,
+			}
+			card = UI.card({
+				egg = egg.zone,
+				pictureHeight = 100,
+				accent = Rarities.info[egg.rarity].color,
+				border = if ready then colors.money else nil,
+				lines = {
+					{ "Nest " .. n, nil, 22 },
+					{ Items.KINDS[zone.kind].icon .. " " .. Items.eggName(egg.zone), colors.text, 19 },
+					timer,
+				},
+				buttons = {
+					UI.button("HATCH!", if ready then colors.green else colors.gray, function()
+						send("Hatch", n)
+					end, { Size = UDim2.new(1, 0, 0, 36) }),
+				},
+				tag = { egg.rarity:upper(), Rarities.info[egg.rarity].color },
+			})
+			if not ready then
+				-- The third text line is the timer: count it down without re-rendering.
+				for _, label in card:GetDescendants() do
+					if label:IsA("TextLabel") and string.sub(label.Text, 1, 3) == "⏱" then
+						table.insert(liveTimers, { label = label, endsAt = egg.endsAt })
+					end
+				end
+			end
+		end
+		card.LayoutOrder = n
 		card.Parent = grid
 	end
 end
 
+function renderers.Life()
+	local income = LifeUtil.totalIncome(state) * GamePasses.coinMultiplier(player)
+	heading("Your life earns " .. Format.money(income) .. "/s", 1, colors.money)
+	tabRow(2, LIFE_TABS, lifeTab, function(name)
+		lifeTab = name
+		render()
+	end)
+	buttonRow(3, {
+		UI.button("⬆ PUT OUT BEST", colors.green, function()
+			send("PlaceBest")
+		end),
+	})
+	local grid = UI.grid(200, 280)
+	grid.LayoutOrder = 4
+	grid.Parent = body
+	if lifeTab == "Nests" then
+		heading("Eggs grow in your nests. Rarer eggs take longer!", 5)
+		nestCards(grid)
+	elseif lifeTab == "House" then
+		for i, slot in Parts.SLOTS do
+			local record, uid = LifeUtil.installedRecord(state, slot.id)
+			local card
+			if record then
+				card = placedCard(uid, slot.icon .. " " .. slot.name)
+			else
+				local basic = { id = Parts.basic(slot.id) }
+				card = UI.card({
+					part = basic.id,
+					pictureHeight = 110,
+					accent = Color3.fromRGB(150, 150, 170),
+					lines = {
+						{ slot.icon .. " " .. slot.name, nil, 22 },
+						{ "Basic", colors.muted, 20 },
+						{ Format.money(LifeUtil.itemIncome(basic)) .. "/s", colors.money, 20 },
+					},
+					buttons = {
+						UI.button("Hatch a better one!", colors.gray, function()
+							open("Shop")
+						end, { Size = UDim2.new(1, 0, 0, 36) }),
+					},
+				})
+			end
+			card.LayoutOrder = i
+			card.Parent = grid
+		end
+	elseif lifeTab == "Pets" then
+		local pets = LifeUtil.pets(state)
+		for n = 1, Items.PET_SLOTS do
+			local card = if pets[n]
+				then placedCard(pets[n], "🐾 Pet " .. n)
+				else emptyCard("🐾 Pet " .. n, "Hatch Wilds Eggs to get pets that roam your yard!")
+			card.LayoutOrder = n
+			card.Parent = grid
+		end
+	else
+		local where = if lifeTab == "Yard" then state.yard else state.garden
+		local count = if lifeTab == "Yard" then Items.YARD_SPOTS else Items.GARDEN_BEDS
+		local icon = if lifeTab == "Yard" then "🛝 Spot " else "🌷 Bed "
+		for n = 1, count do
+			local uid = where and where[tostring(n)]
+			local card = if uid and state.parts[uid]
+				then placedCard(uid, icon .. n)
+				else emptyCard(
+					icon .. n,
+					if lifeTab == "Yard"
+						then "Hatch Yard Sale Eggs for swings, pools and more!"
+						else "Hatch Garden Eggs for flowers and trees!"
+				)
+			card.LayoutOrder = n
+			card.Parent = grid
+		end
+	end
+end
+
 --------------------------------------------------------------------------------
--- Bag: parts that aren't on the house
+-- Bag: items that aren't out
 --------------------------------------------------------------------------------
 
 function renderers.Bag()
-	local list = HouseUtil.backpack(state)
+	local list = LifeUtil.backpack(state)
 	heading("🎒 Backpack  " .. #list .. " / " .. GamePasses.backpackSize(player), 1)
 	if #list == 0 then
-		heading("Empty! Parts that aren't better than your house's go here.", 2)
+		heading("Empty! Hatched items that aren't better than yours go here.", 2)
 		return
 	end
 	local total = 0
 	for _, uid in list do
-		total += HouseUtil.sellPrice(state.parts[uid])
+		total += LifeUtil.sellPrice(state.parts[uid])
 	end
 	buttonRow(2, {
-		UI.button("⬆ INSTALL BEST", colors.green, function()
-			send("InstallBest")
+		UI.button("⬆ PUT OUT BEST", colors.green, function()
+			send("PlaceBest")
 		end),
 		confirmButton("SELL ALL " .. Format.money(total), colors.red, function()
 			send("SellBackpack")
@@ -572,36 +715,37 @@ function renderers.Bag()
 	grid.Parent = body
 	for i, uid in list do
 		local record = state.parts[uid]
-		local info = Parts.byId[record.id]
-		local current = HouseUtil.installedRecord(state, info.slot) or { id = Parts.basic(info.slot) }
-		local diff = HouseUtil.partIncome(record) - HouseUtil.partIncome(current)
+		local info = Items.byId[record.id]
+		local upgrade = LifeUtil.isUpgrade(state, uid)
+		local kind = Items.KINDS[info.kind]
 		local card = UI.card({
 			part = record.id,
+			mutations = record.mutations,
 			pictureHeight = 110,
-			border = if diff > 0 then colors.money else nil,
+			border = if upgrade then colors.money else nil,
 			lines = {
-				{ HouseUtil.displayName(record), nil, 22 },
+				{ LifeUtil.displayName(record), nil, 22 },
 				{
-					Parts.slotById[info.slot].icon .. " " .. info.slot .. " · " .. info.rarity,
+					kind.icon .. " " .. (info.slot or kind.name) .. " · " .. info.rarity,
 					partColor(record):Lerp(Color3.new(1, 1, 1), 0.2),
 					18,
 				},
-				{ Format.money(HouseUtil.partIncome(record)) .. "/s", colors.money, 20 },
+				{ Format.money(LifeUtil.itemIncome(record)) .. "/s", colors.money, 20 },
 				{
-					if diff > 0 then "▲ +" .. Format.money(diff) .. "/s upgrade!" else "▼ Worse than yours",
-					if diff > 0 then colors.money else Color3.fromRGB(255, 200, 200),
+					if upgrade then "▲ Upgrade!" else "▼ Yours are better",
+					if upgrade then colors.money else Color3.fromRGB(255, 200, 200),
 					18,
 				},
 			},
 			buttons = {
-				UI.button("INSTALL", colors.green, function()
-					send("Install", uid)
+				UI.button("PUT OUT", colors.green, function()
+					send("Place", uid)
 				end, { Size = UDim2.new(1, 0, 0, 34) }),
-				confirmButton("SELL " .. Format.money(HouseUtil.sellPrice(record)), colors.red, function()
+				confirmButton("SELL " .. Format.money(LifeUtil.sellPrice(record)), colors.red, function()
 					send("Sell", uid)
 				end),
 			},
-			tag = if diff > 0 then { "UP!", colors.green } else nil,
+			tag = if upgrade then { "UP!", colors.green } else nil,
 		})
 		card.LayoutOrder = i
 		card.Parent = grid
@@ -609,80 +753,103 @@ function renderers.Bag()
 end
 
 --------------------------------------------------------------------------------
--- Catalog: every part, style by style
+-- Catalog: every item, kind by kind (house parts style by style)
 --------------------------------------------------------------------------------
 
+local catalogKind = "House"
+local catalogStyle = "Scrap" -- which house style the Catalog is showing
+local CATALOG_TABS = {
+	{ "House", "🏠", Items.KINDS.House.color },
+	{ "Pet", "🐾", Items.KINDS.Pet.color },
+	{ "Yard", "🛝", Items.KINDS.Yard.color },
+	{ "Plant", "🌷", Items.KINDS.Plant.color },
+}
+
+local function catalogCard(id: string, title: string)
+	local info = Items.byId[id]
+	local owned = state.discovered[id] == true
+	local first = discoveries[id]
+	local lines = {
+		{ if owned then title else "???", nil, 20 },
+		{ info.rarity, Rarities.info[info.rarity].color:Lerp(Color3.new(1, 1, 1), 0.3), 16 },
+		{ Format.money(info.income) .. "/s", colors.money, 18 },
+	}
+	if first then
+		table.insert(lines, { "1st: " .. first.name, colors.gold, 16 })
+	end
+	return UI.card({
+		part = id,
+		pictureHeight = 90,
+		silhouette = not owned,
+		accent = if owned then nil else Color3.fromRGB(90, 90, 110),
+		lines = lines,
+	})
+end
+
 function renderers.Catalog()
-	local found = 0
-	local total = 0
-	for _, part in Parts.list do
-		if not Parts.isBasic(part.id) then
+	local found, total = 0, 0
+	for _, item in Items.list do
+		if not item.basic then
 			total += 1
-			if state.discovered[part.id] then
+			if state.discovered[item.id] then
 				found += 1
 			end
 		end
 	end
-	heading("Found " .. found .. " / " .. total .. " parts", 1)
-	-- Style tabs.
-	local tabs = UI.new("Frame", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = 2,
-		Parent = body,
-	}, {
-		UI.new("UIGridLayout", {
-			CellSize = UDim2.fromOffset(118, 36),
-			CellPadding = UDim2.fromOffset(6, 6),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		}),
-	})
-	for i, style in Parts.STYLES do
-		if style.id ~= "Basic" then
-			local color = Rarities.info[style.rarity].color
-			local button = UI.button(style.name, if style.id == catalogStyle then color else colors.gray, function()
-				catalogStyle = style.id
-				render()
-			end)
-			button.LayoutOrder = i
-			button.Parent = tabs
+	heading("Found " .. found .. " / " .. total .. " items", 1)
+	tabRow(2, CATALOG_TABS, catalogKind, function(name)
+		catalogKind = name
+		render()
+	end)
+	if catalogKind == "House" then
+		-- Style tabs.
+		local tabs = UI.new("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = 3,
+			Parent = body,
+		}, {
+			UI.new("UIGridLayout", {
+				CellSize = UDim2.fromOffset(118, 36),
+				CellPadding = UDim2.fromOffset(6, 6),
+				SortOrder = Enum.SortOrder.LayoutOrder,
+			}),
+		})
+		for i, style in Parts.STYLES do
+			if style.id ~= "Basic" then
+				local color = Rarities.info[style.rarity].color
+				local button = UI.button(style.name, if style.id == catalogStyle then color else colors.gray, function()
+					catalogStyle = style.id
+					render()
+				end)
+				button.LayoutOrder = i
+				button.Parent = tabs
+			end
 		end
+		local style = Parts.styleById[catalogStyle]
+		heading(style.name .. " · " .. style.rarity, 4, Rarities.info[style.rarity].color)
+		local grid = UI.grid(150, 220)
+		grid.LayoutOrder = 5
+		grid.Parent = body
+		for i, slot in Parts.SLOTS do
+			local card = catalogCard(style.id .. "_" .. slot.id, slot.name)
+			card.LayoutOrder = i
+			card.Parent = grid
+		end
+		return
 	end
-	local style = Parts.styleById[catalogStyle]
-	local zone = style.zone and Parts.ZONES[style.zone]
-	heading(
-		style.name .. " · " .. style.rarity .. (if zone then " · from " .. zone.name else ""),
-		3,
-		Rarities.info[style.rarity].color
-	)
-	if style.secret then
-		heading("Super rare! Sometimes grows in " .. (zone and zone.name or "the last zone") .. ".", 4)
-	end
-	local grid = UI.grid(150, 200)
+	local grid = UI.grid(150, 220)
 	grid.LayoutOrder = 5
 	grid.Parent = body
-	for i, slot in Parts.SLOTS do
-		local id = style.id .. "_" .. slot.id
-		local info = Parts.byId[id]
-		local owned = state.discovered[id] == true
-		local first = discoveries[id]
-		local lines = {
-			{ if owned then slot.name else "???", nil, 20 },
-			{ Format.money(info.income) .. "/s", colors.money, 18 },
-		}
-		if first then
-			table.insert(lines, { "1st: " .. first.name, colors.gold, 16 })
+	local order = 0
+	for _, item in Items.list do
+		if item.kind == catalogKind then
+			order += 1
+			local card = catalogCard(item.id, item.name)
+			card.LayoutOrder = order
+			card.Parent = grid
 		end
-		local card = UI.card({
-			part = id,
-			pictureHeight = 90,
-			silhouette = not owned,
-			accent = if owned then nil else Color3.fromRGB(90, 90, 110),
-			lines = lines,
-		})
-		card.LayoutOrder = i
-		card.Parent = grid
 	end
 end
 
@@ -695,35 +862,32 @@ function renderers.Rebirth()
 	local cost = Config.rebirthCost(rebirths)
 	heading(
 		string.format(
-			"Rebirth %d  ·  House x%s  ·  Speed x%s",
+			"Rebirth %d  ·  Income x%s  ·  Speed x%s",
 			rebirths,
 			tostring(Config.incomeMultiplier(rebirths)),
 			tostring(Config.speedMultiplier(rebirths))
 		),
 		1
 	)
-	local unlocks = {}
-	for _, weaponId in Weapons.order do
-		if Weapons.list[weaponId].rebirth == rebirths + 1 then
-			table.insert(unlocks, Weapons.list[weaponId].name)
-		end
-	end
-	local grid = UI.grid(440, 290)
+	local grid = UI.grid(440, 270)
 	grid.LayoutOrder = 2
 	grid.Parent = body
 	local ready = state.money >= cost
 	UI.card({
 		lines = {
 			{ "Rebirth " .. (rebirths + 1), Color3.fromRGB(255, 210, 80), 30 },
-			{ "Your house earns x" .. tostring(Config.incomeMultiplier(rebirths + 1)) .. " forever", colors.money, 22 },
+			{
+				"Everything you own earns x" .. tostring(Config.incomeMultiplier(rebirths + 1)) .. " forever",
+				colors.money,
+				22,
+			},
 			{
 				"Your treadmill trains x" .. tostring(Config.speedMultiplier(rebirths + 1)) .. " Speed forever",
 				Color3.fromRGB(150, 230, 255),
 				20,
 			},
-			{ if #unlocks > 0 then "Unlocks: " .. table.concat(unlocks, ", ") else "", colors.orange, 20 },
 			{ "Resets: coins, Speed, treadmill level", colors.red:Lerp(Color3.new(1, 1, 1), 0.3), 18 },
-			{ "Keeps: your house, backpack, Catalog, weapons", colors.muted, 18 },
+			{ "Keeps: your house, pets, yard, garden, eggs, backpack", colors.muted, 18 },
 			{
 				Format.money(state.money) .. " / " .. Format.money(cost),
 				if ready then colors.money else colors.text,
@@ -739,27 +903,6 @@ function renderers.Rebirth()
 		},
 	}).Parent =
 		grid
-
-	heading("Weapon unlocks", 3)
-	local milestones = UI.grid(200, 80)
-	milestones.LayoutOrder = 4
-	milestones.Parent = body
-	for i, weaponId in Weapons.order do
-		local weapon = Weapons.list[weaponId]
-		local at = weapon.rebirth or 0
-		local card = UI.card({
-			lines = {
-				{ weapon.name, weapon.color:Lerp(Color3.new(1, 1, 1), 0.3), 22 },
-				{
-					if at == 0 then "Free" elseif rebirths >= at then "Unlocked" else "Rebirth " .. at,
-					if rebirths >= at then colors.money else colors.muted,
-					18,
-				},
-			},
-		})
-		card.LayoutOrder = i
-		card.Parent = milestones
-	end
 end
 
 --------------------------------------------------------------------------------
@@ -770,8 +913,8 @@ end
 local PASS_BADGES = {
 	DoubleCoins = "x2",
 	FastBreeding = "x2",
-	LongerLock = "+2 MIN",
-	ExtraPen = "💪",
+	LongerLock = "x2",
+	ExtraPen = "+2",
 	ExtraSlot1 = "+20",
 	ExtraSlot2 = "+20",
 	ExtraSlot3 = "+20",
@@ -1029,10 +1172,10 @@ local function prizeCard(box: Frame, title: string, part, color: Color3, subtitl
 		add(UI.label(line[1], { TextColor3 = line[2], Size = UDim2.new(1, 0, 0, line[3]) }))
 	end
 	if part then
-		local view = ItemPictures.part(part.id, 200)
+		local view = ItemPictures.part(part.id, 200, false, part.mutations)
 		view.Size = UDim2.new(1, 0, 0, 200)
 		add(view)
-		add(UI.label(HouseUtil.displayName(part), { TextColor3 = color, Size = UDim2.new(1, 0, 0, 30) }))
+		add(UI.label(LifeUtil.displayName(part), { TextColor3 = color, Size = UDim2.new(1, 0, 0, 30) }))
 	end
 	add(UI.label(subtitle, { TextColor3 = colors.muted, Size = UDim2.new(1, 0, 0, 40), TextWrapped = true }))
 	add(UI.button("Awesome!", colors.green, close, { Size = UDim2.new(1, 0, 0, 44) }))
@@ -1042,12 +1185,22 @@ local function prizeCard(box: Frame, title: string, part, color: Color3, subtitl
 		:Play()
 end
 
+-- Where a new item went, in words.
+local WHERE_TEXT = {
+	house = "It's on your house!",
+	pen = "It's roaming your yard!",
+	yard = "It's in your yard!",
+	garden = "It's in your garden!",
+	backpack = "It's in your backpack.",
+}
+
 local function partPrize(box: Frame, part, rarity: string, isNew: boolean, where: string?, close)
 	local color = Rarities.info[rarity].color
 	local subtitle = rarity
-		.. (if isNew then "  ·  NEW PART!" else "")
-		.. (if where == "installed" then "\nIt's on your house!" else "\nIt's in your backpack.")
-	prizeCard(box, if isNew then "NEW PART!" else "You got...", part, color, subtitle, close)
+		.. (if isNew then "  ·  NEW!" else "")
+		.. "\n"
+		.. (WHERE_TEXT[where] or WHERE_TEXT.backpack)
+	prizeCard(box, if isNew then "NEW ITEM!" else "You got...", part, color, subtitle, close)
 end
 
 -- The Lucky Wheel spins and lands on the prize the server rolled.
@@ -1185,7 +1338,7 @@ function renderers.Luck()
 	end
 
 	-- Mystery Boxes (Robux): every chance is shown before buying.
-	UI.label("📦 MYSTERY BOXES · a random house part, odds below", {
+	UI.label("📦 MYSTERY BOXES · a random item of any kind, odds below", {
 		Size = UDim2.new(1, 0, 0, 30),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		FontFace = UI.fonts.heavy,
@@ -1200,14 +1353,10 @@ function renderers.Luck()
 		local odds = Luck.oddsList(crate)
 		local lines = { { crate.name, nil, 24 } }
 		for _, entry in odds do
-			local style = Parts.styleById[entry.style]
-			local percent = if entry.percent < 1
-				then string.format("%.1f", entry.percent)
-				else string.format("%.0f", entry.percent)
 			table.insert(lines, {
-				string.format("%s part · %s  %s%%", style.name, style.rarity, percent),
-				Rarities.info[style.rarity].color:Lerp(Color3.new(1, 1, 1), 0.35),
-				17,
+				entry.rarity .. "  " .. percentText(entry.percent),
+				Rarities.info[entry.rarity].color:Lerp(Color3.new(1, 1, 1), 0.35),
+				18,
 			})
 		end
 		local buy = function()
@@ -1255,7 +1404,7 @@ end
 local MENU = {
 	{ "Shop", "🛒", colors.green },
 	{ "Luck", "🍀", Color3.fromRGB(160, 215, 45) },
-	{ "House", "🏠", colors.blue },
+	{ "Life", "🏡", colors.blue },
 	{ "Bag", "🎒", colors.orange },
 	{ "Catalog", "📖", colors.pink },
 	{ "Rebirth", "⭐", Color3.fromRGB(230, 170, 30) },
@@ -1289,15 +1438,27 @@ task.spawn(function()
 			local spinReady = (state.lastSpin or 0) + spinCooldown() <= now
 			setBadge("Luck", if spinReady then "SPIN!" elseif boxes > 0 then tostring(boxes) else nil)
 			local upgrades = 0
-			for _, uid in HouseUtil.backpack(state) do
-				local record = state.parts[uid]
-				local slotId = Parts.byId[record.id].slot
-				local current = HouseUtil.installedRecord(state, slotId) or { id = Parts.basic(slotId) }
-				if HouseUtil.partIncome(record) > HouseUtil.partIncome(current) then
+			for _, uid in LifeUtil.backpack(state) do
+				if LifeUtil.isUpgrade(state, uid) then
 					upgrades += 1
 				end
 			end
 			setBadge("Bag", if upgrades > 0 then "UP!" else nil, colors.green)
+			local ready = 0
+			local eggNow = Items.now()
+			for _, egg in state.nests or {} do
+				if egg.endsAt <= eggNow then
+					ready += 1
+				end
+			end
+			setBadge("Life", if ready > 0 then "🐣" .. ready else nil, colors.green)
+			-- Nest timers in the open window.
+			for _, timer in liveTimers do
+				if timer.label.Parent then
+					local left = timer.endsAt - eggNow
+					timer.label.Text = if left > 0 then "⏱ " .. Format.time(left) else "🐣 READY!"
+				end
+			end
 			local level = state.treadmill or 1
 			local canUpgrade = level < Config.TREADMILL_MAX and (state.money or 0) >= Config.treadmillCost(level)
 			setBadge("Shop", if canUpgrade then "⚡" else nil, colors.blue)
@@ -1338,61 +1499,33 @@ Remotes.get("DiscoveryUpdate").OnClientEvent:Connect(function(partId, discovery)
 	end
 end)
 
-Hud.gateStatus(screen)
-
--- Nobody needs a Steal prompt on their own house, a Snatch prompt on the part they're
--- carrying, or the padlock on someone else's gate.
-local function hideOwnPrompt(instance: Instance)
-	if not instance:IsA("ProximityPrompt") then
-		return
-	end
-	if
-		(instance.Name == "StealPrompt" and instance:GetAttribute("OwnerUserId") == player.UserId)
-		or (instance.Name == "SnatchPrompt" and instance:GetAttribute("CarrierUserId") == player.UserId)
-	then
-		instance.Enabled = false
-	elseif instance.Name == "LockPrompt" then
-		instance.Enabled = instance:GetAttribute("PlotIndex") == player:GetAttribute("Plot")
+-- Only the owner sees the Hatch prompts on their own nests.
+local function hideOtherPrompt(instance: Instance)
+	if instance:IsA("ProximityPrompt") and instance.Name == "HatchPrompt" then
+		local mine = instance:GetAttribute("PlotIndex") == player:GetAttribute("Plot")
+		instance:SetAttribute("Mine", mine)
+		if not mine then
+			instance.Enabled = false
+		end
+		if not instance:GetAttribute("Hooked") then
+			instance:SetAttribute("Hooked", true)
+			instance:GetPropertyChangedSignal("Enabled"):Connect(function()
+				if instance.Enabled and instance:GetAttribute("PlotIndex") ~= player:GetAttribute("Plot") then
+					instance.Enabled = false
+				end
+			end)
+		end
 	end
 end
 for _, descendant in Workspace:GetDescendants() do
-	hideOwnPrompt(descendant)
+	hideOtherPrompt(descendant)
 end
-Workspace.DescendantAdded:Connect(hideOwnPrompt)
+Workspace.DescendantAdded:Connect(hideOtherPrompt)
 player:GetAttributeChangedSignal("Plot"):Connect(function()
 	for _, descendant in Workspace:GetDescendants() do
-		hideOwnPrompt(descendant)
+		hideOtherPrompt(descendant)
 	end
 end)
--- A steal prompt's owner can be set after it appears.
-Workspace.DescendantAdded:Connect(function(instance)
-	if instance:IsA("ProximityPrompt") and instance.Name == "StealPrompt" then
-		instance:GetAttributeChangedSignal("OwnerUserId"):Connect(function()
-			hideOwnPrompt(instance)
-		end)
-	end
-end)
-
--- Weapons: when an equipped weapon is used, tell the server where we're aiming.
-local mouse = player:GetMouse()
-local function watchTool(child: Instance)
-	if child:IsA("Tool") and child:GetAttribute("WeaponId") and not child:GetAttribute("Hooked") then
-		child:SetAttribute("Hooked", true)
-		child.Activated:Connect(function()
-			send("UseWeapon", child:GetAttribute("WeaponId"), mouse.Hit.Position)
-		end)
-	end
-end
-local function watchCharacter(character: Model)
-	for _, child in character:GetChildren() do
-		watchTool(child)
-	end
-	character.ChildAdded:Connect(watchTool)
-end
-player.CharacterAdded:Connect(watchCharacter)
-if player.Character then
-	watchCharacter(player.Character)
-end
 
 -- Getting hit: pushed away and knocked over for a moment.
 Remotes.get("Knockback").OnClientEvent:Connect(function(direction: Vector3, strength: number, seconds: number)
@@ -1412,6 +1545,7 @@ Remotes.get("Knockback").OnClientEvent:Connect(function(direction: Vector3, stre
 end)
 
 GuardianFX.start()
+PetFX.start()
 Ambient.start()
 
 -- The Mystery Boxes on the stand turn slowly and bob up and down.
@@ -1432,9 +1566,9 @@ task.spawn(function()
 	discoveries = Remotes.get("GetDiscoveries"):InvokeServer() or {}
 	render()
 end)
-print("[Steal a Home] Client UI built, loading your data...")
+print("[Steal a Life] Client UI built, loading your data...")
 state = Remotes.get("GetState"):InvokeServer()
-print("[Steal a Home] Client ready")
+print("[Steal a Life] Client ready")
 clientReady = true
 if state then
 	setRebirthBoost(state.rebirths or 0)

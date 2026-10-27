@@ -3,11 +3,11 @@
 -- Each zone has a pile of part pedestals in a ring at its far end, round the guardian's
 -- home. Shared so the server builds them and the client knows which zone you're in.
 
-local Parts = require(script.Parent.Parts)
+local Items = require(script.Parent.Items)
 
 local ZoneLayout = {}
 
-ZoneLayout.START_X = -200 -- the east edge of zone 1 (the town street ends just before it)
+ZoneLayout.START_X = -230 -- the east edge of zone 1 (the town street ends just before it)
 ZoneLayout.LENGTH = 130
 ZoneLayout.WIDTH = 110
 ZoneLayout.PEDESTALS = 6
@@ -55,7 +55,7 @@ function ZoneLayout.zoneAt(position: Vector3): number?
 		return nil
 	end
 	local index = math.floor(u / ZoneLayout.LENGTH) + 1
-	return if index <= #Parts.ZONES then index else nil
+	return if index <= #Items.ZONES then index else nil
 end
 
 -- True if a position is inside zone `index` (plus `margin` studs all round).

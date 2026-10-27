@@ -1,10 +1,10 @@
-# Steal a Home: notes for working on this project
+# Steal a Life: notes for working on this project
 
-A Roblox game (Rojo project): train Speed on a treadmill, steal house parts from guarded
-zones, carry them home and snap them onto your house (and steal from other players'
-houses). See README.md for how it all works. The owner tests in Roblox Studio and approves
-designs from rendered pictures, so render a picture of anything visual before calling it
-done.
+A Roblox game (Rojo project): train Speed on a treadmill, steal eggs from guarded zones,
+carry them home, grow them in nests and hatch house parts, pets, yard items and plants for
+your home. No player-vs-player stealing. See README.md for how it all works. The owner
+tests in Roblox Studio and approves designs from rendered pictures, so render a picture of
+anything visual before calling it done.
 
 ## Graphic style (keep this for everything new)
 
@@ -42,9 +42,14 @@ match it.
   sidewalks and paths are smooth "tiles" (the SMOOTH list). House walls get brick seams;
   trees are stacked bricks. Build new things as bricks (blocks) where you can.
 - Floating text (zone piles, gates, signs): Luckiest Guy / Fredoka One with a thick dark
-  `UIStroke`. Parts on pedestals show rarity, name and $/s.
+  `UIStroke`. Eggs on pedestals show rarity, name, kind and hatch time.
 - Models are built from simple parts (balls, blocks, cylinders, wedges) with bold, flat,
   saturated colours and chunky proportions. Neon for glowing bits.
+- Items are built by `src/shared/ItemModel.luau` (house parts by `HouseModel.luau`, pets by
+  `FreekModel.luau`, yard items by `YardModel.luau`, plants by `PlantModel.luau`, eggs by
+  `EggModel.luau`; small builders share `Bricks.luau`). A new yard item or plant needs a
+  builder there and an entry in `Items.luau`. Every item must look right on the home and
+  in pictures and reveals.
 - House parts are built by `src/shared/HouseModel.luau`: every style has a look (`LOOKS`:
   colours, materials, roof shape and signature details like candy stripes, icicles or lava
   cracks). A new style needs a look there and an entry in `Parts.STYLES`. Every part must
@@ -58,9 +63,10 @@ match it.
 - Roblox rules: no casino-style gambling (betting currency to win currency). Paid random
   items (Mystery Boxes) must show their odds before buying and respect
   `PolicyService.ArePaidRandomItemsRestricted`.
-- Parts, styles and zones are defined in `src/shared/Parts.luau`. Never rename a style or
-  slot id once players own it: saves store part ids ("Candy_Roof").
+- Items, eggs and zones are defined in `src/shared/Items.luau` (house styles and slots in
+  `src/shared/Parts.luau`). Never rename an item, style or slot id once players own it:
+  saves store item ids ("Candy_Roof", "Pet_Oinkle", "Yard_Pool", "Plant_Daisy").
 
 ## Checks before pushing
-- `stylua src`, selene lint, `rojo build -o StealAHome.rbxlx`, and the Lune emulator run.
-- Commit `StealAHome.rbxlx` with the source and push to `main`.
+- `stylua src`, selene lint, `rojo build -o StealALife.rbxlx`, and the Lune emulator run.
+- Commit `StealALife.rbxlx` with the source and push to `main`.

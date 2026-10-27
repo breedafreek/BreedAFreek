@@ -1,13 +1,12 @@
--- Builds the town and gives every player a home: a yard with a fence, a gate, a treadmill
--- and a house (see shared/HouseModel) made of the parts in their save.
+-- Builds the town and gives every player a home: a big fenced yard with their house (see
+-- shared/HouseModel, made of the house parts in their save), a treadmill, a row of nests
+-- for the eggs they bring home, garden beds for their plants, spots for their yard items
+-- and a lawn their pets roam round.
 --
--- Homes sit in two rows facing the street, four a side. The only way in is the gate (an
--- invisible wall runs round the rest of the yard). The owner locks the gate from the
--- padlock post for GATE_LOCK_SECONDS at a time (longer with the Longer Lock pass) and can
--- always walk through their own gate and walls. While it's open, other players can walk in
--- and pry parts off the house (StealService).
+-- Homes sit in two rows facing the street, four a side. Everything shown comes from the
+-- save (LifeUtil): render() rebuilds whatever changed. Pets are drawn by each client (PetFX)
+-- from the plot's "Pets" attribute, so they can wander smoothly.
 
-local PhysicsService = game:GetService("PhysicsService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
@@ -15,27 +14,51 @@ local Workspace = game:GetService("Workspace")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
+local EggModel = require(ReplicatedStorage.Shared.EggModel)
 local HouseModel = require(ReplicatedStorage.Shared.HouseModel)
-local HouseUtil = require(ReplicatedStorage.Shared.HouseUtil)
+local ItemModel = require(ReplicatedStorage.Shared.ItemModel)
+local Items = require(ReplicatedStorage.Shared.Items)
+local LifeUtil = require(ReplicatedStorage.Shared.LifeUtil)
+local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Parts = require(ReplicatedStorage.Shared.Parts)
+local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
-local Carried = require(script.Parent.Carried)
 local DataService = require(script.Parent.DataService)
 local Decor = require(script.Parent.Decor)
 
-local PLOT_SIZE = 64
-local ROW_SPACING = 70 -- between home centres along the street
-local ROW_DISTANCE = 64 -- from the middle of the street to each home's centre
+local PLOT_SIZE = 96
+local ROW_SPACING = 104 -- between home centres along the street
+local ROW_DISTANCE = 80 -- from the middle of the street to each home's centre
 local GATE_HALF = HouseModel.GATE_HALF
 local FENCE_Z = HouseModel.FENCE_Z
-local TREADMILL_SPOT = CFrame.new(18, 0, -14) -- in plot space
+-- In plot space (origin at the yard's centre, the gate at -Z).
+local TREADMILL_SPOT = CFrame.new(22, 0, -16)
+local NEST_MAX = Items.NESTS + 2 -- with the Extra Nests pass
+local NEST_SPOTS = {} -- a row along the front fence, right of the gate
+for n = 1, NEST_MAX do
+	NEST_SPOTS[n] = Vector3.new(14 + (n - 1) * 6.5, 0, FENCE_Z + 8.5)
+end
+local BED_SPOTS = {} -- two rows of three, left of the gate
+for n = 1, Items.GARDEN_BEDS do
+	BED_SPOTS[n] = Vector3.new(-21 - ((n - 1) % 3) * 10, 0, FENCE_Z + 8.5 + ((n - 1) // 3) * 10)
+end
+local YARD_SPOTS = {
+	Vector3.new(38, 0, -16),
+	Vector3.new(-37, 0, 14),
+	Vector3.new(37, 0, 14),
+	Vector3.new(-30, 0, 36),
+	Vector3.new(0, 0, 37),
+	Vector3.new(30, 0, 36),
+}
+-- Where pets wander: the front lawn.
+local PET_AREA = { min = Vector3.new(-14, 0, FENCE_Z + 12), max = Vector3.new(14, 0, -3) }
 
 local PlotService = {}
 PlotService.PLOT_SIZE = PLOT_SIZE
 PlotService.ROW_DISTANCE = ROW_DISTANCE
-PlotService.STREET_EAST = 2 * ROW_SPACING + 40 -- where the street ends past the last homes
-PlotService.STREET_WEST = -(2 * ROW_SPACING + 40)
+PlotService.NEST_MAX = NEST_MAX
+PlotService.PET_AREA = PET_AREA
 
 local plots = {}
 local plotOf = {} -- [Player] = plot
@@ -91,8 +114,7 @@ local ACCENTS = {
 -- Building a home
 --------------------------------------------------------------------------------
 
--- The gate: two chunky posts with a beam and the owner's sign, and a glowing barrier that
--- blocks the gap while the gate is locked.
+-- The gate: two chunky posts with a beam and the owner's sign.
 local function buildGate(plot, folder: Instance)
 	local origin = plot.origin
 	local accent = plot.accent
@@ -166,7 +188,7 @@ local function buildGate(plot, folder: Instance)
 	stroke.Parent = name
 	plot.signLabel = name
 
-	-- Floating text over the gate: owner, income, lock state.
+	-- Floating text over the gate: what the home earns.
 	local gateGui = part({
 		Name = "GateText",
 		Size = Vector3.one,
@@ -175,104 +197,10 @@ local function buildGate(plot, folder: Instance)
 		CanCollide = false,
 		Parent = folder,
 	})
-	local _, income = billboard(gateGui, UDim2.fromScale(14, 2.4), Vector3.new(0, 1.6, 0), 140)
+	local _, income = billboard(gateGui, UDim2.fromScale(14, 2.4), Vector3.new(0, 1, 0), 160)
 	income.TextColor3 = Color3.fromRGB(110, 235, 140)
 	income.Font = Enum.Font.LuckiestGuy
 	plot.incomeLabel = income
-	local _, gate = billboard(gateGui, UDim2.fromScale(12, 2), Vector3.new(0, -1, 0), 140)
-	plot.gateLabel = gate
-
-	-- The barrier across the gap (and the invisible walls round the rest of the yard), in the
-	-- home's Gate collision group so the owner walks straight through.
-	local barrier = part({
-		Name = "GateBarrier",
-		Size = Vector3.new(GATE_HALF * 2, postHeight - 1.8, 0.6),
-		CFrame = origin * CFrame.new(0, (postHeight - 1.8) / 2, FENCE_Z),
-		Color = Color3.fromRGB(255, 60, 80),
-		Material = Enum.Material.ForceField,
-		Transparency = 1,
-		CanCollide = false,
-		CollisionGroup = "Gate" .. plot.index,
-		Parent = folder,
-	})
-	plot.barrier = barrier
-	local half = PLOT_SIZE / 2
-	local wallHeight = 40
-	local walls = {
-		{ Vector3.new(half - GATE_HALF, wallHeight, 1), Vector3.new(-(GATE_HALF + half) / 2, wallHeight / 2, -half) },
-		{ Vector3.new(half - GATE_HALF, wallHeight, 1), Vector3.new((GATE_HALF + half) / 2, wallHeight / 2, -half) },
-		{ Vector3.new(1, wallHeight, PLOT_SIZE), Vector3.new(-half, wallHeight / 2, 0) },
-		{ Vector3.new(1, wallHeight, PLOT_SIZE), Vector3.new(half, wallHeight / 2, 0) },
-		{ Vector3.new(PLOT_SIZE, wallHeight, 1), Vector3.new(0, wallHeight / 2, half) },
-	}
-	for _, wall in walls do
-		part({
-			Name = "YardWall",
-			Size = wall[1],
-			CFrame = origin * CFrame.new(wall[2]),
-			Transparency = 1,
-			CanQuery = false,
-			CollisionGroup = "Gate" .. plot.index,
-			Parent = folder,
-		})
-	end
-
-	-- The padlock post just inside the gate: the only place the owner can lock it from.
-	local lockSpot = origin * CFrame.new(GATE_HALF + 3, 0, FENCE_Z + 4)
-	local metal = Color3.fromRGB(55, 55, 65)
-	part({
-		Name = "LockPost",
-		Size = Vector3.new(0.8, 3.4, 0.8),
-		CFrame = lockSpot * CFrame.new(0, 1.7, 0),
-		Color = metal,
-		Material = Enum.Material.Metal,
-		Parent = folder,
-	})
-	local lockBody = part({
-		Name = "Padlock",
-		Size = Vector3.new(1.6, 1.3, 0.6),
-		CFrame = lockSpot * CFrame.new(0, 4.05, 0),
-		Color = Color3.fromRGB(235, 185, 60),
-		Material = Enum.Material.Metal,
-		Parent = folder,
-	})
-	for _, x in { -0.5, 0.5 } do
-		part({
-			Name = "Shackle",
-			Size = Vector3.new(0.22, 0.8, 0.22),
-			CFrame = lockSpot * CFrame.new(x, 5.1, 0),
-			Color = Color3.fromRGB(200, 200, 210),
-			Material = Enum.Material.Metal,
-			Parent = folder,
-		})
-	end
-	part({
-		Name = "Shackle",
-		Size = Vector3.new(1.22, 0.22, 0.22),
-		CFrame = lockSpot * CFrame.new(0, 5.5, 0),
-		Color = Color3.fromRGB(200, 200, 210),
-		Material = Enum.Material.Metal,
-		Parent = folder,
-	})
-	plot.lockLight = part({
-		Name = "LockLight",
-		Size = Vector3.new(0.5, 0.5, 0.7),
-		CFrame = lockSpot * CFrame.new(0, 3.95, 0),
-		Color = Color3.fromRGB(255, 70, 70),
-		Material = Enum.Material.Neon,
-		CanCollide = false,
-		Parent = folder,
-	})
-	local lockPrompt = Instance.new("ProximityPrompt")
-	lockPrompt.Name = "LockPrompt"
-	lockPrompt.ActionText = "Lock Gate"
-	lockPrompt.ObjectText = "Gate"
-	lockPrompt.HoldDuration = 0.4
-	lockPrompt.MaxActivationDistance = 8
-	lockPrompt.RequiresLineOfSight = false
-	lockPrompt:SetAttribute("PlotIndex", plot.index)
-	lockPrompt.Parent = lockBody
-	plot.lockPrompt = lockPrompt
 end
 
 -- The treadmill: run on the belt to train Speed (SpeedService). The belt pushes you back so
@@ -382,7 +310,7 @@ local function buildYard(plot, folder: Instance)
 		origin * CFrame.new(0, 0.4, 0),
 		PLOT_SIZE,
 		PLOT_SIZE,
-		8,
+		12,
 		Color3.fromRGB(125, 222, 95),
 		Color3.fromRGB(105, 205, 82),
 		"Lawn"
@@ -404,6 +332,128 @@ local function buildYard(plot, folder: Instance)
 	end
 end
 
+-- The nests: a straw nest on a little stand for each egg, with floating text showing what's
+-- in it and how long it has left, and a Hatch prompt once it's ready (NestService).
+local function buildNests(plot, folder: Instance)
+	local model = Instance.new("Model")
+	model.Name = "Nests"
+	model.Parent = folder
+	plot.nests = {}
+	for n, spot in NEST_SPOTS do
+		local cf = plot.origin * CFrame.new(spot)
+		local base = part({
+			Name = "NestStand",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(1.4, 5, 5),
+			CFrame = cf * CFrame.new(0, 1.1, 0) * CFrame.Angles(0, 0, math.pi / 2),
+			Color = plot.accent:Lerp(Color3.new(1, 1, 1), 0.35),
+			Parent = model,
+		})
+		-- A ring of straw bricks.
+		for k = 0, 9 do
+			local a = k / 10 * math.pi * 2
+			part({
+				Name = "Straw",
+				Size = Vector3.new(1.5, 0.8, 0.9),
+				CFrame = cf
+					* CFrame.new(math.cos(a) * 1.9, 2.1 + (k % 2) * 0.15, math.sin(a) * 1.9)
+					* CFrame.Angles(0, -a + math.pi / 2, math.rad((k % 3 - 1) * 8)),
+				Color = if k % 2 == 0 then Color3.fromRGB(230, 185, 90) else Color3.fromRGB(205, 155, 70),
+				CanCollide = false,
+				Parent = model,
+			})
+		end
+		part({
+			Name = "Straw",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.4, 3.6, 3.6),
+			CFrame = cf * CFrame.new(0, 1.9, 0) * CFrame.Angles(0, 0, math.pi / 2),
+			Color = Color3.fromRGB(190, 140, 65),
+			CanCollide = false,
+			Parent = model,
+		})
+		local gui, title = billboard(base, UDim2.fromScale(7, 1.2), Vector3.new(0, 6.6, 0), 70)
+		gui.Size = UDim2.fromScale(7, 2.6)
+		title.Size = UDim2.fromScale(1, 0.5)
+		title.Font = Enum.Font.LuckiestGuy
+		local timer = title:Clone()
+		timer.Position = UDim2.fromScale(0, 0.5)
+		timer.Font = Enum.Font.FredokaOne
+		timer.Parent = gui
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "HatchPrompt"
+		prompt.ActionText = "Hatch"
+		prompt.ObjectText = "Egg"
+		prompt.HoldDuration = 0.5
+		prompt.MaxActivationDistance = 9
+		prompt.RequiresLineOfSight = false
+		prompt.Enabled = false
+		prompt:SetAttribute("PlotIndex", plot.index)
+		prompt:SetAttribute("Nest", n)
+		prompt.Parent = base
+		plot.nests[n] = {
+			spot = cf * CFrame.new(0, 2.05, 0),
+			title = title,
+			timer = timer,
+			prompt = prompt,
+			egg = nil,
+			key = nil,
+		}
+	end
+end
+
+-- Garden beds (soil in a plank rim) and yard spots (paving squares) where plants and yard
+-- items go.
+local function buildBeds(plot, folder: Instance)
+	local model = Instance.new("Model")
+	model.Name = "Garden"
+	model.Parent = folder
+	plot.beds = {}
+	for n, spot in BED_SPOTS do
+		local cf = plot.origin * CFrame.new(spot)
+		part({
+			Name = "Soil",
+			Size = Vector3.new(7, 0.8, 7),
+			CFrame = cf * CFrame.new(0, 0.6, 0),
+			Color = Color3.fromRGB(120, 80, 50),
+			Parent = model,
+		})
+		for k = 0, 3 do
+			part({
+				Name = "BedRim",
+				Size = Vector3.new(8.2, 1.2, 0.6),
+				CFrame = cf * CFrame.Angles(0, k * math.pi / 2, 0) * CFrame.new(0, 0.8, 3.8),
+				Color = Color3.fromRGB(200, 140, 80),
+				Parent = model,
+			})
+		end
+		plot.beds[n] = { spot = cf * CFrame.new(0, 1, 0), model = nil, key = nil }
+	end
+	plot.spots = {}
+	for n, spot in YARD_SPOTS do
+		local cf = plot.origin * CFrame.new(spot)
+		part({
+			Name = "Pad",
+			Size = Vector3.new(12, 0.3, 12),
+			CFrame = cf * CFrame.new(0, 0.55, 0),
+			Color = Color3.fromRGB(235, 230, 220),
+			Parent = model,
+		})
+		for k = 0, 3 do
+			part({
+				Name = "PadRim",
+				Size = Vector3.new(12.6, 0.5, 0.6),
+				CFrame = cf * CFrame.Angles(0, k * math.pi / 2, 0) * CFrame.new(0, 0.6, 6),
+				Color = plot.accent,
+				Parent = model,
+			})
+		end
+		-- Items at the back face the house; the rest face the street.
+		local facing = if spot.Z > 30 then CFrame.Angles(0, math.pi, 0) else CFrame.identity
+		plot.spots[n] = { spot = cf * CFrame.new(0, 0.7, 0) * facing, model = nil, key = nil }
+	end
+end
+
 local function buildPlot(index: number)
 	-- Homes 1-4 sit north of the street, 5-8 south, in rows along it.
 	local perSide = Config.PLOT_COUNT // 2
@@ -417,6 +467,8 @@ local function buildPlot(index: number)
 	folder.Name = "Plot" .. index
 	folder:SetAttribute("Origin", origin)
 	folder:SetAttribute("Size", PLOT_SIZE)
+	folder:SetAttribute("PetMin", PET_AREA.min)
+	folder:SetAttribute("PetMax", PET_AREA.max)
 	folder.Parent = Workspace:WaitForChild("Plots")
 
 	local plot = {
@@ -425,31 +477,31 @@ local function buildPlot(index: number)
 		accent = ACCENTS[(index - 1) % #ACCENTS + 1],
 		spawn = origin * CFrame.new(0, 3, FENCE_Z + 7) * CFrame.Angles(0, math.pi, 0),
 		folder = folder,
-		lockedUntil = math.huge,
 		owner = nil,
 	}
 	buildYard(plot, folder)
 	buildGate(plot, folder)
 	buildTreadmill(plot, folder)
+	buildNests(plot, folder)
+	buildBeds(plot, folder)
 
 	local house = Instance.new("Model")
 	house.Name = "House"
 	house.Parent = folder
 	plot.house = house
-	local spots = Instance.new("Folder")
-	spots.Name = "StealSpots"
-	spots.Parent = folder
-	plot.stealSpots = spots
+	local items = Instance.new("Model")
+	items.Name = "Items"
+	items.Parent = folder
+	plot.items = items
 
 	plots[index] = plot
 	return plot
 end
 
--- Rebuilds any slot whose part changed. steal = true adds steal prompts (the owner is
--- online); false clears them.
-local function updateHouse(plot, layout, owner: Player?)
+-- Rebuilds any house slot whose part changed.
+local function updateHouse(plot, layout)
 	for _, slot in Parts.SLOTS do
-		local partId = layout[slot.id]
+		local partId = layout[slot.id] or Parts.basic(slot.id)
 		local current = plot.house:FindFirstChild(slot.id)
 		if not current or current:GetAttribute("Part") ~= partId then
 			if current then
@@ -459,40 +511,114 @@ local function updateHouse(plot, layout, owner: Player?)
 			model:PivotTo(plot.origin * model:GetPivot())
 			model.Parent = plot.house
 		end
-		-- The steal prompt on every non-Basic part.
-		local spot = plot.stealSpots:FindFirstChild(slot.id)
-		local stealable = owner ~= nil and not Parts.isBasic(partId)
-		if stealable and not spot then
-			spot = part({
-				Name = slot.id,
-				Size = Vector3.one,
-				CFrame = plot.origin * CFrame.new(HouseModel.ANCHORS[slot.id]),
-				Transparency = 1,
-				CanCollide = false,
-				CanQuery = false,
-				Parent = plot.stealSpots,
-			})
-			local prompt = Instance.new("ProximityPrompt")
-			prompt.Name = "StealPrompt"
-			prompt.ActionText = "Steal"
-			prompt.HoldDuration = Config.STEAL_HOLD_SECONDS
-			prompt.MaxActivationDistance = 12
-			prompt.RequiresLineOfSight = false
-			prompt:SetAttribute("Slot", slot.id)
-			prompt.Parent = spot
-		elseif not stealable and spot then
-			-- Destroyed a moment later: a PromptTriggered handler may still be looking at it.
-			spot.Name = "OldSpot"
-			spot.Parent = nil
-			task.defer(spot.Destroy, spot)
-			spot = nil
+	end
+end
+
+-- Puts the right item model on a bed or yard spot (record = nil for none).
+local function updateSpot(plot, spot, record)
+	local key = record and (record.id .. ":" .. table.concat(Mutations.normalize(record.mutations), ","))
+	if spot.key == key then
+		return
+	end
+	spot.key = key
+	if spot.model then
+		spot.model:Destroy()
+		spot.model = nil
+	end
+	if record then
+		local model = ItemModel.build(record.id, record.mutations)
+		model:PivotTo(spot.spot)
+		model.Parent = plot.items
+		spot.model = model
+	end
+end
+
+-- What a nest shows: "locked", "empty" or its egg.
+local function nestState(data, player: Player, n: number)
+	if n > LifeUtil.nestCount(GamePasses.extraNests(player)) then
+		return "locked", nil
+	end
+	local egg = data.nests and data.nests[tostring(n)]
+	if not egg then
+		return "empty", nil
+	end
+	return "egg", egg
+end
+
+-- The floating text over each nest (counts down every half second).
+local function updateNestLabels(plot)
+	local player = plot.owner
+	local data = player and DataService.get(player)
+	local now = os.time()
+	for n, nest in plot.nests do
+		local state, egg = "unowned", nil
+		if data then
+			state, egg = nestState(data, player, n)
 		end
-		if spot then
-			local prompt = spot:FindFirstChild("StealPrompt")
-			prompt.ObjectText = Parts.byId[partId].name
-			prompt:SetAttribute("OwnerUserId", owner and owner.UserId)
+		nest.prompt.Enabled = false
+		if state == "unowned" then
+			nest.title.Text = ""
+			nest.timer.Text = ""
+		elseif state == "locked" then
+			nest.title.Text = "🔒 LOCKED"
+			nest.title.TextColor3 = Color3.fromRGB(190, 190, 205)
+			nest.timer.Text = "Extra Nests"
+			nest.timer.TextColor3 = Color3.fromRGB(190, 190, 205)
+		elseif state == "empty" then
+			nest.title.Text = "EMPTY NEST"
+			nest.title.TextColor3 = Color3.new(1, 1, 1)
+			nest.timer.Text = "Steal an egg!"
+			nest.timer.TextColor3 = Color3.fromRGB(255, 215, 60)
+		else
+			nest.title.Text = string.upper(egg.rarity)
+			nest.title.TextColor3 = Rarities.info[egg.rarity].color
+			local left = egg.endsAt - now
+			if left > 0 then
+				nest.timer.Text = "⏱ " .. Format.time(left)
+				nest.timer.TextColor3 = Color3.new(1, 1, 1)
+			else
+				nest.timer.Text = "🐣 READY!"
+				nest.timer.TextColor3 = Color3.fromRGB(110, 235, 140)
+				nest.prompt.ObjectText = Items.eggName(egg.zone)
+				nest.prompt.Enabled = true
+			end
 		end
 	end
+end
+
+local function updateNests(plot, data, player: Player?)
+	for n, nest in plot.nests do
+		local state, egg = "unowned", nil
+		if data and player then
+			state, egg = nestState(data, player, n)
+		end
+		local key = if egg then egg.zone .. ":" .. egg.rarity .. ":" .. egg.endsAt else state
+		if nest.key ~= key then
+			nest.key = key
+			if nest.egg then
+				nest.egg:Destroy()
+				nest.egg = nil
+			end
+			if egg then
+				local model = EggModel.build(egg.zone)
+				ItemModel.addMutationEffect(model, egg.mutations)
+				model:PivotTo(nest.spot)
+				model.Parent = plot.items
+				nest.egg = model
+			end
+		end
+	end
+	updateNestLabels(plot)
+end
+
+-- The pets out in the yard, for the clients to draw: "Pet_Oinkle:Golden,Pet_Woofles:".
+local function petList(data): string
+	local list = {}
+	for _, uid in LifeUtil.pets(data) do
+		local record = data.parts[uid]
+		table.insert(list, record.id .. ":" .. (Mutations.top(record.mutations) or ""))
+	end
+	return table.concat(list, ",")
 end
 
 function PlotService.render(player: Player)
@@ -501,16 +627,19 @@ function PlotService.render(player: Player)
 	if not plot or not data then
 		return
 	end
-	-- Parts being carried off by a thief show as Basic until they're back (or gone).
-	local layout = HouseUtil.layout(data)
-	for slotId, uid in data.house do
-		if Carried.is(player, uid) then
-			layout[slotId] = Parts.basic(slotId)
-		end
+	updateHouse(plot, LifeUtil.layout(data))
+	for n, bed in plot.beds do
+		local uid = data.garden and data.garden[tostring(n)]
+		updateSpot(plot, bed, uid and data.parts[uid])
 	end
-	updateHouse(plot, layout, player)
-	plot.signLabel.Text = string.upper(player.DisplayName) .. "'S HOME"
-	local income = HouseUtil.houseIncome(data) * GamePasses.coinMultiplier(player)
+	for n, spot in plot.spots do
+		local uid = data.yard and data.yard[tostring(n)]
+		updateSpot(plot, spot, uid and data.parts[uid])
+	end
+	updateNests(plot, data, player)
+	plot.folder:SetAttribute("Pets", petList(data))
+	plot.signLabel.Text = string.upper(player.DisplayName) .. "'S LIFE"
+	local income = LifeUtil.totalIncome(data) * GamePasses.coinMultiplier(player)
 	plot.incomeLabel.Text = Format.money(income) .. "/s"
 	local gain = Config.treadmillGain(data.treadmill)
 		* Config.speedMultiplier(data.rebirths)
@@ -518,52 +647,20 @@ function PlotService.render(player: Player)
 	plot.treadmillLabel.Text = "LV " .. data.treadmill .. "  +" .. Format.number(gain) .. " ⚡/s"
 end
 
-local function setGateLock(plot, lockedUntil: number)
-	plot.lockedUntil = lockedUntil
-	if plot.owner then
-		plot.owner:SetAttribute("GateLockedUntil", lockedUntil)
-	end
-end
-
-local function updateGate(plot)
-	local left = plot.lockedUntil - Workspace:GetServerTimeNow()
-	local locked = left > 0 and plot.owner ~= nil
-	plot.barrier.CanCollide = left > 0
-	plot.barrier.Transparency = if locked then 0.35 else 1
-	plot.lockLight.Color = if locked then Color3.fromRGB(80, 255, 110) else Color3.fromRGB(255, 70, 70)
-	plot.lockPrompt.ActionText = if locked then "Locked " .. Format.time(left) else "Lock Gate"
-	if not plot.owner then
-		plot.gateLabel.Text = ""
-	elseif locked then
-		plot.gateLabel.Text = "🔒 LOCKED " .. Format.time(left)
-		plot.gateLabel.TextColor3 = Color3.fromRGB(255, 120, 120)
-	else
-		plot.gateLabel.Text = "🔓 GATE OPEN"
-		plot.gateLabel.TextColor3 = Color3.fromRGB(120, 255, 120)
-	end
-end
-
--- Lets the owner's character pass through their own gate and walls.
-local function setCollisionGroup(character: Model, group: string)
-	local function apply(descendant)
-		if descendant:IsA("BasePart") then
-			descendant.CollisionGroup = group
-		end
-	end
-	for _, descendant in character:GetDescendants() do
-		apply(descendant)
-	end
-	character.DescendantAdded:Connect(apply)
-end
-
 local function clearPlot(plot)
-	setGateLock(plot, math.huge) -- empty homes stay shut
 	plot.owner = nil
-	updateHouse(plot, {}, nil)
+	updateHouse(plot, {})
+	for _, spot in plot.beds do
+		updateSpot(plot, spot, nil)
+	end
+	for _, spot in plot.spots do
+		updateSpot(plot, spot, nil)
+	end
+	updateNests(plot, nil, nil)
+	plot.folder:SetAttribute("Pets", "")
 	plot.signLabel.Text = "EMPTY HOME"
 	plot.incomeLabel.Text = ""
 	plot.treadmillLabel.Text = "TREADMILL"
-	updateGate(plot)
 end
 
 function PlotService.sendHome(player: Player)
@@ -580,16 +677,10 @@ local function onPlayerAdded(player: Player)
 			plot.owner = player
 			plotOf[player] = plot
 			player:SetAttribute("Plot", plot.index)
-			-- New arrivals get one free lock so they aren't robbed while loading in.
-			setGateLock(plot, Workspace:GetServerTimeNow() + GamePasses.gateLockSeconds(player))
-			player.CharacterAdded:Connect(function(character)
-				setCollisionGroup(character, "Owner" .. plot.index)
+			player.CharacterAdded:Connect(function()
 				task.wait(0.1)
 				PlotService.sendHome(player)
 			end)
-			if player.Character then
-				setCollisionGroup(player.Character, "Owner" .. plot.index)
-			end
 			PlotService.sendHome(player)
 			PlotService.render(player)
 			return
@@ -615,7 +706,7 @@ function PlotService.plotByIndex(index: number)
 	return plots[index]
 end
 
--- The owner of the home whose yard this position is in (nil if none, or not in a yard).
+-- The home whose yard this position is in (nil if none).
 function PlotService.plotAt(position: Vector3)
 	for _, plot in plots do
 		if PlotService.isInside(plot, position) then
@@ -643,30 +734,12 @@ function PlotService.slotPosition(plot, slotId: string): Vector3
 	return (plot.origin * CFrame.new(HouseModel.ANCHORS[slotId])).Position
 end
 
-function PlotService.isGateLocked(plot): boolean
-	return Workspace:GetServerTimeNow() < plot.lockedUntil
-end
-
--- Returns an error message, or nil if the gate was locked.
-function PlotService.lockGate(player: Player): string?
-	local plot = plotOf[player]
-	if not plot then
-		return "You don't have a home."
-	end
-	if PlotService.isGateLocked(plot) then
-		return "Your gate is already locked."
-	end
-	setGateLock(plot, Workspace:GetServerTimeNow() + GamePasses.gateLockSeconds(player))
-	updateGate(plot)
-	return nil
+-- Where nest n is (world space, for effects).
+function PlotService.nestPosition(plot, n: number): Vector3
+	return plot.nests[n].spot.Position
 end
 
 function PlotService.init()
-	for i = 1, Config.PLOT_COUNT do
-		PhysicsService:RegisterCollisionGroup("Gate" .. i)
-		PhysicsService:RegisterCollisionGroup("Owner" .. i)
-		PhysicsService:CollisionGroupSetCollidable("Gate" .. i, "Owner" .. i, false)
-	end
 	local plotsFolder = Instance.new("Folder")
 	plotsFolder.Name = "Plots"
 	plotsFolder.Parent = Workspace
@@ -692,9 +765,14 @@ function PlotService.init()
 
 	task.spawn(function()
 		while true do
-			task.wait(0.25)
+			task.wait(0.5)
 			for _, plot in plots do
-				updateGate(plot)
+				if plot.owner then
+					local ok, err = pcall(updateNestLabels, plot)
+					if not ok then
+						warn("[PlotService] " .. tostring(err))
+					end
+				end
 			end
 		end
 	end)

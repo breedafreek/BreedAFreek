@@ -4,7 +4,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Parts = require(ReplicatedStorage.Shared.Parts)
+local Items = require(ReplicatedStorage.Shared.Items)
 local ZoneLayout = require(ReplicatedStorage.Shared.ZoneLayout)
 
 local ZoneDecor = {}
@@ -459,6 +459,78 @@ props[10] = function(parent, cf, rng, s) -- Sky Islands: cloud puffs, golden pil
 	end
 end
 
+props[11] = function(parent, cf, rng, s) -- Backyard Garden: hedges, flower patches, watering cans
+	local kind = rng:NextInteger(1, 4)
+	if kind <= 2 then
+		local length = rng:NextInteger(2, 4) * 3 * s
+		block(
+			parent,
+			Vector3.new(length, 3 * s, 2.4 * s),
+			cf * CFrame.new(0, 1.5 * s, 0),
+			rgb(50, 150, 60),
+			M.Grass,
+			true
+		)
+		for i = 0, math.floor(length / (2 * s)) do
+			ball(
+				parent,
+				0.7 * s,
+				cf * CFrame.new(-length / 2 + i * 2 * s + s, 3.1 * s, -1.2 * s),
+				RAINBOW[rng:NextInteger(1, 6)]
+			)
+		end
+	elseif kind == 3 then
+		for i = 0, 5 do
+			local spot = cf * CFrame.new((i % 3 - 1) * 1.6 * s, 0, (i // 3 - 0.5) * 1.6 * s)
+			post(parent, 1.6 * s, 0.25 * s, spot, rgb(70, 165, 70))
+			ball(parent, 0.9 * s, spot * CFrame.new(0, 1.8 * s, 0), RAINBOW[rng:NextInteger(1, 6)])
+		end
+	else
+		block(parent, Vector3.new(2.2 * s, 2 * s, 1.6 * s), cf * CFrame.new(0, 1 * s, 0), rgb(80, 160, 230))
+		block(
+			parent,
+			Vector3.new(0.4 * s, 0.4 * s, 2.4 * s),
+			cf * CFrame.new(0, 1.6 * s, -1.6 * s) * CFrame.Angles(math.rad(-30), 0, 0),
+			rgb(80, 160, 230)
+		)
+		block(parent, Vector3.new(0.4 * s, 1.4 * s, 0.4 * s), cf * CFrame.new(0, 2.6 * s, 0.4 * s), rgb(60, 130, 200))
+	end
+end
+
+props[12] = function(parent, cf, rng, s) -- Toy Town: giant toy bricks, beach balls, rubber ducks
+	local kind = rng:NextInteger(1, 4)
+	if kind <= 2 then
+		for i = 0, rng:NextInteger(1, 3) do
+			local size = Vector3.new(rng:NextInteger(2, 4) * 2, 2.4, 4) * s
+			block(
+				parent,
+				size,
+				cf * CFrame.new((i % 2) * 2 * s, (i + 0.5) * 2.4 * s, 0) * CFrame.Angles(0, i * 0.5, 0),
+				RAINBOW[rng:NextInteger(1, 6)],
+				nil,
+				true
+			)
+		end
+	elseif kind == 3 then
+		local r = (2 + rng:NextNumber() * 1.5) * s
+		for i, color in { rgb(255, 70, 90), rgb(255, 255, 255), rgb(60, 140, 255), rgb(255, 220, 60) } do
+			ball(
+				parent,
+				Vector3.new(r * 2, r * 2, r * (0.5 + i * 0.12)),
+				cf * CFrame.new(0, r, 0) * CFrame.Angles(0, i * math.pi / 4, 0),
+				color
+			)
+		end
+	else
+		ball(parent, Vector3.new(4 * s, 3 * s, 5 * s), cf * CFrame.new(0, 1.5 * s, 0), rgb(255, 220, 40))
+		ball(parent, 2.6 * s, cf * CFrame.new(0, 3.6 * s, -1.6 * s), rgb(255, 220, 40))
+		block(parent, Vector3.new(1.2 * s, 0.5 * s, 1.2 * s), cf * CFrame.new(0, 3.5 * s, -3 * s), rgb(255, 140, 30))
+	end
+end
+
+-- Which look (theme and props, below) each zone uses, in zone order.
+local LOOK = { 11, 1, 2, 12, 4, 6, 5, 8, 9, 10 }
+
 -- Ground, cliffs and colours for each zone.
 local THEMES = {
 	{ -- Junkyard
@@ -561,12 +633,36 @@ local THEMES = {
 		path = rgb(255, 225, 120),
 		accent = rgb(255, 210, 80),
 	},
+	{ -- Backyard Garden
+		ground = rgb(90, 210, 90),
+		groundMat = M.Grass,
+		wall = rgb(250, 245, 235),
+		trim = rgb(255, 120, 160),
+		cliff = rgb(230, 225, 215),
+		cliffMat = M.WoodPlanks,
+		path = rgb(200, 160, 110),
+		accent = rgb(255, 120, 170),
+	},
+	{ -- Toy Town
+		ground = rgb(120, 200, 255),
+		groundMat = M.SmoothPlastic,
+		wall = rgb(255, 210, 50),
+		trim = rgb(255, 80, 90),
+		cliff = rgb(255, 200, 60),
+		cliffMat = M.SmoothPlastic,
+		path = rgb(255, 255, 255),
+		accent = rgb(255, 90, 90),
+	},
 }
-ZoneDecor.THEMES = THEMES
+
+-- The theme for zone `index`.
+function ZoneDecor.theme(index: number)
+	return THEMES[LOOK[index]]
+end
 
 -- The arch over a zone's entrance: its name and the Speed you need.
 local function buildArch(parent, index: number, theme)
-	local zone = Parts.ZONES[index]
+	local zone = Items.ZONES[index]
 	local east = ZoneLayout.edges(index)
 	local width = 26
 	local height = 18
@@ -607,7 +703,13 @@ local function buildArch(parent, index: number, theme)
 	local speed = name:Clone()
 	speed.Position = UDim2.fromScale(0, 0.58)
 	speed.Size = UDim2.fromScale(1, 0.42)
-	speed.Text = if zone.speed > 0 then "⚡ " .. ZoneDecor.formatSpeed(zone.speed) .. " SPEED" else "⚡ ANY SPEED"
+	local kind = Items.KINDS[zone.kind]
+	speed.Text = (if zone.speed > 0 then "⚡ " .. ZoneDecor.formatSpeed(zone.speed) else "⚡ ANY")
+		.. "  ·  "
+		.. kind.icon
+		.. " "
+		.. string.upper(kind.egg)
+		.. " EGGS"
 	speed.TextColor3 = rgb(255, 225, 80)
 	speed.Parent = gui
 end
@@ -622,12 +724,12 @@ function ZoneDecor.formatSpeed(n: number): string
 end
 
 function ZoneDecor.build(parent: Instance, index: number)
-	local theme = THEMES[index]
+	local theme = ZoneDecor.theme(index)
 	local east, west = ZoneLayout.edges(index)
 	local length, width = ZoneLayout.LENGTH, ZoneLayout.WIDTH
 	local centerX = (east + west) / 2
 	local folder = Instance.new("Folder")
-	folder.Name = "Zone" .. index .. "_" .. Parts.ZONES[index].name
+	folder.Name = "Zone" .. index .. "_" .. Items.ZONES[index].name
 	folder.Parent = parent
 
 	-- A checkerboard floor in two shades of the zone's colour, and the path to the pile.
@@ -688,7 +790,7 @@ function ZoneDecor.build(parent: Instance, index: number)
 			end
 		end
 	end
-	if index == #Parts.ZONES then
+	if index == #Items.ZONES then
 		block(folder, Vector3.new(6, 32, width + 12), CFrame.new(west - 3, 16, 0), theme.wall, theme.cliffMat, true)
 	end
 	buildArch(folder, index, theme)
@@ -705,7 +807,7 @@ function ZoneDecor.build(parent: Instance, index: number)
 		if math.abs(v) > 10 and not nearPile then
 			placed += 1
 			local cf = CFrame.new(east - u, 0, v) * CFrame.Angles(0, rng:NextNumber() * math.pi * 2, 0)
-			props[index](folder, cf, rng, 0.9 + rng:NextNumber() * 0.5)
+			props[LOOK[index]](folder, cf, rng, 0.9 + rng:NextNumber() * 0.5)
 		end
 	end
 	return folder

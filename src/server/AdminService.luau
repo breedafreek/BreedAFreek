@@ -19,7 +19,8 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Events = require(ReplicatedStorage.Shared.Events)
 local Luck = require(ReplicatedStorage.Shared.Luck)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
-local Parts = require(ReplicatedStorage.Shared.Parts)
+local Items = require(ReplicatedStorage.Shared.Items)
+local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local DataService = require(script.Parent.DataService)
@@ -72,17 +73,17 @@ end
 
 function commands.spawn(_player: Player, args)
 	local zone = tonumber(args.zone)
-	if not zone or not Parts.ZONES[zone] then
+	if not zone or not Items.ZONES[zone] then
 		return false, "Unknown zone"
 	end
-	local partId = args.part
-	if partId ~= nil and not Parts.byId[partId] then
-		return false, "Unknown part"
+	local rarity = args.rarity
+	if rarity ~= nil and not Rarities.info[rarity] then
+		return false, "Unknown rarity"
 	end
 	local mutation = args.mutation
 	local mutations = if mutation and Mutations.byId[mutation] then { mutation } else nil
-	ZoneService.spawnNow(zone, partId, mutations)
-	return true, "Spawned in " .. Parts.ZONES[zone].name .. "!"
+	ZoneService.spawnNow(zone, rarity, mutations)
+	return true, "Spawned in " .. Items.ZONES[zone].name .. "!"
 end
 
 function commands.announce(player: Player, args)

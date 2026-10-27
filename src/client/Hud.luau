@@ -1,6 +1,6 @@
 -- The always-on-screen parts of the UI: money, Speed, event chip, menu buttons, leaderboard,
--- gate status, the zone banner, the carrying banner and pop-up notifications. Windows
--- (Shop, House, Bag, ...) live in Main.
+-- the zone banner, the carrying banner and pop-up notifications. Windows (Shop, My Life,
+-- Bag, ...) live in Main.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -14,8 +14,7 @@ local Events = require(ReplicatedStorage.Shared.Events)
 local Format = require(ReplicatedStorage.Shared.Format)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Luck = require(ReplicatedStorage.Shared.Luck)
-local Parts = require(ReplicatedStorage.Shared.Parts)
-local Rarities = require(ReplicatedStorage.Shared.Rarities)
+local Items = require(ReplicatedStorage.Shared.Items)
 local Seasons = require(ReplicatedStorage.Shared.Seasons)
 local ZoneLayout = require(ReplicatedStorage.Shared.ZoneLayout)
 local ItemPictures = require(script.Parent.ItemPictures)
@@ -204,7 +203,7 @@ function Hud.speed(screen: ScreenGui)
 			run.TextColor3 = Color3.fromRGB(255, 235, 110)
 			ring.Color = Color3.fromRGB(255, 230, 90):Lerp(UI.OUTLINE, (math.sin(os.clock() * 8) + 1) / 2)
 		else
-			run.Text = "🏃 Run speed " .. string.format("%.0f", Parts.walkSpeed(target))
+			run.Text = "🏃 Run speed " .. string.format("%.0f", Items.walkSpeed(target))
 			run.TextColor3 = Color3.fromRGB(230, 240, 255)
 			ring.Color = UI.OUTLINE
 		end
@@ -251,14 +250,14 @@ function Hud.zoneBanner(screen: ScreenGui)
 			if zone ~= current then
 				current = zone
 				if zone then
-					local info = Parts.ZONES[zone]
+					local info = Items.ZONES[zone]
 					local speed = player:GetAttribute("Speed") or 0
 					local fast = speed >= info.speed
-					local theme = Parts.styleById[info.style]
-					name.Text = string.upper(info.name)
-					name.TextColor3 = Rarities.info[theme.rarity].color:Lerp(Color3.new(1, 1, 1), 0.2)
+					local kind = Items.KINDS[info.kind]
+					name.Text = kind.icon .. " " .. string.upper(info.name)
+					name.TextColor3 = info.eggColor:Lerp(Color3.new(1, 1, 1), 0.3)
 					if fast then
-						need.Text = "⚡ You're fast enough! Grab a part and run!"
+						need.Text = "⚡ You're fast enough! Grab an egg and run!"
 						need.TextColor3 = colors.money
 						banner.BackgroundColor3 = Color3.fromRGB(50, 150, 90)
 					else
@@ -290,7 +289,7 @@ end
 -- Carrying
 --------------------------------------------------------------------------------
 
--- While you carry a part: a pulsing banner telling you to run home, and a glowing beam
+-- While you carry an egg: a pulsing banner telling you to run home, and a glowing beam
 -- from you to your gate so you never get lost.
 function Hud.carrying(screen: ScreenGui)
 	local banner = UI.glass({
@@ -322,14 +321,13 @@ function Hud.carrying(screen: ScreenGui)
 		beam, from, target = nil, nil, nil
 	end
 	local function update()
-		local partId = player:GetAttribute("Carrying")
-		local info = partId and Parts.byId[partId]
-		banner.Visible = info ~= nil
+		local carrying = player:GetAttribute("Carrying")
+		banner.Visible = typeof(carrying) == "string"
 		clear()
-		if not info then
+		if typeof(carrying) ~= "string" then
 			return
 		end
-		label.Text = "🏠  " .. string.upper(info.name) .. " · RUN HOME!"
+		label.Text = "🥚  " .. string.upper(carrying) .. " · RUN HOME!"
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		local plotIndex = player:GetAttribute("Plot")
@@ -344,7 +342,7 @@ function Hud.carrying(screen: ScreenGui)
 			target.CanQuery = false
 			target.Transparency = 1
 			target.Size = Vector3.one
-			target.CFrame = origin * CFrame.new(0, 3, -26)
+			target.CFrame = origin * CFrame.new(0, 3, -40)
 			target.Parent = Workspace
 			local a1 = Instance.new("Attachment")
 			a1.Parent = target
@@ -1221,50 +1219,6 @@ function Hud.vipChatTag()
 		end
 		return properties
 	end
-end
-
---------------------------------------------------------------------------------
--- Gate status (locking happens at the padlock inside your yard)
---------------------------------------------------------------------------------
-
-function Hud.gateStatus(screen: ScreenGui)
-	local button = UI.new("Frame", {
-		Name = "Gate",
-		AnchorPoint = Vector2.new(0.5, 1),
-		-- Sits above Roblox's tool hotbar, which takes the bottom-centre of the screen.
-		Position = UDim2.new(0.5, 0, 1, -96),
-		Size = UDim2.fromOffset(300, 52),
-		BackgroundColor3 = colors.panel,
-		BackgroundTransparency = UI.GLASS_TRANSPARENCY,
-		Parent = screen,
-	}, { UI.corner(26) })
-	local ring = UI.stroke(colors.green, 2, 0.1)
-	ring.Parent = button
-	local label = text("", 18, {
-		Size = UDim2.fromScale(1, 1),
-		TextXAlignment = Enum.TextXAlignment.Center,
-		FontFace = UI.fonts.heavy,
-		Parent = button,
-	})
-	task.spawn(function()
-		while true do
-			local left = (player:GetAttribute("GateLockedUntil") or 0) - Workspace:GetServerTimeNow()
-			if left > 0 and left < 1e9 then
-				label.Text = "🔒  Locked · " .. Format.time(left)
-				label.TextColor3 = colors.money
-				ring.Color = colors.green
-				button.BackgroundColor3 = colors.panel
-			else
-				-- Pulses red while open so the owner notices.
-				local pulse = (math.sin(os.clock() * 6) + 1) / 2
-				label.Text = "🔓  Gate open · Lock it at your gate!"
-				label.TextColor3 = colors.text
-				ring.Color = colors.red
-				button.BackgroundColor3 = colors.red:Lerp(Color3.fromRGB(120, 25, 35), pulse)
-			end
-			task.wait(0.05)
-		end
-	end)
 end
 
 --------------------------------------------------------------------------------

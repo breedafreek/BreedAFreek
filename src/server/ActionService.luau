@@ -6,12 +6,13 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
-local HouseUtil = require(ReplicatedStorage.Shared.HouseUtil)
+local Items = require(ReplicatedStorage.Shared.Items)
+local LifeUtil = require(ReplicatedStorage.Shared.LifeUtil)
 local Parts = require(ReplicatedStorage.Shared.Parts)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
-local Carried = require(script.Parent.Carried)
 local DataService = require(script.Parent.DataService)
+local NestService = require(script.Parent.NestService)
 local PlotService = require(script.Parent.PlotService)
 local StealService = require(script.Parent.StealService)
 
@@ -34,6 +35,10 @@ local function snapshot(data)
 		treadmill = data.treadmill,
 		parts = data.parts,
 		house = data.house,
+		pen = data.pen,
+		yard = data.yard,
+		garden = data.garden,
+		nests = data.nests,
 		discovered = data.discovered,
 		crates = data.crates,
 		lastSpin = data.lastSpin,
@@ -41,7 +46,7 @@ local function snapshot(data)
 end
 ActionService.snapshot = snapshot
 
-local function ownedPart(data, uid: any)
+local function ownedItem(data, uid: any)
 	if typeof(uid) ~= "string" then
 		return nil
 	end
@@ -50,57 +55,91 @@ end
 
 local handlers = {}
 
--- Puts a backpack part onto the house; whatever was in that slot goes to the backpack.
-function handlers.Install(player: Player, data, uid: any)
-	local record = ownedPart(data, uid)
-	if not record or Carried.is(player, uid) then
+-- Puts an item from the backpack out: a house part onto its slot, a pet into the yard, a
+-- yard item or plant onto `spot` ("1".."6"; the first free one if not given). Whatever was
+-- there goes to the backpack.
+function handlers.Place(player: Player, data, uid: any, spot: any)
+	local record = ownedItem(data, uid)
+	local item = record and Items.byId[record.id]
+	if not item or LifeUtil.placed(data)[uid] then
 		return
 	end
-	local slotId = Parts.byId[record.id].slot
-	local current, currentUid = HouseUtil.installedRecord(data, slotId)
-	if currentUid == uid then
-		return
+	if item.kind == "House" then
+		data.house[item.slot] = uid
+	elseif item.kind == "Pet" then
+		local pets = LifeUtil.pets(data)
+		if #pets >= Items.PET_SLOTS then
+			-- Swap out the worst pet.
+			table.sort(pets, function(a, b)
+				return LifeUtil.itemIncome(data.parts[a]) < LifeUtil.itemIncome(data.parts[b])
+			end)
+			data.pen[pets[1]] = nil
+		end
+		data.pen[uid] = true
+	else
+		local where = if item.kind == "Yard" then data.yard else data.garden
+		local count = if item.kind == "Yard" then Items.YARD_SPOTS else Items.GARDEN_BEDS
+		local key = typeof(spot) == "string" and tonumber(spot) and spot or nil
+		if key and (tonumber(key) < 1 or tonumber(key) > count or key ~= tostring(tonumber(key))) then
+			key = nil
+		end
+		if not key then
+			for n = 1, count do
+				if not where[tostring(n)] then
+					key = tostring(n)
+					break
+				end
+			end
+		end
+		if not key then
+			return notify(player, "All your spots are full! Pick one to swap.", "error")
+		end
+		where[key] = uid
 	end
-	if current and Carried.is(player, currentUid) then
-		return notify(player, "Someone is running off with that part! Snatch it back first.", "error")
-	end
-	data.house[slotId] = uid
-	notify(player, "🏠 Installed " .. HouseUtil.displayName(record) .. "!", "success")
+	notify(player, "✨ " .. LifeUtil.displayName(record) .. " is out!", "success")
 end
 
--- Takes a part off the house and puts it in the backpack (the slot goes back to Basic).
+-- Takes an item that's out back into the backpack.
+function handlers.TakeOff(player: Player, data, uid: any)
+	local record = ownedItem(data, uid)
+	if not record or not LifeUtil.placed(data)[uid] then
+		return
+	end
+	if LifeUtil.backpackCount(data) >= GamePasses.backpackSize(player) then
+		return notify(player, "Your backpack is full!", "error")
+	end
+	LifeUtil.takeOff(data, uid)
+end
+
+-- Takes a part off the house by slot (the slot goes back to Basic).
 function handlers.Uninstall(player: Player, data, slotId: any)
 	if typeof(slotId) ~= "string" or not Parts.slotById[slotId] then
 		return
 	end
-	local current, currentUid = HouseUtil.installedRecord(data, slotId)
-	if not current or Carried.is(player, currentUid) then
-		return
+	local _, uid = LifeUtil.installedRecord(data, slotId)
+	if uid then
+		handlers.TakeOff(player, data, uid)
 	end
-	if HouseUtil.backpackCount(data) >= GamePasses.backpackSize(player) then
-		return notify(player, "Your backpack is full!", "error")
-	end
-	data.house[slotId] = nil
 end
 
-local function sell(player: Player, data, uid: string): number
+local function sell(data, uid: string): number
 	local record = data.parts[uid]
-	if not record or HouseUtil.installedSlots(data)[uid] or Carried.is(player, uid) then
+	if not record or LifeUtil.placed(data)[uid] then
 		return 0
 	end
-	local price = HouseUtil.sellPrice(record)
+	local price = LifeUtil.sellPrice(record)
 	data.parts[uid] = nil
 	data.money += price
 	return price
 end
 
--- Sells one part from the backpack.
+-- Sells one item from the backpack.
 function handlers.Sell(player: Player, data, uid: any)
 	if typeof(uid) ~= "string" then
 		return
 	end
-	local name = data.parts[uid] and HouseUtil.displayName(data.parts[uid])
-	local price = sell(player, data, uid)
+	local name = data.parts[uid] and LifeUtil.displayName(data.parts[uid])
+	local price = sell(data, uid)
 	if price > 0 then
 		notify(player, "Sold " .. name .. " for " .. Format.money(price) .. "!", "money")
 	end
@@ -109,45 +148,46 @@ end
 -- Sells everything in the backpack.
 function handlers.SellBackpack(player: Player, data)
 	local total, count = 0, 0
-	for _, uid in HouseUtil.backpack(data) do
-		local price = sell(player, data, uid)
+	for _, uid in LifeUtil.backpack(data) do
+		local price = sell(data, uid)
 		if price > 0 then
 			total += price
 			count += 1
 		end
 	end
 	if count > 0 then
-		notify(player, "Sold " .. count .. " parts for " .. Format.money(total) .. "!", "money")
+		notify(player, "Sold " .. count .. " items for " .. Format.money(total) .. "!", "money")
 	end
 end
 
--- Puts the best part for every slot onto the house.
-function handlers.InstallBest(player: Player, data)
+-- Puts out the best of everything (best items first, so each spot ends up with the best).
+function handlers.PlaceBest(player: Player, data)
 	local changed = 0
-	for _, slot in Parts.SLOTS do
-		local current, currentUid = HouseUtil.installedRecord(data, slot.id)
-		if current and Carried.is(player, currentUid) then
-			continue
-		end
-		local bestUid, bestIncome = currentUid, HouseUtil.partIncome(current or { id = Parts.basic(slot.id) })
-		for uid, record in data.parts do
-			if Parts.byId[record.id].slot == slot.id and HouseUtil.partIncome(record) > bestIncome then
-				bestUid, bestIncome = uid, HouseUtil.partIncome(record)
-			end
-		end
-		if bestUid ~= currentUid then
-			data.house[slot.id] = bestUid
+	for _, uid in LifeUtil.backpack(data) do
+		if LifeUtil.placeIfBetter(data, uid) ~= "backpack" then
 			changed += 1
 		end
 	end
 	if changed > 0 then
 		notify(
 			player,
-			"🏠 Upgraded " .. changed .. " part" .. (if changed == 1 then "" else "s") .. " on your house!",
+			"✨ Put out " .. changed .. " better item" .. (if changed == 1 then "" else "s") .. "!",
 			"success"
 		)
 	else
-		notify(player, "Your house already has your best parts!", "info")
+		notify(player, "Your best items are already out!", "info")
+	end
+end
+handlers.InstallBest = handlers.PlaceBest
+
+-- Hatches the egg in a nest (from the UI; the nest's prompt does the same).
+function handlers.Hatch(player: Player, _data, n: any)
+	if typeof(n) ~= "number" or n ~= n // 1 or n < 1 or n > PlotService.NEST_MAX then
+		return
+	end
+	local problem = NestService.hatch(player, n)
+	if problem then
+		notify(player, problem, "error")
 	end
 end
 
@@ -165,11 +205,11 @@ function handlers.UpgradeTreadmill(player: Player, data)
 	notify(player, "⚡ Treadmill upgraded to level " .. data.treadmill .. "!", "success")
 end
 
--- Teleports the player home (not while carrying a part: that would skip the run).
+-- Teleports the player home (not while carrying an egg: that would skip the run).
 local lastHome = {}
 function handlers.GoHome(player: Player, _data)
 	if StealService.isCarrying(player) then
-		return notify(player, "No teleporting with a part! Run it home!", "error")
+		return notify(player, "No teleporting with an egg! Run it home!", "error")
 	end
 	if lastHome[player] and os.clock() - lastHome[player] < 3 then
 		return
@@ -178,7 +218,7 @@ function handlers.GoHome(player: Player, _data)
 	PlotService.sendHome(player)
 end
 
-local quiet = { GoHome = true } -- actions that don't change saved data, so skip the refresh
+local quiet = { GoHome = true, Hatch = true } -- actions that don't change saved data, so skip the refresh
 
 -- Lets other services add actions (they get the same rate limit and refresh).
 -- Pass isQuiet = true for actions that never change the player's data.

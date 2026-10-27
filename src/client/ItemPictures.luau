@@ -1,15 +1,16 @@
--- 3D pictures for shop items (the treadmill, weapons, game passes), house parts and the
--- side menu, built from parts like everything else in the game and shown in
--- ViewportFrames. ItemPictures.view(key, height) returns a ViewportFrame; keys are
--- "Treadmill", a weapon id from Weapons.luau, or a game pass key from GamePasses.luau.
--- ItemPictures.part(partId) pictures a house part; ItemPictures.icon(key) a menu icon.
+-- 3D pictures for shop items (the treadmill, game passes), items, eggs and the side menu,
+-- built from parts like everything else in the game and shown in ViewportFrames.
+-- ItemPictures.view(key, height) returns a ViewportFrame; keys are "Treadmill" or a game
+-- pass key from GamePasses.luau. ItemPictures.part(itemId) pictures any item (house part,
+-- pet, yard item, plant), ItemPictures.egg(zone) a zone's egg and ItemPictures.icon(key) a
+-- menu icon.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local EggModel = require(ReplicatedStorage.Shared.EggModel)
 local HouseModel = require(ReplicatedStorage.Shared.HouseModel)
+local ItemModel = require(ReplicatedStorage.Shared.ItemModel)
 local Lego = require(ReplicatedStorage.Shared.Lego)
-local WeaponModel = require(ReplicatedStorage.Shared.WeaponModel)
-local Weapons = require(ReplicatedStorage.Shared.Weapons)
 
 local ItemPictures = {}
 
@@ -63,25 +64,6 @@ local function cylinder(model, cframe: CFrame, height: number, diameter: number,
 	})
 end
 
--- A thick arc of blocks (handles, shackles).
-local function arc(model, center: CFrame, radius: number, from: number, to: number, thickness: number, color: Color3)
-	local last
-	for i = 0, 10 do
-		local a = from + (to - from) * i / 10
-		local point = (center * CFrame.new(math.cos(a) * radius, math.sin(a) * radius, 0)).Position
-		if last then
-			part(model, {
-				Size = Vector3.new(thickness, thickness, (point - last).Magnitude + thickness * 0.6),
-				CFrame = CFrame.lookAt((point + last) / 2, point),
-				Color = color,
-				Material = Enum.Material.Metal,
-			})
-		end
-		last = point
-	end
-end
-
--- A big green "+" sign.
 local function plus(model, position: Vector3, size: number)
 	local green = rgb(80, 220, 100)
 	part(model, { Size = Vector3.new(size, size * 0.32, size * 0.32), CFrame = CFrame.new(position), Color = green })
@@ -182,34 +164,43 @@ function BUILDERS.DoubleCoins(model)
 end
 
 -- Fast Fusing: a pink potion with a lightning bolt.
-function BUILDERS.FastBreeding(model)
-	ball(model, Vector3.new(0, 1.8, 0), 3.4, rgb(200, 235, 255), Enum.Material.Glass).Transparency = 0.6
-	ball(model, Vector3.new(0, 1.55, 0), Vector3.new(2.9, 2.4, 2.9), rgb(255, 60, 170), Enum.Material.Neon)
-	cylinder(model, CFrame.new(0, 3.8, 0), 1.4, 1.1, rgb(200, 235, 255), Enum.Material.Glass).Transparency = 0.4
-	cylinder(model, CFrame.new(0, 4.6, 0), 0.7, 1.3, rgb(150, 95, 50))
-	-- A zig-zag bolt beside it.
+-- Copies an egg's parts into a picture model at a spot.
+local function addEgg(model, zoneIndex: number, cframe: CFrame)
+	local egg = EggModel.build(zoneIndex)
+	egg:PivotTo(cframe)
+	for _, p in egg:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Parent = model
+		end
+	end
+	egg:Destroy()
+end
+
+-- A chunky zig-zag lightning bolt.
+local function bolt(model, offset: Vector3, size: number)
 	local yellow = rgb(255, 220, 40)
-	for _, bit in { { 2.3, 3.6, -30 }, { 2.0, 2.4, 35 }, { 2.4, 1.2, -30 } } do
+	for _, bit in { { 0.3, 1.2, -30 }, { 0, 0, 35 }, { 0.4, -1.2, -30 } } do
 		part(model, {
-			Size = Vector3.new(0.7, 1.6, 0.5),
-			CFrame = CFrame.new(bit[1], bit[2], -0.6) * CFrame.Angles(0, 0, math.rad(bit[3])),
+			Size = Vector3.new(0.7, 1.6, 0.5) * size,
+			CFrame = CFrame.new(offset + Vector3.new(bit[1], bit[2], 0) * size) * CFrame.Angles(0, 0, math.rad(bit[3])),
 			Color = yellow,
 			Material = Enum.Material.Neon,
 		})
 	end
 end
 
--- Longer Gate Lock: a big gold padlock.
+-- Fast Hatching: a fancy egg with a lightning bolt.
+function BUILDERS.FastBreeding(model)
+	addEgg(model, 6, CFrame.new(0, 0, 0))
+	bolt(model, Vector3.new(2.3, 2.4, -0.6), 1)
+end
+
+-- 2x Speed: a big lightning bolt with a running shoe.
 function BUILDERS.LongerLock(model)
-	part(model, {
-		Size = Vector3.new(3.2, 2.6, 1.2),
-		CFrame = CFrame.new(0, 1.3, 0),
-		Color = GOLD,
-		Material = Enum.Material.Foil,
-	})
-	arc(model, CFrame.new(0, 2.6, 0), 1.1, 0, math.pi, 0.45, rgb(170, 170, 180))
-	ball(model, Vector3.new(0, 1.5, -0.6), 0.6, rgb(60, 45, 30))
-	part(model, { Size = Vector3.new(0.3, 0.8, 0.2), CFrame = CFrame.new(0, 1.05, -0.62), Color = rgb(60, 45, 30) })
+	bolt(model, Vector3.new(0, 2.6, 0), 1.6)
+	part(model, { Size = Vector3.new(1.6, 1, 3), CFrame = CFrame.new(-1.8, 0.5, 0), Color = rgb(255, 80, 80) })
+	part(model, { Size = Vector3.new(1.7, 0.35, 3.2), CFrame = CFrame.new(-1.8, 0.1, 0), Color = rgb(255, 255, 255) })
+	part(model, { Size = Vector3.new(1.6, 1, 1.2), CFrame = CFrame.new(-1.8, 1.4, 0.9), Color = rgb(255, 80, 80) })
 end
 
 -- VIP: a gold crown with gems.
@@ -232,27 +223,21 @@ function BUILDERS.VIP(model)
 	end
 end
 
--- Strong Arms: a big dumbbell.
+-- Extra Nests: a straw nest with two eggs in it.
 function BUILDERS.ExtraPen(model)
-	local dark = rgb(55, 55, 70)
-	cylinder(
-		model,
-		CFrame.new(0, 1.4, 0) * CFrame.Angles(0, 0, math.pi / 2),
-		5,
-		0.45,
-		rgb(190, 190, 205),
-		Enum.Material.Metal
-	)
-	for _, x in { -2.1, -1.6, 1.6, 2.1 } do
-		local big = math.abs(x) > 2
-		cylinder(
-			model,
-			CFrame.new(x, 1.4, 0) * CFrame.Angles(0, 0, math.pi / 2),
-			0.45,
-			if big then 2.2 else 2.8,
-			if big then dark else rgb(255, 90, 160)
-		)
+	for k = 0, 9 do
+		local a = k / 10 * math.pi * 2
+		part(model, {
+			Size = Vector3.new(1.6, 0.9, 1),
+			CFrame = CFrame.new(math.cos(a) * 2.1, 0.5 + (k % 2) * 0.15, math.sin(a) * 2.1)
+				* CFrame.Angles(0, -a + math.pi / 2, 0),
+			Color = if k % 2 == 0 then rgb(230, 185, 90) else rgb(205, 155, 70),
+		})
 	end
+	cylinder(model, CFrame.new(0, 0.2, 0), 0.4, 4, rgb(190, 140, 65))
+	addEgg(model, 3, CFrame.new(-0.8, 0.3, 0.2) * CFrame.Angles(0, 0, math.rad(12)))
+	addEgg(model, 8, CFrame.new(0.9, 0.3, -0.2) * CFrame.Angles(0, 0, math.rad(-10)))
+	plus(model, Vector3.new(2.6, 3.6, -0.6), 1.6)
 end
 
 --------------------------------------------------------------------------------
@@ -485,6 +470,26 @@ BUILDERS.MenuHouse = function(model)
 	add("Basic_Door", CFrame.new(0, 0.4, -2.3) * CFrame.new(0, 0, 0))
 end
 
+-- My Life: the little house with a sunflower and a pet beside it.
+BUILDERS.MenuLife = function(model)
+	BUILDERS.MenuHouse(model)
+	for _, entry in
+		{ { "Plant_Sunflower", CFrame.new(3.6, 0, -0.4), 0.45 }, { "Pet_Oinkle", CFrame.new(-3.4, 0, -1.2), 0.9 } }
+	do
+		local item = ItemModel.build(entry[1])
+		local pivot = item:GetPivot()
+		for _, p in item:GetDescendants() do
+			if p:IsA("BasePart") then
+				local rel = pivot:ToObjectSpace(p.CFrame)
+				p.Size *= entry[3]
+				p.CFrame = entry[2] * (rel.Rotation + rel.Position * entry[3])
+				p.Parent = model
+			end
+		end
+		item:Destroy()
+	end
+end
+
 -- Bag: the backpack.
 BUILDERS.MenuBag = function(model)
 	backpack(model, false)
@@ -551,25 +556,6 @@ BUILDERS.MenuStore = function(model)
 	sparkle(model, girdle + Vector3.new(1.9, -1.2, -1.6), 0.7)
 end
 
--- A weapon, laid on its side so the whole thing shows.
-local function weaponModel(model, weaponId: string)
-	local tool = WeaponModel.build(weaponId)
-	local melee = Weapons.list[weaponId].kind == "melee"
-	for _, p in tool:GetDescendants() do
-		if p:IsA("BasePart") then
-			p.Anchored = true
-			-- Melee weapons extend along +Z, guns point along -Z: turn them to lie across.
-			p.CFrame = CFrame.Angles(
-				0,
-				if melee then math.rad(90) else math.rad(-90),
-				if melee then math.rad(35) else 0
-			) * p.CFrame
-			p.Parent = model
-		end
-	end
-	tool:Destroy()
-end
-
 -- The box round everything you can see (counting stretched sphere meshes).
 local function visibleBounds(model: Model): (Vector3, Vector3)
 	local lo, hi
@@ -627,9 +613,8 @@ function ItemPictures.icon(key: string): (ViewportFrame, (number) -> ())
 	return frame, sway
 end
 
--- A house part, framed to fit, seen a little from above and the side. silhouette = true
--- draws it solid black ("???" in the Catalog).
-function ItemPictures.part(partId: string, height: number?, silhouette: boolean?): ViewportFrame
+-- Frames a model in a ViewportFrame, seen a little from above and the side.
+local function framed(model: Model, height: number?, silhouette: boolean?): ViewportFrame
 	local frame = Instance.new("ViewportFrame")
 	frame.BackgroundTransparency = 1
 	frame.Size = UDim2.new(1, 0, 0, height or 100)
@@ -637,7 +622,11 @@ function ItemPictures.part(partId: string, height: number?, silhouette: boolean?
 	frame.LightColor = Color3.fromRGB(255, 250, 240)
 	frame.LightDirection = Vector3.new(-1, -1.4, 1)
 	frame.ImageColor3 = if silhouette then Color3.new(0, 0, 0) else Color3.new(1, 1, 1)
-	local model = HouseModel.item(partId)
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = true
+		end
+	end
 	Lego.apply(model)
 	model.Parent = frame
 	local lo, hi = visibleBounds(model)
@@ -653,8 +642,19 @@ function ItemPictures.part(partId: string, height: number?, silhouette: boolean?
 	return frame
 end
 
+-- Any item (house part, pet, yard item, plant). silhouette = true draws it solid black
+-- ("???" in the Catalog).
+function ItemPictures.part(itemId: string, height: number?, silhouette: boolean?, mutations): ViewportFrame
+	return framed(ItemModel.build(itemId, mutations), height, silhouette)
+end
+
+-- A zone's egg.
+function ItemPictures.egg(zoneIndex: number, height: number?): ViewportFrame
+	return framed((EggModel.build(zoneIndex)), height)
+end
+
 function ItemPictures.has(key: string): boolean
-	return BUILDERS[key] ~= nil or Weapons.list[key] ~= nil
+	return BUILDERS[key] ~= nil
 end
 
 -- A ViewportFrame showing the item, framed to fit, seen a little from above and the side.
@@ -667,9 +667,7 @@ function ItemPictures.view(key: string, height: number?): ViewportFrame
 	frame.LightDirection = Vector3.new(-1, -1.4, 1)
 
 	local model = Instance.new("Model")
-	if Weapons.list[key] then
-		weaponModel(model, key)
-	elseif BUILDERS[key] then
+	if BUILDERS[key] then
 		BUILDERS[key](model)
 	end
 	Lego.apply(model)

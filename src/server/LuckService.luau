@@ -17,16 +17,16 @@ local Workspace = game:GetService("Workspace")
 
 local BoxModel = require(ReplicatedStorage.Shared.BoxModel)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
-local HouseUtil = require(ReplicatedStorage.Shared.HouseUtil)
+local Items = require(ReplicatedStorage.Shared.Items)
+local LifeUtil = require(ReplicatedStorage.Shared.LifeUtil)
 local Luck = require(ReplicatedStorage.Shared.Luck)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
-local Parts = require(ReplicatedStorage.Shared.Parts)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local ActionService = require(script.Parent.ActionService)
 local DataService = require(script.Parent.DataService)
-local StealService = require(script.Parent.StealService)
+local NestService = require(script.Parent.NestService)
 
 local LuckService = {}
 
@@ -64,9 +64,10 @@ local function rollWeighted(weights: { [string]: number }): string
 	return keys[#keys]
 end
 
--- A part of this style in a random slot.
-local function pickPart(styleId: string): string
-	return styleId .. "_" .. Parts.SLOTS[rng:NextInteger(1, #Parts.SLOTS)].id
+-- A random item of this rarity, of any kind.
+local function pickItem(rarity: string): string
+	local kind = Items.KIND_ORDER[rng:NextInteger(1, #Items.KIND_ORDER)]
+	return NestService.rollItem(kind, rarity)
 end
 
 local function rollMutations(boost: number): { string }?
@@ -79,29 +80,14 @@ local function rollMutations(boost: number): { string }?
 end
 
 local function hasRoom(player: Player, data): boolean
-	return HouseUtil.backpackCount(data) < GamePasses.backpackSize(player)
-end
-
--- Gives the player a part (onto their house if it's an upgrade) and tells their client to
--- show the reveal.
-local function givePart(player: Player, data, partId: string, mutations, reveal)
-	local record = { id = partId, mutations = Mutations.pack(mutations) }
-	local isNew = not data.discovered[partId]
-	reveal.where = StealService.give(player, data, record)
-	reveal.part = record
-	reveal.isNew = isNew
-	reveal.rarity = Parts.byId[partId].rarity
-	resultRemote:FireClient(player, reveal)
-	if Rarities.rank[reveal.rarity] >= Rarities.rank.Legendary then
-		announce(player.DisplayName .. " got a " .. reveal.rarity .. " " .. HouseUtil.displayName(record) .. "!")
-	end
+	return LifeUtil.backpackCount(data) < GamePasses.backpackSize(player)
 end
 
 local function openCrate(player: Player, data, crate)
-	givePart(
+	NestService.reward(
 		player,
 		data,
-		pickPart(rollWeighted(Luck.crateOdds(crate))),
+		pickItem(rollWeighted(Luck.crateOdds(crate))),
 		rollMutations(crate.mutation),
 		{ kind = "crate", crate = crate.id }
 	)
@@ -128,7 +114,7 @@ local function buyCrate(player: Player, data, crateId: any)
 		return notify(player, "Mystery Boxes aren't available where you live.", "error")
 	end
 	if not hasRoom(player, data) then
-		return notify(player, "Your backpack is full! Sell some parts first.", "error")
+		return notify(player, "Your backpack is full! Sell some items first.", "error")
 	end
 	if crate.productId == 0 then
 		if RunService:IsStudio() and Luck.STUDIO_FREE_CRATES then
@@ -147,7 +133,7 @@ local function openOwnedCrate(player: Player, data, crateId: any)
 		return
 	end
 	if not hasRoom(player, data) then
-		return notify(player, "Your backpack is full! Sell some parts first.", "error")
+		return notify(player, "Your backpack is full! Sell some items first.", "error")
 	end
 	data.crates[crate.id] -= 1
 	openCrate(player, data, crate)
@@ -273,7 +259,7 @@ local function spinCooldown(player: Player): number
 end
 
 local function coinPrize(data, minutes: number): number
-	return math.max(Luck.MIN_COIN_PRIZE, math.floor(HouseUtil.houseIncome(data) * 60 * minutes))
+	return math.max(Luck.MIN_COIN_PRIZE, math.floor(LifeUtil.totalIncome(data) * 60 * minutes))
 end
 
 local function spin(player: Player, data)
@@ -291,10 +277,12 @@ local function spin(player: Player, data)
 	local slice = Luck.WHEEL[index]
 	local reveal = { kind = "wheel", slice = index }
 
-	if (slice.golden or slice.rainbow) and hasRoom(player, data) then
-		-- A part from the best zone the player's Speed reaches.
-		local style = Parts.ZONES[Parts.zoneFor(data.speed)].style
-		return givePart(player, data, pickPart(style), { if slice.rainbow then "Rainbow" else "Golden" }, reveal)
+	if slice.golden or slice.rainbow then
+		-- An egg from the best zone the player's Speed reaches, hatched on the spot.
+		local zone = Items.zoneFor(data.speed)
+		local itemId = NestService.rollItem(Items.ZONES[zone].kind, Items.rollRarity(zone, rng))
+		reveal.egg = zone
+		return NestService.reward(player, data, itemId, { if slice.rainbow then "Rainbow" else "Golden" }, reveal)
 	end
 	if slice.crate then
 		data.crates[slice.crate] = (data.crates[slice.crate] or 0) + 1
@@ -339,7 +327,7 @@ end
 
 -- The Mystery Box stand by the spawn: the three boxes on glowing pedestals, each with its
 -- odds floating above it (like the egg stands in pet games). Hold E to open one.
-local STAND_X = 128
+local STAND_X = 190
 local OUTLINE = Color3.fromRGB(20, 22, 48)
 
 local function outlinedLabel(parent: Instance, text: string, color: Color3, top: number, height: number, font)
@@ -409,14 +397,13 @@ local function buildBoxStand()
 			Enum.Font.LuckiestGuy
 		)
 		for k, entry in odds do
-			local style = Parts.styleById[entry.style]
 			local percent = if entry.percent < 1
 				then string.format("%.1f", entry.percent)
 				else string.format("%.0f", entry.percent)
 			outlinedLabel(
 				gui,
-				style.name .. " part  " .. percent .. "%",
-				Rarities.info[style.rarity].color,
+				entry.rarity .. " item  " .. percent .. "%",
+				Rarities.info[entry.rarity].color,
 				(46 + (k - 1) * 20) / total,
 				19 / total,
 				Enum.Font.FredokaOne

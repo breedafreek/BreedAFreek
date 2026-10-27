@@ -7,9 +7,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local Events = require(ReplicatedStorage.Shared.Events)
-local Parts = require(ReplicatedStorage.Shared.Parts)
+local Items = require(ReplicatedStorage.Shared.Items)
 local Luck = require(ReplicatedStorage.Shared.Luck)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
+local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local UI = require(script.Parent.UI)
 
@@ -139,7 +140,7 @@ function AdminPanel.start(screen: ScreenGui)
 		UI.new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }),
 		UI.new("UIPadding", { PaddingRight = UDim.new(0, 6), PaddingTop = UDim.new(0, 6) }),
 	})
-	status = UI.label("Pick an event, or spawn some parts!", {
+	status = UI.label("Pick an event, or spawn some eggs!", {
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -12),
 		Size = UDim2.new(1, -32, 0, 26),
@@ -223,17 +224,15 @@ function AdminPanel.start(screen: ScreenGui)
 		run("stop", { everywhere = everywhere })
 	end, { Size = UDim2.new(0.5, -3, 0, 40), LayoutOrder = 2, ZIndex = 22, Parent = goRow })
 
-	-- Spawn parts ----------------------------------------------------------------
-	heading("📦 SPAWN PARTS IN A ZONE (THIS SERVER)", body, 5)
+	-- Spawn eggs -----------------------------------------------------------------
+	heading("🥚 SPAWN EGGS IN A ZONE (THIS SERVER)", body, 5)
 	local zoneIds = {}
-	for index in Parts.ZONES do
+	for index in Items.ZONES do
 		table.insert(zoneIds, index)
 	end
 	local styleIds = { "" }
-	for _, style in Parts.STYLES do
-		if style.id ~= "Basic" then
-			table.insert(styleIds, style.id)
-		end
+	for _, rarity in Rarities.order do
+		table.insert(styleIds, rarity)
 	end
 	local zoneIndex, styleIndex = 1, 1
 	local mutationIds = { "" }
@@ -272,14 +271,14 @@ function AdminPanel.start(screen: ScreenGui)
 	end, function(v)
 		zoneIndex = v
 	end, function(index)
-		return Parts.ZONES[index].name
+		return Items.ZONES[index].name
 	end, 1, 120)
 	cycler(styleIds, function()
 		return styleIndex
 	end, function(v)
 		styleIndex = v
 	end, function(id)
-		return if id == "" then "Fill pile" else Parts.styleById[id].name
+		return if id == "" then "Fill all" else id
 	end, 4, 90)
 	cycler(mutationIds, function()
 		return mutationIndex
@@ -290,11 +289,10 @@ function AdminPanel.start(screen: ScreenGui)
 	end, 7, 90)
 	UI.button("GO!", colors.orange, function()
 		local mutation = mutationIds[mutationIndex]
-		local style = styleIds[styleIndex]
-		local slot = Parts.SLOTS[math.random(1, #Parts.SLOTS)].id
+		local rarity = styleIds[styleIndex]
 		run("spawn", {
 			zone = zoneIds[zoneIndex],
-			part = if style == "" then nil else style .. "_" .. slot,
+			rarity = if rarity == "" then nil else rarity,
 			mutation = if mutation == "" then nil else mutation,
 		})
 	end, { Size = UDim2.fromOffset(64, 40), LayoutOrder = 10, ZIndex = 22, Parent = cannonRow })
