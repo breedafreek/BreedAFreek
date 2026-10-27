@@ -60,10 +60,30 @@ end
 
 local function setupTerrain()
 	local terrain = Workspace.Terrain
-	-- Clear any terrain above ground level (a place template's own terrain would bury the
-	-- walkways and everything standing on them), then grass everywhere with its top at y = 0.
-	terrain:FillBlock(CFrame.new(0, 64, 0), Vector3.new(2048, 128, 2048), Enum.Material.Air)
-	terrain:FillBlock(CFrame.new(0, -4, 0), Vector3.new(520, 8, 360), Enum.Material.Grass)
+	-- Clear any terrain above ground level over the whole map (a place's own terrain would
+	-- bury the yards, the treadmills and everything standing on them), then grass under the
+	-- town with its top at y = 0. Done in small chunks: one huge fill can fail outright.
+	local west = ZoneLayout.START_X - ZoneLayout.LENGTH * 10 - 100
+	local CHUNK = 256
+	local function fill(x0: number, x1: number, z0: number, z1: number, y0: number, y1: number, material)
+		for x = x0, x1 - 1, CHUNK do
+			for z = z0, z1 - 1, CHUNK do
+				local sx, sz = math.min(CHUNK, x1 - x), math.min(CHUNK, z1 - z)
+				local ok, err = pcall(function()
+					terrain:FillBlock(
+						CFrame.new(x + sx / 2, (y0 + y1) / 2, z + sz / 2),
+						Vector3.new(sx, y1 - y0, sz),
+						material
+					)
+				end)
+				if not ok then
+					warn("[Environment] terrain fill failed: " .. tostring(err))
+				end
+			end
+		end
+	end
+	fill(west, 512, -512, 512, 0, 256, Enum.Material.Air)
+	fill(-268, 268, -180, 180, -8, 0, Enum.Material.Grass)
 	terrain:SetMaterialColor(Enum.Material.Grass, Color3.fromRGB(95, 175, 80))
 	terrain:SetMaterialColor(Enum.Material.Pavement, Color3.fromRGB(196, 190, 180))
 	-- No tall grass blades: they hide the feet of anything standing on the grass.
