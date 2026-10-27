@@ -2,7 +2,8 @@
 -- shell is in the item's own colours with a pattern for its kind (round spots for pets,
 -- leaves for plants, stripes for yard items, bricks for house parts), the top is cracked
 -- open with a little copy of the item poking out, Legendary and up get a gold band and
--- Mystic and up a glowing one. Without an item (the zone's egg in general, e.g. in the Shop)
+-- Mystic and up a glowing one. Secret eggs glow and flash in every colour (an aura round
+-- the shell and a light, tagged SECRET_TAG; each client animates them, see Main). Without an item (the zone's egg in general, e.g. in the Shop)
 -- it's the zone's colours (Items.ZONES eggColor / spotColor) with spots.
 --
 -- EggModel.build(zoneIndex, itemId?) returns the model (standing on its pivot, the bottom
@@ -13,6 +14,8 @@ local Items = require(script.Parent.Items)
 local Rarities = require(script.Parent.Rarities)
 
 local EggModel = {}
+
+EggModel.SECRET_TAG = "SecretEgg"
 
 local W, H = 2.6, 3.4 -- the shell's width and height
 local GOLD = Color3.fromRGB(255, 205, 60)
@@ -210,6 +213,30 @@ function EggModel.build(zoneIndex: number, itemId: string?): (Model, number)
 	local top = H
 	if info then
 		top = math.max(top, crackedTop(model, main, itemId))
+	end
+	if info and info.rarity == "Secret" then
+		-- A glowing aura round the shell, a light and sparkles; clients make them flash.
+		local glow = egg(
+			model,
+			Vector3.new(W, H, W) * 1.18,
+			CFrame.new(0, H / 2, 0),
+			Rarities.info.Secret.color,
+			Enum.Material.Neon
+		)
+		glow.Name = "SecretGlow"
+		glow.Transparency = 0.55
+		glow.CastShadow = false
+		local light = Instance.new("PointLight")
+		light.Name = "SecretLight"
+		light.Range = 14
+		light.Brightness = 3
+		light.Color = Rarities.info.Secret.color
+		light.Parent = shell
+		local sparkles = Instance.new("Sparkles")
+		sparkles.SparkleColor = Color3.fromRGB(255, 255, 255)
+		sparkles.Parent = glow
+		model:SetAttribute("Secret", true)
+		game:GetService("CollectionService"):AddTag(model, EggModel.SECRET_TAG)
 	end
 	return model, top
 end

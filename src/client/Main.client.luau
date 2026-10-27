@@ -45,6 +45,7 @@ end)
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
+local EggModel = require(Shared.EggModel)
 local Format = require(Shared.Format)
 local GamePasses = require(Shared.GamePasses)
 local LifeUtil = require(Shared.LifeUtil)
@@ -1595,6 +1596,26 @@ RunService.RenderStepped:Connect(function()
 			box:PivotTo(
 				rest * CFrame.new(0, 0.35 + math.sin(t * 2 + phase) * 0.35, 0) * CFrame.Angles(0, t * 0.8 + phase, 0)
 			)
+		end
+	end
+end)
+
+-- Secret eggs flash and glow: their aura and light cycle through every colour and pulse.
+RunService.RenderStepped:Connect(function()
+	local t = os.clock()
+	for i, egg in CollectionService:GetTagged(EggModel.SECRET_TAG) do
+		local glow = egg:FindFirstChild("SecretGlow")
+		local shell = egg:FindFirstChild("Shell")
+		local light = shell and shell:FindFirstChild("SecretLight")
+		local color = Color3.fromHSV((t * 0.5 + i * 0.13) % 1, 0.75, 1)
+		local flash = (math.sin(t * 9 + i) + 1) / 2 -- 0..1, a few flashes a second
+		if glow and glow:IsA("BasePart") then
+			glow.Color = color
+			glow.Transparency = 0.25 + 0.5 * (1 - flash)
+		end
+		if light and light:IsA("PointLight") then
+			light.Color = color
+			light.Brightness = 1.5 + 4 * flash
 		end
 	end
 end)

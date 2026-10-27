@@ -816,7 +816,7 @@ return Bricks
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-12", -- shown small in the corner of the screen and in Output: which build is running
+	BUILD = "life-13", -- shown small in the corner of the screen and in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join (and after
 	-- a rebirth). Set to nil before the game launches!
@@ -885,7 +885,8 @@ return Config
 -- shell is in the item's own colours with a pattern for its kind (round spots for pets,
 -- leaves for plants, stripes for yard items, bricks for house parts), the top is cracked
 -- open with a little copy of the item poking out, Legendary and up get a gold band and
--- Mystic and up a glowing one. Without an item (the zone's egg in general, e.g. in the Shop)
+-- Mystic and up a glowing one. Secret eggs glow and flash in every colour (an aura round
+-- the shell and a light, tagged SECRET_TAG; each client animates them, see Main). Without an item (the zone's egg in general, e.g. in the Shop)
 -- it's the zone's colours (Items.ZONES eggColor / spotColor) with spots.
 --
 -- EggModel.build(zoneIndex, itemId?) returns the model (standing on its pivot, the bottom
@@ -896,6 +897,8 @@ local Items = require(script.Parent.Items)
 local Rarities = require(script.Parent.Rarities)
 
 local EggModel = {}
+
+EggModel.SECRET_TAG = "SecretEgg"
 
 local W, H = 2.6, 3.4 -- the shell's width and height
 local GOLD = Color3.fromRGB(255, 205, 60)
@@ -1093,6 +1096,30 @@ function EggModel.build(zoneIndex: number, itemId: string?): (Model, number)
 	local top = H
 	if info then
 		top = math.max(top, crackedTop(model, main, itemId))
+	end
+	if info and info.rarity == "Secret" then
+		-- A glowing aura round the shell, a light and sparkles; clients make them flash.
+		local glow = egg(
+			model,
+			Vector3.new(W, H, W) * 1.18,
+			CFrame.new(0, H / 2, 0),
+			Rarities.info.Secret.color,
+			Enum.Material.Neon
+		)
+		glow.Name = "SecretGlow"
+		glow.Transparency = 0.55
+		glow.CastShadow = false
+		local light = Instance.new("PointLight")
+		light.Name = "SecretLight"
+		light.Range = 14
+		light.Brightness = 3
+		light.Color = Rarities.info.Secret.color
+		light.Parent = shell
+		local sparkles = Instance.new("Sparkles")
+		sparkles.SparkleColor = Color3.fromRGB(255, 255, 255)
+		sparkles.Parent = glow
+		model:SetAttribute("Secret", true)
+		game:GetService("CollectionService"):AddTag(model, EggModel.SECRET_TAG)
 	end
 	return model, top
 end
@@ -18262,6 +18289,7 @@ end)
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
+local EggModel = require(Shared.EggModel)
 local Format = require(Shared.Format)
 local GamePasses = require(Shared.GamePasses)
 local LifeUtil = require(Shared.LifeUtil)
@@ -19812,6 +19840,26 @@ RunService.RenderStepped:Connect(function()
 			box:PivotTo(
 				rest * CFrame.new(0, 0.35 + math.sin(t * 2 + phase) * 0.35, 0) * CFrame.Angles(0, t * 0.8 + phase, 0)
 			)
+		end
+	end
+end)
+
+-- Secret eggs flash and glow: their aura and light cycle through every colour and pulse.
+RunService.RenderStepped:Connect(function()
+	local t = os.clock()
+	for i, egg in CollectionService:GetTagged(EggModel.SECRET_TAG) do
+		local glow = egg:FindFirstChild("SecretGlow")
+		local shell = egg:FindFirstChild("Shell")
+		local light = shell and shell:FindFirstChild("SecretLight")
+		local color = Color3.fromHSV((t * 0.5 + i * 0.13) % 1, 0.75, 1)
+		local flash = (math.sin(t * 9 + i) + 1) / 2 -- 0..1, a few flashes a second
+		if glow and glow:IsA("BasePart") then
+			glow.Color = color
+			glow.Transparency = 0.25 + 0.5 * (1 - flash)
+		end
+		if light and light:IsA("PointLight") then
+			light.Color = color
+			light.Brightness = 1.5 + 4 * flash
 		end
 	end
 end)
