@@ -18,7 +18,7 @@ local EggModel = {}
 
 EggModel.SECRET_TAG = "SecretEgg"
 
-local W, H = 2.6, 3.4 -- the shell's width and height
+local W, H = 3.2, 4.2 -- the shell's width and height (about chest height on a player)
 local GOLD = Color3.fromRGB(255, 205, 60)
 
 local function part(model: Model, props)
@@ -85,9 +85,9 @@ local function palette(model: Model): (Color3, Color3)
 end
 
 -- The pattern on the shell, by what kind of thing is inside.
-local STUD = 0.42 -- stud diameter
-local STUD_HEIGHT = 0.12 -- how far a stud stands out of the shell
-local STUD_GAP = 0.66 -- distance between stud centres
+local STUD = 0.52 -- stud diameter
+local STUD_HEIGHT = 0.15 -- how far a stud stands out of the shell
+local STUD_GAP = 0.82 -- distance between stud centres
 
 -- Covers the shell in rows of studs. Each stud's colour comes from `colorAt(ring, rings,
 -- angle, y)` (ring 1 is the lowest; y is -1 at the bottom to 1 at the top).
@@ -167,6 +167,7 @@ function EggModel.build(zoneIndex: number, itemId: string?): (Model, number)
 	local info = itemId and Items.byId[itemId]
 	local model = Instance.new("Model")
 	model.Name = "Egg"
+	model:SetAttribute("Round", true) -- eggs stay egg-shaped (see Lego)
 	model:SetAttribute("Zone", zoneIndex)
 	if info then
 		model:SetAttribute("Item", itemId)

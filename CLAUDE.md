@@ -41,6 +41,15 @@ match it.
   bright and clear (little haze). Neon, Glass, Foil and ForceField keep their look; roads,
   sidewalks and paths are smooth "tiles" (the SMOOTH list). House walls get brick seams;
   trees are stacked bricks. Build new things as bricks (blocks) where you can.
+- Everything is LEGO (`Lego.part` does it automatically): big round pieces (balls, sphere
+  meshes) become square bricks, so creatures, plants and props are brick-built; small round
+  details (eyes, noses) stay round. Eggs stay egg-shaped (attribute "Round") and are covered
+  in studs. Every brick is snapped to the LEGO colour palette (`Lego.PALETTE`); only
+  checkerboard floors (attribute "AnyColor"), Neon and the UI keep their own colours.
+- Keep floating text to a minimum: labels on eggs, nests and pets only show up close
+  (short `MaxDistance`); put information in the UI or on physical signs instead.
+- Zones are laid out on purpose (`ZoneDecor.build`): a winding path to the guardian's lair,
+  rows of props along the walls, and raised feature plates with a landmark each.
 - Floating text (zone piles, gates, signs): Luckiest Guy / Fredoka One with a thick dark
   `UIStroke`. Eggs on pedestals show rarity, name, kind and hatch time.
 - Models are built from simple parts (balls, blocks, cylinders, wedges) with bold, flat,

@@ -40,27 +40,28 @@ THEMES.Halloween = {
 	grass = Color3.fromRGB(150, 165, 75),
 	lawn = Color3.fromRGB(150, 170, 80),
 	bulb = Color3.fromRGB(255, 140, 40),
-	-- Spooky twilight: sun on the horizon, purple haze, extra glow on lights and pumpkins.
+	-- A warm autumn evening: low golden sun, a light pink-purple haze, a little extra glow
+	-- on lights and pumpkins (still bright enough to see everything clearly).
 	lighting = {
 		Lighting = {
-			ClockTime = 18.1,
-			Brightness = 1.8,
-			Ambient = Color3.fromRGB(80, 60, 100),
-			OutdoorAmbient = Color3.fromRGB(135, 110, 160),
+			ClockTime = 17.2,
+			Brightness = 2.4,
+			Ambient = Color3.fromRGB(100, 85, 110),
+			OutdoorAmbient = Color3.fromRGB(150, 130, 160),
 		},
 		Atmosphere = {
-			Density = 0.36,
-			Color = Color3.fromRGB(190, 130, 190),
-			Decay = Color3.fromRGB(70, 35, 90),
-			Haze = 2.2,
-			Glare = 0.4,
+			Density = 0.22,
+			Color = Color3.fromRGB(225, 175, 200),
+			Decay = Color3.fromRGB(120, 80, 130),
+			Haze = 1,
+			Glare = 0.3,
 		},
 		ColorCorrectionEffect = {
-			TintColor = Color3.fromRGB(255, 228, 240),
-			Saturation = 0.25,
+			TintColor = Color3.fromRGB(255, 240, 238),
+			Saturation = 0.1,
 			Contrast = 0.12,
 		},
-		BloomEffect = { Intensity = 0.9 },
+		BloomEffect = { Intensity = 0.6 },
 	},
 	build = function(props: Folder)
 		local gateHalf, fenceZ = HouseModel.GATE_HALF, HouseModel.FENCE_Z

@@ -180,8 +180,10 @@ local function buildGate(plot, folder: Instance)
 			Parent = folder,
 		})
 	end
-	-- The owner's name on both sides: the street side and the yard side.
+	-- The owner's name on both sides (the street side and the yard side), with what the home
+	-- earns under it.
 	plot.signLabels = {}
+	plot.incomeLabels = {}
 	for _, faceId in { Enum.NormalId.Front, Enum.NormalId.Back } do
 		local sign = Instance.new("SurfaceGui")
 		sign.Face = faceId
@@ -190,8 +192,8 @@ local function buildGate(plot, folder: Instance)
 		sign.Parent = board
 		local name = Instance.new("TextLabel")
 		name.BackgroundTransparency = 1
-		name.Size = UDim2.fromScale(0.94, 0.9)
-		name.Position = UDim2.fromScale(0.03, 0.05)
+		name.Size = UDim2.fromScale(0.94, 0.62)
+		name.Position = UDim2.fromScale(0.03, 0.04)
 		name.TextScaled = true
 		name.Font = Enum.Font.LuckiestGuy
 		name.TextColor3 = accent
@@ -202,21 +204,14 @@ local function buildGate(plot, folder: Instance)
 		stroke.Thickness = 5
 		stroke.Parent = name
 		table.insert(plot.signLabels, name)
+		local income = name:Clone()
+		income.Size = UDim2.fromScale(0.94, 0.3)
+		income.Position = UDim2.fromScale(0.03, 0.66)
+		income.TextColor3 = Color3.fromRGB(60, 190, 90)
+		income.Text = ""
+		income.Parent = sign
+		table.insert(plot.incomeLabels, income)
 	end
-
-	-- Floating text over the gate: what the home earns.
-	local gateGui = part({
-		Name = "GateText",
-		Size = Vector3.one,
-		CFrame = origin * CFrame.new(0, postHeight + 7, FENCE_Z),
-		Transparency = 1,
-		CanCollide = false,
-		Parent = folder,
-	})
-	local _, income = billboard(gateGui, UDim2.fromScale(14, 2.4), Vector3.new(0, 1, 0), 160)
-	income.TextColor3 = Color3.fromRGB(110, 235, 140)
-	income.Font = Enum.Font.LuckiestGuy
-	plot.incomeLabel = income
 end
 
 -- The treadmill: run on the belt to train Speed (SpeedService). The belt pushes you back so
@@ -301,19 +296,6 @@ local function buildTreadmill(plot, folder: Instance)
 	label.Text = "TREADMILL"
 	label.Parent = gui
 	plot.treadmillLabel = label
-	-- A sign over it so new players know what it's for.
-	local signPart = part({
-		Name = "TreadmillSign",
-		Size = Vector3.one,
-		CFrame = spot * CFrame.new(0, 9, -2),
-		Transparency = 1,
-		CanCollide = false,
-		Parent = model,
-	})
-	local _, sign = billboard(signPart, UDim2.fromScale(6.5, 1.4), Vector3.zero, 60)
-	sign.Font = Enum.Font.LuckiestGuy
-	sign.Text = "⚡ TRAIN SPEED"
-	sign.TextColor3 = Color3.fromRGB(255, 225, 80)
 	plot.treadmill = { belt = belt, spot = spot }
 end
 
@@ -389,7 +371,7 @@ local function buildNests(plot, folder: Instance)
 			Parent = model,
 		})
 		-- Narrower than the gap between nests, so neighbouring labels never overlap.
-		local gui, title = billboard(base, UDim2.fromScale(5, 2), Vector3.new(0, 5.8, 0), 55)
+		local gui, title = billboard(base, UDim2.fromScale(5, 2), Vector3.new(0, 5.8, 0), 32)
 		title.Size = UDim2.fromScale(1, 0.5)
 		title.Font = Enum.Font.LuckiestGuy
 		local timer = title:Clone()
@@ -558,7 +540,7 @@ local function setSpotLocked(spot, locked: boolean, unlockAt: number)
 	spot.base.Color = if locked then Color3.fromRGB(150, 150, 160) else spot.normalColor
 	local sign = spot.base:FindFirstChild("LockSign")
 	if locked and not sign then
-		local gui, label = billboard(spot.base, UDim2.fromScale(6, 1.6), Vector3.new(0, 2.5, 0), 60)
+		local gui, label = billboard(spot.base, UDim2.fromScale(6, 1.6), Vector3.new(0, 2.5, 0), 30)
 		gui.Name = "LockSign"
 		label.Font = Enum.Font.LuckiestGuy
 		label.Text = "🔒 PLOT LV " .. unlockAt
@@ -728,7 +710,9 @@ function PlotService.render(player: Player)
 		label.Text = string.upper(player.DisplayName) .. "'S LIFE"
 	end
 	local income = LifeUtil.totalIncome(data) * GamePasses.coinMultiplier(player)
-	plot.incomeLabel.Text = Format.money(income) .. "/s"
+	for _, label in plot.incomeLabels do
+		label.Text = Format.money(income) .. "/s"
+	end
 	local gain = Config.treadmillGain(data.treadmill) * GamePasses.speedMultiplier(player)
 	plot.treadmillLabel.Text = "LV " .. data.treadmill .. "  +" .. Format.number(gain) .. " ⚡/s"
 end
@@ -757,7 +741,9 @@ local function clearPlot(plot)
 	for _, label in plot.signLabels do
 		label.Text = "EMPTY HOME"
 	end
-	plot.incomeLabel.Text = ""
+	for _, label in plot.incomeLabels do
+		label.Text = ""
+	end
 	plot.treadmillLabel.Text = "TREADMILL"
 end
 

@@ -816,7 +816,7 @@ return Bricks
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-16", -- shown small in the corner of the screen and in Output: which build is running
+	BUILD = "life-17", -- shown small in the corner of the screen and in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join. Set to nil
 	-- before the game launches!
@@ -917,7 +917,7 @@ local EggModel = {}
 
 EggModel.SECRET_TAG = "SecretEgg"
 
-local W, H = 2.6, 3.4 -- the shell's width and height
+local W, H = 3.2, 4.2 -- the shell's width and height (about chest height on a player)
 local GOLD = Color3.fromRGB(255, 205, 60)
 
 local function part(model: Model, props)
@@ -984,9 +984,9 @@ local function palette(model: Model): (Color3, Color3)
 end
 
 -- The pattern on the shell, by what kind of thing is inside.
-local STUD = 0.42 -- stud diameter
-local STUD_HEIGHT = 0.12 -- how far a stud stands out of the shell
-local STUD_GAP = 0.66 -- distance between stud centres
+local STUD = 0.52 -- stud diameter
+local STUD_HEIGHT = 0.15 -- how far a stud stands out of the shell
+local STUD_GAP = 0.82 -- distance between stud centres
 
 -- Covers the shell in rows of studs. Each stud's colour comes from `colorAt(ring, rings,
 -- angle, y)` (ring 1 is the lowest; y is -1 at the bottom to 1 at the top).
@@ -1066,6 +1066,7 @@ function EggModel.build(zoneIndex: number, itemId: string?): (Model, number)
 	local info = itemId and Items.byId[itemId]
 	local model = Instance.new("Model")
 	model.Name = "Egg"
+	model:SetAttribute("Round", true) -- eggs stay egg-shaped (see Lego)
 	model:SetAttribute("Zone", zoneIndex)
 	if info then
 		model:SetAttribute("Item", itemId)
@@ -7437,6 +7438,11 @@ local Lego = {}
 Lego.ENABLED = true
 Lego.SIDE_STUDS = true -- studs on every face of a brick, not just the top
 local MIN_STUD_FACE = 2 -- a face needs to be at least this many studs each way to get studs
+-- Round pieces at least this big (their smallest side, in studs) become square bricks, like
+-- brick-built LEGO creatures and plants; smaller ones (eyes, noses, buttons) stay round, like
+-- LEGO's round pieces. Parts (or models) with the attribute "Round" are left alone (eggs).
+local BRICKIFY_MIN = 1.3
+local BRICK_FIT = 0.86 -- a brick is this much of the round piece's size, so it doesn't bulge
 
 -- Materials that stay as they are.
 local KEEP = {
@@ -7445,6 +7451,66 @@ local KEEP = {
 	[Enum.Material.Foil] = true,
 	[Enum.Material.ForceField] = true,
 }
+
+-- The LEGO colours. Every brick is snapped to the nearest one (Lego.snap), so the whole game
+-- uses one set of colours like a real LEGO set. Parts with the attribute "AnyColor" keep
+-- theirs (the checkerboard floors, which need two close shades).
+Lego.PALETTE = {
+	Color3.fromRGB(242, 243, 242), -- white
+	Color3.fromRGB(160, 165, 169), -- light bluish grey
+	Color3.fromRGB(99, 95, 98), -- dark bluish grey
+	Color3.fromRGB(33, 33, 38), -- black
+	Color3.fromRGB(201, 26, 9), -- bright red
+	Color3.fromRGB(120, 32, 30), -- dark red
+	Color3.fromRGB(0, 85, 191), -- bright blue
+	Color3.fromRGB(10, 52, 99), -- dark blue
+	Color3.fromRGB(54, 174, 191), -- medium azure
+	Color3.fromRGB(90, 147, 219), -- medium blue
+	Color3.fromRGB(159, 195, 233), -- light royal blue
+	Color3.fromRGB(242, 205, 55), -- bright yellow
+	Color3.fromRGB(255, 240, 160), -- light yellow
+	Color3.fromRGB(254, 138, 24), -- bright orange
+	Color3.fromRGB(248, 187, 61), -- bright light orange
+	Color3.fromRGB(35, 120, 65), -- green
+	Color3.fromRGB(75, 159, 74), -- bright green
+	Color3.fromRGB(187, 233, 11), -- lime
+	Color3.fromRGB(24, 70, 50), -- dark green
+	Color3.fromRGB(160, 188, 172), -- sand green
+	Color3.fromRGB(228, 205, 158), -- tan
+	Color3.fromRGB(149, 138, 115), -- dark tan
+	Color3.fromRGB(88, 42, 18), -- reddish brown
+	Color3.fromRGB(53, 33, 0), -- dark brown
+	Color3.fromRGB(208, 145, 104), -- nougat
+	Color3.fromRGB(246, 215, 179), -- light nougat
+	Color3.fromRGB(170, 125, 85), -- medium nougat
+	Color3.fromRGB(252, 151, 172), -- bright pink
+	Color3.fromRGB(200, 112, 160), -- dark pink
+	Color3.fromRGB(146, 57, 120), -- magenta
+	Color3.fromRGB(205, 164, 222), -- lavender
+	Color3.fromRGB(129, 0, 123), -- dark purple
+	Color3.fromRGB(104, 92, 165), -- medium lilac
+	Color3.fromRGB(255, 128, 110), -- coral
+	Color3.fromRGB(169, 85, 0), -- dark orange
+	Color3.fromRGB(155, 154, 90), -- olive green
+}
+
+local function distance(a: Color3, b: Color3): number
+	-- Weighted so the eye's sense of "close" wins over raw numbers.
+	local r, g, bl = a.R - b.R, a.G - b.G, a.B - b.B
+	return 2 * r * r + 4 * g * g + 3 * bl * bl
+end
+
+-- The nearest LEGO colour (and, with skip, the nearest that isn't `skip`).
+function Lego.snap(color: Color3, skip: Color3?): Color3
+	local best, bestDistance = color, math.huge
+	for _, option in Lego.PALETTE do
+		local d = distance(color, option)
+		if d < bestDistance and option ~= skip then
+			best, bestDistance = option, d
+		end
+	end
+	return best
+end
 
 -- Ice becomes clear "trans" plastic.
 local TRANSLUCENT = {
@@ -7480,12 +7546,54 @@ local function isAvatar(part: BasePart): boolean
 	return false
 end
 
+-- True if this part (or a model it's in) is marked to stay round.
+local function keepRound(part: BasePart): boolean
+	if part:GetAttribute("Round") then
+		return true
+	end
+	local model = part:FindFirstAncestorOfClass("Model")
+	while model do
+		if model:GetAttribute("Round") then
+			return true
+		end
+		model = model:FindFirstAncestorOfClass("Model")
+	end
+	return false
+end
+
+-- Turns a big ball or sphere-meshed part into a square brick of about the same size.
+local function brickify(part: BasePart)
+	local isBall = part:IsA("Part") and part.Shape == Enum.PartType.Ball
+	local mesh = part:FindFirstChildOfClass("SpecialMesh")
+	local isSphere = mesh and mesh.MeshType == Enum.MeshType.Sphere
+	if not isBall and not isSphere then
+		return
+	end
+	local size = part.Size * (if isSphere then mesh.Scale else Vector3.one)
+	if math.min(size.X, size.Y, size.Z) < BRICKIFY_MIN or keepRound(part) then
+		return
+	end
+	local cframe = part.CFrame
+	if mesh then
+		mesh:Destroy()
+	end
+	if isBall then
+		part.Shape = Enum.PartType.Block
+	end
+	part.Size = size * BRICK_FIT
+	part.CFrame = cframe
+end
+
 function Lego.part(part: BasePart)
 	if not Lego.ENABLED or part.Transparency >= 1 or part:IsA("Terrain") then
 		return
 	end
 	if KEEP[part.Material] then
 		return
+	end
+	brickify(part)
+	if not part:GetAttribute("AnyColor") then
+		part.Color = Lego.snap(part.Color)
 	end
 	local clear = TRANSLUCENT[part.Material]
 	part.Material = Enum.Material.Plastic
@@ -9948,15 +10056,18 @@ function Decor.checkerFloor(
 	folder.Parent = parent
 	local countX, countZ = math.max(1, math.round(sizeX / tile)), math.max(1, math.round(sizeZ / tile))
 	local w, d = sizeX / countX, sizeZ / countZ
+	-- Floors keep their own two close shades (LEGO colours are too far apart for a soft
+	-- checkerboard).
 	for i = 0, countX - 1 do
 		for k = 0, countZ - 1 do
-			part({
+			local tilePart = part({
 				Name = "Tile",
 				Size = Vector3.new(w, 1, d),
 				CFrame = center * CFrame.new(-sizeX / 2 + (i + 0.5) * w, -0.5, -sizeZ / 2 + (k + 0.5) * d),
 				Color = if (i + k) % 2 == 0 then colorA else colorB,
 				Parent = folder,
 			})
+			tilePart:SetAttribute("AnyColor", true)
 		end
 	end
 	return folder
@@ -10570,14 +10681,16 @@ local function effect(className: string, props)
 end
 
 local function setupLighting()
-	Lighting.ClockTime = 14.5
-	Lighting.Brightness = 2.6
-	Lighting.Ambient = Color3.fromRGB(70, 70, 90)
-	Lighting.OutdoorAmbient = Color3.fromRGB(150, 150, 160)
-	Lighting.EnvironmentDiffuseScale = 0.6
-	Lighting.EnvironmentSpecularScale = 0.6
+	-- Bright, clean daylight that makes shiny plastic look like plastic: a high sun, crisp
+	-- soft-edged shadows, gentle reflections and colour correction that doesn't overdo it.
+	Lighting.ClockTime = 14
+	Lighting.Brightness = 3
+	Lighting.Ambient = Color3.fromRGB(95, 95, 110)
+	Lighting.OutdoorAmbient = Color3.fromRGB(140, 140, 150)
+	Lighting.EnvironmentDiffuseScale = 1
+	Lighting.EnvironmentSpecularScale = 1
 	Lighting.GlobalShadows = true
-	Lighting.ShadowSoftness = 0.25
+	Lighting.ShadowSoftness = 0.15
 	Lighting.GeographicLatitude = 35
 
 	effect("Sky", { SunAngularSize = 14, MoonAngularSize = 9, StarCount = 3000 })
@@ -10589,13 +10702,13 @@ local function setupLighting()
 		Glare = 0.25,
 		Haze = 0.2,
 	})
-	effect("BloomEffect", { Intensity = 0.6, Size = 26, Threshold = 1.6 })
-	effect("SunRaysEffect", { Intensity = 0.06, Spread = 0.7 })
+	effect("BloomEffect", { Intensity = 0.4, Size = 24, Threshold = 2 })
+	effect("SunRaysEffect", { Intensity = 0.04, Spread = 0.6 })
 	effect("ColorCorrectionEffect", {
 		Brightness = 0.02,
-		Contrast = 0.08,
-		Saturation = 0.28,
-		TintColor = Color3.fromRGB(255, 250, 242),
+		Contrast = 0.1,
+		Saturation = 0.12,
+		TintColor = Color3.fromRGB(255, 252, 245),
 	})
 
 	local clouds = Workspace.Terrain:FindFirstChildOfClass("Clouds") or Instance.new("Clouds")
@@ -11922,7 +12035,7 @@ local function buildBoxStand()
 		local gui = Instance.new("BillboardGui")
 		gui.Size = UDim2.fromOffset(230, 46 + #odds * 20)
 		gui.StudsOffsetWorldSpace = Vector3.new(0, height + 3.2, 0)
-		gui.MaxDistance = 80
+		gui.MaxDistance = 36
 		gui.LightInfluence = 0
 		local total = 46 + #odds * 20
 		outlinedLabel(gui, string.upper(crate.name), crate.color, 0, 26 / total, Enum.Font.LuckiestGuy)
@@ -12568,8 +12681,10 @@ local function buildGate(plot, folder: Instance)
 			Parent = folder,
 		})
 	end
-	-- The owner's name on both sides: the street side and the yard side.
+	-- The owner's name on both sides (the street side and the yard side), with what the home
+	-- earns under it.
 	plot.signLabels = {}
+	plot.incomeLabels = {}
 	for _, faceId in { Enum.NormalId.Front, Enum.NormalId.Back } do
 		local sign = Instance.new("SurfaceGui")
 		sign.Face = faceId
@@ -12578,8 +12693,8 @@ local function buildGate(plot, folder: Instance)
 		sign.Parent = board
 		local name = Instance.new("TextLabel")
 		name.BackgroundTransparency = 1
-		name.Size = UDim2.fromScale(0.94, 0.9)
-		name.Position = UDim2.fromScale(0.03, 0.05)
+		name.Size = UDim2.fromScale(0.94, 0.62)
+		name.Position = UDim2.fromScale(0.03, 0.04)
 		name.TextScaled = true
 		name.Font = Enum.Font.LuckiestGuy
 		name.TextColor3 = accent
@@ -12590,21 +12705,14 @@ local function buildGate(plot, folder: Instance)
 		stroke.Thickness = 5
 		stroke.Parent = name
 		table.insert(plot.signLabels, name)
+		local income = name:Clone()
+		income.Size = UDim2.fromScale(0.94, 0.3)
+		income.Position = UDim2.fromScale(0.03, 0.66)
+		income.TextColor3 = Color3.fromRGB(60, 190, 90)
+		income.Text = ""
+		income.Parent = sign
+		table.insert(plot.incomeLabels, income)
 	end
-
-	-- Floating text over the gate: what the home earns.
-	local gateGui = part({
-		Name = "GateText",
-		Size = Vector3.one,
-		CFrame = origin * CFrame.new(0, postHeight + 7, FENCE_Z),
-		Transparency = 1,
-		CanCollide = false,
-		Parent = folder,
-	})
-	local _, income = billboard(gateGui, UDim2.fromScale(14, 2.4), Vector3.new(0, 1, 0), 160)
-	income.TextColor3 = Color3.fromRGB(110, 235, 140)
-	income.Font = Enum.Font.LuckiestGuy
-	plot.incomeLabel = income
 end
 
 -- The treadmill: run on the belt to train Speed (SpeedService). The belt pushes you back so
@@ -12689,19 +12797,6 @@ local function buildTreadmill(plot, folder: Instance)
 	label.Text = "TREADMILL"
 	label.Parent = gui
 	plot.treadmillLabel = label
-	-- A sign over it so new players know what it's for.
-	local signPart = part({
-		Name = "TreadmillSign",
-		Size = Vector3.one,
-		CFrame = spot * CFrame.new(0, 9, -2),
-		Transparency = 1,
-		CanCollide = false,
-		Parent = model,
-	})
-	local _, sign = billboard(signPart, UDim2.fromScale(6.5, 1.4), Vector3.zero, 60)
-	sign.Font = Enum.Font.LuckiestGuy
-	sign.Text = "⚡ TRAIN SPEED"
-	sign.TextColor3 = Color3.fromRGB(255, 225, 80)
 	plot.treadmill = { belt = belt, spot = spot }
 end
 
@@ -12777,7 +12872,7 @@ local function buildNests(plot, folder: Instance)
 			Parent = model,
 		})
 		-- Narrower than the gap between nests, so neighbouring labels never overlap.
-		local gui, title = billboard(base, UDim2.fromScale(5, 2), Vector3.new(0, 5.8, 0), 55)
+		local gui, title = billboard(base, UDim2.fromScale(5, 2), Vector3.new(0, 5.8, 0), 32)
 		title.Size = UDim2.fromScale(1, 0.5)
 		title.Font = Enum.Font.LuckiestGuy
 		local timer = title:Clone()
@@ -12946,7 +13041,7 @@ local function setSpotLocked(spot, locked: boolean, unlockAt: number)
 	spot.base.Color = if locked then Color3.fromRGB(150, 150, 160) else spot.normalColor
 	local sign = spot.base:FindFirstChild("LockSign")
 	if locked and not sign then
-		local gui, label = billboard(spot.base, UDim2.fromScale(6, 1.6), Vector3.new(0, 2.5, 0), 60)
+		local gui, label = billboard(spot.base, UDim2.fromScale(6, 1.6), Vector3.new(0, 2.5, 0), 30)
 		gui.Name = "LockSign"
 		label.Font = Enum.Font.LuckiestGuy
 		label.Text = "🔒 PLOT LV " .. unlockAt
@@ -13116,7 +13211,9 @@ function PlotService.render(player: Player)
 		label.Text = string.upper(player.DisplayName) .. "'S LIFE"
 	end
 	local income = LifeUtil.totalIncome(data) * GamePasses.coinMultiplier(player)
-	plot.incomeLabel.Text = Format.money(income) .. "/s"
+	for _, label in plot.incomeLabels do
+		label.Text = Format.money(income) .. "/s"
+	end
 	local gain = Config.treadmillGain(data.treadmill) * GamePasses.speedMultiplier(player)
 	plot.treadmillLabel.Text = "LV " .. data.treadmill .. "  +" .. Format.number(gain) .. " ⚡/s"
 end
@@ -13145,7 +13242,9 @@ local function clearPlot(plot)
 	for _, label in plot.signLabels do
 		label.Text = "EMPTY HOME"
 	end
-	plot.incomeLabel.Text = ""
+	for _, label in plot.incomeLabels do
+		label.Text = ""
+	end
 	plot.treadmillLabel.Text = "TREADMILL"
 end
 
@@ -13381,27 +13480,28 @@ THEMES.Halloween = {
 	grass = Color3.fromRGB(150, 165, 75),
 	lawn = Color3.fromRGB(150, 170, 80),
 	bulb = Color3.fromRGB(255, 140, 40),
-	-- Spooky twilight: sun on the horizon, purple haze, extra glow on lights and pumpkins.
+	-- A warm autumn evening: low golden sun, a light pink-purple haze, a little extra glow
+	-- on lights and pumpkins (still bright enough to see everything clearly).
 	lighting = {
 		Lighting = {
-			ClockTime = 18.1,
-			Brightness = 1.8,
-			Ambient = Color3.fromRGB(80, 60, 100),
-			OutdoorAmbient = Color3.fromRGB(135, 110, 160),
+			ClockTime = 17.2,
+			Brightness = 2.4,
+			Ambient = Color3.fromRGB(100, 85, 110),
+			OutdoorAmbient = Color3.fromRGB(150, 130, 160),
 		},
 		Atmosphere = {
-			Density = 0.36,
-			Color = Color3.fromRGB(190, 130, 190),
-			Decay = Color3.fromRGB(70, 35, 90),
-			Haze = 2.2,
-			Glare = 0.4,
+			Density = 0.22,
+			Color = Color3.fromRGB(225, 175, 200),
+			Decay = Color3.fromRGB(120, 80, 130),
+			Haze = 1,
+			Glare = 0.3,
 		},
 		ColorCorrectionEffect = {
-			TintColor = Color3.fromRGB(255, 228, 240),
-			Saturation = 0.25,
+			TintColor = Color3.fromRGB(255, 240, 238),
+			Saturation = 0.1,
 			Contrast = 0.12,
 		},
-		BloomEffect = { Intensity = 0.9 },
+		BloomEffect = { Intensity = 0.6 },
 	},
 	build = function(props: Folder)
 		local gateHalf, fenceZ = HouseModel.GATE_HALF, HouseModel.FENCE_Z
@@ -14670,6 +14770,7 @@ function ZoneDecor.formatSpeed(n: number): string
 end
 
 ZoneDecor.propSpots = {} -- [zone index] = { Vector3 } where the props stand
+ZoneDecor.LAIR_TOP = 0.27 -- the height of the guardian's lair plate (eggs on it sit on top)
 
 function ZoneDecor.build(parent: Instance, index: number)
 	local theme = ZoneDecor.theme(index)
@@ -14684,6 +14785,8 @@ function ZoneDecor.build(parent: Instance, index: number)
 	-- A checkerboard floor in two shades of the zone's colour, and the path to the pile.
 	local tile = 13
 	local countX, countZ = math.round(length / tile), math.round(width / tile)
+	-- Floors keep their own two close shades (see Lego: they're marked AnyColor).
+	local groundA, groundB = theme.ground, theme.ground:Lerp(Color3.new(0, 0, 0), 0.12)
 	for i = 0, countX - 1 do
 		for k = 0, countZ - 1 do
 			local w, d = length / countX, width / countZ
@@ -14691,21 +14794,54 @@ function ZoneDecor.build(parent: Instance, index: number)
 				folder,
 				Vector3.new(w, 2, d),
 				CFrame.new(east - (i + 0.5) * w, -0.98, -width / 2 + (k + 0.5) * d),
-				if (i + k) % 2 == 0 then theme.ground else theme.ground:Lerp(Color3.new(0, 0, 0), 0.12),
+				if (i + k) % 2 == 0 then groundA else groundB,
 				theme.groundMat,
 				true
 			)
 			floor.Name = "Tile"
+			floor:SetAttribute("AnyColor", true)
 		end
 	end
-	local path = block(
+	-- A path winding from the entrance to the guardian's lair, in gentle S-bends.
+	local pathMat = if index == 8 then M.Fabric else theme.groundMat
+	local amplitude = width * 0.16
+	local function pathV(u: number): number
+		return amplitude * math.sin(u / homeU * math.pi * 1.6) * math.min(1, u / 20)
+	end
+	local u0 = 2
+	while u0 < homeU - 14 do
+		local u1 = math.min(u0 + 6, homeU - 14)
+		local a = Vector3.new(east - u0, 0.12, pathV(u0))
+		local b = Vector3.new(east - u1, 0.12, pathV(u1))
+		local segment = block(
+			folder,
+			Vector3.new(10, 0.2, (b - a).Magnitude + 1.2),
+			CFrame.lookAt((a + b) / 2, b),
+			theme.path,
+			pathMat
+		)
+		segment.Name = "PathStone"
+		u0 = u1
+	end
+	-- The guardian's lair at the back: a big round plate it patrols from.
+	local lair = post(
 		folder,
-		Vector3.new(homeU - 12, 0.2, 10),
-		CFrame.new(east - (homeU - 12) / 2, 0.12, 0),
-		theme.path,
-		if index == 8 then M.Fabric else theme.groundMat
+		ZoneDecor.LAIR_TOP - 0.02,
+		ZoneLayout.RING * 2 + 8,
+		CFrame.new(ZoneLayout.guardianHome(index)) * CFrame.new(0, 0.02, 0),
+		theme.cliff:Lerp(theme.ground, 0.4),
+		theme.groundMat
 	)
-	path.Name = "PathStone"
+	lair.Name = "Lair"
+	local lairRim = post(
+		folder,
+		0.15,
+		ZoneLayout.RING * 2 + 10,
+		CFrame.new(ZoneLayout.guardianHome(index)),
+		theme.accent,
+		theme.groundMat
+	)
+	lairRim.Name = "LairRim"
 	-- Tall flat walls along both sides (and behind the last zone), so nobody wanders off the
 	-- map, with a strip of the floor colour along the top like grass on a cliff.
 	local wallHeight = 30
@@ -14751,24 +14887,57 @@ function ZoneDecor.build(parent: Instance, index: number)
 	end
 	buildArch(folder, index, theme)
 
-	-- Themed props, kept off the path and out of the pile (more in bigger zones). Their spots
-	-- are kept (ZoneDecor.propSpots) so eggs don't land inside them.
+	-- Scenery, laid out on purpose: a row of the zone's props along each side wall (an even
+	-- rhythm that frames the zone) and a few feature areas, each a raised LEGO plate with a big
+	-- landmark and smaller pieces round it, alternating sides down the zone. Their spots are
+	-- kept (ZoneDecor.propSpots) so eggs don't land inside them.
 	local spots = {}
 	ZoneDecor.propSpots[index] = spots
 	local rng = Random.new(index * 7919)
-	local placed = 0
-	local tries = 0
-	local count = math.floor(22 * (length * width) / (130 * 110))
-	while placed < count and tries < count * 9 do
-		tries += 1
-		local u = rng:NextNumber(8, length - 6)
-		local v = rng:NextNumber(-width / 2 + 7, width / 2 - 7)
-		local nearPile = (Vector2.new(u, v) - Vector2.new(homeU, 0)).Magnitude < ZoneLayout.RING * 1.6
-		if math.abs(v) > 10 and not nearPile then
-			placed += 1
-			local cf = CFrame.new(east - u, 0, v) * CFrame.Angles(0, rng:NextNumber() * math.pi * 2, 0)
-			table.insert(spots, Vector3.new(east - u, 0, v))
-			props[LOOK[index]](folder, cf, rng, 0.9 + rng:NextNumber() * 0.5)
+	local build = props[LOOK[index]]
+	local function place(u: number, v: number, scale: number, turn: number?)
+		local cf = CFrame.new(east - u, 0, v) * CFrame.Angles(0, turn or rng:NextNumber() * math.pi * 2, 0)
+		table.insert(spots, Vector3.new(east - u, 0, v))
+		build(folder, cf, rng, scale)
+	end
+	-- The borders.
+	local borderV = width / 2 - 8
+	local step = 18
+	for u = 14, length - 10, step do
+		for _, side in { -1, 1 } do
+			place(u + (if side > 0 then step / 2 else 0), side * borderV, 1, rng:NextNumber(-0.3, 0.3))
+		end
+	end
+	-- The feature areas, between the entrance and the lair.
+	local areas = math.clamp(math.floor((homeU - 30) / 45), 2, 4)
+	for k = 1, areas do
+		local u = 30 + (k - 0.5) * (homeU - 50) / areas
+		local side = if k % 2 == 1 then 1 else -1
+		local v = side * (width / 4 + 4)
+		-- Keep clear of the winding path.
+		if math.abs(v - pathV(u)) < 20 then
+			v = side * (width / 2 - 26)
+		end
+		local plate = block(
+			folder,
+			Vector3.new(20, 0.6, 20),
+			CFrame.new(east - u, 0.3, v),
+			theme.accent:Lerp(theme.ground, 0.35),
+			theme.groundMat,
+			true
+		)
+		plate.Name = "FeaturePlate"
+		local rim =
+			block(folder, Vector3.new(21, 0.4, 21), CFrame.new(east - u, 0.2, v), theme.cliff, theme.groundMat, true)
+		rim.Name = "FeatureRim"
+		place(u, v, 1.7)
+		for j = 0, 2 do
+			local a = j / 3 * math.pi * 2 + rng:NextNumber() * 0.6
+			place(u + math.cos(a) * 6.5, v + math.sin(a) * 6.5, 0.85)
+		end
+		-- Mark the whole plate as taken, so eggs lie round it, not on it.
+		for _, corner in { Vector3.new(7, 0, 7), Vector3.new(-7, 0, 7), Vector3.new(7, 0, -7), Vector3.new(-7, 0, -7) } do
+			table.insert(spots, Vector3.new(east - u, 0, v) + corner)
 		end
 	end
 	return folder
@@ -14900,7 +15069,7 @@ local function buildPedestal(parent: Instance, index: number, n: number)
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromScale(8, 3.2)
 	gui.StudsOffset = Vector3.new(0, 6, 0)
-	gui.MaxDistance = 70
+	gui.MaxDistance = 26 -- only up close: the eggs speak for themselves from afar
 	gui.LightInfluence = 0
 	gui.AlwaysOnTop = false
 	gui.Parent = base
@@ -14943,7 +15112,9 @@ local function pickSpot(index: number, rarity: string, others): CFrame
 			end
 		end
 		if room > 0 then
-			return CFrame.new(point)
+			-- Eggs on the guardian's lair sit on top of its plate.
+			local onLair = (point - ZoneLayout.guardianHome(index)).Magnitude < ZoneLayout.RING + 4
+			return CFrame.new(point + Vector3.new(0, if onLair then ZoneDecor.LAIR_TOP else 0, 0))
 		elseif room > bestRoom then
 			best, bestRoom = point, room
 		end
@@ -15004,7 +15175,7 @@ local function showEgg(index: number, pedestal, record)
 	Items.scaleModel(model, scale)
 	model:PivotTo(pedestal.spot * CFrame.Angles(0, math.rad(180 + (rng:NextNumber() - 0.5) * 40), 0))
 	-- The ring fits round the egg and the floating text clears its top, however big it is.
-	pedestal.ring.Size = Vector3.new(0.12, 3.6 * scale + 1.6, 3.6 * scale + 1.6)
+	pedestal.ring.Size = Vector3.new(0.12, 4.4 * scale + 1.6, 4.4 * scale + 1.6)
 	pedestal.labels.gui.StudsOffset = Vector3.new(0, 2.5 + height * scale, 0)
 	local top = Mutations.top(record.mutations)
 	if top and model.PrimaryPart then
@@ -15952,7 +16123,7 @@ local function nameTag(parent: BasePart, title: string, height: number)
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromScale(12, 2.4)
 	gui.StudsOffsetWorldSpace = Vector3.new(0, height - (parent.Position.Y - 0) + 2, 0)
-	gui.MaxDistance = 160
+	gui.MaxDistance = 90
 	gui.LightInfluence = 0
 	gui.Parent = parent
 	local label = Instance.new("TextLabel")
@@ -21381,7 +21552,7 @@ local function nameTag(model: Model, text: string, color: Color3, height: number
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromScale(5, 1.1)
 	gui.StudsOffsetWorldSpace = Vector3.new(0, height + 1.2, 0)
-	gui.MaxDistance = 60
+	gui.MaxDistance = 24
 	gui.LightInfluence = 0
 	gui.Parent = anchor
 	local label = Instance.new("TextLabel")

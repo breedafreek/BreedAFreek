@@ -50,15 +50,18 @@ function Decor.checkerFloor(
 	folder.Parent = parent
 	local countX, countZ = math.max(1, math.round(sizeX / tile)), math.max(1, math.round(sizeZ / tile))
 	local w, d = sizeX / countX, sizeZ / countZ
+	-- Floors keep their own two close shades (LEGO colours are too far apart for a soft
+	-- checkerboard).
 	for i = 0, countX - 1 do
 		for k = 0, countZ - 1 do
-			part({
+			local tilePart = part({
 				Name = "Tile",
 				Size = Vector3.new(w, 1, d),
 				CFrame = center * CFrame.new(-sizeX / 2 + (i + 0.5) * w, -0.5, -sizeZ / 2 + (k + 0.5) * d),
 				Color = if (i + k) % 2 == 0 then colorA else colorB,
 				Parent = folder,
 			})
+			tilePart:SetAttribute("AnyColor", true)
 		end
 	end
 	return folder

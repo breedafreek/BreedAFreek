@@ -117,7 +117,7 @@ local function buildPedestal(parent: Instance, index: number, n: number)
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromScale(8, 3.2)
 	gui.StudsOffset = Vector3.new(0, 6, 0)
-	gui.MaxDistance = 70
+	gui.MaxDistance = 26 -- only up close: the eggs speak for themselves from afar
 	gui.LightInfluence = 0
 	gui.AlwaysOnTop = false
 	gui.Parent = base
@@ -160,7 +160,9 @@ local function pickSpot(index: number, rarity: string, others): CFrame
 			end
 		end
 		if room > 0 then
-			return CFrame.new(point)
+			-- Eggs on the guardian's lair sit on top of its plate.
+			local onLair = (point - ZoneLayout.guardianHome(index)).Magnitude < ZoneLayout.RING + 4
+			return CFrame.new(point + Vector3.new(0, if onLair then ZoneDecor.LAIR_TOP else 0, 0))
 		elseif room > bestRoom then
 			best, bestRoom = point, room
 		end
@@ -221,7 +223,7 @@ local function showEgg(index: number, pedestal, record)
 	Items.scaleModel(model, scale)
 	model:PivotTo(pedestal.spot * CFrame.Angles(0, math.rad(180 + (rng:NextNumber() - 0.5) * 40), 0))
 	-- The ring fits round the egg and the floating text clears its top, however big it is.
-	pedestal.ring.Size = Vector3.new(0.12, 3.6 * scale + 1.6, 3.6 * scale + 1.6)
+	pedestal.ring.Size = Vector3.new(0.12, 4.4 * scale + 1.6, 4.4 * scale + 1.6)
 	pedestal.labels.gui.StudsOffset = Vector3.new(0, 2.5 + height * scale, 0)
 	local top = Mutations.top(record.mutations)
 	if top and model.PrimaryPart then

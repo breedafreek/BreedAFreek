@@ -394,7 +394,7 @@ local function buildBoxStand()
 		local gui = Instance.new("BillboardGui")
 		gui.Size = UDim2.fromOffset(230, 46 + #odds * 20)
 		gui.StudsOffsetWorldSpace = Vector3.new(0, height + 3.2, 0)
-		gui.MaxDistance = 80
+		gui.MaxDistance = 36
 		gui.LightInfluence = 0
 		local total = 46 + #odds * 20
 		outlinedLabel(gui, string.upper(crate.name), crate.color, 0, 26 / total, Enum.Font.LuckiestGuy)

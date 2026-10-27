@@ -32,7 +32,7 @@ local function nameTag(model: Model, text: string, color: Color3, height: number
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromScale(5, 1.1)
 	gui.StudsOffsetWorldSpace = Vector3.new(0, height + 1.2, 0)
-	gui.MaxDistance = 60
+	gui.MaxDistance = 24
 	gui.LightInfluence = 0
 	gui.Parent = anchor
 	local label = Instance.new("TextLabel")

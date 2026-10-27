@@ -23,14 +23,16 @@ local function effect(className: string, props)
 end
 
 local function setupLighting()
-	Lighting.ClockTime = 14.5
-	Lighting.Brightness = 2.6
-	Lighting.Ambient = Color3.fromRGB(70, 70, 90)
-	Lighting.OutdoorAmbient = Color3.fromRGB(150, 150, 160)
-	Lighting.EnvironmentDiffuseScale = 0.6
-	Lighting.EnvironmentSpecularScale = 0.6
+	-- Bright, clean daylight that makes shiny plastic look like plastic: a high sun, crisp
+	-- soft-edged shadows, gentle reflections and colour correction that doesn't overdo it.
+	Lighting.ClockTime = 14
+	Lighting.Brightness = 3
+	Lighting.Ambient = Color3.fromRGB(95, 95, 110)
+	Lighting.OutdoorAmbient = Color3.fromRGB(140, 140, 150)
+	Lighting.EnvironmentDiffuseScale = 1
+	Lighting.EnvironmentSpecularScale = 1
 	Lighting.GlobalShadows = true
-	Lighting.ShadowSoftness = 0.25
+	Lighting.ShadowSoftness = 0.15
 	Lighting.GeographicLatitude = 35
 
 	effect("Sky", { SunAngularSize = 14, MoonAngularSize = 9, StarCount = 3000 })
@@ -42,13 +44,13 @@ local function setupLighting()
 		Glare = 0.25,
 		Haze = 0.2,
 	})
-	effect("BloomEffect", { Intensity = 0.6, Size = 26, Threshold = 1.6 })
-	effect("SunRaysEffect", { Intensity = 0.06, Spread = 0.7 })
+	effect("BloomEffect", { Intensity = 0.4, Size = 24, Threshold = 2 })
+	effect("SunRaysEffect", { Intensity = 0.04, Spread = 0.6 })
 	effect("ColorCorrectionEffect", {
 		Brightness = 0.02,
-		Contrast = 0.08,
-		Saturation = 0.28,
-		TintColor = Color3.fromRGB(255, 250, 242),
+		Contrast = 0.1,
+		Saturation = 0.12,
+		TintColor = Color3.fromRGB(255, 252, 245),
 	})
 
 	local clouds = Workspace.Terrain:FindFirstChildOfClass("Clouds") or Instance.new("Clouds")
