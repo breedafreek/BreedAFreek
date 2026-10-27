@@ -1,4 +1,4 @@
--- The LEGO look: everything is shiny plastic with studs on top (and inlets underneath),
+-- The LEGO look: everything is shiny plastic with studs on every face (inlets underneath),
 -- like the classic Roblox bricks. Glowing (Neon), see-through (Glass), gold (Foil) and the
 -- gate's force field keep their look, like the special pieces in a real set. Flat things
 -- you walk or drive on (roads, sidewalks, paths, the treadmill belt) stay smooth, like
@@ -11,6 +11,7 @@
 local Lego = {}
 
 Lego.ENABLED = true
+Lego.SIDE_STUDS = true -- studs on every face of a brick, not just the top
 
 -- Materials that stay as they are.
 local KEEP = {
@@ -69,6 +70,13 @@ function Lego.part(part: BasePart)
 	if isBlock and not SMOOTH[part.Name] and not part:FindFirstChildOfClass("SpecialMesh") then
 		part.TopSurface = Enum.SurfaceType.Studs
 		part.BottomSurface = Enum.SurfaceType.Inlet
+		if Lego.SIDE_STUDS then
+			-- The classic Roblox look: the stud texture on the sides as well.
+			part.FrontSurface = Enum.SurfaceType.Studs
+			part.BackSurface = Enum.SurfaceType.Studs
+			part.LeftSurface = Enum.SurfaceType.Studs
+			part.RightSurface = Enum.SurfaceType.Studs
+		end
 	end
 end
 

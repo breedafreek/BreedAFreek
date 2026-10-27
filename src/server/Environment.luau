@@ -24,9 +24,9 @@ end
 
 local function setupLighting()
 	Lighting.ClockTime = 14.5
-	Lighting.Brightness = 2.2
+	Lighting.Brightness = 2.6
 	Lighting.Ambient = Color3.fromRGB(70, 70, 90)
-	Lighting.OutdoorAmbient = Color3.fromRGB(140, 135, 150)
+	Lighting.OutdoorAmbient = Color3.fromRGB(150, 150, 160)
 	Lighting.EnvironmentDiffuseScale = 0.6
 	Lighting.EnvironmentSpecularScale = 0.6
 	Lighting.GlobalShadows = true
@@ -35,19 +35,19 @@ local function setupLighting()
 
 	effect("Sky", { SunAngularSize = 14, MoonAngularSize = 9, StarCount = 3000 })
 	effect("Atmosphere", {
-		Density = 0.28,
+		Density = 0.12, -- clear air, so far-off colours stay bright
 		Offset = 0.15,
 		Color = Color3.fromRGB(200, 215, 240),
 		Decay = Color3.fromRGB(110, 130, 170),
 		Glare = 0.25,
-		Haze = 1.2,
+		Haze = 0.2,
 	})
 	effect("BloomEffect", { Intensity = 0.6, Size = 26, Threshold = 1.6 })
 	effect("SunRaysEffect", { Intensity = 0.06, Spread = 0.7 })
 	effect("ColorCorrectionEffect", {
 		Brightness = 0.02,
 		Contrast = 0.08,
-		Saturation = 0.15,
+		Saturation = 0.28,
 		TintColor = Color3.fromRGB(255, 250, 242),
 	})
 
@@ -105,14 +105,17 @@ local function buildScenery()
 	folder.Name = "Scenery"
 	folder.Parent = Workspace
 
-	-- A big green baseplate under the whole town, studs and all.
-	Decor.part({
-		Name = "Baseplate",
-		Size = Vector3.new(STREET_EAST - STREET_WEST + 20, 1, TOWN_HALF * 2 + 4),
-		CFrame = CFrame.new((STREET_EAST + STREET_WEST) / 2, -0.48, 0),
-		Color = Color3.fromRGB(75, 151, 75),
-		Parent = folder,
-	})
+	-- A big checkerboard baseplate under the whole town, studs and all.
+	Decor.checkerFloor(
+		folder,
+		CFrame.new((STREET_EAST + STREET_WEST) / 2, 0.02, 0),
+		STREET_EAST - STREET_WEST + 16,
+		TOWN_HALF * 2 + 4,
+		12,
+		Color3.fromRGB(64, 196, 70),
+		Color3.fromRGB(52, 176, 60),
+		"Baseplate"
+	)
 
 	-- The street: a road with a dashed line, sidewalks with curbs, lamps.
 	local length = STREET_EAST - STREET_WEST
@@ -152,17 +155,6 @@ local function buildScenery()
 			Material = Enum.Material.Concrete,
 			Parent = folder,
 		})
-		Decor.tag(
-			Decor.part({
-				Name = "Verge",
-				Size = Vector3.new(length, 0.2, 14),
-				CFrame = CFrame.new(centerX, 0.1, side * 25),
-				Color = Color3.fromRGB(105, 185, 85),
-				Material = Enum.Material.Grass,
-				Parent = folder,
-			}),
-			Decor.TAGS.lawn
-		)
 		for x = -140, 140, 70 do
 			Decor.lamp(folder, CFrame.new(x, 0.5, side * 17.5))
 		end

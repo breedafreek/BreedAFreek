@@ -461,81 +461,101 @@ end
 
 -- Ground, cliffs and colours for each zone.
 local THEMES = {
-	{
-		ground = rgb(150, 120, 90),
+	{ -- Junkyard
+		ground = rgb(214, 170, 112),
 		groundMat = M.Ground,
-		cliff = rgb(115, 100, 85),
+		wall = rgb(190, 110, 60),
+		trim = rgb(120, 200, 80),
+		cliff = rgb(150, 120, 90),
 		cliffMat = M.Slate,
-		path = rgb(120, 95, 70),
-		accent = rgb(240, 150, 60),
+		path = rgb(150, 115, 80),
+		accent = rgb(255, 160, 50),
 	},
-	{
-		ground = rgb(85, 160, 75),
+	{ -- Pine Woods
+		ground = rgb(64, 196, 70),
 		groundMat = M.Grass,
-		cliff = rgb(100, 110, 90),
+		wall = rgb(40, 120, 70),
+		trim = rgb(110, 225, 90),
+		cliff = rgb(90, 120, 90),
 		cliffMat = M.Rock,
-		path = rgb(140, 105, 70),
-		accent = rgb(110, 200, 90),
+		path = rgb(160, 115, 70),
+		accent = rgb(120, 220, 90),
 	},
-	{
-		ground = rgb(170, 165, 155),
+	{ -- Rocky Quarry
+		ground = rgb(170, 175, 185),
 		groundMat = M.Slate,
-		cliff = rgb(140, 135, 128),
+		wall = rgb(95, 110, 150),
+		trim = rgb(80, 190, 90),
+		cliff = rgb(140, 140, 150),
 		cliffMat = M.Rock,
-		path = rgb(190, 180, 165),
-		accent = rgb(150, 160, 190),
+		path = rgb(200, 190, 170),
+		accent = rgb(160, 175, 230),
 	},
-	{
-		ground = rgb(240, 210, 145),
+	{ -- Sunny Desert
+		ground = rgb(245, 205, 115),
 		groundMat = M.Sand,
-		cliff = rgb(220, 175, 115),
+		wall = rgb(230, 140, 60),
+		trim = rgb(255, 225, 140),
+		cliff = rgb(220, 170, 100),
 		cliffMat = M.Sandstone,
-		path = rgb(215, 180, 120),
-		accent = rgb(60, 200, 210),
+		path = rgb(225, 180, 110),
+		accent = rgb(60, 210, 220),
 	},
-	{
-		ground = rgb(242, 248, 255),
+	{ -- Frosty Peaks
+		ground = rgb(225, 240, 255),
 		groundMat = M.Snow,
+		wall = rgb(90, 160, 240),
+		trim = rgb(250, 252, 255),
 		cliff = rgb(190, 220, 245),
 		cliffMat = M.Ice,
-		path = rgb(210, 230, 245),
+		path = rgb(190, 220, 245),
 		accent = rgb(110, 210, 255),
 	},
-	{
-		ground = rgb(255, 195, 225),
+	{ -- Candy Land
+		ground = rgb(255, 185, 220),
 		groundMat = M.SmoothPlastic,
+		wall = rgb(255, 100, 170),
+		trim = rgb(255, 255, 255),
 		cliff = rgb(255, 140, 195),
 		cliffMat = M.SmoothPlastic,
 		path = rgb(255, 255, 255),
 		accent = rgb(255, 80, 150),
 	},
-	{
-		ground = rgb(65, 48, 55),
+	{ -- Lava Volcano
+		ground = rgb(80, 60, 75),
 		groundMat = M.Basalt,
+		wall = rgb(50, 35, 50),
+		trim = rgb(255, 110, 30),
 		cliff = rgb(45, 35, 42),
 		cliffMat = M.Basalt,
-		path = rgb(90, 70, 70),
+		path = rgb(110, 80, 80),
 		accent = rgb(255, 110, 30),
 	},
-	{
-		ground = rgb(110, 190, 95),
+	{ -- Royal Kingdom
+		ground = rgb(80, 200, 90),
 		groundMat = M.Grass,
+		wall = rgb(235, 230, 220),
+		trim = rgb(255, 200, 60),
 		cliff = rgb(225, 220, 210),
 		cliffMat = M.Marble,
-		path = rgb(200, 40, 60),
+		path = rgb(220, 40, 60),
 		accent = rgb(255, 200, 60),
 	},
-	{
-		ground = rgb(65, 45, 95),
+	{ -- Crystal Caves
+		ground = rgb(85, 60, 130),
 		groundMat = M.Slate,
+		wall = rgb(110, 70, 210),
+		trim = rgb(130, 240, 255),
 		cliff = rgb(85, 62, 125),
 		cliffMat = M.Rock,
-		path = rgb(110, 80, 160),
+		path = rgb(130, 95, 190),
 		accent = rgb(140, 240, 255),
 	},
-	{
-		ground = rgb(250, 252, 255),
+	{ -- Sky Islands
+		ground = rgb(245, 250, 255),
 		groundMat = M.SmoothPlastic,
+		wall = rgb(130, 190, 255),
+		trim = rgb(255, 215, 90),
 		cliff = rgb(235, 242, 255),
 		cliffMat = M.SmoothPlastic,
 		path = rgb(255, 225, 120),
@@ -610,42 +630,58 @@ function ZoneDecor.build(parent: Instance, index: number)
 	folder.Name = "Zone" .. index .. "_" .. Parts.ZONES[index].name
 	folder.Parent = parent
 
-	-- Ground (with a darker rim) and the path to the pile.
-	block(folder, Vector3.new(length, 2, width), CFrame.new(centerX, -0.9, 0), theme.ground, theme.groundMat, true)
-	block(
+	-- A checkerboard floor in two shades of the zone's colour, and the path to the pile.
+	local tile = 13
+	local countX, countZ = math.round(length / tile), math.round(width / tile)
+	for i = 0, countX - 1 do
+		for k = 0, countZ - 1 do
+			local w, d = length / countX, width / countZ
+			local floor = block(
+				folder,
+				Vector3.new(w, 2, d),
+				CFrame.new(east - (i + 0.5) * w, -0.98, -width / 2 + (k + 0.5) * d),
+				if (i + k) % 2 == 0 then theme.ground else theme.ground:Lerp(Color3.new(0, 0, 0), 0.12),
+				theme.groundMat,
+				true
+			)
+			floor.Name = "Tile"
+		end
+	end
+	local path = block(
 		folder,
 		Vector3.new(ZoneLayout.HOME_U - 12, 0.2, 10),
-		CFrame.new(east - (ZoneLayout.HOME_U - 12) / 2, 0.15, 0),
+		CFrame.new(east - (ZoneLayout.HOME_U - 12) / 2, 0.12, 0),
 		theme.path,
 		if index == 8 then M.Fabric else theme.groundMat
 	)
-	-- Cliffs along both sides (and behind the last zone), so nobody wanders off the map.
+	path.Name = "PathStone"
+	-- Tall flat walls along both sides (and behind the last zone), so nobody wanders off the
+	-- map, with a strip of the floor colour along the top like grass on a cliff.
+	local wallHeight = 30
 	for _, side in { -1, 1 } do
 		local z = side * (width / 2 + 3)
-		block(folder, Vector3.new(length, 22, 6), CFrame.new(centerX, 11, z), theme.cliff, theme.cliffMat, true)
-		-- Brick-stack tops: blocks of different heights, like a wall of LEGO bricks.
-		local brickRng = Random.new(index * 31 + side)
-		for i = 0, 15 do
-			local x = east - (i + 0.5) * length / 16
-			local height = brickRng:NextInteger(2, 6) * 1.2
-			local color =
-				theme.cliff:Lerp(Color3.new(1, 1, 1), if index == 5 or index == 10 then 0.4 else (i % 3) * 0.06)
-			block(
-				folder,
-				Vector3.new(length / 16, height, 7),
-				CFrame.new(x, 22 + height / 2, z),
-				color,
-				theme.cliffMat,
-				true
-			)
-		end
+		block(
+			folder,
+			Vector3.new(length, wallHeight, 6),
+			CFrame.new(centerX, wallHeight / 2, z),
+			theme.wall,
+			theme.cliffMat,
+			true
+		)
+		block(
+			folder,
+			Vector3.new(length, 1.6, 6.4),
+			CFrame.new(centerX, wallHeight + 0.8, z),
+			theme.trim,
+			theme.cliffMat
+		)
 		if index == 8 then
 			-- Castle battlements on the walls of the Royal Kingdom.
 			for i = 0, 15 do
 				block(
 					folder,
 					Vector3.new(3, 3, 6.2),
-					CFrame.new(east - (i + 0.5) * length / 16, 23.5, z),
+					CFrame.new(east - (i + 0.5) * length / 16, wallHeight + 3, z),
 					theme.cliff,
 					theme.cliffMat
 				)
@@ -653,7 +689,7 @@ function ZoneDecor.build(parent: Instance, index: number)
 		end
 	end
 	if index == #Parts.ZONES then
-		block(folder, Vector3.new(6, 30, width + 12), CFrame.new(west - 3, 15, 0), theme.cliff, theme.cliffMat, true)
+		block(folder, Vector3.new(6, 32, width + 12), CFrame.new(west - 3, 16, 0), theme.wall, theme.cliffMat, true)
 	end
 	buildArch(folder, index, theme)
 

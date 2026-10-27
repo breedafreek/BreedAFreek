@@ -33,6 +33,37 @@ local LEAF_COLORS = {
 	Color3.fromRGB(60, 140, 75),
 }
 
+-- A checkerboard floor of studded tiles in two shades (the classic Roblox baseplate look):
+-- `center` is the middle of its top face, tiles are `tile` studs square.
+function Decor.checkerFloor(
+	parent: Instance,
+	center: CFrame,
+	sizeX: number,
+	sizeZ: number,
+	tile: number,
+	colorA: Color3,
+	colorB: Color3,
+	name: string?
+)
+	local folder = Instance.new("Folder")
+	folder.Name = name or "Floor"
+	folder.Parent = parent
+	local countX, countZ = math.max(1, math.round(sizeX / tile)), math.max(1, math.round(sizeZ / tile))
+	local w, d = sizeX / countX, sizeZ / countZ
+	for i = 0, countX - 1 do
+		for k = 0, countZ - 1 do
+			part({
+				Name = "Tile",
+				Size = Vector3.new(w, 1, d),
+				CFrame = center * CFrame.new(-sizeX / 2 + (i + 0.5) * w, -0.5, -sizeZ / 2 + (k + 0.5) * d),
+				Color = if (i + k) % 2 == 0 then colorA else colorB,
+				Parent = folder,
+			})
+		end
+	end
+	return folder
+end
+
 -- A LEGO-style tree: a square brick trunk and stacked layers of leaf bricks, each smaller
 -- than the one below, with studs on every layer. scale 1 is about 14 studs tall.
 function Decor.tree(parent: Instance, ground: CFrame, scale: number?, seed: number?)

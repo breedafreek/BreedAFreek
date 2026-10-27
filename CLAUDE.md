@@ -34,11 +34,13 @@ match it.
   rarities use `Rarities.info[r].color`.
 
 **World:**
-- The LEGO look (`src/shared/Lego.luau`): everything is shiny Plastic with studs on top
-  and inlets underneath, on a studded green baseplate. Neon, Glass, Foil and ForceField
-  keep their look; roads, sidewalks and paths are smooth "tiles" (the SMOOTH list). House
-  walls get brick seams; trees and cliff tops are stacked bricks. Build new things as
-  bricks (blocks) where you can, so they get studs.
+- The classic Roblox studs look, like Steal an Egg (`src/shared/Lego.luau`): everything is
+  shiny Plastic with the stud texture on every face (inlets underneath). Floors are big
+  checkerboards of two shades (`Decor.checkerFloor`; bright greens in town), zones are
+  walled by tall flat saturated walls with a coloured strip along the top, and lighting is
+  bright and clear (little haze). Neon, Glass, Foil and ForceField keep their look; roads,
+  sidewalks and paths are smooth "tiles" (the SMOOTH list). House walls get brick seams;
+  trees are stacked bricks. Build new things as bricks (blocks) where you can.
 - Floating text (zone piles, gates, signs): Luckiest Guy / Fredoka One with a thick dark
   `UIStroke`. Parts on pedestals show rarity, name and $/s.
 - Models are built from simple parts (balls, blocks, cylinders, wedges) with bold, flat,

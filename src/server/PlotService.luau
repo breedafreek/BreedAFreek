@@ -22,6 +22,7 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local Carried = require(script.Parent.Carried)
 local DataService = require(script.Parent.DataService)
+local Decor = require(script.Parent.Decor)
 
 local PLOT_SIZE = 64
 local ROW_SPACING = 70 -- between home centres along the street
@@ -375,14 +376,17 @@ end
 -- The yard: lawn, a stone path from the gate to the porch.
 local function buildYard(plot, folder: Instance)
 	local origin = plot.origin
-	part({
-		Name = "Lawn",
-		Size = Vector3.new(PLOT_SIZE, 0.4, PLOT_SIZE),
-		CFrame = origin * CFrame.new(0, 0.2, 0),
-		Color = Color3.fromRGB(120, 200, 95),
-		Material = Enum.Material.Grass,
-		Parent = folder,
-	})
+	-- A lighter green checkerboard lawn, a little raised off the town baseplate.
+	Decor.checkerFloor(
+		folder,
+		origin * CFrame.new(0, 0.4, 0),
+		PLOT_SIZE,
+		PLOT_SIZE,
+		8,
+		Color3.fromRGB(125, 222, 95),
+		Color3.fromRGB(105, 205, 82),
+		"Lawn"
+	)
 	local from, to = FENCE_Z + 1, HouseModel.HOUSE_Z - 6
 	local count = math.floor((to - from) / 3)
 	for i = 0, count do
