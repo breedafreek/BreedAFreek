@@ -611,7 +611,14 @@ local function nestCards(grid: Instance)
 				border = if ready then colors.money else nil,
 				lines = {
 					{ "Nest " .. n, nil, 22 },
-					{ Items.KINDS[zone.kind].icon .. " " .. Items.eggName(egg.zone), colors.text, 19 },
+					{
+						Items.KINDS[zone.kind].icon
+							.. " "
+							.. (if egg.size then egg.size .. " " else "")
+							.. Items.eggName(egg.zone),
+						Items.size(egg.size).color,
+						19,
+					},
 					timer,
 				},
 				buttons = {

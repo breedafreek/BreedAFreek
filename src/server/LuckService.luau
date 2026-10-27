@@ -89,7 +89,8 @@ local function openCrate(player: Player, data, crate)
 		data,
 		pickItem(rollWeighted(Luck.crateOdds(crate))),
 		rollMutations(crate.mutation),
-		{ kind = "crate", crate = crate.id }
+		{ kind = "crate", crate = crate.id },
+		Items.rollSize(rng, crate.mutation)
 	)
 end
 
@@ -282,7 +283,14 @@ local function spin(player: Player, data)
 		local zone = Items.zoneFor(data.speed)
 		local itemId = NestService.rollItem(Items.ZONES[zone].kind, Items.rollRarity(zone, rng))
 		reveal.egg = zone
-		return NestService.reward(player, data, itemId, { if slice.rainbow then "Rainbow" else "Golden" }, reveal)
+		return NestService.reward(
+			player,
+			data,
+			itemId,
+			{ if slice.rainbow then "Rainbow" else "Golden" },
+			reveal,
+			Items.rollSize(rng)
+		)
 	end
 	if slice.crate then
 		data.crates[slice.crate] = (data.crates[slice.crate] or 0) + 1

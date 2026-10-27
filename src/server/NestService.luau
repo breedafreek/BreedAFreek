@@ -62,6 +62,7 @@ function NestService.addEgg(player: Player, record): string?
 		zone = record.egg,
 		rarity = record.rarity,
 		mutations = Mutations.pack(record.mutations),
+		size = record.size,
 		endsAt = os.time() + seconds,
 	}
 	DataService.changed(player)
@@ -87,7 +88,7 @@ end
 -- made selling, if any.
 function NestService.give(player: Player, data, record): (string, number)
 	local uid = DataService.newUid(data)
-	data.parts[uid] = { id = record.id, mutations = Mutations.pack(record.mutations) }
+	data.parts[uid] = { id = record.id, mutations = Mutations.pack(record.mutations), size = record.size }
 	data.discovered[record.id] = true
 	task.spawn(DiscoveryService.claim, player, record.id)
 	local where = LifeUtil.placeIfBetter(data, uid)
@@ -103,9 +104,9 @@ function NestService.give(player: Player, data, record): (string, number)
 end
 
 -- Gives an item and shows the reveal on the player's screen. reveal = { kind, ... } (what
--- it came from: "egg", "wheel", "crate").
-function NestService.reward(player: Player, data, itemId: string, mutations, reveal)
-	local record = { id = itemId, mutations = Mutations.pack(mutations) }
+-- it came from: "egg", "wheel", "crate"); size = its size (Items.SIZES, nil = Normal).
+function NestService.reward(player: Player, data, itemId: string, mutations, reveal, size: string?)
+	local record = { id = itemId, mutations = Mutations.pack(mutations), size = size }
 	reveal.isNew = not data.discovered[itemId]
 	local where, sold = NestService.give(player, data, record)
 	reveal.where = where
@@ -119,7 +120,7 @@ function NestService.reward(player: Player, data, itemId: string, mutations, rev
 			"money"
 		)
 	end
-	if Rarities.rank[reveal.rarity] >= Rarities.rank.Mystic then
+	if Rarities.rank[reveal.rarity] >= Rarities.rank.Mystic or Items.size(size).rank >= Items.sizeById.Giant.rank then
 		for _, other in Players:GetPlayers() do
 			notify(
 				other,
@@ -152,7 +153,14 @@ function NestService.hatch(player: Player, n: number): string?
 	data.nests[key] = nil
 	local zone = Items.ZONES[egg.zone] or Items.ZONES[1]
 	local itemId = NestService.rollItem(zone.kind, egg.rarity)
-	NestService.reward(player, data, itemId, egg.mutations, { kind = "egg", egg = egg.zone, nest = n })
+	NestService.reward(
+		player,
+		data,
+		itemId,
+		egg.mutations,
+		{ kind = "egg", egg = egg.zone, nest = n, eggSize = egg.size },
+		egg.size
+	)
 	return nil
 end
 

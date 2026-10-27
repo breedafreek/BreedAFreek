@@ -817,7 +817,7 @@ function PackReveal.play(result, done: () -> ())
 	moveCamera(Vector3.new(0, 7, -24), Vector3.new(0, 4, 0))
 	local egg = if result.egg then EggModel.build(result.egg) else BoxModel.build(result.crate)
 	if result.egg then
-		pcall(egg.ScaleTo, egg, 1.6)
+		Items.scaleModel(egg, 1.6 * math.clamp(Items.size(result.eggSize).scale, 0.7, 1.6))
 	end
 	Lego.apply(egg)
 	egg.Parent = stage
@@ -1233,9 +1233,11 @@ function PackReveal.play(result, done: () -> ())
 	-- The card lifts up and back; the part pops out onto the pedestal.
 	local freek = ItemModel.build(result.part.id, result.part.mutations)
 	Lego.apply(freek)
-	-- Everything fits about the same space in front of the card.
+	-- Everything fits about the same space in front of the card, a bit bigger or smaller
+	-- for big and small sizes.
 	local _, size = freek:GetBoundingBox()
-	pcall(freek.ScaleTo, freek, math.clamp(6.5 / math.max(size.X, size.Y, size.Z, 0.1), 0.3, 1.3))
+	local room = 6.5 * math.clamp(Items.size(result.part.size).scale, 0.7, 1.6)
+	Items.scaleModel(freek, math.clamp(room / math.max(size.X, size.Y, size.Z, 0.1), 0.3, 2))
 	for _, p in freek:GetDescendants() do
 		if p:IsA("BasePart") then
 			p.Anchored = true
@@ -1276,7 +1278,8 @@ function PackReveal.play(result, done: () -> ())
 	animate(0.2, function(a)
 		nameScale.Scale = 2.2 - 1.2 * easeOut(a)
 	end)
-	UI.label(string.upper(rarity) .. "  ·  " .. string.upper(series.name), {
+	local sizeWord = if result.part.size then string.upper(result.part.size) .. "  ·  " else ""
+	UI.label(sizeWord .. string.upper(rarity) .. "  ·  " .. string.upper(series.name), {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.86, -50),
 		Size = UDim2.fromOffset(500, 28),

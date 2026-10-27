@@ -532,7 +532,8 @@ end
 
 -- Puts the right item model on a bed or yard spot (record = nil for none).
 local function updateSpot(plot, spot, record)
-	local key = record and (record.id .. ":" .. table.concat(Mutations.normalize(record.mutations), ","))
+	local key = record
+		and (record.id .. ":" .. table.concat(Mutations.normalize(record.mutations), ",") .. ":" .. (record.size or ""))
 	if spot.key == key then
 		return
 	end
@@ -542,7 +543,7 @@ local function updateSpot(plot, spot, record)
 		spot.model = nil
 	end
 	if record then
-		local model = ItemModel.build(record.id, record.mutations)
+		local model = ItemModel.build(record.id, record.mutations, record.size)
 		model:PivotTo(spot.spot)
 		model.Parent = plot.items
 		spot.model = model
@@ -586,7 +587,7 @@ local function updateNestLabels(plot)
 			nest.timer.Text = "Steal an egg!"
 			nest.timer.TextColor3 = Color3.fromRGB(255, 215, 60)
 		else
-			nest.title.Text = string.upper(egg.rarity)
+			nest.title.Text = (if egg.size then string.upper(egg.size) .. " " else "") .. string.upper(egg.rarity)
 			nest.title.TextColor3 = Rarities.info[egg.rarity].color
 			local left = egg.endsAt - now
 			if left > 0 then
@@ -608,7 +609,7 @@ local function updateNests(plot, data, player: Player?)
 		if data and player then
 			state, egg = nestState(data, player, n)
 		end
-		local key = if egg then egg.zone .. ":" .. egg.rarity .. ":" .. egg.endsAt else state
+		local key = if egg then egg.zone .. ":" .. egg.rarity .. ":" .. egg.endsAt .. ":" .. (egg.size or "") else state
 		if nest.key ~= key then
 			nest.key = key
 			if nest.egg then
@@ -617,6 +618,7 @@ local function updateNests(plot, data, player: Player?)
 			end
 			if egg then
 				local model = EggModel.build(egg.zone)
+				Items.scaleModel(model, Items.size(egg.size).scale)
 				ItemModel.addMutationEffect(model, egg.mutations)
 				model:PivotTo(nest.spot)
 				model.Parent = plot.items
@@ -627,12 +629,12 @@ local function updateNests(plot, data, player: Player?)
 	updateNestLabels(plot)
 end
 
--- The pets out in the yard, for the clients to draw: "Pet_Oinkle:Golden,Pet_Woofles:".
+-- The pets out in the yard, for the clients to draw: "Pet_Oinkle:Golden:Huge,Pet_Woofles::".
 local function petList(data): string
 	local list = {}
 	for _, uid in LifeUtil.pets(data) do
 		local record = data.parts[uid]
-		table.insert(list, record.id .. ":" .. (Mutations.top(record.mutations) or ""))
+		table.insert(list, record.id .. ":" .. (Mutations.top(record.mutations) or "") .. ":" .. (record.size or ""))
 	end
 	return table.concat(list, ",")
 end

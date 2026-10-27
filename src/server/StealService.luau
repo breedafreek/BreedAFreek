@@ -55,6 +55,7 @@ local function pickUp(carrier: Player, carry): boolean
 		return false
 	end
 	local model = EggModel.build(carry.record.egg)
+	Items.scaleModel(model, Items.size(carry.record.size).scale)
 	ItemModel.addMutationEffect(model, carry.record.mutations)
 	model:PivotTo(root.CFrame * CFrame.new(0, 3.2, 0))
 	for _, descendant in model:GetDescendants() do

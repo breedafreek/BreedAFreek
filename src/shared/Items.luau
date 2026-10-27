@@ -288,6 +288,44 @@ Items.ZONES = {
 	},
 }
 
+-- Sizes: every egg grows in a random size, and what hatches from it keeps that size. Bigger
+-- things show bigger (scale) and earn more (mult). weight = how often each size turns up
+-- (Massive is very rare). Saved on records as `size` (nil = Normal).
+Items.SIZES = {
+	{ id = "Tiny", scale = 0.6, mult = 0.5, weight = 22, color = Color3.fromRGB(190, 200, 220) },
+	{ id = "Small", scale = 0.8, mult = 0.75, weight = 28, color = Color3.fromRGB(210, 220, 235) },
+	{ id = "Normal", scale = 1, mult = 1, weight = 32, color = Color3.fromRGB(255, 255, 255) },
+	{ id = "Big", scale = 1.35, mult = 1.6, weight = 12, color = Color3.fromRGB(120, 220, 255) },
+	{ id = "Huge", scale = 1.9, mult = 3, weight = 4.5, color = Color3.fromRGB(255, 200, 60) },
+	{ id = "Giant", scale = 2.6, mult = 6, weight = 1.3, color = Color3.fromRGB(255, 120, 60) },
+	{ id = "Massive", scale = 3.6, mult = 15, weight = 0.2, color = Color3.fromRGB(255, 70, 160) },
+}
+Items.sizeById = {}
+for index, size in Items.SIZES do
+	size.rank = index
+	Items.sizeById[size.id] = size
+end
+
+function Items.size(id: string?)
+	return Items.sizeById[id or "Normal"] or Items.sizeById.Normal
+end
+
+-- Rolls a size. `boost` (>= 1) makes Big and up that many times likelier.
+function Items.rollSize(rng: Random, boost: number?): string?
+	local total = 0
+	for _, size in Items.SIZES do
+		total += size.weight * (if size.scale > 1 then boost or 1 else 1)
+	end
+	local roll = rng:NextNumber() * total
+	for _, size in Items.SIZES do
+		roll -= size.weight * (if size.scale > 1 then boost or 1 else 1)
+		if roll <= 0 then
+			return if size.id == "Normal" then nil else size.id
+		end
+	end
+	return nil
+end
+
 -- How long an egg of each rarity grows in a nest (seconds).
 Items.HATCH_SECONDS = {
 	Common = 20,
@@ -338,6 +376,27 @@ function Items.rollRarity(zoneIndex: number, rng: Random, boost: number?): strin
 		end
 	end
 	return weights[#weights][1]
+end
+
+-- Scales a model round its pivot (parts, their positions and sphere meshes).
+function Items.scaleModel(model: Model, factor: number)
+	if math.abs(factor - 1) < 0.001 then
+		return
+	end
+	local pivot = model:GetPivot()
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			local rel = pivot:ToObjectSpace(p.CFrame)
+			p.Size *= factor
+			p.CFrame = pivot * (rel.Rotation + rel.Position * factor)
+		elseif p:IsA("Attachment") then
+			p.Position *= factor
+		end
+	end
+	if model.PrimaryPart then
+		local offset = model.PrimaryPart.PivotOffset
+		model.PrimaryPart.PivotOffset = offset.Rotation + offset.Position * factor
+	end
 end
 
 -- An egg's display name, e.g. "Garden Egg".

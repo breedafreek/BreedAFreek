@@ -67,6 +67,9 @@ local function reconcile(data)
 			data.parts[uid] = nil
 		else
 			record.mutations = Mutations.pack(record.mutations)
+			if record.size ~= nil and (not Items.sizeById[record.size] or record.size == "Normal") then
+				record.size = nil
+			end
 		end
 	end
 	for slotId, uid in data.house do

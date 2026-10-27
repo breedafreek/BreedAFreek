@@ -45,7 +45,7 @@ function LifeUtil.itemIncome(record): number
 	if not item then
 		return 0
 	end
-	return item.income * Mutations.mult(record.mutations)
+	return item.income * Mutations.mult(record.mutations) * Items.size(record.size).mult
 end
 LifeUtil.partIncome = LifeUtil.itemIncome
 
@@ -110,12 +110,13 @@ function LifeUtil.sellPrice(record): number
 	return math.floor(LifeUtil.itemIncome(record) * Config.SELL_MULTIPLIER)
 end
 
--- "Golden Candy Roof"
+-- "Massive Golden Candy Roof"
 function LifeUtil.displayName(record): string
 	local item = Items.byId[record.id]
 	local name = if item then item.name else record.id
 	local top = Mutations.top(record.mutations)
-	return if top then top .. " " .. name else name
+	name = if top then top .. " " .. name else name
+	return if record.size and Items.sizeById[record.size] then record.size .. " " .. name else name
 end
 
 -- The pets out in the yard, as a list of uids.

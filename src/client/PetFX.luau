@@ -1,5 +1,5 @@
 -- Pets roaming their owner's front lawn, drawn on this client. The server lists each
--- home's pets on its plot (attribute "Pets" = "Pet_Oinkle:Golden,Pet_Woofles:"); this
+-- home's pets on its plot (attribute "Pets" = "Pet_Oinkle:Golden:Huge,Pet_Woofles::"); this
 -- builds a Freek for each and wanders it round the lawn (plot attributes PetMin / PetMax,
 -- in plot space), animated with FreekAnimator: walk somewhere, stop, look about, walk on.
 
@@ -48,20 +48,21 @@ local function nameTag(model: Model, text: string, color: Color3, height: number
 	stroke.Parent = label
 end
 
--- A Freek, scaled up round its feet.
-local function build(itemId: string, mutation: string?): (Model, number)
-	local model = ItemModel.build(itemId, if mutation ~= "" then mutation else nil)
+-- A Freek, scaled up round its feet (more for bigger sizes).
+local function build(itemId: string, mutation: string?, size: string?): (Model, number)
+	local model = ItemModel.buildNormal(itemId, if mutation ~= "" then mutation else nil)
+	local scale = SCALE * Items.size(size).scale
 	local pivot = model:GetPivot()
 	local top = 0
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then
 			local rel = pivot:ToObjectSpace(p.CFrame)
-			p.Size *= SCALE
-			p.CFrame = pivot * (rel.Rotation + rel.Position * SCALE)
+			p.Size *= scale
+			p.CFrame = pivot * (rel.Rotation + rel.Position * scale)
 			p.Anchored = true
 			p.CanCollide = false
 			p.CanQuery = false
-			top = math.max(top, rel.Position.Y * SCALE + p.Size.Y / 2)
+			top = math.max(top, rel.Position.Y * scale + p.Size.Y / 2)
 		end
 	end
 	Lego.apply(model)
@@ -103,17 +104,21 @@ local function refresh(plot: Model)
 		return
 	end
 	for i, entry in string.split(list, ",") do
-		local itemId, mutation = string.match(entry, "^([^:]+):?(.*)$")
+		local parts = string.split(entry, ":")
+		local itemId, mutation, size = parts[1], parts[2] or "", parts[3] or ""
 		local info = itemId and Items.byId[itemId]
 		if info and info.kind == "Pet" then
-			local model, height = build(itemId, mutation)
+			local model, height = build(itemId, mutation, if size ~= "" then size else nil)
 			local position = randomSpot(plot)
 			local yaw = rng:NextNumber(0, math.pi * 2)
 			local ground = CFrame.new(position) * CFrame.Angles(0, yaw, 0)
 			model:PivotTo(ground)
 			model.Name = "Pet_" .. info.species
 			model.Parent = plot
-			nameTag(model, (if mutation ~= "" then mutation .. " " else "") .. info.name, Items.color(itemId), height)
+			local title = (if size ~= "" then size .. " " else "")
+				.. (if mutation ~= "" then mutation .. " " else "")
+				.. info.name
+			nameTag(model, title, Items.color(itemId), height)
 			table.insert(home.pets, {
 				model = model,
 				rig = FreekAnimator.rig(model, i * 13 + #list, ground),

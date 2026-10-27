@@ -22,7 +22,18 @@ function ItemModel.addMutationEffect(model: Model, mutations)
 	end
 end
 
-function ItemModel.build(itemId: string, mutations): Model
+-- size = a size id from Items.SIZES (nil = Normal): house parts stay their normal size
+-- (they have to fit their slot); everything else is scaled.
+function ItemModel.build(itemId: string, mutations, size: string?): Model
+	local model = ItemModel.buildNormal(itemId, mutations)
+	local item = Items.byId[itemId]
+	if item and item.kind ~= "House" then
+		Items.scaleModel(model, Items.size(size).scale)
+	end
+	return model
+end
+
+function ItemModel.buildNormal(itemId: string, mutations): Model
 	local item = Items.byId[itemId]
 	local model
 	if not item then

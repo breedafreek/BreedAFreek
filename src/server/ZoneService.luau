@@ -131,7 +131,8 @@ local function buildPedestal(parent: Instance, index: number, n: number)
 	}
 end
 
--- Picks the egg that grows next on a pedestal in this zone: { egg = zone, rarity, mutations }.
+-- Picks the egg that grows next on a pedestal in this zone:
+-- { egg = zone, rarity, mutations, size } (size: Items.SIZES, nil = Normal).
 local function rollEgg(index: number)
 	local rarity = Items.rollRarity(index, rng, Events.boost("rareBoost"))
 	local mutations = {}
@@ -146,14 +147,20 @@ local function rollEgg(index: number)
 	if weather and rng:NextNumber() < 0.25 then
 		mutations = { weather.mutation }
 	end
-	return { egg = index, rarity = rarity, mutations = Mutations.pack(mutations) }
+	return {
+		egg = index,
+		rarity = rarity,
+		mutations = Mutations.pack(mutations),
+		size = Items.rollSize(rng, Events.boost("rareBoost")),
+	}
 end
 
--- "Golden Garden Egg"
+-- "Massive Golden Garden Egg"
 function ZoneService.eggName(record): string
 	local top = Mutations.top(record.mutations)
 	local name = Items.eggName(record.egg)
-	return if top then top .. " " .. name else name
+	name = if top then top .. " " .. name else name
+	return if record.size then record.size .. " " .. name else name
 end
 
 local function showEgg(index: number, pedestal, record)
@@ -165,8 +172,12 @@ local function showEgg(index: number, pedestal, record)
 	local zone = Items.ZONES[index]
 	local kind = Items.KINDS[zone.kind]
 	local color = Rarities.info[record.rarity].color
-	local model = EggModel.build(index)
+	local model, height = EggModel.build(index)
+	local size = Items.size(record.size)
+	Items.scaleModel(model, size.scale)
 	model:PivotTo(pedestal.spot * CFrame.Angles(0, math.rad(180 + (rng:NextNumber() - 0.5) * 40), 0))
+	-- The floating text clears the top of the egg, however big it is.
+	pedestal.labels.gui.StudsOffset = Vector3.new(0, 3.5 + height * size.scale, 0)
 	local top = Mutations.top(record.mutations)
 	if top and model.PrimaryPart then
 		local sparkles = Instance.new("Sparkles")
@@ -179,6 +190,7 @@ local function showEgg(index: number, pedestal, record)
 	pedestal.labels.rarity.Text = string.upper(record.rarity)
 	pedestal.labels.rarity.TextColor3 = color
 	pedestal.labels.name.Text = ZoneService.eggName(record)
+	pedestal.labels.name.TextColor3 = size.color
 	pedestal.labels.income.Text = kind.icon
 		.. " "
 		.. kind.name
@@ -197,7 +209,11 @@ local function showEgg(index: number, pedestal, record)
 	prompt:SetAttribute("Pedestal", table.find(zones[index].pedestals, pedestal))
 	prompt.Parent = pedestal.base
 
-	if Rarities.rank[record.rarity] >= Rarities.rank.Ultra or top == "Rainbow" then
+	if
+		Rarities.rank[record.rarity] >= Rarities.rank.Ultra
+		or top == "Rainbow"
+		or size.rank >= Items.sizeById.Giant.rank
+	then
 		for _, player in Players:GetPlayers() do
 			notifyRemote:FireClient(
 				player,

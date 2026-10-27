@@ -56,6 +56,11 @@ rojo build -o StealALife.rbxlx    # or build a place file
     yard spots.
   - **Plants** (`src/shared/PlantModel.luau`): Daisy up to the Rainbow Tree, in 6 garden beds.
   Mutations (Shadow ×2, Golden ×3, Rainbow ×10) multiply an item's income.
+- **Sizes** (`Items.SIZES`): every egg grows in a random size and what hatches keeps it:
+  Tiny (×0.5 income), Small, Normal, Big, Huge, Giant and the very rare Massive (0.2%,
+  3.6× as big, ×15 income). Pets, yard items, plants and eggs show their size; house parts
+  keep their normal size on the house but still earn by it. Boxes and the wheel roll a
+  size too.
 - **Speed** (`src/server/SpeedService.luau`): run on your treadmill to train ⚡ Speed, which
   makes you run faster (`Parts.walkSpeed`). Upgrade the treadmill in the Shop. Rebirths and
   the 2x Speed pass multiply it.
