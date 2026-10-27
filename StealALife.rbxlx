@@ -816,7 +816,7 @@ return Bricks
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-17", -- shown small in the corner of the screen and in Output: which build is running
+	BUILD = "life-18", -- shown small in the corner of the screen and in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join. Set to nil
 	-- before the game launches!
@@ -14770,13 +14770,12 @@ function ZoneDecor.formatSpeed(n: number): string
 end
 
 ZoneDecor.propSpots = {} -- [zone index] = { Vector3 } where the props stand
-ZoneDecor.LAIR_TOP = 0.27 -- the height of the guardian's lair plate (eggs on it sit on top)
+local FLOOR_A, FLOOR_B = rgb(64, 196, 70), rgb(52, 176, 60) -- the same greens as the town
 
 function ZoneDecor.build(parent: Instance, index: number)
 	local theme = ZoneDecor.theme(index)
 	local east, west = ZoneLayout.edges(index)
 	local length, width = ZoneLayout.length(index), ZoneLayout.WIDTH
-	local homeU = ZoneLayout.homeU(index)
 	local centerX = (east + west) / 2
 	local folder = Instance.new("Folder")
 	folder.Name = "Zone" .. index .. "_" .. Items.ZONES[index].name
@@ -14785,8 +14784,10 @@ function ZoneDecor.build(parent: Instance, index: number)
 	-- A checkerboard floor in two shades of the zone's colour, and the path to the pile.
 	local tile = 13
 	local countX, countZ = math.round(length / tile), math.round(width / tile)
-	-- Floors keep their own two close shades (see Lego: they're marked AnyColor).
-	local groundA, groundB = theme.ground, theme.ground:Lerp(Color3.new(0, 0, 0), 0.12)
+	-- Every zone has the same open, bright green studded floor (like Steal an Egg): the
+	-- zone's theme is only along its walls. Floors keep their own two close shades (see
+	-- Lego: they're marked AnyColor).
+	local groundA, groundB = FLOOR_A, FLOOR_B
 	for i = 0, countX - 1 do
 		for k = 0, countZ - 1 do
 			local w, d = length / countX, width / countZ
@@ -14795,53 +14796,13 @@ function ZoneDecor.build(parent: Instance, index: number)
 				Vector3.new(w, 2, d),
 				CFrame.new(east - (i + 0.5) * w, -0.98, -width / 2 + (k + 0.5) * d),
 				if (i + k) % 2 == 0 then groundA else groundB,
-				theme.groundMat,
+				M.SmoothPlastic,
 				true
 			)
 			floor.Name = "Tile"
 			floor:SetAttribute("AnyColor", true)
 		end
 	end
-	-- A path winding from the entrance to the guardian's lair, in gentle S-bends.
-	local pathMat = if index == 8 then M.Fabric else theme.groundMat
-	local amplitude = width * 0.16
-	local function pathV(u: number): number
-		return amplitude * math.sin(u / homeU * math.pi * 1.6) * math.min(1, u / 20)
-	end
-	local u0 = 2
-	while u0 < homeU - 14 do
-		local u1 = math.min(u0 + 6, homeU - 14)
-		local a = Vector3.new(east - u0, 0.12, pathV(u0))
-		local b = Vector3.new(east - u1, 0.12, pathV(u1))
-		local segment = block(
-			folder,
-			Vector3.new(10, 0.2, (b - a).Magnitude + 1.2),
-			CFrame.lookAt((a + b) / 2, b),
-			theme.path,
-			pathMat
-		)
-		segment.Name = "PathStone"
-		u0 = u1
-	end
-	-- The guardian's lair at the back: a big round plate it patrols from.
-	local lair = post(
-		folder,
-		ZoneDecor.LAIR_TOP - 0.02,
-		ZoneLayout.RING * 2 + 8,
-		CFrame.new(ZoneLayout.guardianHome(index)) * CFrame.new(0, 0.02, 0),
-		theme.cliff:Lerp(theme.ground, 0.4),
-		theme.groundMat
-	)
-	lair.Name = "Lair"
-	local lairRim = post(
-		folder,
-		0.15,
-		ZoneLayout.RING * 2 + 10,
-		CFrame.new(ZoneLayout.guardianHome(index)),
-		theme.accent,
-		theme.groundMat
-	)
-	lairRim.Name = "LairRim"
 	-- Tall flat walls along both sides (and behind the last zone), so nobody wanders off the
 	-- map, with a strip of the floor colour along the top like grass on a cliff.
 	local wallHeight = 30
@@ -14887,57 +14848,24 @@ function ZoneDecor.build(parent: Instance, index: number)
 	end
 	buildArch(folder, index, theme)
 
-	-- Scenery, laid out on purpose: a row of the zone's props along each side wall (an even
-	-- rhythm that frames the zone) and a few feature areas, each a raised LEGO plate with a big
-	-- landmark and smaller pieces round it, alternating sides down the zone. Their spots are
-	-- kept (ZoneDecor.propSpots) so eggs don't land inside them.
+	-- The theme lives along the walls: a row of the zone's props tucked against each side
+	-- wall. The middle stays open for the eggs. Their spots are kept (ZoneDecor.propSpots)
+	-- so eggs don't land inside them.
 	local spots = {}
 	ZoneDecor.propSpots[index] = spots
 	local rng = Random.new(index * 7919)
 	local build = props[LOOK[index]]
-	local function place(u: number, v: number, scale: number, turn: number?)
-		local cf = CFrame.new(east - u, 0, v) * CFrame.Angles(0, turn or rng:NextNumber() * math.pi * 2, 0)
-		table.insert(spots, Vector3.new(east - u, 0, v))
-		build(folder, cf, rng, scale)
-	end
-	-- The borders.
-	local borderV = width / 2 - 8
-	local step = 18
-	for u = 14, length - 10, step do
+	local borderV = width / 2 - 6
+	local step = 14
+	for u = 10, length - 8, step do
 		for _, side in { -1, 1 } do
-			place(u + (if side > 0 then step / 2 else 0), side * borderV, 1, rng:NextNumber(-0.3, 0.3))
-		end
-	end
-	-- The feature areas, between the entrance and the lair.
-	local areas = math.clamp(math.floor((homeU - 30) / 45), 2, 4)
-	for k = 1, areas do
-		local u = 30 + (k - 0.5) * (homeU - 50) / areas
-		local side = if k % 2 == 1 then 1 else -1
-		local v = side * (width / 4 + 4)
-		-- Keep clear of the winding path.
-		if math.abs(v - pathV(u)) < 20 then
-			v = side * (width / 2 - 26)
-		end
-		local plate = block(
-			folder,
-			Vector3.new(20, 0.6, 20),
-			CFrame.new(east - u, 0.3, v),
-			theme.accent:Lerp(theme.ground, 0.35),
-			theme.groundMat,
-			true
-		)
-		plate.Name = "FeaturePlate"
-		local rim =
-			block(folder, Vector3.new(21, 0.4, 21), CFrame.new(east - u, 0.2, v), theme.cliff, theme.groundMat, true)
-		rim.Name = "FeatureRim"
-		place(u, v, 1.7)
-		for j = 0, 2 do
-			local a = j / 3 * math.pi * 2 + rng:NextNumber() * 0.6
-			place(u + math.cos(a) * 6.5, v + math.sin(a) * 6.5, 0.85)
-		end
-		-- Mark the whole plate as taken, so eggs lie round it, not on it.
-		for _, corner in { Vector3.new(7, 0, 7), Vector3.new(-7, 0, 7), Vector3.new(7, 0, -7), Vector3.new(-7, 0, -7) } do
-			table.insert(spots, Vector3.new(east - u, 0, v) + corner)
+			local uu = u + (if side > 0 then step / 2 else 0)
+			if uu < length - 6 then
+				local cf = CFrame.new(east - uu, 0, side * borderV)
+					* CFrame.Angles(0, rng:NextNumber(-0.3, 0.3) + (if side > 0 then math.pi else 0), 0)
+				table.insert(spots, Vector3.new(east - uu, 0, side * borderV))
+				build(folder, cf, rng, 1.1)
+			end
 		end
 	end
 	return folder
@@ -15112,9 +15040,7 @@ local function pickSpot(index: number, rarity: string, others): CFrame
 			end
 		end
 		if room > 0 then
-			-- Eggs on the guardian's lair sit on top of its plate.
-			local onLair = (point - ZoneLayout.guardianHome(index)).Magnitude < ZoneLayout.RING + 4
-			return CFrame.new(point + Vector3.new(0, if onLair then ZoneDecor.LAIR_TOP else 0, 0))
+			return CFrame.new(point)
 		elseif room > bestRoom then
 			best, bestRoom = point, room
 		end

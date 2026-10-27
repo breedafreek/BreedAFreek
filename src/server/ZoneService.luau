@@ -160,9 +160,7 @@ local function pickSpot(index: number, rarity: string, others): CFrame
 			end
 		end
 		if room > 0 then
-			-- Eggs on the guardian's lair sit on top of its plate.
-			local onLair = (point - ZoneLayout.guardianHome(index)).Magnitude < ZoneLayout.RING + 4
-			return CFrame.new(point + Vector3.new(0, if onLair then ZoneDecor.LAIR_TOP else 0, 0))
+			return CFrame.new(point)
 		elseif room > bestRoom then
 			best, bestRoom = point, room
 		end
