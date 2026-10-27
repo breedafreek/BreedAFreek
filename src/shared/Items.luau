@@ -456,12 +456,13 @@ function Items.rollRarity(zoneIndex: number, rng: Random, boost: number?): strin
 	return weights[#weights][1]
 end
 
--- Scales a model round its pivot (parts, their positions and sphere meshes).
-function Items.scaleModel(model: Model, factor: number)
+-- Scales a model round its pivot, or round `around` if given (parts, their positions and
+-- attachments).
+function Items.scaleModel(model: Model, factor: number, around: CFrame?)
 	if math.abs(factor - 1) < 0.001 then
 		return
 	end
-	local pivot = model:GetPivot()
+	local pivot = around or model:GetPivot()
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then
 			local rel = pivot:ToObjectSpace(p.CFrame)
@@ -471,7 +472,7 @@ function Items.scaleModel(model: Model, factor: number)
 			p.Position *= factor
 		end
 	end
-	if model.PrimaryPart then
+	if model.PrimaryPart and not around then
 		local offset = model.PrimaryPart.PivotOffset
 		model.PrimaryPart.PivotOffset = offset.Rotation + offset.Position * factor
 	end

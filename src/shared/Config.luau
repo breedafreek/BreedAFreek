@@ -1,7 +1,7 @@
 -- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-15", -- shown small in the corner of the screen and in Output: which build is running
+	BUILD = "life-16", -- shown small in the corner of the screen and in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join. Set to nil
 	-- before the game launches!
@@ -31,6 +31,39 @@ local Config = {
 
 	GRAB_HOLD_SECONDS = 0.5, -- how long to hold the prompt to grab an egg in a zone
 }
+
+-- Plot upgrades (coins): each level unlocks another yard spot, garden bed and pet place.
+Config.PLOT_MAX = 5
+
+-- What a plot level holds: yard spots, garden beds and pets.
+function Config.plotSpaces(level: number): { yard: number, garden: number, pets: number }
+	level = math.clamp(level or 1, 1, Config.PLOT_MAX)
+	return { yard = level + 1, garden = level + 1, pets = level + 3 }
+end
+
+-- Coins to upgrade a plot from `level` to the next level.
+function Config.plotCost(level: number): number
+	return math.floor(2000 * 6 ^ (level - 1))
+end
+
+-- House upgrades (coins): the house grows bigger each level, and some slots only open up
+-- at a higher level (the rest are there from level 1).
+Config.HOUSE_MAX = 8
+Config.HOUSE_SLOT_LEVEL = { Porch = 2, Chimney = 3, Garden = 4, Tower = 5 }
+
+function Config.houseSlotOpen(level: number, slotId: string): boolean
+	return (level or 1) >= (Config.HOUSE_SLOT_LEVEL[slotId] or 1)
+end
+
+-- How big the house is drawn at a level (1x at level 1, 1.25x at the top level).
+function Config.houseScale(level: number): number
+	return 1 + 0.25 * (math.clamp(level or 1, 1, Config.HOUSE_MAX) - 1) / (Config.HOUSE_MAX - 1)
+end
+
+-- Coins to upgrade a house from `level` to the next level.
+function Config.houseCost(level: number): number
+	return math.floor(1000 * 5 ^ (level - 1))
+end
 
 -- Speed a second from a treadmill of this level (before pass bonuses).
 function Config.treadmillGain(level: number): number

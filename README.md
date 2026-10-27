@@ -88,6 +88,14 @@ rojo build -o StealALife.rbxlx    # or build a place file
   comes a random item of the egg's kind and rarity, keeping the egg's mutation, with a
   card-pack reveal (`src/client/PackReveal.luau`). It goes straight out if it beats what you
   have (the old one goes to your backpack), otherwise into the backpack.
+- **Upgrades** (coins, in the 🛒 Shop; `Config.luau`):
+  - **Treadmill** (20 levels): more ⚡ Speed a second.
+  - **Plot** (5 levels): level 1 has room for 2 yard items, 2 plants and 4 pets; each level
+    adds a yard spot, a garden bed and a pet place (up to 6, 6 and 8). Locked spots show as
+    grey pads with a 🔒 in the yard.
+  - **House** (8 levels): the house grows a little each level (up to 1.25x), and the Porch,
+    Chimney, Garden and Tower slots open at levels 2, 3, 4 and 5. Older saves start at the
+    levels that fit what they already have.
 - **Backpack:** 40 items (more with the Bigger Backpack passes). The 🏡 My Life window shows
   your nests, house, pets, yard and garden; the 🎒 Bag window puts items out or sells them;
   Put Out Best does everything at once.

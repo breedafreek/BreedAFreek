@@ -45,8 +45,8 @@ for n = 1, Items.GARDEN_BEDS do
 end
 local YARD_SPOTS = {
 	Vector3.new(38, 0, -16),
-	Vector3.new(-37, 0, 14),
-	Vector3.new(37, 0, 14),
+	Vector3.new(-39, 0, 16),
+	Vector3.new(39, 0, 16),
 	Vector3.new(-30, 0, 36),
 	Vector3.new(0, 0, 37),
 	Vector3.new(30, 0, 36),
@@ -427,7 +427,7 @@ local function buildBeds(plot, folder: Instance)
 	plot.beds = {}
 	for n, spot in BED_SPOTS do
 		local cf = plot.origin * CFrame.new(spot)
-		part({
+		local soil = part({
 			Name = "Soil",
 			Size = Vector3.new(7, 0.8, 7),
 			CFrame = cf * CFrame.new(0, 0.6, 0),
@@ -443,12 +443,12 @@ local function buildBeds(plot, folder: Instance)
 				Parent = model,
 			})
 		end
-		plot.beds[n] = { spot = cf * CFrame.new(0, 1, 0), model = nil, key = nil }
+		plot.beds[n] = { spot = cf * CFrame.new(0, 1, 0), model = nil, key = nil, base = soil }
 	end
 	plot.spots = {}
 	for n, spot in YARD_SPOTS do
 		local cf = plot.origin * CFrame.new(spot)
-		part({
+		local pad = part({
 			Name = "Pad",
 			Size = Vector3.new(12, 0.3, 12),
 			CFrame = cf * CFrame.new(0, 0.55, 0),
@@ -466,7 +466,7 @@ local function buildBeds(plot, folder: Instance)
 		end
 		-- Items at the back face the house; the rest face the street.
 		local facing = if spot.Z > 30 then CFrame.Angles(0, math.pi, 0) else CFrame.identity
-		plot.spots[n] = { spot = cf * CFrame.new(0, 0.7, 0) * facing, model = nil, key = nil }
+		plot.spots[n] = { spot = cf * CFrame.new(0, 0.7, 0) * facing, model = nil, key = nil, base = pad }
 	end
 end
 
@@ -515,18 +515,56 @@ local function buildPlot(index: number)
 end
 
 -- Rebuilds any house slot whose part changed.
-local function updateHouse(plot, layout)
+-- The slots that make up the house itself (they grow with the house level); the rest
+-- (fence, mailbox, garden bed) stay their size in the yard.
+local HOUSE_BODY =
+	{ Walls = true, Roof = true, Door = true, Windows = true, Tower = true, Chimney = true, Porch = true }
+-- The point the house grows from: the middle of its footprint, on the ground.
+local HOUSE_CENTER = CFrame.new(0, 0, HouseModel.HOUSE_Z + 10)
+
+-- Rebuilds any house slot whose part changed (or everything, if the house level changed).
+-- Slots not open at this house level aren't built.
+local function updateHouse(plot, layout, level: number)
+	if plot.houseLevel ~= level then
+		plot.houseLevel = level
+		plot.house:ClearAllChildren()
+	end
+	local scale = Config.houseScale(level)
 	for _, slot in Parts.SLOTS do
-		local partId = layout[slot.id] or Parts.basic(slot.id)
+		local partId = layout[slot.id]
 		local current = plot.house:FindFirstChild(slot.id)
-		if not current or current:GetAttribute("Part") ~= partId then
-			if current then
-				current:Destroy()
-			end
+		if current and current:GetAttribute("Part") ~= partId then
+			current:Destroy()
+			current = nil
+		end
+		if partId and not current then
 			local model = HouseModel.slot(slot.id, partId)
+			if HOUSE_BODY[slot.id] then
+				Items.scaleModel(model, scale, HOUSE_CENTER)
+			end
 			model:PivotTo(plot.origin * model:GetPivot())
 			model.Parent = plot.house
 		end
+	end
+end
+
+-- Shows a yard spot or garden bed as open, or locked until plot level `unlockAt`.
+local function setSpotLocked(spot, locked: boolean, unlockAt: number)
+	if spot.locked == locked then
+		return
+	end
+	spot.locked = locked
+	spot.normalColor = spot.normalColor or spot.base.Color
+	spot.base.Color = if locked then Color3.fromRGB(150, 150, 160) else spot.normalColor
+	local sign = spot.base:FindFirstChild("LockSign")
+	if locked and not sign then
+		local gui, label = billboard(spot.base, UDim2.fromScale(6, 1.6), Vector3.new(0, 2.5, 0), 60)
+		gui.Name = "LockSign"
+		label.Font = Enum.Font.LuckiestGuy
+		label.Text = "🔒 PLOT LV " .. unlockAt
+		label.TextColor3 = Color3.fromRGB(220, 220, 235)
+	elseif not locked and sign then
+		sign:Destroy()
 	end
 end
 
@@ -672,14 +710,17 @@ function PlotService.render(player: Player)
 	if not plot or not data then
 		return
 	end
-	updateHouse(plot, LifeUtil.layout(data))
+	updateHouse(plot, LifeUtil.layout(data), data.houseLevel or 1)
+	local spaces = LifeUtil.spaces(data)
 	for n, bed in plot.beds do
 		local uid = data.garden and data.garden[tostring(n)]
 		updateSpot(plot, bed, uid and data.parts[uid])
+		setSpotLocked(bed, n > spaces.garden, math.max(1, n - 1))
 	end
 	for n, spot in plot.spots do
 		local uid = data.yard and data.yard[tostring(n)]
 		updateSpot(plot, spot, uid and data.parts[uid])
+		setSpotLocked(spot, n > spaces.yard, math.max(1, n - 1))
 	end
 	updateNests(plot, data, player)
 	plot.folder:SetAttribute("Pets", petList(data))
@@ -694,12 +735,22 @@ end
 
 local function clearPlot(plot)
 	plot.owner = nil
-	updateHouse(plot, {})
-	for _, spot in plot.beds do
-		updateSpot(plot, spot, nil)
+	-- Empty homes show a plain level 1 house and plot.
+	local basic = {}
+	for _, slot in Parts.SLOTS do
+		if Config.houseSlotOpen(1, slot.id) then
+			basic[slot.id] = Parts.basic(slot.id)
+		end
 	end
-	for _, spot in plot.spots do
+	updateHouse(plot, basic, 1)
+	local spaces = Config.plotSpaces(1)
+	for n, spot in plot.beds do
 		updateSpot(plot, spot, nil)
+		setSpotLocked(spot, n > spaces.garden, math.max(1, n - 1))
+	end
+	for n, spot in plot.spots do
+		updateSpot(plot, spot, nil)
+		setSpotLocked(spot, n > spaces.yard, math.max(1, n - 1))
 	end
 	updateNests(plot, nil, nil)
 	plot.folder:SetAttribute("Pets", "")

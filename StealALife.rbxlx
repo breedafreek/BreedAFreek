@@ -816,7 +816,7 @@ return Bricks
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-15", -- shown small in the corner of the screen and in Output: which build is running
+	BUILD = "life-16", -- shown small in the corner of the screen and in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join. Set to nil
 	-- before the game launches!
@@ -846,6 +846,39 @@ local Config = {
 
 	GRAB_HOLD_SECONDS = 0.5, -- how long to hold the prompt to grab an egg in a zone
 }
+
+-- Plot upgrades (coins): each level unlocks another yard spot, garden bed and pet place.
+Config.PLOT_MAX = 5
+
+-- What a plot level holds: yard spots, garden beds and pets.
+function Config.plotSpaces(level: number): { yard: number, garden: number, pets: number }
+	level = math.clamp(level or 1, 1, Config.PLOT_MAX)
+	return { yard = level + 1, garden = level + 1, pets = level + 3 }
+end
+
+-- Coins to upgrade a plot from `level` to the next level.
+function Config.plotCost(level: number): number
+	return math.floor(2000 * 6 ^ (level - 1))
+end
+
+-- House upgrades (coins): the house grows bigger each level, and some slots only open up
+-- at a higher level (the rest are there from level 1).
+Config.HOUSE_MAX = 8
+Config.HOUSE_SLOT_LEVEL = { Porch = 2, Chimney = 3, Garden = 4, Tower = 5 }
+
+function Config.houseSlotOpen(level: number, slotId: string): boolean
+	return (level or 1) >= (Config.HOUSE_SLOT_LEVEL[slotId] or 1)
+end
+
+-- How big the house is drawn at a level (1x at level 1, 1.25x at the top level).
+function Config.houseScale(level: number): number
+	return 1 + 0.25 * (math.clamp(level or 1, 1, Config.HOUSE_MAX) - 1) / (Config.HOUSE_MAX - 1)
+end
+
+-- Coins to upgrade a house from `level` to the next level.
+function Config.houseCost(level: number): number
+	return math.floor(1000 * 5 ^ (level - 1))
+end
 
 -- Speed a second from a treadmill of this level (before pass bonuses).
 function Config.treadmillGain(level: number): number
@@ -7326,12 +7359,13 @@ function Items.rollRarity(zoneIndex: number, rng: Random, boost: number?): strin
 	return weights[#weights][1]
 end
 
--- Scales a model round its pivot (parts, their positions and sphere meshes).
-function Items.scaleModel(model: Model, factor: number)
+-- Scales a model round its pivot, or round `around` if given (parts, their positions and
+-- attachments).
+function Items.scaleModel(model: Model, factor: number, around: CFrame?)
 	if math.abs(factor - 1) < 0.001 then
 		return
 	end
-	local pivot = model:GetPivot()
+	local pivot = around or model:GetPivot()
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then
 			local rel = pivot:ToObjectSpace(p.CFrame)
@@ -7341,7 +7375,7 @@ function Items.scaleModel(model: Model, factor: number)
 			p.Position *= factor
 		end
 	end
-	if model.PrimaryPart then
+	if model.PrimaryPart and not around then
 		local offset = model.PrimaryPart.PivotOffset
 		model.PrimaryPart.PivotOffset = offset.Rotation + offset.Position * factor
 	end
@@ -7523,10 +7557,12 @@ return Lego
 -- data.parts = { [uid] = { id = itemId, mutations? } }: every item the player owns (house
 -- parts, pets, yard items, plants; see Items.luau). Items are "out" in one place each:
 --   data.house  = { [slotId] = uid }     house parts on the house (a slot with none shows Basic)
---   data.pen    = { [uid] = true }       pets roaming the yard (up to Items.PET_SLOTS)
+--   data.pen    = { [uid] = true }       pets roaming the yard
 --   data.yard   = { ["1".."6"] = uid }   yard items on the yard spots
 --   data.garden = { ["1".."6"] = uid }   plants in the garden beds
--- Everything else is in the backpack.
+-- Everything else is in the backpack. How many pets, yard spots and beds there are comes
+-- from data.plotLevel (Config.plotSpaces); which house slots are open from data.houseLevel
+-- (Config.houseSlotOpen).
 -- data.nests = { ["1".."5"] = { zone, rarity, endsAt, mutations? } }: eggs growing at home.
 
 local Config = require(script.Parent.Config)
@@ -7551,11 +7587,23 @@ function LifeUtil.installedRecord(data, slotId: string)
 	return owned, if owned then uid else nil
 end
 
--- { [slotId] = partId } for HouseModel.house.
+-- How many pets, yard spots and garden beds this player has (their plot level).
+function LifeUtil.spaces(data): { yard: number, garden: number, pets: number }
+	return Config.plotSpaces(data.plotLevel or 1)
+end
+
+-- Whether a house slot is open at this player's house level.
+function LifeUtil.slotOpen(data, slotId: string): boolean
+	return Config.houseSlotOpen(data.houseLevel or 1, slotId)
+end
+
+-- { [slotId] = partId } for the open house slots.
 function LifeUtil.layout(data): { [string]: string }
 	local layout = {}
 	for _, slot in Parts.SLOTS do
-		layout[slot.id] = LifeUtil.installed(data, slot.id)
+		if LifeUtil.slotOpen(data, slot.id) then
+			layout[slot.id] = LifeUtil.installed(data, slot.id)
+		end
 	end
 	return layout
 end
@@ -7592,6 +7640,9 @@ end
 function LifeUtil.totalIncome(data): number
 	local total = 0
 	for _, slot in Parts.SLOTS do
+		if not LifeUtil.slotOpen(data, slot.id) then
+			continue
+		end
 		local record = LifeUtil.installedRecord(data, slot.id)
 		total += LifeUtil.itemIncome(record or { id = Parts.basic(slot.id) })
 	end
@@ -7691,15 +7742,19 @@ function LifeUtil.placeIfBetter(data, uid: string): string
 	data.pen = data.pen or {}
 	data.yard = data.yard or {}
 	data.garden = data.garden or {}
+	local spaces = LifeUtil.spaces(data)
 	if item.kind == "House" then
 		local current = LifeUtil.installedRecord(data, item.slot)
-		if income > LifeUtil.itemIncome(current or { id = Parts.basic(item.slot) }) then
+		if
+			LifeUtil.slotOpen(data, item.slot)
+			and income > LifeUtil.itemIncome(current or { id = Parts.basic(item.slot) })
+		then
 			data.house[item.slot] = uid
 			return "house"
 		end
 	elseif item.kind == "Pet" then
 		local pets = LifeUtil.pets(data)
-		if #pets < Items.PET_SLOTS then
+		if #pets < spaces.pets then
 			data.pen[uid] = true
 			return "pen"
 		end
@@ -7717,7 +7772,7 @@ function LifeUtil.placeIfBetter(data, uid: string): string
 		end
 	elseif item.kind == "Yard" or item.kind == "Plant" then
 		local where = if item.kind == "Yard" then data.yard else data.garden
-		local count = if item.kind == "Yard" then Items.YARD_SPOTS else Items.GARDEN_BEDS
+		local count = if item.kind == "Yard" then spaces.yard else spaces.garden
 		local spot, worstIncome = bestSpot(data, where, count)
 		if spot and income > worstIncome then
 			where[spot] = uid
@@ -7735,6 +7790,8 @@ function LifeUtil.isUpgrade(data, uid: string): boolean
 		pen = table.clone(data.pen or {}),
 		yard = table.clone(data.yard or {}),
 		garden = table.clone(data.garden or {}),
+		plotLevel = data.plotLevel,
+		houseLevel = data.houseLevel,
 	}
 	return LifeUtil.placeIfBetter(copy, uid) ~= "backpack"
 end
@@ -9058,6 +9115,8 @@ local function snapshot(data)
 		money = data.money,
 		speed = data.speed,
 		treadmill = data.treadmill,
+		plotLevel = data.plotLevel,
+		houseLevel = data.houseLevel,
 		parts = data.parts,
 		house = data.house,
 		pen = data.pen,
@@ -9089,11 +9148,19 @@ function handlers.Place(player: Player, data, uid: any, spot: any)
 	if not item or LifeUtil.placed(data)[uid] then
 		return
 	end
+	local spaces = LifeUtil.spaces(data)
 	if item.kind == "House" then
+		if not LifeUtil.slotOpen(data, item.slot) then
+			return notify(
+				player,
+				"Upgrade your house to level " .. Config.HOUSE_SLOT_LEVEL[item.slot] .. " to add a " .. item.slot .. "!",
+				"error"
+			)
+		end
 		data.house[item.slot] = uid
 	elseif item.kind == "Pet" then
 		local pets = LifeUtil.pets(data)
-		if #pets >= Items.PET_SLOTS then
+		if #pets >= spaces.pets then
 			-- Swap out the worst pet.
 			table.sort(pets, function(a, b)
 				return LifeUtil.itemIncome(data.parts[a]) < LifeUtil.itemIncome(data.parts[b])
@@ -9103,7 +9170,7 @@ function handlers.Place(player: Player, data, uid: any, spot: any)
 		data.pen[uid] = true
 	else
 		local where = if item.kind == "Yard" then data.yard else data.garden
-		local count = if item.kind == "Yard" then Items.YARD_SPOTS else Items.GARDEN_BEDS
+		local count = if item.kind == "Yard" then spaces.yard else spaces.garden
 		local key = typeof(spot) == "string" and tonumber(spot) and spot or nil
 		if key and (tonumber(key) < 1 or tonumber(key) > count or key ~= tostring(tonumber(key))) then
 			key = nil
@@ -9186,13 +9253,18 @@ function handlers.SellBackpack(player: Player, data)
 end
 
 -- Puts out the best of everything (best items first, so each spot ends up with the best).
-function handlers.PlaceBest(player: Player, data)
+local function putOutBest(data): number
 	local changed = 0
 	for _, uid in LifeUtil.backpack(data) do
 		if LifeUtil.placeIfBetter(data, uid) ~= "backpack" then
 			changed += 1
 		end
 	end
+	return changed
+end
+
+function handlers.PlaceBest(player: Player, data)
+	local changed = putOutBest(data)
 	if changed > 0 then
 		notify(
 			player,
@@ -9228,6 +9300,54 @@ function handlers.UpgradeTreadmill(player: Player, data)
 	data.money -= cost
 	data.treadmill += 1
 	notify(player, "⚡ Treadmill upgraded to level " .. data.treadmill .. "!", "success")
+end
+
+-- Upgrades the plot one level: another yard spot, garden bed and pet place.
+function handlers.UpgradePlot(player: Player, data)
+	local level = data.plotLevel or 1
+	if level >= Config.PLOT_MAX then
+		return notify(player, "Your plot is as big as it gets!", "error")
+	end
+	local cost = Config.plotCost(level)
+	if data.money < cost then
+		return notify(player, "You need " .. Format.money(cost) .. " to upgrade your plot.", "error")
+	end
+	data.money -= cost
+	data.plotLevel = level + 1
+	notify(player, "🏡 Plot upgraded to level " .. data.plotLevel .. "! More room for your stuff.", "success")
+	-- Fill the new room with the best of the backpack.
+	putOutBest(data)
+end
+
+-- Upgrades the house one level: bigger, and some levels open up a new slot.
+function handlers.UpgradeHouse(player: Player, data)
+	local level = data.houseLevel or 1
+	if level >= Config.HOUSE_MAX then
+		return notify(player, "Your house is as big as it gets!", "error")
+	end
+	local cost = Config.houseCost(level)
+	if data.money < cost then
+		return notify(player, "You need " .. Format.money(cost) .. " to upgrade your house.", "error")
+	end
+	data.money -= cost
+	data.houseLevel = level + 1
+	local opened = nil
+	for slotId, at in Config.HOUSE_SLOT_LEVEL do
+		if at == data.houseLevel then
+			opened = slotId
+		end
+	end
+	notify(
+		player,
+		"🏠 House upgraded to level "
+			.. data.houseLevel
+			.. "!"
+			.. (if opened then " New: " .. opened .. "!" else " It's bigger!"),
+		"success"
+	)
+	if opened then
+		putOutBest(data)
+	end
 end
 
 -- Teleports the player home (not while carrying an egg: that would skip the run).
@@ -9477,6 +9597,8 @@ local function defaultData()
 		money = Config.START_MONEY,
 		speed = 0, -- trained on the treadmill; decides how fast you run
 		treadmill = 1, -- treadmill level
+		plotLevel = 1, -- how many yard spots, garden beds and pets (Config.plotSpaces)
+		houseLevel = 1, -- how big the house is and which slots are open (Config.HOUSE_*)
 		parts = {}, -- [uid] = { id = itemId, mutations? }: everything owned (see LifeUtil)
 		house = {}, -- [slotId] = uid of the part installed there (none = Basic)
 		pen = {}, -- [uid] = true for pets out in the yard
@@ -9494,7 +9616,35 @@ local function defaultData()
 	}
 end
 
+-- Saves from before plot and house levels: start them at the levels that fit everything
+-- they already have out, so nothing gets put away.
+local function fitLevels(data)
+	if data.plotLevel == nil then
+		local need = 1
+		for key in data.yard or {} do
+			need = math.max(need, (tonumber(key) or 1) - 1)
+		end
+		for key in data.garden or {} do
+			need = math.max(need, (tonumber(key) or 1) - 1)
+		end
+		local pets = 0
+		for _ in data.pen or {} do
+			pets += 1
+		end
+		need = math.max(need, pets - 3)
+		data.plotLevel = math.clamp(need, 1, Config.PLOT_MAX)
+	end
+	if data.houseLevel == nil then
+		local need = 1
+		for slotId in data.house or {} do
+			need = math.max(need, Config.HOUSE_SLOT_LEVEL[slotId] or 1)
+		end
+		data.houseLevel = need
+	end
+end
+
 local function reconcile(data)
+	fitLevels(data)
 	for key, value in defaultData() do
 		if data[key] == nil then
 			data[key] = value
@@ -9531,12 +9681,21 @@ local function reconcile(data)
 			data.pen[uid] = nil
 		end
 	end
+	data.plotLevel = math.clamp(math.floor(tonumber(data.plotLevel) or 1), 1, Config.PLOT_MAX)
+	data.houseLevel = math.clamp(math.floor(tonumber(data.houseLevel) or 1), 1, Config.HOUSE_MAX)
+	local spaces = Config.plotSpaces(data.plotLevel)
 	for kind, where in { Yard = data.yard, Plant = data.garden } do
+		local count = if kind == "Yard" then spaces.yard else spaces.garden
 		for spot, uid in where do
 			local record = data.parts[uid]
-			if not record or Items.byId[record.id].kind ~= kind then
+			if not record or Items.byId[record.id].kind ~= kind or (tonumber(spot) or 0) > count then
 				where[spot] = nil
 			end
+		end
+	end
+	for slotId in data.house do
+		if not Config.houseSlotOpen(data.houseLevel, slotId) then
+			data.house[slotId] = nil
 		end
 	end
 	return data
@@ -12274,8 +12433,8 @@ for n = 1, Items.GARDEN_BEDS do
 end
 local YARD_SPOTS = {
 	Vector3.new(38, 0, -16),
-	Vector3.new(-37, 0, 14),
-	Vector3.new(37, 0, 14),
+	Vector3.new(-39, 0, 16),
+	Vector3.new(39, 0, 16),
 	Vector3.new(-30, 0, 36),
 	Vector3.new(0, 0, 37),
 	Vector3.new(30, 0, 36),
@@ -12656,7 +12815,7 @@ local function buildBeds(plot, folder: Instance)
 	plot.beds = {}
 	for n, spot in BED_SPOTS do
 		local cf = plot.origin * CFrame.new(spot)
-		part({
+		local soil = part({
 			Name = "Soil",
 			Size = Vector3.new(7, 0.8, 7),
 			CFrame = cf * CFrame.new(0, 0.6, 0),
@@ -12672,12 +12831,12 @@ local function buildBeds(plot, folder: Instance)
 				Parent = model,
 			})
 		end
-		plot.beds[n] = { spot = cf * CFrame.new(0, 1, 0), model = nil, key = nil }
+		plot.beds[n] = { spot = cf * CFrame.new(0, 1, 0), model = nil, key = nil, base = soil }
 	end
 	plot.spots = {}
 	for n, spot in YARD_SPOTS do
 		local cf = plot.origin * CFrame.new(spot)
-		part({
+		local pad = part({
 			Name = "Pad",
 			Size = Vector3.new(12, 0.3, 12),
 			CFrame = cf * CFrame.new(0, 0.55, 0),
@@ -12695,7 +12854,7 @@ local function buildBeds(plot, folder: Instance)
 		end
 		-- Items at the back face the house; the rest face the street.
 		local facing = if spot.Z > 30 then CFrame.Angles(0, math.pi, 0) else CFrame.identity
-		plot.spots[n] = { spot = cf * CFrame.new(0, 0.7, 0) * facing, model = nil, key = nil }
+		plot.spots[n] = { spot = cf * CFrame.new(0, 0.7, 0) * facing, model = nil, key = nil, base = pad }
 	end
 end
 
@@ -12744,18 +12903,56 @@ local function buildPlot(index: number)
 end
 
 -- Rebuilds any house slot whose part changed.
-local function updateHouse(plot, layout)
+-- The slots that make up the house itself (they grow with the house level); the rest
+-- (fence, mailbox, garden bed) stay their size in the yard.
+local HOUSE_BODY =
+	{ Walls = true, Roof = true, Door = true, Windows = true, Tower = true, Chimney = true, Porch = true }
+-- The point the house grows from: the middle of its footprint, on the ground.
+local HOUSE_CENTER = CFrame.new(0, 0, HouseModel.HOUSE_Z + 10)
+
+-- Rebuilds any house slot whose part changed (or everything, if the house level changed).
+-- Slots not open at this house level aren't built.
+local function updateHouse(plot, layout, level: number)
+	if plot.houseLevel ~= level then
+		plot.houseLevel = level
+		plot.house:ClearAllChildren()
+	end
+	local scale = Config.houseScale(level)
 	for _, slot in Parts.SLOTS do
-		local partId = layout[slot.id] or Parts.basic(slot.id)
+		local partId = layout[slot.id]
 		local current = plot.house:FindFirstChild(slot.id)
-		if not current or current:GetAttribute("Part") ~= partId then
-			if current then
-				current:Destroy()
-			end
+		if current and current:GetAttribute("Part") ~= partId then
+			current:Destroy()
+			current = nil
+		end
+		if partId and not current then
 			local model = HouseModel.slot(slot.id, partId)
+			if HOUSE_BODY[slot.id] then
+				Items.scaleModel(model, scale, HOUSE_CENTER)
+			end
 			model:PivotTo(plot.origin * model:GetPivot())
 			model.Parent = plot.house
 		end
+	end
+end
+
+-- Shows a yard spot or garden bed as open, or locked until plot level `unlockAt`.
+local function setSpotLocked(spot, locked: boolean, unlockAt: number)
+	if spot.locked == locked then
+		return
+	end
+	spot.locked = locked
+	spot.normalColor = spot.normalColor or spot.base.Color
+	spot.base.Color = if locked then Color3.fromRGB(150, 150, 160) else spot.normalColor
+	local sign = spot.base:FindFirstChild("LockSign")
+	if locked and not sign then
+		local gui, label = billboard(spot.base, UDim2.fromScale(6, 1.6), Vector3.new(0, 2.5, 0), 60)
+		gui.Name = "LockSign"
+		label.Font = Enum.Font.LuckiestGuy
+		label.Text = "🔒 PLOT LV " .. unlockAt
+		label.TextColor3 = Color3.fromRGB(220, 220, 235)
+	elseif not locked and sign then
+		sign:Destroy()
 	end
 end
 
@@ -12901,14 +13098,17 @@ function PlotService.render(player: Player)
 	if not plot or not data then
 		return
 	end
-	updateHouse(plot, LifeUtil.layout(data))
+	updateHouse(plot, LifeUtil.layout(data), data.houseLevel or 1)
+	local spaces = LifeUtil.spaces(data)
 	for n, bed in plot.beds do
 		local uid = data.garden and data.garden[tostring(n)]
 		updateSpot(plot, bed, uid and data.parts[uid])
+		setSpotLocked(bed, n > spaces.garden, math.max(1, n - 1))
 	end
 	for n, spot in plot.spots do
 		local uid = data.yard and data.yard[tostring(n)]
 		updateSpot(plot, spot, uid and data.parts[uid])
+		setSpotLocked(spot, n > spaces.yard, math.max(1, n - 1))
 	end
 	updateNests(plot, data, player)
 	plot.folder:SetAttribute("Pets", petList(data))
@@ -12923,12 +13123,22 @@ end
 
 local function clearPlot(plot)
 	plot.owner = nil
-	updateHouse(plot, {})
-	for _, spot in plot.beds do
-		updateSpot(plot, spot, nil)
+	-- Empty homes show a plain level 1 house and plot.
+	local basic = {}
+	for _, slot in Parts.SLOTS do
+		if Config.houseSlotOpen(1, slot.id) then
+			basic[slot.id] = Parts.basic(slot.id)
+		end
 	end
-	for _, spot in plot.spots do
+	updateHouse(plot, basic, 1)
+	local spaces = Config.plotSpaces(1)
+	for n, spot in plot.beds do
 		updateSpot(plot, spot, nil)
+		setSpotLocked(spot, n > spaces.garden, math.max(1, n - 1))
+	end
+	for n, spot in plot.spots do
+		updateSpot(plot, spot, nil)
+		setSpotLocked(spot, n > spaces.yard, math.max(1, n - 1))
 	end
 	updateNests(plot, nil, nil)
 	plot.folder:SetAttribute("Pets", "")
@@ -18553,12 +18763,79 @@ function renderers.Shop()
 			end)
 	)
 
+	-- The plot: more yard spots, garden beds and pet places.
+	local plotLevel = state.plotLevel or 1
+	local plotNow = Config.plotSpaces(plotLevel)
+	local plotMaxed = plotLevel >= Config.PLOT_MAX
+	local plotFrame = banner(2, Color3.fromRGB(90, 200, 110), Color3.fromRGB(40, 160, 120), 150)
+	local plotPicture = ItemPictures.view("MenuLife", 140)
+	plotPicture.Position = UDim2.fromOffset(10, 5)
+	plotPicture.Size = UDim2.fromOffset(150, 140)
+	plotPicture.Parent = plotFrame
+	bannerText(
+		plotFrame,
+		"PLOT  LV " .. plotLevel,
+		string.format(
+			"Room for %d yard items, %d plants and %d pets.%s",
+			plotNow.yard,
+			plotNow.garden,
+			plotNow.pets,
+			if plotMaxed then "  (max level!)" else "\nNext: +1 yard spot, +1 garden bed, +1 pet"
+		),
+		170,
+		Color3.fromRGB(200, 255, 200)
+	)
+	bannerButton(
+		plotFrame,
+		if plotMaxed
+			then UI.button("MAXED!", colors.gray, function() end)
+			else UI.pricePill("UPGRADE " .. Format.money(Config.plotCost(plotLevel)), function()
+				send("UpgradePlot")
+			end)
+	)
+
+	-- The house: bigger, with new slots at some levels.
+	local houseLevel = state.houseLevel or 1
+	local houseMaxed = houseLevel >= Config.HOUSE_MAX
+	local nextSlot = nil
+	for slotId, at in Config.HOUSE_SLOT_LEVEL do
+		if at == houseLevel + 1 then
+			nextSlot = slotId
+		end
+	end
+	local houseFrame = banner(3, Color3.fromRGB(255, 150, 80), Color3.fromRGB(240, 90, 120), 150)
+	local housePicture = ItemPictures.view("MenuHouse", 140)
+	housePicture.Position = UDim2.fromOffset(10, 5)
+	housePicture.Size = UDim2.fromOffset(150, 140)
+	housePicture.Parent = houseFrame
+	bannerText(
+		houseFrame,
+		"HOUSE  LV " .. houseLevel,
+		"A bigger house"
+			.. (
+				if houseMaxed
+					then ". (max level!)"
+					elseif nextSlot then " with a new " .. string.upper(nextSlot) .. " slot next level!"
+					else " every level. New slots open at levels 2–5."
+			),
+		170,
+		Color3.fromRGB(255, 230, 200)
+	)
+	bannerButton(
+		houseFrame,
+		if houseMaxed
+			then UI.button("MAXED!", colors.gray, function() end)
+			else UI.pricePill("UPGRADE " .. Format.money(Config.houseCost(houseLevel)), function()
+				send("UpgradeHouse")
+			end)
+	)
+
 	-- The zones, their eggs and the Speed each one needs.
 	local speed = player:GetAttribute("Speed") or state.speed or 0
-	heading("Zones", 2)
-	heading("Grab an egg and outrun the guardian! Train ⚡ Speed to reach the deeper zones.", 3)
+	heading("Zones", 4)
+	heading("Grab an egg and outrun the guardian! Train ⚡ Speed to reach the deeper zones.", 5)
 	local grid = UI.grid(210, 300)
-	grid.LayoutOrder = 4
+	grid.LayoutOrder = 6
 	grid.Parent = body
 	for i, zone in Items.ZONES do
 		local kind = Items.KINDS[zone.kind]
@@ -18652,6 +18929,19 @@ local function placedCard(uid: string, title: string)
 			end, { Size = UDim2.new(1, 0, 0, 36) }),
 		},
 		tag = { info.rarity:upper(), Items.color(record.id) },
+	})
+end
+
+-- A locked slot or spot: upgrade in the Shop to open it.
+local function lockedCard(title: string, hint: string)
+	return UI.card({
+		accent = Color3.fromRGB(110, 110, 130),
+		lines = { { title, nil, 22 }, { "🔒 " .. hint, colors.muted, 36 } },
+		buttons = {
+			UI.button("UPGRADE", colors.green, function()
+				open("Shop")
+			end, { Size = UDim2.new(1, 0, 0, 36) }),
+		},
 	})
 end
 
@@ -18757,7 +19047,9 @@ function renderers.Life()
 		for i, slot in Parts.SLOTS do
 			local record, uid = LifeUtil.installedRecord(state, slot.id)
 			local card
-			if record then
+			if not LifeUtil.slotOpen(state, slot.id) then
+				card = lockedCard(slot.icon .. " " .. slot.name, "House level " .. Config.HOUSE_SLOT_LEVEL[slot.id])
+			elseif record then
 				card = placedCard(uid, slot.icon .. " " .. slot.name)
 			else
 				local basic = { id = Parts.basic(slot.id) }
@@ -18782,21 +19074,26 @@ function renderers.Life()
 		end
 	elseif lifeTab == "Pets" then
 		local pets = LifeUtil.pets(state)
-		for n = 1, Items.PET_SLOTS do
-			local card = if pets[n]
-				then placedCard(pets[n], "🐾 Pet " .. n)
+		local room = LifeUtil.spaces(state).pets
+		for n = 1, Config.plotSpaces(Config.PLOT_MAX).pets do
+			local card = if n > room
+				then lockedCard("🐾 Pet " .. n, "Plot level " .. (n - 3))
+				elseif pets[n] then placedCard(pets[n], "🐾 Pet " .. n)
 				else emptyCard("🐾 Pet " .. n, "Hatch Wilds Eggs to get pets that roam your yard!")
 			card.LayoutOrder = n
 			card.Parent = grid
 		end
 	else
 		local where = if lifeTab == "Yard" then state.yard else state.garden
+		local spaces = LifeUtil.spaces(state)
+		local room = if lifeTab == "Yard" then spaces.yard else spaces.garden
 		local count = if lifeTab == "Yard" then Items.YARD_SPOTS else Items.GARDEN_BEDS
 		local icon = if lifeTab == "Yard" then "🛝 Spot " else "🌷 Bed "
 		for n = 1, count do
 			local uid = where and where[tostring(n)]
-			local card = if uid and state.parts[uid]
-				then placedCard(uid, icon .. n)
+			local card = if n > room
+				then lockedCard(icon .. n, "Plot level " .. (n - 1))
+				elseif uid and state.parts[uid] then placedCard(uid, icon .. n)
 				else emptyCard(
 					icon .. n,
 					if lifeTab == "Yard"
@@ -19534,8 +19831,11 @@ task.spawn(function()
 				end
 			end
 			local level = state.treadmill or 1
-			local canUpgrade = level < Config.TREADMILL_MAX and (state.money or 0) >= Config.treadmillCost(level)
-			setBadge("Shop", if canUpgrade then "⚡" else nil, colors.blue)
+			local money = state.money or 0
+			local canUpgrade = (level < Config.TREADMILL_MAX and money >= Config.treadmillCost(level))
+				or ((state.plotLevel or 1) < Config.PLOT_MAX and money >= Config.plotCost(state.plotLevel or 1))
+				or ((state.houseLevel or 1) < Config.HOUSE_MAX and money >= Config.houseCost(state.houseLevel or 1))
+			setBadge("Shop", if canUpgrade then "⬆" else nil, colors.blue)
 		end
 		task.wait(0.5)
 	end

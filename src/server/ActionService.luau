@@ -32,6 +32,8 @@ local function snapshot(data)
 		money = data.money,
 		speed = data.speed,
 		treadmill = data.treadmill,
+		plotLevel = data.plotLevel,
+		houseLevel = data.houseLevel,
 		parts = data.parts,
 		house = data.house,
 		pen = data.pen,
@@ -63,11 +65,19 @@ function handlers.Place(player: Player, data, uid: any, spot: any)
 	if not item or LifeUtil.placed(data)[uid] then
 		return
 	end
+	local spaces = LifeUtil.spaces(data)
 	if item.kind == "House" then
+		if not LifeUtil.slotOpen(data, item.slot) then
+			return notify(
+				player,
+				"Upgrade your house to level " .. Config.HOUSE_SLOT_LEVEL[item.slot] .. " to add a " .. item.slot .. "!",
+				"error"
+			)
+		end
 		data.house[item.slot] = uid
 	elseif item.kind == "Pet" then
 		local pets = LifeUtil.pets(data)
-		if #pets >= Items.PET_SLOTS then
+		if #pets >= spaces.pets then
 			-- Swap out the worst pet.
 			table.sort(pets, function(a, b)
 				return LifeUtil.itemIncome(data.parts[a]) < LifeUtil.itemIncome(data.parts[b])
@@ -77,7 +87,7 @@ function handlers.Place(player: Player, data, uid: any, spot: any)
 		data.pen[uid] = true
 	else
 		local where = if item.kind == "Yard" then data.yard else data.garden
-		local count = if item.kind == "Yard" then Items.YARD_SPOTS else Items.GARDEN_BEDS
+		local count = if item.kind == "Yard" then spaces.yard else spaces.garden
 		local key = typeof(spot) == "string" and tonumber(spot) and spot or nil
 		if key and (tonumber(key) < 1 or tonumber(key) > count or key ~= tostring(tonumber(key))) then
 			key = nil
@@ -160,13 +170,18 @@ function handlers.SellBackpack(player: Player, data)
 end
 
 -- Puts out the best of everything (best items first, so each spot ends up with the best).
-function handlers.PlaceBest(player: Player, data)
+local function putOutBest(data): number
 	local changed = 0
 	for _, uid in LifeUtil.backpack(data) do
 		if LifeUtil.placeIfBetter(data, uid) ~= "backpack" then
 			changed += 1
 		end
 	end
+	return changed
+end
+
+function handlers.PlaceBest(player: Player, data)
+	local changed = putOutBest(data)
 	if changed > 0 then
 		notify(
 			player,
@@ -202,6 +217,54 @@ function handlers.UpgradeTreadmill(player: Player, data)
 	data.money -= cost
 	data.treadmill += 1
 	notify(player, "⚡ Treadmill upgraded to level " .. data.treadmill .. "!", "success")
+end
+
+-- Upgrades the plot one level: another yard spot, garden bed and pet place.
+function handlers.UpgradePlot(player: Player, data)
+	local level = data.plotLevel or 1
+	if level >= Config.PLOT_MAX then
+		return notify(player, "Your plot is as big as it gets!", "error")
+	end
+	local cost = Config.plotCost(level)
+	if data.money < cost then
+		return notify(player, "You need " .. Format.money(cost) .. " to upgrade your plot.", "error")
+	end
+	data.money -= cost
+	data.plotLevel = level + 1
+	notify(player, "🏡 Plot upgraded to level " .. data.plotLevel .. "! More room for your stuff.", "success")
+	-- Fill the new room with the best of the backpack.
+	putOutBest(data)
+end
+
+-- Upgrades the house one level: bigger, and some levels open up a new slot.
+function handlers.UpgradeHouse(player: Player, data)
+	local level = data.houseLevel or 1
+	if level >= Config.HOUSE_MAX then
+		return notify(player, "Your house is as big as it gets!", "error")
+	end
+	local cost = Config.houseCost(level)
+	if data.money < cost then
+		return notify(player, "You need " .. Format.money(cost) .. " to upgrade your house.", "error")
+	end
+	data.money -= cost
+	data.houseLevel = level + 1
+	local opened = nil
+	for slotId, at in Config.HOUSE_SLOT_LEVEL do
+		if at == data.houseLevel then
+			opened = slotId
+		end
+	end
+	notify(
+		player,
+		"🏠 House upgraded to level "
+			.. data.houseLevel
+			.. "!"
+			.. (if opened then " New: " .. opened .. "!" else " It's bigger!"),
+		"success"
+	)
+	if opened then
+		putOutBest(data)
+	end
 end
 
 -- Teleports the player home (not while carrying an egg: that would skip the run).

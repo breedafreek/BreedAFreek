@@ -34,6 +34,8 @@ local function defaultData()
 		money = Config.START_MONEY,
 		speed = 0, -- trained on the treadmill; decides how fast you run
 		treadmill = 1, -- treadmill level
+		plotLevel = 1, -- how many yard spots, garden beds and pets (Config.plotSpaces)
+		houseLevel = 1, -- how big the house is and which slots are open (Config.HOUSE_*)
 		parts = {}, -- [uid] = { id = itemId, mutations? }: everything owned (see LifeUtil)
 		house = {}, -- [slotId] = uid of the part installed there (none = Basic)
 		pen = {}, -- [uid] = true for pets out in the yard
@@ -51,7 +53,35 @@ local function defaultData()
 	}
 end
 
+-- Saves from before plot and house levels: start them at the levels that fit everything
+-- they already have out, so nothing gets put away.
+local function fitLevels(data)
+	if data.plotLevel == nil then
+		local need = 1
+		for key in data.yard or {} do
+			need = math.max(need, (tonumber(key) or 1) - 1)
+		end
+		for key in data.garden or {} do
+			need = math.max(need, (tonumber(key) or 1) - 1)
+		end
+		local pets = 0
+		for _ in data.pen or {} do
+			pets += 1
+		end
+		need = math.max(need, pets - 3)
+		data.plotLevel = math.clamp(need, 1, Config.PLOT_MAX)
+	end
+	if data.houseLevel == nil then
+		local need = 1
+		for slotId in data.house or {} do
+			need = math.max(need, Config.HOUSE_SLOT_LEVEL[slotId] or 1)
+		end
+		data.houseLevel = need
+	end
+end
+
 local function reconcile(data)
+	fitLevels(data)
 	for key, value in defaultData() do
 		if data[key] == nil then
 			data[key] = value
@@ -88,12 +118,21 @@ local function reconcile(data)
 			data.pen[uid] = nil
 		end
 	end
+	data.plotLevel = math.clamp(math.floor(tonumber(data.plotLevel) or 1), 1, Config.PLOT_MAX)
+	data.houseLevel = math.clamp(math.floor(tonumber(data.houseLevel) or 1), 1, Config.HOUSE_MAX)
+	local spaces = Config.plotSpaces(data.plotLevel)
 	for kind, where in { Yard = data.yard, Plant = data.garden } do
+		local count = if kind == "Yard" then spaces.yard else spaces.garden
 		for spot, uid in where do
 			local record = data.parts[uid]
-			if not record or Items.byId[record.id].kind ~= kind then
+			if not record or Items.byId[record.id].kind ~= kind or (tonumber(spot) or 0) > count then
 				where[spot] = nil
 			end
+		end
+	end
+	for slotId in data.house do
+		if not Config.houseSlotOpen(data.houseLevel, slotId) then
+			data.house[slotId] = nil
 		end
 	end
 	return data
