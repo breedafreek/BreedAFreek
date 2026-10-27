@@ -816,7 +816,7 @@ return Bricks
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-9", -- shown small in the corner of the screen and in Output: which build is running
+	BUILD = "life-10", -- shown small in the corner of the screen and in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join (and after
 	-- a rebirth). Set to nil before the game launches!
@@ -14449,6 +14449,13 @@ function ZoneDecor.build(parent: Instance, index: number)
 			theme.trim,
 			theme.cliffMat
 		)
+		-- An invisible wall on top, far up, so nobody (flung by a guardian, or jumping off
+		-- something tall) can ever get over the side.
+		local barrier =
+			block(folder, Vector3.new(length, 200, 6), CFrame.new(centerX, wallHeight + 100, z), theme.wall, nil, true)
+		barrier.Name = "ZoneBarrier"
+		barrier.Transparency = 1
+		barrier.CanQuery = false
 		if index == 8 then
 			-- Castle battlements on the walls of the Royal Kingdom.
 			for i = 0, 15 do
@@ -14841,10 +14848,11 @@ local function catch(guardian, player: Player, root: BasePart)
 	guardian.target = nil
 	guardian.cooldown = os.clock() + 2.5
 	hooks.drop(player, zone.title .. " caught you! You dropped the egg.")
-	-- Fling them toward town.
-	local away = flatten(root.Position - guardian.position)
-	local direction = (Vector3.new(1, 0, 0) + (if away.Magnitude > 0.1 then away.Unit else Vector3.zero)).Unit
-	knockbackRemote:FireClient(player, direction + Vector3.new(0, 0.9, 0), 95, 0.35)
+	-- Fling them back toward town, along the zone and a little toward its middle, in a low
+	-- arc (well under the side walls, which also have invisible barriers above them).
+	local toMiddle = math.clamp(-root.Position.Z / (ZoneLayout.WIDTH / 2), -1, 1) * 0.3
+	local direction = Vector3.new(1, 0, toMiddle).Unit
+	knockbackRemote:FireClient(player, direction + Vector3.new(0, 0.25, 0), 80, 0.35)
 end
 
 local function stepGuardian(guardian, dt: number)

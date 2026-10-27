@@ -347,10 +347,11 @@ local function catch(guardian, player: Player, root: BasePart)
 	guardian.target = nil
 	guardian.cooldown = os.clock() + 2.5
 	hooks.drop(player, zone.title .. " caught you! You dropped the egg.")
-	-- Fling them toward town.
-	local away = flatten(root.Position - guardian.position)
-	local direction = (Vector3.new(1, 0, 0) + (if away.Magnitude > 0.1 then away.Unit else Vector3.zero)).Unit
-	knockbackRemote:FireClient(player, direction + Vector3.new(0, 0.9, 0), 95, 0.35)
+	-- Fling them back toward town, along the zone and a little toward its middle, in a low
+	-- arc (well under the side walls, which also have invisible barriers above them).
+	local toMiddle = math.clamp(-root.Position.Z / (ZoneLayout.WIDTH / 2), -1, 1) * 0.3
+	local direction = Vector3.new(1, 0, toMiddle).Unit
+	knockbackRemote:FireClient(player, direction + Vector3.new(0, 0.25, 0), 80, 0.35)
 end
 
 local function stepGuardian(guardian, dt: number)

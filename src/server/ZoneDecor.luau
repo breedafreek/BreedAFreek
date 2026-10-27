@@ -777,6 +777,13 @@ function ZoneDecor.build(parent: Instance, index: number)
 			theme.trim,
 			theme.cliffMat
 		)
+		-- An invisible wall on top, far up, so nobody (flung by a guardian, or jumping off
+		-- something tall) can ever get over the side.
+		local barrier =
+			block(folder, Vector3.new(length, 200, 6), CFrame.new(centerX, wallHeight + 100, z), theme.wall, nil, true)
+		barrier.Name = "ZoneBarrier"
+		barrier.Transparency = 1
+		barrier.CanQuery = false
 		if index == 8 then
 			-- Castle battlements on the walls of the Royal Kingdom.
 			for i = 0, 15 do
