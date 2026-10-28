@@ -10,6 +10,7 @@ local Items = require(ReplicatedStorage.Shared.Items)
 local LifeUtil = require(ReplicatedStorage.Shared.LifeUtil)
 local Parts = require(ReplicatedStorage.Shared.Parts)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local ZoneLayout = require(ReplicatedStorage.Shared.ZoneLayout)
 
 local DataService = require(script.Parent.DataService)
 local NestService = require(script.Parent.NestService)
@@ -280,7 +281,27 @@ function handlers.GoHome(player: Player, _data)
 	PlotService.sendHome(player)
 end
 
-local quiet = { GoHome = true, Hatch = true } -- actions that don't change saved data, so skip the refresh
+-- Teleports the player to the entrance of the deepest zone they're fast enough for (or
+-- zone `index`, if they're fast enough for it). Not while carrying an egg.
+function handlers.GoZone(player: Player, data, index: any)
+	if StealService.isCarrying(player) then
+		return notify(player, "No teleporting with an egg! Run it home!", "error")
+	end
+	if lastHome[player] and os.clock() - lastHome[player] < 3 then
+		return
+	end
+	local best = Items.zoneFor(data.speed or 0)
+	local zone = if type(index) == "number" and Items.ZONES[index] and index <= best then index else best
+	local character = player.Character
+	if not character or not character.PrimaryPart then
+		return
+	end
+	lastHome[player] = os.clock()
+	local spot = ZoneLayout.point(zone, 8, 0) + Vector3.new(0, 4, 0)
+	character:PivotTo(CFrame.lookAt(spot, spot + Vector3.new(-1, 0, 0)))
+end
+
+local quiet = { GoHome = true, GoZone = true, Hatch = true } -- actions that don't change saved data, so skip the refresh
 
 -- Lets other services add actions (they get the same rate limit and refresh).
 -- Pass isQuiet = true for actions that never change the player's data.

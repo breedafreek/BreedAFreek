@@ -873,7 +873,7 @@ return Bricks
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-29", -- printed in Output: which build is running
+	BUILD = "life-30", -- printed in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join. Set to nil
 	-- before the game launches!
@@ -9084,6 +9084,7 @@ local Items = require(ReplicatedStorage.Shared.Items)
 local LifeUtil = require(ReplicatedStorage.Shared.LifeUtil)
 local Parts = require(ReplicatedStorage.Shared.Parts)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local ZoneLayout = require(ReplicatedStorage.Shared.ZoneLayout)
 
 local DataService = require(script.Parent.DataService)
 local NestService = require(script.Parent.NestService)
@@ -9354,7 +9355,27 @@ function handlers.GoHome(player: Player, _data)
 	PlotService.sendHome(player)
 end
 
-local quiet = { GoHome = true, Hatch = true } -- actions that don't change saved data, so skip the refresh
+-- Teleports the player to the entrance of the deepest zone they're fast enough for (or
+-- zone `index`, if they're fast enough for it). Not while carrying an egg.
+function handlers.GoZone(player: Player, data, index: any)
+	if StealService.isCarrying(player) then
+		return notify(player, "No teleporting with an egg! Run it home!", "error")
+	end
+	if lastHome[player] and os.clock() - lastHome[player] < 3 then
+		return
+	end
+	local best = Items.zoneFor(data.speed or 0)
+	local zone = if type(index) == "number" and Items.ZONES[index] and index <= best then index else best
+	local character = player.Character
+	if not character or not character.PrimaryPart then
+		return
+	end
+	lastHome[player] = os.clock()
+	local spot = ZoneLayout.point(zone, 8, 0) + Vector3.new(0, 4, 0)
+	character:PivotTo(CFrame.lookAt(spot, spot + Vector3.new(-1, 0, 0)))
+end
+
+local quiet = { GoHome = true, GoZone = true, Hatch = true } -- actions that don't change saved data, so skip the refresh
 
 -- Lets other services add actions (they get the same rate limit and refresh).
 -- Pass isQuiet = true for actions that never change the player's data.
@@ -16244,10 +16265,17 @@ return GuardianFX
         <Item class="ModuleScript" referent="60">
           <Properties>
             <string name="Name">Hud</string>
-            <string name="Source"><![CDATA[-- The always-on screen pieces, in the UI.luau style: money and Speed as big outlined
--- numbers with an icon (no panel behind them), the side menu of square coloured tiles,
--- a dark pill at the top centre (the zone you walked into, or the egg you're carrying),
--- and short messages from the server.
+            <string name="Source"><![CDATA[-- The always-on screen pieces, laid out like the owner's reference (a top simulator's
+-- HUD). Nothing has a panel behind it; everything floats on the world:
+-- - top centre: wide travel buttons (HOME, ZONES, SPIN)
+-- - left: wide menu buttons (SHOP, MY HOME, BAG, INDEX) with red badges, and the event
+--   timer under them
+-- - right: square tiles (STORE, LUCK, and ADMIN for admins)
+-- - bottom left: Speed and money as big chunky numbers with 3D icons, what you earn under
+--   them, and "+$" popping up when money comes in
+-- - bottom right: a dark bar with the next egg's hatch timer
+-- - a dark pill under the top buttons (the zone you walked into, or the egg you carry) and
+--   short messages under it.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -16255,6 +16283,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
+local Events = require(ReplicatedStorage.Shared.Events)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Items = require(ReplicatedStorage.Shared.Items)
 local ZoneLayout = require(ReplicatedStorage.Shared.ZoneLayout)
@@ -16266,19 +16295,127 @@ local player = Players.LocalPlayer
 
 local Hud = {}
 
--- A 3D icon (an ItemPictures key) in a square.
-local function icon(key: string, size: number, props)
-	local view = ItemPictures.icon(key)
-	view.Size = UDim2.fromOffset(size, size)
-	for k, v in props or {} do
-		view[k] = v
+-- A 3D icon (an ItemPictures key), or the emoji if there's no model for it.
+function Hud.icon(key: string, emoji: string): GuiObject | string
+	if ItemPictures.has(key) then
+		local view = ItemPictures.icon(key)
+		return view
 	end
-	return view
+	return emoji
 end
+
+-- Shrinks a group on short screens (phones) so nothing runs off the edge.
+local function fit(frame: GuiObject, designHeight: number)
+	local scale = UI.new("UIScale", { Parent = frame })
+	local function update()
+		local camera = Workspace.CurrentCamera
+		scale.Scale = math.clamp(camera.ViewportSize.Y / designHeight, 0.55, 1)
+	end
+	Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(update)
+	update()
+end
+
+local function column(screen: ScreenGui, props, gap: number, horizontal: boolean?)
+	local frame = UI.new("Frame", {
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.XY,
+		Size = UDim2.new(),
+		Parent = screen,
+	}, {
+		UI.new("UIListLayout", {
+			FillDirection = if horizontal then Enum.FillDirection.Horizontal else Enum.FillDirection.Vertical,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			Padding = UDim.new(0, gap),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	for key, value in props do
+		frame[key] = value
+	end
+	return frame
+end
+
+--------------------------------------------------------------------------------
+-- Buttons
+--------------------------------------------------------------------------------
+
+-- A row (top centre) or column (left) of wide buttons. entries = { { name, text, colour,
+-- icon } }. Returns setBadge(name, text or nil) and the buttons by name.
+function Hud.buttons(screen: ScreenGui, where: string, entries, onSelect: (string) -> ())
+	local row = where == "top"
+	local holder = column(
+		screen,
+		if row
+			then { Name = "TopButtons", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10) }
+			else { Name = "MenuButtons", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0.42, 0) },
+		if row then 22 else 12,
+		row
+	)
+	fit(holder, if row then 600 else 760)
+	local badges, buttons = {}, {}
+	for i, entry in entries do
+		local button, setBadge = UI.wideButton({
+			name = entry[1],
+			text = entry[2],
+			color = entry[3],
+			icon = entry[4],
+			size = if row then Vector2.new(196, 54) else Vector2.new(200, 60),
+			onClick = function()
+				onSelect(entry[1])
+			end,
+		})
+		button.LayoutOrder = i
+		button.Parent = holder
+		badges[entry[1]], buttons[entry[1]] = setBadge, button
+	end
+	return function(name: string, text: string?)
+		if badges[name] then
+			badges[name](text)
+		end
+	end,
+		buttons,
+		holder
+end
+
+-- Square tiles on the right. entries = { { name, colour, icon } }. Returns setBadge and the
+-- tiles by name.
+function Hud.tiles(screen: ScreenGui, entries, onSelect: (string) -> ())
+	local holder = column(screen, {
+		Name = "Tiles",
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -16, 0.55, 0),
+	}, 14)
+	fit(holder, 760)
+	local badges, tiles = {}, {}
+	for i, entry in entries do
+		local tile, setBadge = UI.tile({
+			name = entry[1],
+			color = entry[2],
+			icon = entry[3],
+			size = 80,
+			onClick = function()
+				onSelect(entry[1])
+			end,
+		})
+		tile.LayoutOrder = i
+		tile.Parent = holder
+		badges[entry[1]], tiles[entry[1]] = setBadge, tile
+	end
+	return function(name: string, text: string?)
+		if badges[name] then
+			badges[name](text)
+		end
+	end, tiles
+end
+
+--------------------------------------------------------------------------------
+-- Speed and money
+--------------------------------------------------------------------------------
 
 -- A number that glides to its new value instead of jumping.
 local function glide(label: TextLabel, read: () -> number, show: (number) -> string)
 	local shown = read()
+	label.Text = show(shown)
 	RunService.RenderStepped:Connect(function(dt)
 		local target = read()
 		shown += (target - shown) * math.min(1, dt * 8)
@@ -16289,41 +16426,52 @@ local function glide(label: TextLabel, read: () -> number, show: (number) -> str
 	end)
 end
 
---------------------------------------------------------------------------------
--- Money and Speed (bottom left, above nothing: just icons and outlined numbers)
---------------------------------------------------------------------------------
-
 function Hud.stats(screen: ScreenGui)
 	local holder = UI.new("Frame", {
 		Name = "Stats",
 		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 14, 1, -18),
-		Size = UDim2.fromOffset(300, 140),
+		Position = UDim2.new(0, 18, 1, -14),
+		Size = UDim2.fromOffset(360, 170),
 		BackgroundTransparency = 1,
 		Parent = screen,
 	})
+	fit(holder, 720)
 
-	-- Speed: a lightning bolt and the number in blue.
-	icon("Bolt", 40, { Position = UDim2.fromOffset(0, 0), Parent = holder })
-	local speed = UI.text("0", 30, {
-		Position = UDim2.fromOffset(46, 4),
-		Size = UDim2.fromOffset(240, 34),
+	-- Speed: a lightning bolt and a big gold number.
+	local bolt = ItemPictures.icon("Bolt")
+	bolt.Position = UDim2.fromOffset(0, 0)
+	bolt.Size = UDim2.fromOffset(56, 56)
+	bolt.Parent = holder
+	local speed = UI.heavy("0", 46, {
+		Position = UDim2.fromOffset(64, 4),
+		Size = UDim2.fromOffset(290, 52),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = colors.speed,
 		Parent = holder,
 	})
 	glide(speed, function()
 		return player:GetAttribute("Speed") or 0
-	end, function(n)
-		local training = player:GetAttribute("Training") == true
-		return Format.number(n) .. (if training then "  TRAINING!" else "")
+	end, Format.number)
+	local training = UI.heavy("TRAINING!", 18, {
+		Position = UDim2.fromOffset(66, -16),
+		Size = UDim2.fromOffset(160, 20),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = colors.speed,
+		Visible = false,
+		Parent = holder,
+	})
+	player:GetAttributeChangedSignal("Training"):Connect(function()
+		training.Visible = player:GetAttribute("Training") == true
 	end)
 
-	-- Money: a stack of cash and the number in green, what you earn under it.
-	icon("Cash", 54, { Position = UDim2.fromOffset(-4, 46), Parent = holder })
-	local money = UI.text("$0", 42, {
-		Position = UDim2.fromOffset(56, 48),
-		Size = UDim2.fromOffset(240, 46),
+	-- Money: a stack of cash and a big green number, what you earn under it.
+	local cash = ItemPictures.icon("Cash")
+	cash.Position = UDim2.fromOffset(-4, 62)
+	cash.Size = UDim2.fromOffset(66, 66)
+	cash.Parent = holder
+	local money = UI.heavy("$0", 56, {
+		Position = UDim2.fromOffset(64, 66),
+		Size = UDim2.fromOffset(300, 62),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = colors.money,
 		Parent = holder,
@@ -16331,112 +16479,134 @@ function Hud.stats(screen: ScreenGui)
 	glide(money, function()
 		return player:GetAttribute("Money") or 0
 	end, Format.money)
-	local income = UI.text("Earning: $0/s", 18, {
-		Position = UDim2.fromOffset(4, 104),
-		Size = UDim2.fromOffset(290, 22),
+	local income = UI.heavy("Earning $0/s", 22, {
+		Position = UDim2.fromOffset(4, 134),
+		Size = UDim2.fromOffset(340, 26),
 		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = colors.money,
 		Parent = holder,
 	})
 	local function updateIncome()
-		income.Text = "Earning: " .. Format.money(player:GetAttribute("Income") or 0) .. "/s"
+		income.Text = "Earning " .. Format.money(player:GetAttribute("Income") or 0) .. "/s"
 	end
 	player:GetAttributeChangedSignal("Income"):Connect(updateIncome)
 	updateIncome()
+
+	-- "+$" popping up and floating away when money comes in.
+	local last = player:GetAttribute("Money") or 0
+	player:GetAttributeChangedSignal("Money"):Connect(function()
+		local now = player:GetAttribute("Money") or 0
+		local gain = now - last
+		last = now
+		if gain < 1 then
+			return
+		end
+		local pop = UI.heavy("+" .. Format.money(gain), 30, {
+			Position = UDim2.fromOffset(200 + math.random(-30, 40), 60),
+			Size = UDim2.fromOffset(200, 34),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextColor3 = colors.money,
+			Parent = holder,
+		})
+		local info = TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		TweenService:Create(pop, info, { Position = pop.Position - UDim2.fromOffset(0, 60), TextTransparency = 1 })
+			:Play()
+		TweenService:Create(pop:FindFirstChildOfClass("UIStroke"), info, { Transparency = 1 }):Play()
+		task.delay(1.2, function()
+			pop:Destroy()
+		end)
+	end)
 end
 
 --------------------------------------------------------------------------------
--- Side menu
+-- Timers
 --------------------------------------------------------------------------------
 
--- Two columns of square tiles: a bright colour (top half lighter), a big 3D icon, the name
--- overlapping the bottom edge, and a red "!" badge when something is waiting there.
--- entries = { { name, label, colour, iconKey } }. Returns setBadge(name, on).
-function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
-	local TILE, GAP = 70, 12
-	local rows = math.ceil(#entries / 2)
-	local rail = UI.new("Frame", {
-		Name = "Menu",
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 12, 0.45, 0),
-		Size = UDim2.fromOffset(TILE * 2 + GAP, rows * (TILE + GAP)),
+-- The event timer under the menu buttons: what's on now (and how long it has left), or
+-- the next big event and how long until it starts.
+function Hud.eventTimer(menu: GuiObject)
+	local holder = UI.new("Frame", {
+		Name = "EventTimer",
+		Size = UDim2.fromOffset(200, 70),
 		BackgroundTransparency = 1,
+		LayoutOrder = 99,
+		Parent = menu,
+	})
+	local icon = UI.text("", 40, {
+		Position = UDim2.fromOffset(0, 8),
+		Size = UDim2.fromOffset(54, 54),
+		Parent = holder,
+	})
+	local name = UI.heavy("", 18, {
+		Position = UDim2.fromOffset(58, 6),
+		Size = UDim2.fromOffset(142, 22),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = holder,
+	})
+	local clock = UI.heavy("", 32, {
+		Position = UDim2.fromOffset(58, 28),
+		Size = UDim2.fromOffset(142, 36),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = holder,
+	})
+	local function hms(seconds: number): string
+		seconds = math.max(0, math.floor(seconds))
+		return string.format("%02d:%02d:%02d", seconds // 3600, seconds % 3600 // 60, seconds % 60)
+	end
+	task.spawn(function()
+		while holder.Parent do
+			local now = Workspace:GetServerTimeNow()
+			local big, ends = Events.current()
+			local weather, weatherEnds = Events.weather()
+			if big or weather then
+				local def = big or weather
+				icon.Text = def.icon
+				name.Text = def.name
+				name.TextColor3 = def.color
+				clock.Text = hms((if big then ends else weatherEnds) - now)
+				clock.TextColor3 = colors.white
+			else
+				local next = Events.upcoming(os.time())[1]
+				local def = next and Events.BIG[next.id]
+				holder.Visible = def ~= nil
+				if def then
+					icon.Text = def.icon
+					name.Text = def.name .. " in"
+					name.TextColor3 = def.color
+					clock.Text = hms(next.starts - os.time())
+					clock.TextColor3 = colors.white
+				end
+			end
+			task.wait(0.5)
+		end
+	end)
+end
+
+-- A small dark bar (bottom right, like the reference's restock timer). Returns
+-- set(text, colour?) (nil text hides it).
+function Hud.bar(screen: ScreenGui)
+	local bar = UI.new("Frame", {
+		Name = "Bar",
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -16, 1, -16),
+		Size = UDim2.fromOffset(280, 56),
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0.5,
+		Visible = false,
 		Parent = screen,
 	}, {
-		UI.new("UIGridLayout", {
-			CellSize = UDim2.fromOffset(TILE, TILE),
-			CellPadding = UDim2.fromOffset(GAP, GAP),
-			FillDirectionMaxCells = 2,
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		}),
+		UI.corner(4),
+		UI.new("UIPadding", { PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 16) }),
 	})
-	-- Shrinks on short screens so it never runs off the edge.
-	local fit = UI.new("UIScale", { Parent = rail })
-	local function refit()
-		local available = Workspace.CurrentCamera.ViewportSize.Y * 0.62
-		fit.Scale = math.clamp(available / rail.Size.Y.Offset, 0.6, 1)
-	end
-	Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(refit)
-	refit()
-
-	local badges = {}
-	for i, entry in entries do
-		local name, label, color, iconKey = entry[1], entry[2], entry[3], entry[4]
-		local tile = UI.new("TextButton", {
-			Name = name,
-			AutoButtonColor = false,
-			Text = "",
-			BackgroundColor3 = color,
-			LayoutOrder = i,
-			Parent = rail,
-		}, {
-			UI.corner(6),
-			UI.stroke(3),
-			UI.new("UIGradient", {
-				Rotation = 90,
-				Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
-					ColorSequenceKeypoint.new(0.5, Color3.new(1, 1, 1)),
-					ColorSequenceKeypoint.new(0.501, Color3.new(0.85, 0.85, 0.85)),
-					ColorSequenceKeypoint.new(1, Color3.new(0.85, 0.85, 0.85)),
-				}),
-			}),
-		})
-		if ItemPictures.has(iconKey) then
-			icon(iconKey, TILE - 12, {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.new(0.5, 0, 0.42, 0),
-				Parent = tile,
-			})
-		end
-		UI.text(label, 18, {
-			AnchorPoint = Vector2.new(0.5, 1),
-			Position = UDim2.new(0.5, 0, 1, 4),
-			Size = UDim2.new(1, 10, 0, 22),
-			ZIndex = 2,
-			Parent = tile,
-		})
-		badges[name] = UI.text("!", 20, {
-			Name = "Badge",
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(1, -4, 0, 4),
-			Size = UDim2.fromOffset(24, 24),
-			BackgroundColor3 = colors.red,
-			BackgroundTransparency = 0,
-			Visible = false,
-			ZIndex = 3,
-			Parent = tile,
-		})
-		UI.corner(12).Parent = badges[name]
-		UI.stroke(2.5).Parent = badges[name]
-		UI.hover(tile, 1.08)
-		tile.Activated:Connect(function()
-			onSelect(name)
-		end)
-	end
-	return function(name: string, on: boolean)
-		if badges[name] then
-			badges[name].Visible = on
-		end
+	fit(bar, 720)
+	local label = UI.heavy("", 34, {
+		Size = UDim2.fromScale(1, 1),
+		Parent = bar,
+	})
+	return function(text: string?, color: Color3?)
+		bar.Visible = text ~= nil
+		label.Text = text or ""
+		label.TextColor3 = color or colors.white
 	end
 end
 
@@ -16448,23 +16618,22 @@ function Hud.topPill(screen: ScreenGui)
 	local pill = UI.new("Frame", {
 		Name = "TopPill",
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 10),
-		Size = UDim2.fromOffset(0, 40),
+		Position = UDim2.new(0.5, 0, 0, 80),
+		Size = UDim2.fromOffset(0, 44),
 		AutomaticSize = Enum.AutomaticSize.X,
 		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = 0.45,
+		BackgroundTransparency = 0.5,
 		Visible = false,
 		Parent = screen,
 	}, {
-		UI.corner(8),
-		UI.stroke(2.5),
+		UI.corner(4),
 		UI.new("UIPadding", { PaddingLeft = UDim.new(0, 18), PaddingRight = UDim.new(0, 18) }),
 	})
-	local label = UI.text("", 22, {
-		Size = UDim2.fromOffset(0, 40),
+	local label = UI.heavy("", 26, {
+		Size = UDim2.fromOffset(0, 44),
 		AutomaticSize = Enum.AutomaticSize.X,
 		TextScaled = false,
-		TextSize = 22,
+		TextSize = 26,
 		Parent = pill,
 	})
 
@@ -16523,7 +16692,7 @@ function Hud.topPill(screen: ScreenGui)
 	local function onCarrying()
 		local carrying = player:GetAttribute("Carrying")
 		if typeof(carrying) == "string" then
-			show("🥚 " .. carrying .. " · Run home!", colors.gold)
+			show("🥚 " .. string.upper(carrying) .. " · RUN HOME!", colors.gold)
 			beamHome()
 		else
 			clearBeam()
@@ -16548,9 +16717,9 @@ function Hud.topPill(screen: ScreenGui)
 					show(
 						Items.KINDS[info.kind].icon
 							.. " "
-							.. info.name
-							.. (if fast then " · Grab an egg!" else " · Needs ⚡" .. Format.number(info.speed)),
-						if fast then colors.white else Color3.fromRGB(255, 120, 120)
+							.. string.upper(info.name)
+							.. (if fast then " · GRAB AN EGG!" else " · NEEDS ⚡" .. Format.number(info.speed)),
+						if fast then colors.white else Color3.fromRGB(255, 110, 110)
 					)
 					zoneUntil = os.clock() + 3.5
 				end
@@ -16568,6 +16737,7 @@ end
 
 local MESSAGE_COLORS = {
 	success = UI.colors.money,
+	money = UI.colors.money,
 	error = Color3.fromRGB(255, 110, 110),
 	discovery = UI.colors.gold,
 }
@@ -16578,7 +16748,7 @@ function Hud.messages(screen: ScreenGui)
 	local holder = UI.new("Frame", {
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 60),
+		Position = UDim2.new(0.5, 0, 0, 132),
 		Size = UDim2.new(0.6, 0, 0, 200),
 		Parent = screen,
 	}, {
@@ -16589,8 +16759,8 @@ function Hud.messages(screen: ScreenGui)
 		}),
 	})
 	return function(message: string, kind: string?)
-		local label = UI.text(message, 24, {
-			Size = UDim2.new(1, 0, 0, 30),
+		local label = UI.heavy(message, 26, {
+			Size = UDim2.new(1, 0, 0, 32),
 			TextColor3 = MESSAGE_COLORS[kind or ""] or colors.white,
 			Parent = holder,
 		})
@@ -17307,16 +17477,313 @@ return ItemPictures
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="62">
+        <Item class="ModuleScript" referent="62">
+          <Properties>
+            <string name="Name">LuckyWheel</string>
+            <string name="Source"><![CDATA[-- The Lucky Wheel, drawn like the prize wheels in the big simulators: bright pie slices
+-- (each with a big icon, its prize and its chance) inside a chunky gold rim ringed with
+-- blinking bulbs, a red pointer at the top, and a hub in the middle that can be the SPIN
+-- button. LuckyWheel.build returns the wheel and spinTo(slice, onDone), which spins it
+-- round a few times and stops with that slice under the pointer.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+local Luck = require(ReplicatedStorage.Shared.Luck)
+local UI = require(script.Parent.UI)
+
+local LuckyWheel = {}
+
+-- Slice colours go round the wheel in a rainbow, so neighbours always differ.
+local SLICE_COLORS = {
+	Color3.fromRGB(255, 90, 160),
+	Color3.fromRGB(70, 160, 255),
+	Color3.fromRGB(255, 205, 50),
+	Color3.fromRGB(80, 210, 110),
+	Color3.fromRGB(165, 100, 250),
+	Color3.fromRGB(255, 140, 50),
+	Color3.fromRGB(40, 205, 200),
+	Color3.fromRGB(105, 80, 255),
+}
+local ICONS = {
+	Coins = "💰",
+	["Big Coins"] = "💵",
+	["Golden Egg"] = "⭐",
+	["Mystery Box"] = "📦",
+	["Huge Coins"] = "🤑",
+	["Rainbow Egg"] = "🌈",
+	["Mega Box"] = "🎁",
+	JACKPOT = "👑",
+}
+
+-- Short names that fit on a slice.
+local SHORT = {
+	Coins = "COINS",
+	["Big Coins"] = "BIG $",
+	["Golden Egg"] = "GOLDEN",
+	["Mystery Box"] = "BOX",
+	["Huge Coins"] = "HUGE $",
+	["Rainbow Egg"] = "RAINBOW",
+	["Mega Box"] = "MEGA BOX",
+	JACKPOT = "JACKPOT",
+}
+
+local function circle(props, children)
+	local frame = UI.new("Frame", props, children)
+	UI.corner(999).Parent = frame
+	return frame
+end
+
+-- size: the wheel's width in pixels. opts.hubText: text on the hub (e.g. "SPIN!"),
+-- opts.onHub: makes the hub a button. opts.zIndex: base ZIndex.
+function LuckyWheel.build(parent: Instance, size: number, opts)
+	opts = opts or {}
+	local z = opts.zIndex or 1
+	local count = #Luck.WHEEL
+	local sliceAngle = 360 / count
+
+	local frame = UI.new("Frame", {
+		Name = "LuckyWheel",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(size, size),
+		BackgroundTransparency = 1,
+		ZIndex = z,
+		Parent = parent,
+	})
+
+	-- The gold rim with its outline.
+	circle({
+		Name = "Rim",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.fromRGB(255, 200, 60),
+		ZIndex = z,
+		Parent = frame,
+	}, {
+		UI.stroke(4),
+		UI.new("UIGradient", {
+			Color = ColorSequence.new(Color3.fromRGB(255, 240, 160), Color3.fromRGB(230, 140, 20)),
+			Rotation = 90,
+		}),
+	})
+
+	-- Bulbs round the rim.
+	local bulbs = {}
+	local bulbCount = 16
+	for k = 1, bulbCount do
+		local a = math.rad((k - 1) / bulbCount * 360)
+		local bulb = circle({
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(0.5, math.sin(a) * size * 0.465, 0.5, -math.cos(a) * size * 0.465),
+			Size = UDim2.fromOffset(size * 0.04, size * 0.04),
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			ZIndex = z + 1,
+			Parent = frame,
+		}, { UI.stroke(1.5) })
+		table.insert(bulbs, bulb)
+	end
+
+	-- The spinning part: the slices and their labels.
+	local radius = size * 0.42
+	local spinner = UI.new("Frame", {
+		Name = "Spinner",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(radius * 2, radius * 2),
+		BackgroundTransparency = 1,
+		ZIndex = z + 1,
+		Parent = frame,
+	})
+	circle({
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = UI.OUTLINE,
+		ZIndex = z + 1,
+		Parent = spinner,
+	})
+	-- Each slice is filled with thin wedges fanned out from the middle. Roblox turns a frame
+	-- about its own centre, so each wedge is a full-diameter strip centred on the wheel
+	-- (turning about the wheel's centre) with only its top half coloured.
+	local wedges = 10
+	local step = sliceAngle / wedges
+	local wedgeWidth = radius * math.rad(step) * 1.3
+	local function strip(rotation: number, width: number, zIndex: number)
+		return UI.new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(width, radius * 2 - 6),
+			Rotation = rotation,
+			BackgroundTransparency = 1,
+			ZIndex = zIndex,
+			Parent = spinner,
+		})
+	end
+	-- A point `distance` out from the middle along `angle` (degrees clockwise from the top).
+	local function at(angle: number, distance: number): UDim2
+		local a = math.rad(angle)
+		return UDim2.new(0.5, math.sin(a) * distance, 0.5, -math.cos(a) * distance)
+	end
+	for i, slice in Luck.WHEEL do
+		local color = SLICE_COLORS[(i - 1) % #SLICE_COLORS + 1]
+		for k = 0, wedges - 1 do
+			UI.new("Frame", {
+				Size = UDim2.fromScale(1, 0.5),
+				BackgroundColor3 = color,
+				BorderSizePixel = 0,
+				ZIndex = z + 2,
+				Parent = strip((i - 1) * sliceAngle + (k + 0.5) * step, wedgeWidth, z + 2),
+			}, {
+				-- Lighter toward the rim.
+				UI.new("UIGradient", {
+					Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(190, 190, 205)),
+					Rotation = 90,
+				}),
+			})
+		end
+		-- A dark line between slices.
+		UI.new("Frame", {
+			Size = UDim2.fromScale(1, 0.5),
+			BackgroundColor3 = UI.OUTLINE,
+			BorderSizePixel = 0,
+			ZIndex = z + 3,
+			Parent = strip((i - 1) * sliceAngle, 3, z + 3),
+		})
+
+		local middle = (i - 0.5) * sliceAngle
+		-- The big icon out by the rim, standing up toward it.
+		UI.label(ICONS[slice.label] or "🎁", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = at(middle, radius * 0.82),
+			Size = UDim2.fromOffset(radius * 0.27, radius * 0.27),
+			Rotation = middle,
+			ZIndex = z + 5,
+			Parent = spinner,
+		})
+		-- The prize and its chance, reading outward from the hub.
+		local text = UI.new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = at(middle, radius * 0.5),
+			Size = UDim2.fromOffset(radius * 0.4, radius * 0.27),
+			Rotation = middle - 90,
+			BackgroundTransparency = 1,
+			ZIndex = z + 4,
+			Parent = spinner,
+		})
+		UI.label(SHORT[slice.label] or string.upper(slice.label), {
+			Size = UDim2.fromScale(1, 0.6),
+			FontFace = UI.fonts.bold,
+			ZIndex = z + 5,
+			Parent = text,
+		})
+		UI.label(string.format("%.0f%%", Luck.wheelPercent(i)), {
+			Position = UDim2.fromScale(0, 0.6),
+			Size = UDim2.fromScale(1, 0.4),
+			TextColor3 = Color3.fromRGB(255, 250, 200),
+			ZIndex = z + 5,
+			Parent = text,
+		})
+	end
+
+	-- The hub in the middle (the SPIN button in the Luck window).
+	local hub = UI.new(if opts.onHub then "TextButton" else "TextLabel", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(size * 0.21, size * 0.21),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		FontFace = UI.fonts.bold,
+		Text = opts.hubText or "🎡",
+		TextScaled = true,
+		TextColor3 = Color3.new(1, 1, 1),
+		ZIndex = z + 6,
+		Parent = frame,
+	}, {
+		UI.corner(999),
+		UI.stroke(4),
+		UI.textStroke(2.5),
+		UI.new("UIGradient", {
+			Color = ColorSequence.new(UI.colors.fusion, UI.colors.fusion2),
+			Rotation = 45,
+		}),
+		UI.new("UIPadding", {
+			PaddingLeft = UDim.new(0.14, 0),
+			PaddingRight = UDim.new(0.14, 0),
+			PaddingTop = UDim.new(0.22, 0),
+			PaddingBottom = UDim.new(0.22, 0),
+		}),
+	})
+	if opts.onHub then
+		(hub :: TextButton).AutoButtonColor = false
+		(hub :: TextButton).Activated:Connect(opts.onHub)
+	end
+
+	-- The pointer at the top: a red tip with a gold cap.
+	UI.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0, size * 0.06),
+		Size = UDim2.fromOffset(size * 0.09, size * 0.09),
+		Rotation = 45,
+		BackgroundColor3 = UI.colors.red,
+		ZIndex = z + 7,
+		Parent = frame,
+	}, { UI.corner(4), UI.stroke(3) })
+	circle({
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0, size * 0.015),
+		Size = UDim2.fromOffset(size * 0.07, size * 0.07),
+		BackgroundColor3 = Color3.fromRGB(255, 205, 60),
+		ZIndex = z + 8,
+		Parent = frame,
+	}, { UI.stroke(3) })
+
+	-- Bulbs blink in turn (faster while spinning).
+	local spinning = false
+	task.spawn(function()
+		local tick = 0
+		while frame.Parent do
+			tick += 1
+			for k, bulb in bulbs do
+				local on = (k + tick) % 2 == 0
+				bulb.BackgroundColor3 = if on then Color3.fromRGB(255, 250, 200) else Color3.fromRGB(255, 120, 60)
+			end
+			task.wait(if spinning then 0.08 else 0.45)
+		end
+	end)
+
+	local wheel = { frame = frame, hub = hub }
+	-- Spins round several times and stops with `slice` under the pointer.
+	function wheel.spinTo(slice: number, onDone: (() -> ())?)
+		spinning = true
+		local target = -((slice - 0.5) * sliceAngle) - 360 * 6 + (math.random() - 0.5) * sliceAngle * 0.6
+		local tween = TweenService:Create(
+			spinner,
+			TweenInfo.new(4.6, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+			{ Rotation = target }
+		)
+		tween:Play()
+		tween.Completed:Connect(function()
+			spinning = false
+			if onDone then
+				onDone()
+			end
+		end)
+	end
+	return wheel
+end
+
+return LuckyWheel
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="LocalScript" referent="63">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's client: the screen UI (HUD, side menu and windows, built from UI.luau and
--- Hud.luau; being rebuilt window by window), the world effects (guardians, attacks, pets,
+-- Hud.luau), the reveals, the world effects (guardians, attacks, pets,
 -- treadmill running, ambience, events, flashing secret eggs) and the bits of gameplay
 -- that live on the client. The server is the source of truth; this shows state and sends
 -- requests.
 
 local CollectionService = game:GetService("CollectionService")
+local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -17357,11 +17824,19 @@ task.delay(8, function()
 end)
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local BoxModel = require(Shared.BoxModel)
 local Config = require(Shared.Config)
 local EggModel = require(Shared.EggModel)
+local Events = require(Shared.Events)
 local Format = require(Shared.Format)
 local GamePasses = require(Shared.GamePasses)
 local Items = require(Shared.Items)
+local Lego = require(Shared.Lego)
+local LifeUtil = require(Shared.LifeUtil)
+local Luck = require(Shared.Luck)
+local Mutations = require(Shared.Mutations)
+local Parts = require(Shared.Parts)
+local Rarities = require(Shared.Rarities)
 local Remotes = require(Shared.Remotes)
 local Ambient = require(script.Parent.Ambient)
 local EventFX = require(script.Parent.EventFX)
@@ -17369,6 +17844,8 @@ local GuardianAttackFX = require(script.Parent.GuardianAttackFX)
 local GuardianFX = require(script.Parent.GuardianFX)
 local Hud = require(script.Parent.Hud)
 local ItemPictures = require(script.Parent.ItemPictures)
+local LuckyWheel = require(script.Parent.LuckyWheel)
+local PackReveal = require(script.Parent.PackReveal)
 local PetFX = require(script.Parent.PetFX)
 local TreadmillRun = require(script.Parent.TreadmillRun)
 local UI = require(script.Parent.UI)
@@ -17378,7 +17855,7 @@ local player = Players.LocalPlayer
 EventFX.start()
 
 --------------------------------------------------------------------------------
--- Screen UI (UI.luau style): the HUD, the side menu and the windows
+-- Screen UI (UI.luau style): the HUD, the menu buttons and the windows
 --------------------------------------------------------------------------------
 
 local colors = UI.colors
@@ -17388,6 +17865,7 @@ local function send(action: string, ...)
 end
 
 local state = nil
+local discoveries = {}
 
 local screen = UI.new("ScreenGui", {
 	Name = "StealALifeUI",
@@ -17398,9 +17876,21 @@ local screen = UI.new("ScreenGui", {
 Hud.stats(screen)
 Hud.topPill(screen)
 local message = Hud.messages(screen)
+local setBar = Hud.bar(screen)
 Remotes.get("Notify").OnClientEvent:Connect(function(text: string, kind: string?)
 	message(text, kind)
 end)
+
+-- Every window: name, title, header colour, header icon.
+local WINDOWS = {
+	Shop = { "SHOP", Color3.fromRGB(80, 200, 40), "🛒" },
+	Life = { "MY HOME", colors.blue, "🏡" },
+	Bag = { "BAG", colors.orange, "🎒" },
+	Index = { "INDEX", Color3.fromRGB(165, 90, 240), "📖" },
+	Store = { "STORE", Color3.fromRGB(240, 70, 170), "💎" },
+	Luck = { "LUCK", Color3.fromRGB(40, 190, 170), "🍀" },
+	Admin = { "ADMIN", colors.red, "🛠️" },
+}
 
 -- The one window, reused by every menu button.
 local currentWindow = nil
@@ -17409,14 +17899,14 @@ local window, content, setHeader = UI.window({
 	Name = "Window",
 	Visible = false,
 	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.fromScale(0.5, 0.5),
-	Size = UDim2.fromScale(0.56, 0.7),
+	Position = UDim2.fromScale(0.5, 0.53),
+	Size = UDim2.fromScale(0.6, 0.72),
 	ZIndex = 5,
 	Parent = screen,
 }, function()
-	openWindow(currentWindow)
+	openWindow(nil)
 end)
-UI.new("UISizeConstraint", { MaxSize = Vector2.new(780, 560), Parent = window })
+UI.new("UISizeConstraint", { MaxSize = Vector2.new(860, 600), Parent = window })
 local windowScale = UI.new("UIScale", { Parent = window })
 local body = UI.new("ScrollingFrame", {
 	BackgroundTransparency = 1,
@@ -17439,6 +17929,7 @@ local body = UI.new("ScrollingFrame", {
 })
 
 local renderers = {}
+local liveTimers = {} -- { { label, egg } } nest countdowns in the open window
 local function render()
 	if not currentWindow or not state then
 		return
@@ -17448,18 +17939,60 @@ local function render()
 			child:Destroy()
 		end
 	end
+	table.clear(liveTimers)
 	renderers[currentWindow]()
 end
 
--- A section title in the window.
-local function section(text: string, order: number)
+-- A section title in the window (optionally coloured).
+local function section(text: string, order: number, color: Color3?)
 	return UI.text(text, 22, {
 		Size = UDim2.new(1, 0, 0, 26),
 		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = color or colors.white,
 		LayoutOrder = order,
 		ZIndex = 6,
 		Parent = body,
 	})
+end
+
+-- A horizontal row of buttons (tabs, actions) in the window.
+local function row(order: number, height: number?)
+	return UI.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, height or 44),
+		LayoutOrder = order,
+		ZIndex = 6,
+		Parent = body,
+	}, {
+		UI.new("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			Padding = UDim.new(0, 8),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+		}),
+	})
+end
+
+local function addButton(parent, order: number, text: string, color: Color3, width: number, onClick)
+	local button = UI.button(text, color, onClick, {
+		Size = UDim2.fromOffset(width, 40),
+		LayoutOrder = order,
+		ZIndex = 7,
+		Parent = parent,
+	})
+	button.Label.ZIndex = 8
+	return button
+end
+
+-- Tabs: the picked one in its colour, the rest gray. tabs = { { id, label, colour } }.
+local function tabRow(order: number, tabs, current: string, onPick: (string) -> ())
+	local holder = row(order)
+	for i, tab in tabs do
+		addButton(holder, i, tab[2], if tab[1] == current then tab[3] else colors.gray, tab[4] or 130, function()
+			onPick(tab[1])
+		end)
+	end
+	return holder
 end
 
 -- A grid of slots in the window.
@@ -17480,50 +18013,138 @@ local function grid(order: number, cellSize: UDim2)
 	})
 end
 
--- A slot: label on top, picture in the middle, value at the bottom, and a button under
--- that if there is one. `picture` is a ViewportFrame (or nil).
-local function slot(parent, order, label, picture, value, valueColor, gold, button)
-	local cell = UI.cell({ LayoutOrder = order, ZIndex = 6, Parent = parent }, gold)
-	local bottom = if button then 58 else 6
-	UI.text(label, 20, {
+-- A button that asks "SURE?" before it does something you can't undo.
+local function confirmButton(text: string, color: Color3, onConfirm: () -> ())
+	local armed = false
+	local button
+	button = UI.button(text, color, function()
+		if armed then
+			onConfirm()
+			return
+		end
+		armed = true
+		button.Label.Text = "SURE?"
+		task.delay(2.5, function()
+			armed = false
+			if button.Parent then
+				button.Label.Text = text
+			end
+		end)
+	end)
+	return button
+end
+
+-- A slot: label on top, picture in the middle, coloured lines at the bottom and buttons
+-- under them. opts = { label, picture (a ViewportFrame), lines = { { text, colour } },
+-- buttons = { GuiButton }, gold, tag = { text, colour } }.
+local function slot(parent, order: number, opts)
+	local cell = UI.cell({ LayoutOrder = order, ZIndex = 6, Parent = parent }, opts.gold)
+	local buttons = opts.buttons or {}
+	local lines = opts.lines or {}
+	local bottom = 6
+	for i = #buttons, 1, -1 do
+		local button = buttons[i]
+		button.AnchorPoint = Vector2.new(0.5, 1)
+		button.Position = UDim2.new(0.5, 0, 1, -bottom - 2)
+		button.Size = UDim2.new(1, -16, 0, 38)
+		button.ZIndex = 7
+		button.Label.ZIndex = 8
+		button.Parent = cell
+		bottom += 44
+	end
+	for i = #lines, 1, -1 do
+		local line = lines[i]
+		UI.text(line[1], line[3] or 18, {
+			AnchorPoint = Vector2.new(0, 1),
+			Position = UDim2.new(0, 6, 1, -bottom - 2),
+			Size = UDim2.new(1, -12, 0, line[3] or 20),
+			TextColor3 = line[2] or colors.white,
+			ZIndex = 7,
+			Parent = cell,
+		})
+		bottom += (line[3] or 20) + 2
+	end
+	UI.text(opts.label, 20, {
 		Position = UDim2.fromOffset(6, 8),
 		Size = UDim2.new(1, -12, 0, 22),
 		ZIndex = 7,
 		Parent = cell,
 	})
+	local picture = opts.picture
 	if picture then
 		picture.AnchorPoint = Vector2.new(0.5, 0)
-		picture.Position = UDim2.new(0.5, 0, 0, 34)
-		picture.Size = UDim2.new(1, -16, 1, -34 - 30 - bottom)
+		picture.Position = UDim2.new(0.5, 0, 0, 32)
+		picture.Size = UDim2.new(1, -16, 1, -32 - bottom - 4)
 		picture.ZIndex = 7
 		picture.Parent = cell
 	end
-	UI.text(value, 20, {
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 6, 1, -bottom - 4),
-		Size = UDim2.new(1, -12, 0, 24),
-		TextColor3 = valueColor or colors.white,
-		ZIndex = 7,
-		Parent = cell,
-	})
-	if button then
-		button.AnchorPoint = Vector2.new(0.5, 1)
-		button.Position = UDim2.new(0.5, 0, 1, -8)
-		button.Size = UDim2.new(1, -16, 0, 44)
-		button.ZIndex = 7
-		button.Label.ZIndex = 8
-		button.Parent = cell
+	if opts.tag then
+		local tag = UI.heavy(opts.tag[1], 16, {
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, 4, 0, -6),
+			Size = UDim2.fromOffset(58, 24),
+			Rotation = 8,
+			BackgroundTransparency = 0,
+			BackgroundColor3 = opts.tag[2],
+			ZIndex = 9,
+			Parent = cell,
+		}, nil)
+		UI.corner(4).Parent = tag
+		UI.stroke(2).Parent = tag
 	end
 	return cell
+end
+
+-- A little 3D picture of a Mystery Box.
+local function boxPicture(crateId: string): ViewportFrame
+	local frame = UI.new("ViewportFrame", {
+		BackgroundTransparency = 1,
+		Ambient = Color3.fromRGB(190, 185, 200),
+		LightColor = Color3.fromRGB(255, 245, 230),
+		LightDirection = Vector3.new(-1, -1, 1),
+	})
+	local model, height = BoxModel.build(crateId)
+	Lego.apply(model)
+	model:PivotTo(CFrame.new())
+	model.Parent = frame
+	local camera = Instance.new("Camera")
+	camera.FieldOfView = 40
+	local distance = height * 2
+	camera.CFrame =
+		CFrame.lookAt(Vector3.new(distance * 0.35, height * 0.8, -distance), Vector3.new(0, height * 0.42, 0))
+	camera.Parent = frame
+	frame.CurrentCamera = camera
+	return frame
+end
+
+-- An item's name colour: its mutation, or its rarity.
+local function partColor(record): Color3
+	local top = Mutations.top(record.mutations)
+	if top then
+		return Mutations.byId[top].color
+	end
+	return Items.color(record.id)
+end
+
+local function percentText(percent: number): string
+	return if percent < 1 then string.format("%.1f%%", percent) else string.format("%.0f%%", percent)
+end
+
+local function speedGain(level: number): number
+	return Config.treadmillGain(level) * GamePasses.speedMultiplier(player)
+end
+
+local function spinCooldown(): number
+	return if GamePasses.has(player, "VIP") then Luck.VIP_SPIN_COOLDOWN else Luck.SPIN_COOLDOWN
+end
+
+local function spinLeft(): number
+	return (state and state.lastSpin or 0) + spinCooldown() - Workspace:GetServerTimeNow()
 end
 
 --------------------------------------------------------------------------------
 -- Shop: the treadmill, plot and house upgrades, and the zones
 --------------------------------------------------------------------------------
-
-local function speedGain(level: number): number
-	return Config.treadmillGain(level) * GamePasses.speedMultiplier(player)
-end
 
 -- An upgrade slot: name and level, picture, what you get, and the price to buy.
 local function upgradeSlot(parent, order, name, level, maxLevel, pictureKey, value, cost, action)
@@ -17534,16 +18155,13 @@ local function upgradeSlot(parent, order, name, level, maxLevel, pictureKey, val
 		else UI.button(Format.money(cost), if canAfford then colors.green else colors.gray, function()
 			send(action)
 		end)
-	return slot(
-		parent,
-		order,
-		name .. "  Lv " .. level,
-		ItemPictures.view(pictureKey),
-		value,
-		colors.speed,
-		canAfford,
-		button
-	)
+	return slot(parent, order, {
+		label = name .. "  Lv " .. level,
+		picture = ItemPictures.view(pictureKey),
+		lines = { { value, colors.speed, 20 } },
+		buttons = { button },
+		gold = canAfford,
+	})
 end
 
 function renderers.Shop()
@@ -17587,7 +18205,8 @@ function renderers.Shop()
 		"UpgradeHouse"
 	)
 
-	-- The zones: their egg and the Speed each needs. The deepest one you can do is gold.
+	-- The zones: their egg and the Speed each needs. The deepest one you can do is gold;
+	-- GO takes you to its entrance.
 	section("Zones", 3)
 	local speed = player:GetAttribute("Speed") or state.speed or 0
 	local best = 1
@@ -17596,48 +18215,828 @@ function renderers.Shop()
 			best = i
 		end
 	end
-	local zones = grid(4, UDim2.new(1 / 5, -8, 0, 168))
+	local zones = grid(4, UDim2.new(1 / 4, -8, 0, 210))
 	for i, zone in Items.ZONES do
 		local fast = speed >= zone.speed
-		slot(
-			zones,
-			i,
-			zone.name,
-			ItemPictures.egg(i),
-			"⚡ " .. (if zone.speed > 0 then Format.number(zone.speed) else "Any"),
-			if fast then colors.money else Color3.fromRGB(255, 110, 110),
-			i == best
-		)
+		slot(zones, i, {
+			label = zone.name,
+			picture = ItemPictures.egg(i),
+			lines = {
+				{
+					"⚡ " .. (if zone.speed > 0 then Format.number(zone.speed) else "Any"),
+					if fast then colors.money else Color3.fromRGB(255, 110, 110),
+					20,
+				},
+			},
+			buttons = {
+				UI.button(if fast then "GO!" else "🔒", if fast then colors.green else colors.gray, function()
+					if fast then
+						send("GoZone", i)
+						openWindow(nil)
+					end
+				end),
+			},
+			gold = i == best,
+		})
 	end
 end
 
--- Windows that haven't been rebuilt yet.
-local function comingSoon()
-	UI.text("Coming soon!", 30, {
-		Size = UDim2.new(1, 0, 0, 40),
+--------------------------------------------------------------------------------
+-- My Home: the nests, the house, the pets, the yard and the garden
+--------------------------------------------------------------------------------
+
+local lifeTab = "Nests"
+local LIFE_TABS = {
+	{ "Nests", "🥚 NESTS", Color3.fromRGB(255, 170, 40), 120 },
+	{ "House", "🏠 HOUSE", Items.KINDS.House.color, 120 },
+	{ "Pets", "🐾 PETS", Items.KINDS.Pet.color, 110 },
+	{ "Yard", "🛝 YARD", Items.KINDS.Yard.color, 110 },
+	{ "Garden", "🌷 GARDEN", Items.KINDS.Plant.color, 130 },
+}
+
+-- An item that's out, with a TAKE OFF button.
+local function placedSlot(parent, order: number, uid: string, title: string)
+	local record = state.parts[uid]
+	local info = Items.byId[record.id]
+	return slot(parent, order, {
+		label = title,
+		picture = ItemPictures.part(record.id, nil, false, record.mutations),
+		lines = {
+			{ LifeUtil.displayName(record), partColor(record):Lerp(Color3.new(1, 1, 1), 0.2), 18 },
+			{ Format.money(LifeUtil.itemIncome(record)) .. "/s", colors.money, 20 },
+		},
+		buttons = {
+			UI.button("TAKE OFF", colors.blue, function()
+				send("TakeOff", uid)
+			end),
+		},
+		tag = { info.rarity:upper():sub(1, 6), Items.color(record.id) },
+	})
+end
+
+-- A locked spot: upgrade in the Shop to open it.
+local function lockedSlot(parent, order: number, title: string, hint: string)
+	return slot(parent, order, {
+		label = title,
+		lines = { { "🔒", colors.muted, 40 }, { hint, colors.muted, 18 } },
+		buttons = {
+			UI.button("UPGRADE", colors.green, function()
+				openWindow("Shop")
+			end),
+		},
+	})
+end
+
+-- An empty spot.
+local function emptySlot(parent, order: number, title: string, hint: string)
+	return slot(parent, order, {
+		label = title,
+		lines = { { "Empty", colors.muted, 26 }, { hint, colors.muted, 18 } },
+		buttons = {
+			UI.button("FIND EGGS", colors.gray, function()
+				openWindow("Shop")
+			end),
+		},
+	})
+end
+
+local function nestSlots(parent)
+	local count = LifeUtil.nestCount(GamePasses.extraNests(player))
+	local now = Items.now()
+	for n = 1, Items.NESTS + 2 do
+		local egg = state.nests and state.nests[tostring(n)]
+		if n > count then
+			slot(parent, n, {
+				label = "Nest " .. n,
+				picture = ItemPictures.view("ExtraPen"),
+				lines = { { "🔒 Extra Nests", colors.muted, 18 } },
+				buttons = {
+					UI.button("STORE", Color3.fromRGB(240, 70, 170), function()
+						openWindow("Store")
+					end),
+				},
+			})
+		elseif not egg then
+			emptySlot(parent, n, "Nest " .. n, "Bring an egg home!")
+		else
+			local ready = egg.endsAt <= now
+			local weight = Items.eggWeightAt(egg, now)
+			local cell = slot(parent, n, {
+				label = "Nest " .. n,
+				picture = ItemPictures.egg(egg.zone, nil, egg.item),
+				lines = {
+					{ egg.rarity, Rarities.info[egg.rarity].color, 18 },
+					{
+						if ready then "READY!" else "⏱ " .. Format.time(egg.endsAt - now),
+						if ready then colors.money else colors.white,
+						20,
+					},
+					{ Format.weight(weight), Items.weightColor(weight / (egg.baseWeight or weight)), 16 },
+				},
+				buttons = {
+					UI.button("HATCH!", if ready then colors.green else colors.gray, function()
+						send("Hatch", n)
+					end),
+				},
+				gold = ready,
+			})
+			if not ready then
+				for _, label in cell:GetChildren() do
+					if label:IsA("TextLabel") and string.sub(label.Text, 1, 3) == "⏱" then
+						table.insert(liveTimers, { label = label, egg = egg })
+					end
+				end
+			end
+		end
+	end
+end
+
+function renderers.Life()
+	local income = LifeUtil.totalIncome(state) * GamePasses.coinMultiplier(player)
+	section("Your home earns " .. Format.money(income) .. "/s", 1, colors.money)
+	tabRow(2, LIFE_TABS, lifeTab, function(name)
+		lifeTab = name
+		render()
+	end)
+	local actions = row(3)
+	addButton(actions, 1, "⬆ PUT OUT BEST", colors.green, 220, function()
+		send("PlaceBest")
+	end)
+	local cells = grid(4, UDim2.new(1 / 4, -8, 0, 250))
+	if lifeTab == "Nests" then
+		nestSlots(cells)
+	elseif lifeTab == "House" then
+		for i, houseSlot in Parts.SLOTS do
+			local record, uid = LifeUtil.installedRecord(state, houseSlot.id)
+			local title = houseSlot.icon .. " " .. houseSlot.name
+			if not LifeUtil.slotOpen(state, houseSlot.id) then
+				lockedSlot(cells, i, title, "House Lv " .. Config.HOUSE_SLOT_LEVEL[houseSlot.id])
+			elseif record then
+				placedSlot(cells, i, uid, title)
+			else
+				local basic = { id = Parts.basic(houseSlot.id) }
+				slot(cells, i, {
+					label = title,
+					picture = ItemPictures.part(basic.id),
+					lines = {
+						{ "Basic", colors.muted, 18 },
+						{ Format.money(LifeUtil.itemIncome(basic)) .. "/s", colors.money, 20 },
+					},
+				})
+			end
+		end
+	elseif lifeTab == "Pets" then
+		local pets = LifeUtil.pets(state)
+		local room = LifeUtil.spaces(state).pets
+		for n = 1, Config.plotSpaces(Config.PLOT_MAX).pets do
+			if n > room then
+				lockedSlot(cells, n, "🐾 Pet " .. n, "Plot Lv " .. (n - 3))
+			elseif pets[n] then
+				placedSlot(cells, n, pets[n], "🐾 Pet " .. n)
+			else
+				emptySlot(cells, n, "🐾 Pet " .. n, "Wilds eggs")
+			end
+		end
+	else
+		local yard = lifeTab == "Yard"
+		local where = if yard then state.yard else state.garden
+		local spaces = LifeUtil.spaces(state)
+		local room = if yard then spaces.yard else spaces.garden
+		local count = if yard then Items.YARD_SPOTS else Items.GARDEN_BEDS
+		local icon = if yard then "🛝 Spot " else "🌷 Bed "
+		for n = 1, count do
+			local uid = where and where[tostring(n)]
+			if n > room then
+				lockedSlot(cells, n, icon .. n, "Plot Lv " .. (n - 1))
+			elseif uid and state.parts[uid] then
+				placedSlot(cells, n, uid, icon .. n)
+			else
+				emptySlot(cells, n, icon .. n, if yard then "Yard Sale eggs" else "Garden eggs")
+			end
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Bag: items that aren't out
+--------------------------------------------------------------------------------
+
+function renderers.Bag()
+	local list = LifeUtil.backpack(state)
+	section("🎒 " .. #list .. " / " .. GamePasses.backpackSize(player), 1)
+	if #list == 0 then
+		section("Empty! Extra items you hatch go here.", 2, colors.muted)
+		return
+	end
+	local total = 0
+	for _, uid in list do
+		total += LifeUtil.sellPrice(state.parts[uid])
+	end
+	local actions = row(2)
+	addButton(actions, 1, "⬆ PUT OUT BEST", colors.green, 220, function()
+		send("PlaceBest")
+	end)
+	local sellAll = confirmButton("SELL ALL " .. Format.money(total), colors.red, function()
+		send("SellBackpack")
+	end)
+	sellAll.Size = UDim2.fromOffset(260, 40)
+	sellAll.LayoutOrder = 2
+	sellAll.ZIndex = 7
+	sellAll.Label.ZIndex = 8
+	sellAll.Parent = actions
+	local cells = grid(3, UDim2.new(1 / 4, -8, 0, 300))
+	for i, uid in list do
+		local record = state.parts[uid]
+		local info = Items.byId[record.id]
+		local upgrade = LifeUtil.isUpgrade(state, uid)
+		slot(cells, i, {
+			label = LifeUtil.displayName(record),
+			picture = ItemPictures.part(record.id, nil, false, record.mutations),
+			lines = {
+				{ info.rarity, partColor(record):Lerp(Color3.new(1, 1, 1), 0.2), 18 },
+				{ Format.money(LifeUtil.itemIncome(record)) .. "/s", colors.money, 20 },
+			},
+			buttons = {
+				UI.button("PUT OUT", colors.green, function()
+					send("Place", uid)
+				end),
+				confirmButton("SELL " .. Format.money(LifeUtil.sellPrice(record)), colors.red, function()
+					send("Sell", uid)
+				end),
+			},
+			gold = upgrade,
+			tag = if upgrade then { "UP!", colors.green } else nil,
+		})
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Index: every item, kind by kind (house parts style by style)
+--------------------------------------------------------------------------------
+
+local indexKind = "House"
+local indexStyle = "Scrap"
+local INDEX_TABS = {
+	{ "House", "🏠 HOUSE", Items.KINDS.House.color, 120 },
+	{ "Pet", "🐾 PETS", Items.KINDS.Pet.color, 110 },
+	{ "Yard", "🛝 YARD", Items.KINDS.Yard.color, 110 },
+	{ "Plant", "🌷 PLANTS", Items.KINDS.Plant.color, 130 },
+}
+
+local function indexSlot(parent, order: number, id: string, title: string)
+	local info = Items.byId[id]
+	local owned = state.discovered[id] == true
+	local first = discoveries[id]
+	local lines = {
+		{ info.rarity, Rarities.info[info.rarity].color:Lerp(Color3.new(1, 1, 1), 0.3), 16 },
+		{ Format.money(info.income) .. "/s", colors.money, 18 },
+	}
+	if first then
+		table.insert(lines, { "1st: " .. first.name, colors.gold, 14 })
+	end
+	slot(parent, order, {
+		label = if owned then title else "???",
+		picture = ItemPictures.part(id, nil, not owned),
+		lines = lines,
+		gold = owned,
+	})
+end
+
+function renderers.Index()
+	local found, total = 0, 0
+	for _, item in Items.list do
+		if not item.basic then
+			total += 1
+			if state.discovered[item.id] then
+				found += 1
+			end
+		end
+	end
+	section("Found " .. found .. " / " .. total, 1, colors.gold)
+	tabRow(2, INDEX_TABS, indexKind, function(name)
+		indexKind = name
+		render()
+	end)
+	if indexKind == "House" then
+		local styles = UI.new("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = 3,
+			ZIndex = 6,
+			Parent = body,
+		}, {
+			UI.new("UIGridLayout", {
+				CellSize = UDim2.fromOffset(124, 36),
+				CellPadding = UDim2.fromOffset(6, 6),
+				SortOrder = Enum.SortOrder.LayoutOrder,
+			}),
+		})
+		for i, style in Parts.STYLES do
+			if style.id ~= "Basic" then
+				local color = Rarities.info[style.rarity].color
+				local button = UI.button(style.name, if style.id == indexStyle then color else colors.gray, function()
+					indexStyle = style.id
+					render()
+				end, { LayoutOrder = i, ZIndex = 7, Parent = styles })
+				button.Label.ZIndex = 8
+			end
+		end
+		local style = Parts.styleById[indexStyle]
+		section(style.name .. " · " .. style.rarity, 4, Rarities.info[style.rarity].color)
+		local cells = grid(5, UDim2.new(1 / 5, -8, 0, 200))
+		for i, houseSlot in Parts.SLOTS do
+			indexSlot(cells, i, style.id .. "_" .. houseSlot.id, houseSlot.name)
+		end
+		return
+	end
+	local cells = grid(5, UDim2.new(1 / 5, -8, 0, 200))
+	local order = 0
+	for _, item in Items.list do
+		if item.kind == indexKind then
+			order += 1
+			indexSlot(cells, order, item.id, item.name)
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Store: game passes, the Starter Pack and Mystery Box bundles
+--------------------------------------------------------------------------------
+
+local PASS_BADGES = {
+	DoubleCoins = "x2",
+	FastBreeding = "x2",
+	LongerLock = "x2",
+	ExtraPen = "+2",
+	ExtraSlot1 = "+20",
+	ExtraSlot2 = "+20",
+	ExtraSlot3 = "+20",
+}
+
+local function passButton(key: string)
+	local pass = GamePasses.list[key]
+	local owned = GamePasses.has(player, key)
+	if owned then
+		return UI.button("OWNED", colors.gray, function() end)
+	elseif pass.id == 0 then
+		return UI.button("SOON", colors.gray, function() end)
+	end
+	return UI.button("R$ " .. pass.price, colors.green, function()
+		MarketplaceService:PromptGamePassPurchase(player, pass.id)
+	end)
+end
+
+-- A wide offer slot: picture on the left, title and lines, a button on the right.
+local function offer(order: number, picture, title: string, titleColor: Color3, lines, button, tag)
+	local cell = UI.cell({ Size = UDim2.new(1, 0, 0, 150), LayoutOrder = order, ZIndex = 6, Parent = body }, true)
+	if picture then
+		picture.Position = UDim2.fromOffset(10, 10)
+		picture.Size = UDim2.fromOffset(150, 130)
+		picture.ZIndex = 7
+		picture.Parent = cell
+	end
+	UI.heavy(title, 36, {
+		Position = UDim2.fromOffset(176, 12),
+		Size = UDim2.new(1, -400, 0, 42),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = titleColor,
+		ZIndex = 7,
+		Parent = cell,
+	})
+	for i, line in lines do
+		UI.text(line, 18, {
+			Position = UDim2.fromOffset(178, 34 + i * 24),
+			Size = UDim2.new(1, -400, 0, 22),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = 7,
+			Parent = cell,
+		})
+	end
+	button.AnchorPoint = Vector2.new(1, 0.5)
+	button.Position = UDim2.new(1, -16, 0.5, 0)
+	button.Size = UDim2.fromOffset(200, 54)
+	button.ZIndex = 7
+	button.Label.ZIndex = 8
+	button.Parent = cell
+	if tag then
+		local label = UI.heavy(tag, 16, {
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, 4, 0, -6),
+			Size = UDim2.fromOffset(70, 24),
+			Rotation = 8,
+			BackgroundTransparency = 0,
+			BackgroundColor3 = colors.red,
+			ZIndex = 9,
+			Parent = cell,
+		})
+		UI.corner(4).Parent = label
+		UI.stroke(2).Parent = label
+	end
+	return cell
+end
+
+local function bundleOffer(order: number, bundle)
+	local crate = Luck.crateById[bundle.crate]
+	local button
+	if player:GetAttribute("CratesRestricted") then
+		button = UI.button("NOT AVAILABLE", colors.gray, function() end)
+	elseif bundle.productId ~= 0 then
+		button = UI.button("R$ " .. bundle.robux, colors.green, function()
+			send("BuyBundle", bundle.id)
+		end)
+	else
+		button = UI.button("SOON", colors.gray, function() end)
+	end
+	offer(
+		order,
+		boxPicture(crate.id),
+		string.upper(bundle.name),
+		crate.color,
+		{ "Save " .. Luck.bundleSaving(bundle) .. "% on " .. crate.name .. "es", "Odds in the 🍀 Luck window" },
+		button,
+		"-" .. Luck.bundleSaving(bundle) .. "%"
+	)
+end
+
+function renderers.Store()
+	-- The Starter Pack, while its offer is open.
+	local ends = player:GetAttribute("StarterEnds")
+	if ends and ends > Workspace:GetServerTimeNow() and not player:GetAttribute("CratesRestricted") then
+		local starter = Luck.STARTER
+		local boxes = {}
+		local firstCrate
+		for crateId, count in starter.crates do
+			firstCrate = firstCrate or crateId
+			table.insert(boxes, count .. " " .. Luck.crateById[crateId].name .. if count > 1 then "es" else "")
+		end
+		local cell = offer(
+			0,
+			if firstCrate then boxPicture(firstCrate) else nil,
+			"STARTER PACK",
+			colors.gold,
+			{ "💰 " .. Format.money(starter.coins), "📦 " .. table.concat(boxes, " + "), "" },
+			UI.button(if starter.passId ~= 0 then "R$ " .. starter.robux else "SOON", colors.green, function()
+				send("BuyStarter")
+			end),
+			"LIMITED"
+		)
+		-- Count down live while the window is open.
+		local clock
+		for _, child in cell:GetChildren() do
+			if child:IsA("TextLabel") and child.Text == "" then
+				clock = child
+			end
+		end
+		task.spawn(function()
+			while clock and clock.Parent do
+				local left = math.max(0, ends - Workspace:GetServerTimeNow())
+				clock.Text = "⏰ " .. Format.time(left) .. " left!"
+				clock.TextColor3 = colors.gold
+				task.wait(1)
+			end
+		end)
+	end
+
+	offer(
+		1,
+		ItemPictures.view("VIP"),
+		"VIP",
+		colors.gold,
+		{ "👑 Gold VIP tag in chat", "💰 +10% coins forever", "🎡 Spin twice as often" },
+		passButton("VIP"),
+		if GamePasses.has(player, "VIP") then "YOURS!" else "BEST!"
+	)
+
+	section("Game Passes", 2)
+	local cells = grid(3, UDim2.new(1 / 4, -8, 0, 260))
+	local i = 0
+	for _, key in GamePasses.order do
+		if key ~= "VIP" then
+			i += 1
+			local pass = GamePasses.list[key]
+			slot(cells, i, {
+				label = pass.name,
+				picture = ItemPictures.view(key),
+				lines = { { pass.description, colors.muted, 16 } },
+				buttons = { passButton(key) },
+				gold = GamePasses.has(player, key),
+				tag = PASS_BADGES[key] and { PASS_BADGES[key], pass.color },
+			})
+		end
+	end
+
+	section("Mystery Box Bundles", 4)
+	for k, bundle in Luck.BUNDLES do
+		bundleOffer(10 + k, bundle)
+	end
+end
+
+-- Refresh the Store as soon as a purchase goes through.
+player.AttributeChanged:Connect(function(name)
+	if string.sub(name, 1, 5) == "Pass_" and currentWindow == "Store" then
+		render()
+	end
+end)
+
+--------------------------------------------------------------------------------
+-- Luck: the Lucky Wheel and the Mystery Boxes (odds shown before buying)
+--------------------------------------------------------------------------------
+
+function renderers.Luck()
+	local left = spinLeft()
+	local ready = left <= 0
+	local function spin()
+		if ready then
+			send("SpinWheel")
+		end
+	end
+	local wheelCell = UI.cell({ Size = UDim2.new(1, 0, 0, 300), LayoutOrder = 1, ZIndex = 6, Parent = body }, ready)
+	local holder = UI.new("Frame", {
+		Position = UDim2.fromOffset(10, 10),
+		Size = UDim2.fromOffset(280, 280),
+		BackgroundTransparency = 1,
+		ZIndex = 7,
+		Parent = wheelCell,
+	})
+	LuckyWheel.build(holder, 280, { hubText = if ready then "SPIN!" else "⏳", onHub = spin, zIndex = 7 })
+	UI.heavy("LUCKY WHEEL", 44, {
+		Position = UDim2.fromOffset(310, 24),
+		Size = UDim2.new(1, -330, 0, 50),
+		TextColor3 = colors.gold,
+		ZIndex = 7,
+		Parent = wheelCell,
+	})
+	UI.text(if ready then "Your free spin is ready!" else "A free spin every day!", 22, {
+		Position = UDim2.fromOffset(310, 84),
+		Size = UDim2.new(1, -330, 0, 28),
+		ZIndex = 7,
+		Parent = wheelCell,
+	})
+	UI.text("Coins · Golden parts · Boxes · JACKPOT", 18, {
+		Position = UDim2.fromOffset(310, 118),
+		Size = UDim2.new(1, -330, 0, 24),
+		TextColor3 = colors.muted,
+		ZIndex = 7,
+		Parent = wheelCell,
+	})
+	local spinButton =
+		UI.button(if ready then "SPIN!" else Format.time(left), if ready then colors.green else colors.gray, spin, {
+			Position = UDim2.fromOffset(330, 190),
+			Size = UDim2.new(1, -370, 0, 64),
+			ZIndex = 7,
+			Parent = wheelCell,
+		})
+	spinButton.Label.ZIndex = 8
+
+	-- Mystery Boxes (Robux): every chance is shown before buying.
+	section("📦 Mystery Boxes · odds", 2)
+	local restricted = player:GetAttribute("CratesRestricted")
+	local cells = grid(3, UDim2.new(1 / 3, -7, 0, 420))
+	for i, crate in Luck.CRATES do
+		local lines = {}
+		for _, entry in Luck.oddsList(crate) do
+			table.insert(lines, {
+				entry.rarity .. "  " .. percentText(entry.percent),
+				Rarities.info[entry.rarity].color:Lerp(Color3.new(1, 1, 1), 0.35),
+				18,
+			})
+		end
+		local button
+		if restricted then
+			button = UI.button("NOT AVAILABLE", colors.gray, function() end)
+		elseif crate.productId ~= 0 or (RunService:IsStudio() and Luck.STUDIO_FREE_CRATES) then
+			button = UI.button("R$ " .. crate.robux, colors.green, function()
+				send("BuyCrate", crate.id)
+			end)
+		else
+			button = UI.button("SOON", colors.gray, function() end)
+		end
+		local buttons = { button }
+		local owned = state.crates and state.crates[crate.id] or 0
+		if owned > 0 then
+			table.insert(
+				buttons,
+				UI.button("OPEN (" .. owned .. ")", colors.orange, function()
+					send("OpenCrate", crate.id)
+				end)
+			)
+		end
+		slot(cells, i, {
+			label = crate.name,
+			picture = boxPicture(crate.id),
+			lines = lines,
+			buttons = buttons,
+			gold = owned > 0,
+			tag = if i == #Luck.CRATES then { "BEST", colors.red } else nil,
+		})
+	end
+	for k, bundle in Luck.BUNDLES do
+		bundleOffer(10 + k, bundle)
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Admin (only for admins: the server sets IsAdmin and checks every command)
+--------------------------------------------------------------------------------
+
+local ADMIN_EVENTS = {
+	{ id = "GuardianNap", def = Events.BIG.GuardianNap },
+	{ id = "BloodMoon", def = Events.WEATHER.BloodMoon },
+	{ id = "GoldRush", def = Events.WEATHER.GoldRush },
+	{ id = "RainbowRain", def = Events.WEATHER.RainbowRain },
+	{ id = "Rainbow", def = Luck.EVENTS.Rainbow },
+	{ id = "LuckySkies", def = Luck.EVENTS.LuckySkies },
+	{ id = "RapidFire", def = Luck.EVENTS.RapidFire },
+	{ id = "CrateLuck", def = Luck.EVENTS.CrateLuck },
+}
+local admin = {
+	event = ADMIN_EVENTS[1].id,
+	minutes = 15,
+	everywhere = true,
+	zone = 1,
+	rarity = 0, -- 0 = fill with every rarity
+	mutation = 0, -- 0 = none
+	status = "Pick an event, or spawn some eggs!",
+}
+
+local function adminRun(command: string, args)
+	admin.status = "..."
+	task.spawn(function()
+		local ok, result = pcall(function()
+			return Remotes.get("Admin"):InvokeServer(command, args)
+		end)
+		admin.status = if ok then tostring(result or "Done!") else "Failed: " .. tostring(result)
+		if currentWindow == "Admin" then
+			render()
+		end
+	end)
+	if currentWindow == "Admin" then
+		render()
+	end
+end
+
+-- A < value > picker.
+local function cycler(parent, order: number, width: number, text: string, onStep: (number) -> ())
+	addButton(parent, order, "<", colors.blue, 36, function()
+		onStep(-1)
+		render()
+	end)
+	local label = UI.text(text, 18, {
+		Size = UDim2.fromOffset(width, 40),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = colors.cell,
+		LayoutOrder = order + 1,
+		ZIndex = 7,
+		Parent = parent,
+	})
+	UI.corner(6).Parent = label
+	UI.stroke(2.5).Parent = label
+	addButton(parent, order + 2, ">", colors.blue, 36, function()
+		onStep(1)
+		render()
+	end)
+end
+
+function renderers.Admin()
+	section(admin.status, 0, colors.gold)
+
+	section("⚡ Start an event", 1)
+	local events = grid(2, UDim2.new(0.25, -8, 0, 44))
+	for i, entry in ADMIN_EVENTS do
+		local picked = entry.id == admin.event
+		local button = UI.button(
+			entry.def.icon .. " " .. entry.def.name,
+			if picked then entry.def.color else colors.gray,
+			function()
+				admin.event = entry.id
+				render()
+			end,
+			{ LayoutOrder = i, ZIndex = 7, Parent = events }
+		)
+		button.Label.ZIndex = 8
+		if picked then
+			button.UIStroke.Color = Color3.new(1, 1, 1)
+		end
+	end
+	local times = row(3)
+	for i, value in { 5, 15, 30, 60 } do
+		addButton(
+			times,
+			i,
+			value .. " MIN",
+			if value == admin.minutes then colors.orange else colors.gray,
+			100,
+			function()
+				admin.minutes = value
+				render()
+			end
+		)
+	end
+	addButton(
+		times,
+		10,
+		if admin.everywhere then "ALL SERVERS" else "THIS SERVER",
+		if admin.everywhere then colors.purple else colors.blue,
+		190,
+		function()
+			admin.everywhere = not admin.everywhere
+			render()
+		end
+	)
+	local go = row(4)
+	addButton(go, 1, "▶ START", colors.green, 200, function()
+		adminRun("event", { id = admin.event, minutes = admin.minutes, everywhere = admin.everywhere })
+	end)
+	addButton(go, 2, "■ END EVENTS", colors.red, 220, function()
+		adminRun("stop", { everywhere = admin.everywhere })
+	end)
+
+	section("🥚 Spawn eggs (this server)", 5)
+	local spawnRow = row(6)
+	local zoneCount = #Items.ZONES
+	cycler(spawnRow, 1, 130, Items.ZONES[admin.zone].name, function(step)
+		admin.zone = (admin.zone - 1 + step) % zoneCount + 1
+	end)
+	local rarities = Rarities.order
+	cycler(spawnRow, 4, 80, if admin.rarity == 0 then "All" else rarities[admin.rarity], function(step)
+		admin.rarity = (admin.rarity + step) % (#rarities + 1)
+	end)
+	local mutations = Mutations.list
+	cycler(spawnRow, 7, 110, if admin.mutation == 0 then "No mutation" else mutations[admin.mutation].id, function(step)
+		admin.mutation = (admin.mutation + step) % (#mutations + 1)
+	end)
+	addButton(spawnRow, 10, "GO!", colors.orange, 70, function()
+		adminRun("spawn", {
+			zone = admin.zone,
+			rarity = if admin.rarity == 0 then nil else rarities[admin.rarity],
+			mutation = if admin.mutation == 0 then nil else mutations[admin.mutation].id,
+		})
+	end)
+
+	section("📣 Announce", 7)
+	local announce = row(8)
+	local box = UI.new("TextBox", {
+		Size = UDim2.new(1, -120, 0, 40),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		FontFace = UI.FONT,
+		PlaceholderText = "Guardian Nap in 5 minutes!",
+		PlaceholderColor3 = Color3.fromRGB(140, 140, 150),
+		Text = "",
+		TextColor3 = UI.OUTLINE,
+		TextSize = 20,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ClearTextOnFocus = false,
 		LayoutOrder = 1,
+		ZIndex = 7,
+		Parent = announce,
+	}, { UI.corner(6), UI.stroke(2.5), UI.new("UIPadding", { PaddingLeft = UDim.new(0, 10) }) })
+	addButton(announce, 2, "SEND", colors.green, 100, function()
+		if box.Text ~= "" then
+			adminRun("announce", { text = box.Text, everywhere = admin.everywhere })
+		end
+	end)
+
+	section("🗓️ Coming up", 9)
+	local t = os.time()
+	local lines = {}
+	for i, upcoming in Events.upcoming(t) do
+		if i > 3 then
+			break
+		end
+		local def = Events.BIG[upcoming.id]
+		local live = if upcoming.starts <= t then "  LIVE" else ""
+		table.insert(lines, def.icon .. " " .. def.name .. "  " .. os.date("%a %I:%M %p", upcoming.starts) .. live)
+	end
+	local weather = Events.nextWeather(t)
+	if weather then
+		local def = Events.WEATHER[weather.id]
+		table.insert(lines, def.icon .. " " .. def.name .. "  " .. os.date("%I:%M %p", weather.starts))
+	end
+	UI.text(table.concat(lines, "\n"), 18, {
+		Size = UDim2.new(1, 0, 0, 22 * math.max(1, #lines)),
+		TextScaled = false,
+		TextSize = 18,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = colors.muted,
+		LayoutOrder = 10,
 		ZIndex = 6,
 		Parent = body,
 	})
-end
-for _, name in { "Luck", "Life", "Bag", "Index", "Store" } do
-	renderers[name] = comingSoon
+
+	section("💰 Test coins", 11)
+	local coins = row(12)
+	addButton(coins, 1, "+1M", colors.gold, 140, function()
+		adminRun("money", { amount = 1e6 })
+	end)
+	addButton(coins, 2, "+1B", colors.gold, 140, function()
+		adminRun("money", { amount = 1e9 })
+	end)
 end
 
--- The side menu: name, label, colour, icon.
-local MENU = {
-	{ "Shop", "SHOP", Color3.fromRGB(235, 60, 70), "MenuShop", "🛒" },
-	{ "Luck", "LUCK", Color3.fromRGB(110, 205, 50), "MenuLuck", "🍀" },
-	{ "Life", "HOME", Color3.fromRGB(60, 140, 240), "MenuLife", "🏡" },
-	{ "Bag", "BAG", Color3.fromRGB(245, 150, 40), "MenuBag", "🎒" },
-	{ "Index", "INDEX", Color3.fromRGB(40, 185, 200), "MenuCatalog", "📖" },
-	{ "Store", "STORE", Color3.fromRGB(165, 90, 240), "MenuStore", "💎" },
-	{ "Home", "TP", Color3.fromRGB(250, 200, 40), "MenuHome", "🚪" },
-}
-local MENU_BY_NAME = {}
-for _, entry in MENU do
-	MENU_BY_NAME[entry[1]] = entry
-end
+--------------------------------------------------------------------------------
+-- Opening windows, and the HUD buttons
+--------------------------------------------------------------------------------
 
 openWindow = function(name: string?)
 	if not name or currentWindow == name then
@@ -17645,9 +19044,12 @@ openWindow = function(name: string?)
 		window.Visible = false
 		return
 	end
+	if name == "Admin" and player:GetAttribute("IsAdmin") ~= true then
+		return
+	end
 	currentWindow = name
-	local entry = MENU_BY_NAME[name]
-	setHeader(entry[5], name, entry[3])
+	local info = WINDOWS[name]
+	setHeader(info[3], info[1], info[2])
 	if not window.Visible then
 		window.Visible = true
 		windowScale.Scale = 0.85
@@ -17659,33 +19061,279 @@ openWindow = function(name: string?)
 	render()
 end
 
-local setBadge = Hud.menu(screen, MENU, function(name: string)
+-- Top centre: travel.
+local setTopBadge = Hud.buttons(screen, "top", {
+	{ "Home", "HOME", colors.orange, Hud.icon("MenuHome", "🏠") },
+	{ "Zones", "ZONES", colors.blue, Hud.icon("Egg", "🥚") },
+	{ "Spin", "SPIN", Color3.fromRGB(160, 215, 45), Hud.icon("MenuLuck", "🎡") },
+}, function(name)
 	if name == "Home" then
-		send("GoHome") -- not a window: takes you back to your house
+		send("GoHome")
+	elseif name == "Zones" then
+		send("GoZone")
+	elseif spinLeft() <= 0 then
+		send("SpinWheel")
 	else
-		openWindow(name)
+		openWindow("Luck")
 	end
 end)
 
--- The Shop's "!" when you can afford an upgrade.
-local function updateBadges()
-	if not state then
+-- Left: the menus, and the event timer under them.
+local setMenuBadge, _, menuHolder = Hud.buttons(screen, "left", {
+	{ "Shop", "SHOP", Color3.fromRGB(80, 200, 40), Hud.icon("MenuShop", "🛒") },
+	{ "Life", "MY HOME", colors.blue, Hud.icon("MenuLife", "🏡") },
+	{ "Bag", "BAG", colors.orange, Hud.icon("MenuBag", "🎒") },
+	{ "Index", "INDEX", Color3.fromRGB(165, 90, 240), Hud.icon("MenuCatalog", "📖") },
+}, openWindow)
+Hud.eventTimer(menuHolder)
+
+-- Right: square tiles.
+local setTileBadge, tiles = Hud.tiles(screen, {
+	{ "Store", Color3.fromRGB(240, 70, 170), Hud.icon("MenuStore", "💎") },
+	{ "Luck", Color3.fromRGB(40, 190, 170), Hud.icon("MenuLuck", "🍀") },
+	{ "Admin", colors.red, "🛠️" },
+}, openWindow)
+local function updateAdmin()
+	tiles.Admin.Visible = player:GetAttribute("IsAdmin") == true
+	if not tiles.Admin.Visible and currentWindow == "Admin" then
+		openWindow(nil)
+	end
+end
+player:GetAttributeChangedSignal("IsAdmin"):Connect(updateAdmin)
+updateAdmin()
+
+-- Badges, the hatch bar and the nest countdowns, twice a second.
+task.spawn(function()
+	while true do
+		if state then
+			local money = state.money or 0
+			local level, plotLevel, houseLevel = state.treadmill or 1, state.plotLevel or 1, state.houseLevel or 1
+			local canUpgrade = (level < Config.TREADMILL_MAX and money >= Config.treadmillCost(level))
+				or (plotLevel < Config.PLOT_MAX and money >= Config.plotCost(plotLevel))
+				or (houseLevel < Config.HOUSE_MAX and money >= Config.houseCost(houseLevel))
+			setMenuBadge("Shop", if canUpgrade then "!" else nil)
+
+			local eggNow = Items.now()
+			local ready, soonest = 0, nil
+			for _, egg in state.nests or {} do
+				if egg.endsAt <= eggNow then
+					ready += 1
+				elseif not soonest or egg.endsAt < soonest then
+					soonest = egg.endsAt
+				end
+			end
+			setMenuBadge("Life", if ready > 0 then tostring(ready) else nil)
+			if ready > 0 then
+				setBar("🐣 EGG READY!", colors.money)
+			elseif soonest then
+				setBar("🐣 " .. Format.time(soonest - eggNow), colors.white)
+			else
+				setBar(nil)
+			end
+
+			local upgrades = 0
+			for _, uid in LifeUtil.backpack(state) do
+				if LifeUtil.isUpgrade(state, uid) then
+					upgrades += 1
+				end
+			end
+			setMenuBadge("Bag", if upgrades > 0 then "UP" else nil)
+
+			local boxes = 0
+			for _, count in state.crates or {} do
+				boxes += count
+			end
+			local spinReady = spinLeft() <= 0
+			setTopBadge("Spin", if spinReady then "!" else nil)
+			setTileBadge("Luck", if boxes > 0 then tostring(boxes) elseif spinReady then "!" else nil)
+
+			for _, timer in liveTimers do
+				if timer.label.Parent then
+					local left = timer.egg.endsAt - eggNow
+					timer.label.Text = if left > 0 then "⏱ " .. Format.time(left) else "READY!"
+				end
+			end
+		end
+		task.wait(0.5)
+	end
+end)
+
+--------------------------------------------------------------------------------
+-- Reveals: hatching and boxes play the card-pack reveal; the wheel spins
+--------------------------------------------------------------------------------
+
+local WHERE_TEXT = {
+	house = "It's on your house!",
+	pen = "It's roaming your yard!",
+	yard = "It's in your yard!",
+	garden = "It's in your garden!",
+	backpack = "It's in your bag.",
+}
+
+-- A full-screen shade with a window in the middle; returns shade, frame, content, setHeader.
+local function prizeWindow(onClose: () -> ())
+	local shade = UI.new("TextButton", {
+		Name = "Reveal",
+		Text = "",
+		AutoButtonColor = false,
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0.4,
+		ZIndex = 50,
+		Parent = screen,
+	})
+	local frame, inside, header = UI.window({
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(380, 440),
+		ZIndex = 51,
+		Parent = shade,
+	}, onClose)
+	return shade, frame, inside, header
+end
+
+local function prize(title: string, color: Color3, picture, name: string?, subtitle: string, done: () -> ())
+	local shade, frame, inside, header
+	local function close()
+		shade:Destroy()
+		done()
+	end
+	shade, frame, inside, header = prizeWindow(close)
+	header("🎉", title, color)
+	if picture then
+		picture.Position = UDim2.fromOffset(20, 12)
+		picture.Size = UDim2.new(1, -40, 0, 210)
+		picture.ZIndex = 52
+		picture.Parent = inside
+	end
+	if name then
+		UI.heavy(name, 30, {
+			Position = UDim2.new(0, 14, 0, 226),
+			Size = UDim2.new(1, -28, 0, 34),
+			TextColor3 = color,
+			ZIndex = 52,
+			Parent = inside,
+		})
+	end
+	UI.text(subtitle, 20, {
+		Position = UDim2.new(0, 14, 0, 262),
+		Size = UDim2.new(1, -28, 0, 48),
+		TextWrapped = true,
+		ZIndex = 52,
+		Parent = inside,
+	})
+	local button = UI.button("AWESOME!", colors.green, close, {
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -14),
+		Size = UDim2.new(1, -40, 0, 52),
+		ZIndex = 52,
+		Parent = inside,
+	})
+	button.Label.ZIndex = 53
+	local scale = UI.new("UIScale", { Scale = 0.3, Parent = frame })
+	TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+		:Play()
+end
+
+-- The Lucky Wheel spins and lands on the slice the server rolled, then shows the prize.
+local function revealWheel(result, done)
+	local shade = UI.new("Frame", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0.4,
+		ZIndex = 50,
+		Parent = screen,
+	})
+	local holder = UI.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(420, 420),
+		BackgroundTransparency = 1,
+		ZIndex = 51,
+		Parent = shade,
+	})
+	local wheel = LuckyWheel.build(holder, 420, { hubText = "🎡", zIndex = 52 })
+	wheel.spinTo(result.slice, function()
+		task.wait(0.7)
+		shade:Destroy()
+		local slice = Luck.WHEEL[result.slice]
+		if result.part then
+			local color = Rarities.info[result.rarity].color
+			prize(
+				if result.isNew then "NEW ITEM!" else "YOU WON!",
+				color,
+				ItemPictures.part(result.part.id, nil, false, result.part.mutations),
+				LifeUtil.displayName(result.part),
+				result.rarity .. " · " .. (WHERE_TEXT[result.where] or WHERE_TEXT.backpack),
+				done
+			)
+		elseif result.crate then
+			prize(
+				if slice.crate == "LegendaryMonster" then "JACKPOT!" else "YOU WON!",
+				slice.color,
+				boxPicture(result.crate),
+				Luck.crateById[result.crate].name,
+				"Open it in the 🍀 Luck window!",
+				done
+			)
+		else
+			prize(
+				"YOU WON!",
+				colors.money,
+				ItemPictures.view("Cash"),
+				"+" .. Format.money(result.coins or 0),
+				"Coins!",
+				done
+			)
+		end
+	end)
+end
+
+-- Reveals queue up so two never overlap.
+local revealing = false
+local revealQueue = {}
+local function nextReveal()
+	if revealing or #revealQueue == 0 then
 		return
 	end
-	local money = state.money or 0
-	local level, plotLevel, houseLevel = state.treadmill or 1, state.plotLevel or 1, state.houseLevel or 1
-	setBadge(
-		"Shop",
-		(level < Config.TREADMILL_MAX and money >= Config.treadmillCost(level))
-			or (plotLevel < Config.PLOT_MAX and money >= Config.plotCost(plotLevel))
-			or (houseLevel < Config.HOUSE_MAX and money >= Config.houseCost(houseLevel))
-	)
+	revealing = true
+	local result = table.remove(revealQueue, 1)
+	local function done()
+		revealing = false
+		nextReveal()
+	end
+	openWindow(nil)
+	if result.kind == "wheel" then
+		revealWheel(result, done)
+	else
+		PackReveal.play(result, done)
+	end
 end
+Remotes.get("LuckResult").OnClientEvent:Connect(function(result)
+	table.insert(revealQueue, result)
+	nextReveal()
+end)
+
+--------------------------------------------------------------------------------
+-- Live updates
+--------------------------------------------------------------------------------
+
+player:GetAttributeChangedSignal("Money"):Connect(function()
+	if state then
+		state.money = player:GetAttribute("Money") or state.money
+	end
+end)
 
 Remotes.get("State").OnClientEvent:Connect(function(newState)
 	state = newState
-	updateBadges()
 	render()
+end)
+
+Remotes.get("DiscoveryUpdate").OnClientEvent:Connect(function(partId, discovery)
+	discoveries[partId] = discovery
+	if currentWindow == "Index" then
+		render()
+	end
 end)
 
 -- Only the owner sees the Hatch prompts on their own nests.
@@ -17773,14 +19421,1394 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
+task.spawn(function()
+	discoveries = Remotes.get("GetDiscoveries"):InvokeServer() or {}
+end)
 state = Remotes.get("GetState"):InvokeServer()
-updateBadges()
 print("[Steal a Life] Client ready")
 clientReady = true
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="63">
+        <Item class="ModuleScript" referent="64">
+          <Properties>
+            <string name="Name">PackReveal</string>
+            <string name="Source"><![CDATA[-- Hatching an egg (or opening a Mystery Box), done like a card-pack reveal in the big
+-- sports games, in 3D. The camera cuts to a dark arena (built on this client only, high
+-- above the map): the egg or box drops onto a glowing pedestal under sweeping spotlights,
+-- shakes, and bursts into a face-down card. Then the clues slam onto the screen one at a
+-- time (first what KIND of thing it is, or which SLOT of the house for a house part, then
+-- its RARITY, with every light in the arena turning that colour) before the card flips over
+-- in 3D and the item pops out in front of it with its name. The rarer the item, the longer
+-- the suspense and the wilder the lights.
+-- Tapping the screen speeds it up.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local BoxModel = require(ReplicatedStorage.Shared.BoxModel)
+local EggModel = require(ReplicatedStorage.Shared.EggModel)
+local Format = require(ReplicatedStorage.Shared.Format)
+local ItemModel = require(ReplicatedStorage.Shared.ItemModel)
+local Items = require(ReplicatedStorage.Shared.Items)
+local LifeUtil = require(ReplicatedStorage.Shared.LifeUtil)
+local Lego = require(ReplicatedStorage.Shared.Lego)
+local Luck = require(ReplicatedStorage.Shared.Luck)
+local Parts = require(ReplicatedStorage.Shared.Parts)
+local Rarities = require(ReplicatedStorage.Shared.Rarities)
+local UI = require(script.Parent.UI)
+
+local PackReveal = {}
+
+local STAGE = CFrame.new(0, 3000, 0) -- far above the map, out of everyone's way
+local CARD_SIZE = Vector3.new(6, 8.4, 0.35)
+local CARD_HOME = Vector3.new(0, 7.2, 0) -- where the card floats, above the pedestal
+local PEDESTAL_TOP = 1.6
+local DARK = Color3.fromRGB(14, 12, 28)
+local GOLD = Color3.fromRGB(255, 205, 70)
+
+local RARITY_WORDS = {
+	Common = "COMMON",
+	Uncommon = "UNCOMMON",
+	Rare = "RARE!",
+	Legendary = "LEGENDARY!",
+	Mystic = "MYSTIC!!",
+	Ultra = "ULTRA!!!",
+	Secret = "SECRET!!!",
+}
+
+local function easeOut(a: number): number
+	return 1 - (1 - a) ^ 3
+end
+
+local function easeInOut(a: number): number
+	return a * a * (3 - 2 * a)
+end
+
+local function rainbow(t: number, offset: number?): Color3
+	return Color3.fromHSV((t * 0.5 + (offset or 0)) % 1, 0.75, 1)
+end
+
+local function at(x: number, y: number, z: number): CFrame
+	return STAGE * CFrame.new(x, y, z)
+end
+
+local function newPart(parent: Instance, props)
+	local p = Instance.new(props.ClassName or "Part")
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	p.Material = Enum.Material.SmoothPlastic
+	for key, value in props do
+		if key ~= "ClassName" then
+			p[key] = value
+		end
+	end
+	p.Parent = parent
+	return p
+end
+
+-- Text on one face of a part.
+local function faceText(
+	part: BasePart,
+	face: Enum.NormalId,
+	text: string,
+	color: Color3,
+	position: UDim2,
+	size: UDim2,
+	heavy: boolean?
+)
+	local gui = part:FindFirstChild("Face" .. face.Name)
+	if not gui then
+		gui = Instance.new("SurfaceGui")
+		gui.Name = "Face" .. face.Name
+		gui.Face = face
+		gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		gui.PixelsPerStud = 50
+		gui.LightInfluence = 0
+		gui.Parent = part
+	end
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Position = position
+	label.Size = size
+	label.TextScaled = true
+	label.Font = if heavy then Enum.Font.LuckiestGuy else Enum.Font.FredokaOne
+	label.Text = text
+	label.TextColor3 = color
+	label.Parent = gui
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = UI.OUTLINE
+	stroke.Thickness = 4
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
+	stroke.Parent = label
+	return label
+end
+
+-- The back of the card: a monster card that feels alive. Dark chrome with scanlines, a
+-- silver-and-gold frame with curved horns out of the top corners, violet energy cracks
+-- flickering out from a big glowing dragon eye that looks around and blinks, a ring of
+-- runes turning round it, a chrome nameplate, and a holographic glint sweeping across.
+-- Built round the card's centre (the back faces -Z). Returns animate(t), which moves the
+-- living parts; call it every frame after the card is placed.
+local function buildCardBack(card: Model, body: BasePart): (number) -> ()
+	local half = Vector2.new(CARD_SIZE.X / 2, CARD_SIZE.Y / 2)
+	local z0 = -CARD_SIZE.Z / 2
+	local eye = Vector2.new(0, 0.55)
+	local violet = Color3.fromRGB(175, 90, 255)
+	local cyan = Color3.fromRGB(90, 235, 255)
+	local chrome = Color3.fromRGB(200, 205, 220)
+	local random = Random.new(7)
+	local function flat(
+		name: string,
+		size: Vector3,
+		x: number,
+		y: number,
+		z: number,
+		color: Color3,
+		material,
+		angle: number?
+	)
+		return newPart(card, {
+			Name = name,
+			Size = size,
+			CFrame = CFrame.new(x, y, z) * CFrame.Angles(0, 0, angle or 0),
+			Color = color,
+			Material = material or Enum.Material.SmoothPlastic,
+		})
+	end
+	local function ellipsoid(name: string, size: Vector3, x: number, y: number, z: number, color: Color3, material)
+		local part = flat(name, size, x, y, z, color, material)
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Parent = part
+		return part
+	end
+	local function disc(name: string, diameter: number, depth: number, z: number, color: Color3, material)
+		return newPart(card, {
+			Name = name,
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(depth, diameter, diameter),
+			CFrame = CFrame.new(eye.X, eye.Y, z) * CFrame.Angles(0, math.pi / 2, 0),
+			Color = color,
+			Material = material or Enum.Material.SmoothPlastic,
+		})
+	end
+
+	-- Dark chrome with faint scanlines.
+	body.Color = Color3.fromRGB(16, 12, 30)
+	body.Material = Enum.Material.Metal
+	for k = 0, 15 do
+		flat(
+			"Scanline",
+			Vector3.new(CARD_SIZE.X - 1, 0.07, 0.02),
+			0,
+			-half.Y + 0.6 + k * 0.48,
+			z0 - 0.01,
+			Color3.fromRGB(34, 24, 62)
+		)
+	end
+
+	-- Energy cracks: jagged violet lines from the eye out towards the edges.
+	local cracks = {}
+	for k = 0, 7 do
+		local angle = k / 8 * math.pi * 2 + 0.3
+		local point = eye + Vector2.new(math.cos(angle), math.sin(angle)) * 2.3
+		for _ = 1, 3 do
+			local turn = angle + random:NextNumber(-0.6, 0.6)
+			local step = random:NextNumber(0.6, 1.1)
+			local nextPoint = point + Vector2.new(math.cos(turn), math.sin(turn)) * step
+			if math.abs(nextPoint.X) > half.X - 0.7 or math.abs(nextPoint.Y) > half.Y - 0.7 then
+				break
+			end
+			local mid = (point + nextPoint) / 2
+			local dir = nextPoint - point
+			table.insert(
+				cracks,
+				flat(
+					"Crack",
+					Vector3.new(dir.Magnitude + 0.12, 0.15, 0.03),
+					mid.X,
+					mid.Y,
+					z0 - 0.03,
+					violet,
+					Enum.Material.Neon,
+					math.atan2(dir.Y, dir.X)
+				)
+			)
+			point = nextPoint
+		end
+	end
+
+	-- Frame: chrome bevel with a thin gold line inside it.
+	for _, inset in { { 0.32, 0.22, chrome, Enum.Material.Foil, 0.08 }, { 0.6, 0.08, GOLD, Enum.Material.Neon, 0.06 } } do
+		local d, w = inset[1], inset[2]
+		for _, bar in
+			{
+				{ Vector3.new(CARD_SIZE.X - d * 2, w, inset[5]), Vector3.new(0, half.Y - d, 0) },
+				{ Vector3.new(CARD_SIZE.X - d * 2, w, inset[5]), Vector3.new(0, -half.Y + d, 0) },
+				{ Vector3.new(w, CARD_SIZE.Y - d * 2, inset[5]), Vector3.new(half.X - d, 0, 0) },
+				{ Vector3.new(w, CARD_SIZE.Y - d * 2, inset[5]), Vector3.new(-half.X + d, 0, 0) },
+			}
+		do
+			flat("Frame", bar[1], bar[2].X, bar[2].Y, z0 - 0.05, inset[3], inset[4])
+		end
+	end
+	-- Horns curling up and out of the top corners: thick dark purple at the root, tapering
+	-- to a glowing gold tip. Each is a chain of tapered cylinders with balls at the joints.
+	for _, side in { -1, 1 } do
+		local points = {}
+		for k = 0, 8 do
+			local f = k / 8
+			local angle = math.rad(25 + 70 * f) -- sweeps from out-and-up to straight up
+			table.insert(
+				points,
+				Vector2.new(
+					side * (half.X - 0.55 + math.cos(angle) * 1.6 * f),
+					half.Y - 0.35 + math.sin(angle) * 2.1 * f
+				)
+			)
+		end
+		for k = 1, #points - 1 do
+			local f = (k - 1) / (#points - 1)
+			local a0, a1 = points[k], points[k + 1]
+			local width = 0.95 - 0.8 * f
+			local color = Color3.fromRGB(55, 22, 90):Lerp(Color3.fromRGB(170, 100, 230), f)
+			local dir = a1 - a0
+			newPart(card, {
+				Name = "Horn",
+				Shape = Enum.PartType.Cylinder,
+				Size = Vector3.new(dir.Magnitude + width * 0.3, width, width),
+				CFrame = CFrame.new((a0.X + a1.X) / 2, (a0.Y + a1.Y) / 2, z0 + 0.05)
+					* CFrame.Angles(0, 0, math.atan2(dir.Y, dir.X)),
+				Color = color,
+			})
+			newPart(card, {
+				Name = "Horn",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.one * width,
+				CFrame = CFrame.new(a0.X, a0.Y, z0 + 0.05),
+				Color = color,
+			})
+		end
+		local tip = points[#points]
+		newPart(card, {
+			Name = "HornTip",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * 0.3,
+			CFrame = CFrame.new(tip.X, tip.Y, z0 + 0.05),
+			Color = GOLD,
+			Material = Enum.Material.Neon,
+		})
+	end
+
+	-- The eye: a glowing socket, an amber eyeball, a green iris with a slit pupil, and lids.
+	disc("SocketGlow", 4.3, 0.06, z0 - 0.04, violet, Enum.Material.Neon).Transparency = 0.35
+	disc("SocketRing", 3.9, 0.2, z0 - 0.12, chrome, Enum.Material.Foil)
+	disc("Socket", 3.5, 0.24, z0 - 0.16, Color3.fromRGB(10, 6, 20))
+	local eyeball = ellipsoid(
+		"Eyeball",
+		Vector3.new(3.0, 2.1, 0.9),
+		eye.X,
+		eye.Y,
+		z0 - 0.3,
+		Color3.fromRGB(255, 160, 40),
+		Enum.Material.Neon
+	)
+	local iris = ellipsoid("Iris", Vector3.new(1.55, 1.55, 0.35), eye.X, eye.Y, z0 - 0.82, Color3.fromRGB(110, 240, 90))
+	local irisRing =
+		ellipsoid("IrisRing", Vector3.new(1.75, 1.75, 0.3), eye.X, eye.Y, z0 - 0.8, Color3.fromRGB(30, 90, 30))
+	local pupil = flat("Pupil", Vector3.new(0.3, 1.3, 0.1), eye.X, eye.Y, z0 - 1.0, Color3.fromRGB(8, 6, 14))
+	local glint = newPart(card, {
+		Name = "Glint",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.one * 0.3,
+		CFrame = CFrame.new(eye.X - 0.35, eye.Y + 0.4, z0 - 1.05),
+		Color = Color3.new(1, 1, 1),
+		Material = Enum.Material.Neon,
+	})
+	-- An angry brow over the eye.
+	for _, side in { -1, 1 } do
+		flat(
+			"Brow",
+			Vector3.new(1.7, 0.32, 0.25),
+			eye.X + side * 0.85,
+			eye.Y + 1.45,
+			z0 - 0.35,
+			Color3.fromRGB(60, 24, 100),
+			nil,
+			math.rad(side * -14)
+		)
+	end
+
+	-- Runes circling the eye.
+	local runes = {}
+	for k = 1, 12 do
+		table.insert(
+			runes,
+			newPart(card, {
+				Name = "Rune",
+				Size = if k % 3 == 0 then Vector3.new(0.34, 0.34, 0.05) else Vector3.new(0.12, 0.34, 0.05),
+				Color = cyan,
+				Material = Enum.Material.Neon,
+			})
+		)
+	end
+
+	-- Title and nameplate.
+	local title = flat("BackTitle", Vector3.new(4.2, 0.5, 0.02), 0, half.Y - 1.05, z0 - 0.05, Color3.new(), nil)
+	title.Transparency = 1
+	faceText(title, Enum.NormalId.Front, "✦ FREEK CARD ✦", cyan, UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), true)
+	local plate = flat("Nameplate", Vector3.new(4.6, 1, 0.16), 0, -half.Y + 1.3, z0 - 0.1, chrome, Enum.Material.Foil)
+	flat("NameplateInset", Vector3.new(4.3, 0.75, 0.04), 0, -half.Y + 1.3, z0 - 0.19, Color3.fromRGB(24, 14, 44))
+	local plateText = flat("NameplateText", Vector3.new(4.2, 0.7, 0.02), 0, -half.Y + 1.3, z0 - 0.22, Color3.new(), nil)
+	plateText.Transparency = 1
+	faceText(
+		plateText,
+		Enum.NormalId.Front,
+		"STEAL A HOME",
+		GOLD,
+		UDim2.fromScale(0.03, 0.05),
+		UDim2.fromScale(0.94, 0.9),
+		true
+	)
+	for _, side in { -1, 1 } do
+		newPart(card, {
+			Name = "PlateBolt",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * 0.22,
+			CFrame = CFrame.new(side * 2.1, plate.Position.Y, z0 - 0.2),
+			Color = violet,
+			Material = Enum.Material.Neon,
+		})
+	end
+
+	-- The holographic glint.
+	local shine = newPart(card, {
+		Name = "Shine",
+		Size = Vector3.new(0.3, CARD_SIZE.Y - 1.4, 0.02),
+		CFrame = CFrame.new(0, 0, z0 - 1.2),
+		Color = Color3.new(1, 1, 1),
+		Material = Enum.Material.Neon,
+		Transparency = 1,
+		CastShadow = false,
+	})
+
+	local flicker = Random.new()
+	return function(t: number)
+		local base = body.CFrame
+		local function put(part: BasePart, x: number, y: number, z: number, angle: number?)
+			part.CFrame = base * CFrame.new(x, y, z) * CFrame.Angles(0, 0, angle or 0)
+		end
+		-- The eye looks around, darting now and then.
+		local look = Vector2.new(math.sin(t * 0.8) * 0.45 + math.sin(t * 3.1) * 0.08, math.sin(t * 1.3) * 0.2)
+		-- A blink every few seconds: the eye squints shut and opens again.
+		local phase = (t % 3.4) / 0.28
+		local open = 1 - (if phase < 1 then math.sin(phase * math.pi) else 0) * 0.92
+		eyeball.Size = Vector3.new(3.0, 2.1 * open, 0.9)
+		iris.Size = Vector3.new(1.55, 1.55 * open, 0.35)
+		irisRing.Size = Vector3.new(1.75, 1.75 * open, 0.3)
+		pupil.Size = Vector3.new(0.3, 1.3 * open, 0.1)
+		glint.Transparency = if open < 0.5 then 1 else 0
+		local lookY = look.Y * open
+		put(eyeball, eye.X, eye.Y, z0 - 0.3)
+		put(irisRing, eye.X + look.X, eye.Y + lookY, z0 - 0.62)
+		put(iris, eye.X + look.X, eye.Y + lookY, z0 - 0.66)
+		put(pupil, eye.X + look.X, eye.Y + lookY, z0 - 0.84)
+		put(glint, eye.X + look.X - 0.35, eye.Y + lookY + 0.4, z0 - 0.9)
+		-- The runes turn round the eye.
+		for k, rune in runes do
+			local angle = k / #runes * math.pi * 2 + t * 0.6
+			put(rune, eye.X + math.cos(angle) * 2.3, eye.Y + math.sin(angle) * 2.3, z0 - 0.09, angle)
+		end
+		-- The cracks crackle.
+		for _, crack in cracks do
+			crack.Transparency = if flicker:NextNumber() < 0.15 then 0.6 else 0
+		end
+		-- The glint sweeps across every couple of seconds.
+		local x = ((t * 0.9) % 2.2 - 1.1) * CARD_SIZE.X
+		local inside = math.abs(x) < half.X - 1.6
+		put(shine, x, 0, z0 - 1.2, math.rad(20))
+		shine.Transparency = if inside then 0.78 + 0.2 * (math.abs(x) / (half.X - 1.6)) ^ 2 else 1
+	end
+end
+
+-- Hides the rest of the HUD while the reveal plays; returns a function that brings it back.
+local function hideHud(playerGui: Instance, keep: Instance): () -> ()
+	local hidden = {}
+	for _, gui in playerGui:GetChildren() do
+		if gui:IsA("ScreenGui") and gui ~= keep and gui.Enabled then
+			gui.Enabled = false
+			table.insert(hidden, gui)
+		end
+	end
+	return function()
+		for _, gui in hidden do
+			gui.Enabled = true
+		end
+	end
+end
+
+-- result = { kind = "egg"|"crate"|"wheel", egg? (zone index), crate?, rarity, isNew,
+--            where = "house"|"pen"|"yard"|"garden"|"backpack", part = { id, mutations } }
+function PackReveal.play(result, done: () -> ())
+	local player = Players.LocalPlayer
+	local playerGui = player:WaitForChild("PlayerGui")
+	local partInfo = Items.byId[result.part.id]
+	local rarity = result.rarity
+	local tier = Rarities.rank[rarity] or 1
+	local rarityColor = Rarities.info[rarity] and Rarities.info[rarity].color or Color3.new(1, 1, 1)
+	-- The first clue is what kind of thing it is (for a house part, which slot it's for).
+	local series
+	if partInfo.kind == "House" then
+		local slot = Parts.slotById[partInfo.slot]
+		series = { clue = "SLOT", icon = slot.icon, name = slot.name, color = UI.cardColor(slot.name) }
+	else
+		local kind = Items.KINDS[partInfo.kind]
+		series = { clue = "KIND", icon = kind.icon, name = kind.name, color = kind.color }
+	end
+	local random = Random.new()
+
+	----------------------------------------------------------------------------
+	-- The arena
+	----------------------------------------------------------------------------
+	local stage = Instance.new("Folder")
+	stage.Name = "PackStage"
+	stage.Parent = Workspace
+
+	-- A dark room so nothing else shows: floor, walls and ceiling.
+	newPart(stage, {
+		Name = "Floor",
+		Size = Vector3.new(110, 1, 110),
+		CFrame = at(0, -0.5, 0),
+		Color = Color3.fromRGB(22, 20, 40),
+		Reflectance = 0.15,
+	})
+	for _, wall in
+		{
+			{ Vector3.new(110, 60, 1), Vector3.new(0, 30, 55) },
+			{ Vector3.new(110, 60, 1), Vector3.new(0, 30, -55) },
+			{ Vector3.new(1, 60, 110), Vector3.new(55, 30, 0) },
+			{ Vector3.new(1, 60, 110), Vector3.new(-55, 30, 0) },
+			{ Vector3.new(110, 1, 110), Vector3.new(0, 60, 0) },
+		}
+	do
+		newPart(stage, { Name = "Wall", Size = wall[1], CFrame = at(wall[2].X, wall[2].Y, wall[2].Z), Color = DARK })
+	end
+
+	-- Everything that changes colour with the clues.
+	local lit = {} -- { part = BasePart, offset = number }
+	local function litPart(props, offset: number?)
+		local p = newPart(stage, props)
+		table.insert(lit, { part = p, offset = offset or 0 })
+		return p
+	end
+
+	-- Rings of light on the floor.
+	for r, radius in { 9, 15, 22 } do
+		local count = 20 + r * 8
+		for k = 1, count do
+			local angle = k / count * math.pi * 2
+			local p0 = Vector3.new(math.cos(angle) * radius, 0.05, math.sin(angle) * radius)
+			local p1 = Vector3.new(
+				math.cos(angle + math.pi * 2 / count) * radius,
+				0.05,
+				math.sin(angle + math.pi * 2 / count) * radius
+			)
+			litPart({
+				Name = "FloorRing",
+				Size = Vector3.new(0.45, 0.1, (p1 - p0).Magnitude * 0.7),
+				CFrame = STAGE * CFrame.lookAt((p0 + p1) / 2, p1),
+				Material = Enum.Material.Neon,
+				Transparency = 0.15 * r,
+			}, k / count)
+		end
+	end
+
+	-- The pedestal.
+	newPart(stage, {
+		Name = "Pedestal",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(PEDESTAL_TOP, 8, 8),
+		CFrame = at(0, PEDESTAL_TOP / 2, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		Color = Color3.fromRGB(40, 38, 60),
+		Material = Enum.Material.Metal,
+	})
+	local rim = litPart({
+		Name = "PedestalRim",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.25, 8.5, 8.5),
+		CFrame = at(0, PEDESTAL_TOP - 0.1, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		Material = Enum.Material.Neon,
+	})
+	local light = Instance.new("PointLight")
+	light.Range = 34
+	light.Brightness = 2
+	light.Shadows = false
+	light.Parent = rim
+
+	-- Stage spotlights: lamps on a ring above the stage, each throwing a soft cone of light
+	-- (a bright core inside a wide glow, fading towards the floor) that sweeps round the
+	-- pedestal, with a real spotlight and a glowing pool where it lands.
+	local RIG_HEIGHT, RIG_RADIUS = 30, 19
+	newPart(stage, {
+		Name = "LightRig",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.6, RIG_RADIUS * 2 + 2, RIG_RADIUS * 2 + 2),
+		CFrame = at(0, RIG_HEIGHT + 1.2, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		Color = Color3.fromRGB(30, 30, 40),
+		Material = Enum.Material.Metal,
+		Transparency = 0,
+	})
+	local function coneBeam(a0: Attachment, a1: Attachment, width0: number, width1: number, near: number, far: number)
+		local beam = Instance.new("Beam")
+		beam.Attachment0 = a0
+		beam.Attachment1 = a1
+		beam.Width0 = width0
+		beam.Width1 = width1
+		beam.FaceCamera = true
+		beam.LightEmission = 1
+		beam.LightInfluence = 0
+		beam.Segments = 12
+		beam.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, near),
+			NumberSequenceKeypoint.new(0.7, (near + far) / 2 + 0.05),
+			NumberSequenceKeypoint.new(1, far),
+		})
+		beam.Parent = a0.Parent
+		return beam
+	end
+	local beams = {}
+	for k = 1, 8 do
+		local angle = k / 8 * math.pi * 2
+		local lampAt = Vector3.new(math.cos(angle) * RIG_RADIUS, RIG_HEIGHT, math.sin(angle) * RIG_RADIUS)
+		newPart(stage, {
+			Name = "Lamp",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(2.2, 1.8, 1.8),
+			CFrame = at(lampAt.X, lampAt.Y, lampAt.Z),
+			Color = Color3.fromRGB(35, 35, 45),
+			Material = Enum.Material.Metal,
+		})
+		local lens = litPart({
+			Name = "LampLens",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.one * 1.3,
+			CFrame = at(lampAt.X, lampAt.Y - 0.9, lampAt.Z),
+			Material = Enum.Material.Neon,
+		}, k / 8)
+		local pool = litPart({
+			Name = "LightPool",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.05, 5, 5),
+			Material = Enum.Material.Neon,
+			Transparency = 0.8,
+			CastShadow = false,
+		}, k / 8)
+		local from = Instance.new("Attachment")
+		from.Parent = lens
+		local to = Instance.new("Attachment")
+		to.Parent = pool
+		local core = coneBeam(from, to, 0.8, 3.2, 0.45, 0.85)
+		local halo = coneBeam(from, to, 2.2, 9, 0.82, 0.97)
+		local spot = Instance.new("SpotLight")
+		spot.Angle = 30
+		spot.Range = 45
+		spot.Brightness = 3
+		spot.Shadows = false
+		spot.Face = Enum.NormalId.Front
+		spot.Parent = lens
+		table.insert(
+			beams,
+			{ lens = lens, pool = pool, spot = spot, core = core, halo = halo, top = lampAt, angle = angle }
+		)
+	end
+
+	----------------------------------------------------------------------------
+	-- The 2D overlay: clue words, flashes, the name and the button
+	----------------------------------------------------------------------------
+	local gui = UI.new("ScreenGui", {
+		Name = "PackReveal",
+		IgnoreGuiInset = true,
+		ResetOnSpawn = false,
+		DisplayOrder = 50,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Parent = playerGui,
+	})
+	local showHud = hideHud(playerGui, gui)
+	local overlay = UI.new("TextButton", {
+		Name = "Overlay",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Parent = gui,
+	})
+	local speed = 1
+	overlay.Activated:Connect(function()
+		speed = 4 -- tap to hurry it along
+	end)
+
+	local function flash(color: Color3, duration: number)
+		local frame = UI.new("Frame", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundColor3 = color,
+			BackgroundTransparency = 0,
+			ZIndex = 40,
+			Parent = gui,
+		})
+		task.spawn(function()
+			local began = os.clock()
+			while os.clock() - began < duration do
+				frame.BackgroundTransparency = (os.clock() - began) / duration
+				task.wait()
+			end
+			frame:Destroy()
+		end)
+	end
+
+	local captionLabel = UI.label("", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.09),
+		Size = UDim2.fromOffset(500, 34),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = Color3.fromRGB(230, 230, 255),
+		TextTransparency = 1,
+		ZIndex = 20,
+		Parent = overlay,
+	})
+	captionLabel:FindFirstChildOfClass("UIStroke").Transparency = 1
+	local clueLabel = UI.label("", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.18),
+		Size = UDim2.fromOffset(900, 100),
+		FontFace = UI.fonts.heavy,
+		TextTransparency = 1,
+		ZIndex = 20,
+		Parent = overlay,
+	})
+	local clueStroke = clueLabel:FindFirstChildOfClass("UIStroke")
+	clueStroke.Thickness = 5
+	clueStroke.Transparency = 1
+	local clueScale = UI.new("UIScale", { Parent = clueLabel })
+	local clueGradient = UI.new("UIGradient", { Enabled = false, Parent = clueLabel })
+
+	----------------------------------------------------------------------------
+	-- Animation state, updated every frame
+	----------------------------------------------------------------------------
+	local camera = Workspace.CurrentCamera
+	local oldCameraType = camera.CameraType
+	camera.CameraType = Enum.CameraType.Scriptable
+	local oldFov = camera.FieldOfView
+	camera.FieldOfView = 55
+	local controls: any = nil
+	pcall(function()
+		local module = require(player.PlayerScripts:WaitForChild("PlayerModule", 1) :: any)
+		controls = module:GetControls()
+		controls:Disable()
+	end)
+
+	local state = {
+		color = Color3.fromRGB(200, 200, 230),
+		brightness = 0.4, -- 0..1, how strongly the arena lights glow
+		sweep = 0.3, -- how fast the beams sweep (radians per second)
+		rainbow = false,
+		shake = 0,
+		camFrom = at(0, 16, -46),
+		camTo = at(0, 16, -46),
+		camBlend = 1,
+		lookAt = at(0, 4, 0).Position,
+	}
+	local function moveCamera(position: Vector3, look: Vector3)
+		state.camFrom = camera.CFrame
+		state.camTo = CFrame.lookAt((STAGE * CFrame.new(position)).Position, (STAGE * CFrame.new(look)).Position)
+		state.camBlend = 0
+	end
+
+	local clock = os.clock()
+	local sweepAngle = 0
+	local camTime = 0.8
+	local function tick(dt: number)
+		local now = os.clock()
+		sweepAngle += state.sweep * dt
+		for i, beam in beams do
+			-- Each lamp swings its beam round the pedestal.
+			local swing = beam.angle + sweepAngle + math.sin(sweepAngle * 2 + i) * 0.4
+			local target = Vector3.new(math.cos(swing) * 8, 0.05, math.sin(swing) * 8)
+			beam.lens.CFrame = STAGE * CFrame.lookAt(beam.top - Vector3.new(0, 0.9, 0), target)
+			beam.pool.CFrame = STAGE * CFrame.new(target) * CFrame.Angles(0, 0, math.pi / 2)
+			local color = if state.rainbow then rainbow(now, i / #beams) else state.color
+			beam.core.Color = ColorSequence.new(color)
+			beam.halo.Color = ColorSequence.new(color)
+			beam.spot.Color = color
+			beam.spot.Brightness = 1 + 4 * state.brightness
+			beam.core.Brightness = 0.6 + 1.4 * state.brightness
+			beam.halo.Brightness = beam.core.Brightness
+			beam.pool.Transparency = 0.95 - 0.07 * state.brightness
+		end
+		for _, entry in lit do
+			entry.part.Color = if state.rainbow then rainbow(now, entry.offset) else state.color
+		end
+		light.Color = if state.rainbow then rainbow(now) else state.color
+		light.Brightness = 1 + 4 * state.brightness
+		-- Camera: glide towards its target, then shake on impacts.
+		state.camBlend = math.min(state.camBlend + dt / camTime, 1)
+		local cf = state.camFrom:Lerp(state.camTo, easeInOut(state.camBlend))
+		if state.shake > 0.01 then
+			cf *= CFrame.new(random:NextNumber(-1, 1) * state.shake, random:NextNumber(-1, 1) * state.shake, 0)
+			state.shake *= math.exp(-dt * 7)
+		end
+		camera.CFrame = cf
+	end
+
+	-- Runs fn(alpha, t) every frame for `duration` seconds (shorter when sped up).
+	local function animate(duration: number, fn: ((number, number) -> ())?)
+		local elapsed = 0
+		while true do
+			local now = os.clock()
+			local dt = math.min(now - clock, 0.1)
+			clock = now
+			elapsed += dt * speed
+			local alpha = math.min(elapsed / duration, 1)
+			if fn then
+				fn(alpha, elapsed)
+			end
+			tick(dt * speed)
+			if alpha >= 1 then
+				break
+			end
+			task.wait()
+		end
+	end
+
+	-- Bits that fly out and fall: egg shell, sparks, confetti.
+	local function burst(center: Vector3, count: number, colors: { Color3 }, confetti: boolean?)
+		local bits = {}
+		for k = 1, count do
+			local direction = random:NextUnitVector() * Vector3.new(1, 0.6, 1) + Vector3.new(0, 0.6, 0)
+			local bit = newPart(stage, {
+				ClassName = if confetti then "Part" else "WedgePart",
+				Name = "Bit",
+				Size = if confetti then Vector3.new(0.4, 0.06, 0.25) else Vector3.new(0.15, 0.6, 0.6),
+				CFrame = STAGE
+					* CFrame.new(center + direction)
+					* CFrame.Angles(random:NextNumber(0, 6), random:NextNumber(0, 6), 0),
+				Color = colors[k % #colors + 1],
+				Material = if confetti then Enum.Material.Neon else Enum.Material.SmoothPlastic,
+			})
+			table.insert(bits, { part = bit, velocity = direction.Unit * random:NextNumber(10, 22) })
+		end
+		task.spawn(function()
+			local began, last = os.clock(), os.clock()
+			while os.clock() - began < 2 do
+				local now = os.clock()
+				local dt = now - last
+				last = now
+				for _, b in bits do
+					b.velocity -= Vector3.new(0, (if confetti then 14 else 35) * dt, 0)
+					b.part.CFrame = (b.part.CFrame + b.velocity * dt) * CFrame.Angles(6 * dt, 4 * dt, 0)
+					b.part.Transparency = ((now - began) / 2) ^ 2
+				end
+				task.wait()
+			end
+			for _, b in bits do
+				b.part:Destroy()
+			end
+		end)
+	end
+
+	local function slam(caption: string, text: string, color: Color3)
+		captionLabel.Text = caption
+		clueLabel.Text = text
+		clueLabel.TextColor3 = color
+		captionLabel.TextTransparency = 0
+		captionLabel:FindFirstChildOfClass("UIStroke").Transparency = 0
+		animate(0.2, function(a)
+			clueScale.Scale = 2.6 - 1.6 * easeOut(a)
+			clueLabel.TextTransparency = 1 - a
+			clueStroke.Transparency = 1 - a
+		end)
+		state.shake = 0.5 + tier * 0.06
+	end
+
+	local function hideClue()
+		animate(0.15, function(a)
+			clueLabel.TextTransparency = a
+			clueStroke.Transparency = a
+			captionLabel.TextTransparency = a
+			captionLabel:FindFirstChildOfClass("UIStroke").Transparency = a
+		end)
+		clueGradient.Enabled = false
+	end
+
+	----------------------------------------------------------------------------
+	-- 1. Into the arena: the camera swoops in and the egg drops onto the pedestal.
+	----------------------------------------------------------------------------
+	camera.CFrame = state.camFrom
+	flash(Color3.new(0, 0, 0), 0.5)
+	moveCamera(Vector3.new(0, 7, -24), Vector3.new(0, 4, 0))
+	local egg = if result.egg then EggModel.build(result.egg, result.part.id) else BoxModel.build(result.crate)
+	if result.egg then
+		Items.scaleModel(egg, 1.6 * math.clamp(Items.weightScale(result.eggFactor or 1), 0.7, 1.8))
+	end
+	Lego.apply(egg)
+	egg.Parent = stage
+	local eggRest = at(0, PEDESTAL_TOP, 0) * CFrame.Angles(0, math.pi, 0)
+	animate(0.8, function(a)
+		state.brightness = 0.25 + 0.2 * a
+		local drop = if a < 0.75 then 22 * (1 - (a / 0.75) ^ 2) else math.sin((a - 0.75) / 0.25 * math.pi) * 0.8
+		egg:PivotTo(eggRest + Vector3.new(0, drop, 0))
+	end)
+	state.shake = 0.6
+
+	----------------------------------------------------------------------------
+	-- 2. The egg shakes harder and harder while the camera creeps in.
+	----------------------------------------------------------------------------
+	camTime = 1 + tier * 0.15
+	moveCamera(Vector3.new(0, 5, -14), Vector3.new(0, 3.2, 0))
+	animate(1 + tier * 0.15, function(a, t)
+		local wobble = math.sin(t * (14 + a * 24)) * math.rad(4 + 18 * a * a)
+		egg:PivotTo(eggRest * CFrame.Angles(0, 0, wobble) + Vector3.new(0, math.abs(math.sin(t * 9)) * 0.3 * a, 0))
+		state.brightness = 0.45 + 0.4 * a
+		state.sweep = 0.3 + 2.5 * a
+	end)
+
+	----------------------------------------------------------------------------
+	-- 3. Burst! A face-down card spins up out of the light.
+	----------------------------------------------------------------------------
+	flash(Color3.new(1, 1, 1), 0.45)
+	burst(Vector3.new(0, PEDESTAL_TOP + 2, 0), 18, {
+		if result.egg and Items.ZONES[result.egg]
+			then Items.ZONES[result.egg].eggColor
+			else (Luck.crateById[result.crate] and Luck.crateById[result.crate].color) or GOLD,
+		Color3.new(1, 1, 1),
+	})
+	egg:Destroy()
+	state.shake = 1
+	state.sweep = 0.6
+
+	local card = Instance.new("Model")
+	card.Name = "Card"
+	card.Parent = stage
+	local body = newPart(card, {
+		Name = "CardBody",
+		Size = CARD_SIZE,
+		CFrame = CFrame.new(),
+		Color = Color3.fromRGB(34, 16, 72),
+	})
+	card.PrimaryPart = body
+	local rimParts = {}
+	for _, bar in
+		{
+			{ Vector3.new(CARD_SIZE.X + 0.3, 0.3, 0.5), Vector3.new(0, CARD_SIZE.Y / 2, 0) },
+			{ Vector3.new(CARD_SIZE.X + 0.3, 0.3, 0.5), Vector3.new(0, -CARD_SIZE.Y / 2, 0) },
+			{ Vector3.new(0.3, CARD_SIZE.Y + 0.3, 0.5), Vector3.new(CARD_SIZE.X / 2, 0, 0) },
+			{ Vector3.new(0.3, CARD_SIZE.Y + 0.3, 0.5), Vector3.new(-CARD_SIZE.X / 2, 0, 0) },
+		}
+	do
+		table.insert(
+			rimParts,
+			newPart(card, {
+				Name = "CardRim",
+				Size = bar[1],
+				CFrame = CFrame.new(bar[2]),
+				Color = GOLD,
+				Material = Enum.Material.Neon,
+			})
+		)
+	end
+	-- The back (facing the camera to start with): see buildCardBack.
+	local animateBack = buildCardBack(card, body)
+	-- The front starts blank (the card spins round as it appears, so nothing on it may give
+	-- the pull away); paintFront() puts the rarity colours and words on just before the flip.
+	local face = newPart(card, {
+		Name = "CardFace",
+		Size = Vector3.new(CARD_SIZE.X - 0.3, CARD_SIZE.Y - 0.3, 0.1),
+		CFrame = CFrame.new(0, 0, CARD_SIZE.Z / 2 + 0.05),
+		Color = Color3.fromRGB(16, 12, 30),
+		Material = Enum.Material.Metal,
+	})
+	local function paintFront()
+		face.Color = rarityColor:Lerp(Color3.new(0, 0, 0), 0.15)
+		face.Material = Enum.Material.SmoothPlastic
+		faceText(
+			face,
+			Enum.NormalId.Back,
+			series.icon .. " " .. string.upper(series.name),
+			series.color:Lerp(Color3.new(1, 1, 1), 0.4),
+			UDim2.fromScale(0.06, 0.05),
+			UDim2.fromScale(0.88, 0.09),
+			true
+		)
+		faceText(
+			face,
+			Enum.NormalId.Back,
+			string.upper(rarity),
+			Color3.new(1, 1, 1),
+			UDim2.fromScale(0.05, 0.4),
+			UDim2.fromScale(0.9, 0.2),
+			true
+		)
+		faceText(
+			face,
+			Enum.NormalId.Back,
+			"★ ★ ★",
+			GOLD,
+			UDim2.fromScale(0.2, 0.66),
+			UDim2.fromScale(0.6, 0.1),
+			true
+		)
+	end
+
+	local cardSpin = 0 -- extra turn on top of the float
+	local cardRise = 0
+	local function placeCard(t: number, extra: CFrame?)
+		local float = math.sin(t * 2.2) * 0.25
+		card:PivotTo(
+			STAGE
+				* CFrame.new(CARD_HOME + Vector3.new(0, float + cardRise, 0))
+				* CFrame.Angles(0, cardSpin + math.sin(t * 0.9) * 0.12, 0)
+				* (extra or CFrame.new())
+		)
+		animateBack(t)
+	end
+	moveCamera(Vector3.new(0, 7.5, -20), CARD_HOME)
+	camTime = 0.6
+	animate(0.6, function(a, t)
+		local e = easeOut(a)
+		cardSpin = (1 - e) * math.pi * 4
+		cardRise = -5 * (1 - e)
+		placeCard(t)
+	end)
+	cardSpin = 0
+	cardRise = 0
+
+	local function setRim(color: Color3)
+		for _, p in rimParts do
+			p.Color = color
+		end
+	end
+
+	----------------------------------------------------------------------------
+	-- 4. Clue one: the slot. The arena lights turn its colour.
+	----------------------------------------------------------------------------
+	state.color = series.color
+	state.brightness = 0.7
+	slam(series.clue, series.icon .. " " .. string.upper(series.name), series.color)
+	setRim(series.color)
+	camTime = 2
+	moveCamera(Vector3.new(-5, 8, -18), CARD_HOME)
+	animate(1.3 + tier * 0.1, function(_, t)
+		placeCard(t)
+	end)
+	hideClue()
+
+	----------------------------------------------------------------------------
+	-- 5. Clue two: the rarity, climbing the ladder. COMMON slams in, then UNCOMMON,
+	-- RARE... one rung at a time, each lighting the next pip on the meter and turning the
+	-- whole arena its colour, with the pauses getting longer and the beams faster as it
+	-- climbs. Before a big final rung the arena blacks out and the card's edge pulses like a
+	-- heartbeat; then the real rarity lands with everything it's got.
+	----------------------------------------------------------------------------
+	local rungs = math.max(tier, 1)
+	local shown = math.max(math.min(#Rarities.order, math.max(tier, 6)), 1) -- Common..Ultra (Secret if pulled)
+	local meter = UI.new("Frame", {
+		Name = "RarityMeter",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.92),
+		Size = UDim2.fromOffset(shown * 126, 40),
+		BackgroundTransparency = 1,
+		ZIndex = 20,
+		Parent = overlay,
+	}, {
+		UI.new("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			Padding = UDim.new(0, 6),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	local pips = {}
+	for k = 1, shown do
+		local name = Rarities.order[k]
+		local pip = UI.new("Frame", {
+			Name = name,
+			Size = UDim2.fromOffset(118, 34),
+			BackgroundColor3 = Color3.fromRGB(30, 30, 52),
+			BackgroundTransparency = 0.25,
+			LayoutOrder = k,
+			ZIndex = 20,
+			Parent = meter,
+		}, { UI.corner(17) })
+		local stroke = UI.stroke(2.5)
+		stroke.Parent = pip
+		local label = UI.label(string.upper(name), {
+			Size = UDim2.fromScale(1, 1),
+			FontFace = UI.fonts.heavy,
+			TextColor3 = Color3.fromRGB(120, 120, 150),
+			ZIndex = 21,
+			Parent = pip,
+		})
+		label.Size = UDim2.new(1, -10, 1, -8)
+		label.Position = UDim2.fromOffset(5, 4)
+		local scale = UI.new("UIScale", { Parent = pip })
+		pips[k] = { frame = pip, stroke = stroke, label = label, scale = scale }
+	end
+	animate(0.25, function(a, t)
+		placeCard(t)
+		meter.Position = UDim2.new(0.5, 0, 0.92, 60 * (1 - easeOut(a)))
+	end)
+
+	local function lightPip(k: number, current: boolean)
+		local pip = pips[k]
+		if not pip then
+			return
+		end
+		local color = Rarities.info[Rarities.order[k]].color
+		pip.frame.BackgroundColor3 = color:Lerp(Color3.new(0, 0, 0), 0.25)
+		pip.frame.BackgroundTransparency = 0
+		pip.label.TextColor3 = Color3.new(1, 1, 1)
+		pip.stroke.Color = if current then Color3.new(1, 1, 1) else UI.OUTLINE
+		pip.stroke.Thickness = if current then 3.5 else 2.5
+		pip.scale.Scale = if current then 1.15 else 1
+	end
+
+	-- Camera stations for the climb: each rung pushes in a little closer.
+	local function climbCamera(k: number)
+		local f = (k - 1) / math.max(rungs - 1, 1)
+		camTime = 0.35
+		moveCamera(Vector3.new(math.sin(k * 1.7) * 3, 7.5 - f * 0.8, -19 + f * 5), CARD_HOME)
+	end
+
+	-- Fake-outs: on the way up, the card sometimes settles as if this is it and starts to
+	-- turn over... then jolts back ("WAIT...!") and the climb carries on. Legendary and
+	-- better always get one (Ultra and Secret two); Uncommon and Rare get one half the time.
+	local fakeRungs = {}
+	local fakeRandom = Random.new()
+	if rungs >= 2 and (tier >= 4 or fakeRandom:NextNumber() < 0.5) then
+		fakeRungs[fakeRandom:NextInteger(math.max(1, rungs - 2), rungs - 1)] = true
+	end
+	if tier >= 6 then
+		fakeRungs[fakeRandom:NextInteger(1, math.max(1, rungs - 3))] = true
+	end
+	local function fakeOut(k: number)
+		-- It all goes calm, like the climb is over...
+		state.sweep = 0.25
+		camTime = 0.9
+		moveCamera(Vector3.new(0, 7.3, -14), CARD_HOME)
+		animate(0.45, function(_, t)
+			placeCard(t)
+			pips[k].scale.Scale = 1.15
+		end)
+		-- ...the card starts to turn over...
+		animate(0.65, function(a, t)
+			cardSpin = math.pi * 0.42 * easeInOut(a)
+			placeCard(t)
+		end)
+		-- ...then jolts back, and the climb is on again.
+		flash(Color3.new(1, 1, 1), 0.3)
+		state.shake = 1.3
+		captionLabel.Text = ""
+		clueLabel.Text = "WAIT...!"
+		clueLabel.TextColor3 = Color3.new(1, 1, 1)
+		animate(0.22, function(a, t)
+			cardSpin = math.pi * 0.42 * (1 - easeOut(a))
+			placeCard(t)
+			clueScale.Scale = 2.4 - 1.4 * easeOut(a)
+			clueLabel.TextTransparency = 1 - a
+			clueStroke.Transparency = 1 - a
+		end)
+		cardSpin = 0
+		state.sweep = 2.5
+		animate(0.55, function(_, t)
+			placeCard(t)
+		end)
+		animate(0.1, function(a, t)
+			placeCard(t)
+			clueLabel.TextTransparency = a
+			clueStroke.Transparency = a
+		end)
+	end
+
+	for k = 1, rungs do
+		local name = Rarities.order[k]
+		local color = Rarities.info[name].color
+		local final = k == rungs
+		if final and tier >= 3 then
+			-- Blackout and heartbeat before the big one.
+			hideClue()
+			state.color = Color3.fromRGB(60, 50, 90)
+			state.sweep = 0.2
+			camTime = 1.1
+			moveCamera(Vector3.new(0, 7.2, -12.5), CARD_HOME)
+			animate(0.5 + tier * 0.12, function(a, t)
+				placeCard(t)
+				state.brightness = 0.9 * (1 - a) + 0.08
+				local beat = math.max(math.sin(t * 9), 0) ^ 6
+				setRim(Color3.fromRGB(255, 255, 255):Lerp(Color3.fromRGB(40, 30, 60), 1 - beat))
+				if beat > 0.95 then
+					state.shake = math.max(state.shake, 0.25)
+				end
+			end)
+		end
+		lightPip(k, true)
+		if pips[k - 1] then
+			lightPip(k - 1, false)
+		end
+		state.color = color
+		setRim(color)
+		if not final then
+			-- A quick rung: the word punches in, the arena turns its colour, then on.
+			clueLabel.Text = string.upper(name)
+			clueLabel.TextColor3 = color
+			captionLabel.Text = "RARITY"
+			captionLabel.TextTransparency = 0
+			captionLabel:FindFirstChildOfClass("UIStroke").Transparency = 0
+			state.brightness = 0.55 + 0.1 * k
+			state.sweep = 0.6 + k * 0.5
+			climbCamera(k)
+			animate(0.14, function(a, t)
+				placeCard(t)
+				clueScale.Scale = 1.8 - 0.8 * easeOut(a)
+				clueLabel.TextTransparency = 1 - a
+				clueStroke.Transparency = 1 - a
+			end)
+			flash(color:Lerp(Color3.new(1, 1, 1), 0.6), 0.15)
+			state.shake = 0.3 + k * 0.06
+			-- Each rung holds a little longer than the last: the suspense builds.
+			animate(0.3 + k * 0.14, function(a, t)
+				placeCard(t)
+				pips[k].scale.Scale = 1.15 + math.sin(a * math.pi) * 0.08
+			end)
+			if fakeRungs[k] then
+				fakeOut(k)
+			else
+				animate(0.1, function(a, t)
+					placeCard(t)
+					clueLabel.TextTransparency = a * 0.7
+				end)
+			end
+		else
+			-- The real rarity lands.
+			state.brightness = 1
+			state.sweep = 1 + tier * 0.4
+			state.rainbow = tier >= 6
+			if tier >= 3 then
+				flash(color:Lerp(Color3.new(1, 1, 1), 0.5), 0.4)
+			end
+			if state.rainbow then
+				local keys = {}
+				for c = 0, 6 do
+					table.insert(keys, ColorSequenceKeypoint.new(c / 6, Color3.fromHSV(c / 6, 0.75, 1)))
+				end
+				clueGradient.Color = ColorSequence.new(keys)
+				clueGradient.Enabled = true
+			end
+			slam(
+				"RARITY",
+				RARITY_WORDS[rarity] or string.upper(rarity),
+				if state.rainbow then Color3.new(1, 1, 1) else color
+			)
+			state.shake = 0.8 + tier * 0.1
+			if tier >= 4 then
+				local colors = {}
+				for c = 1, 6 do
+					table.insert(colors, Color3.fromHSV(c / 6, 0.7, 1))
+				end
+				burst(CARD_HOME + Vector3.new(0, 4, 0), 30 + tier * 8, colors, true)
+			end
+		end
+	end
+
+	local nextStrike = 0.3
+	camTime = 1.5 + tier * 0.25
+	moveCamera(Vector3.new(5, 6.5, -17), CARD_HOME)
+	animate(1.2 + tier * 0.25, function(_, t)
+		placeCard(t)
+		pips[rungs].scale.Scale = 1.15 + math.sin(t * 6) * 0.06
+		if state.rainbow then
+			setRim(rainbow(os.clock()))
+			clueGradient.Offset = Vector2.new(math.sin(t * 2) * 0.5, 0)
+			for k = 1, rungs do
+				pips[k].frame.BackgroundColor3 = rainbow(os.clock(), k / rungs)
+			end
+		end
+		if tier >= 5 and t >= nextStrike then
+			nextStrike += 0.55
+			flash(Color3.fromRGB(220, 200, 255), 0.18)
+			state.shake = 0.7
+		end
+	end)
+	hideClue()
+	meter:Destroy()
+
+	paintFront()
+
+	----------------------------------------------------------------------------
+	-- 6. The flip: the card turns over in 3D, then the part pops out in front of it.
+	----------------------------------------------------------------------------
+	camTime = 0.5
+	moveCamera(Vector3.new(0, 7.5, -16), CARD_HOME)
+	animate(0.55, function(a, t)
+		cardSpin = math.pi * easeInOut(a)
+		placeCard(t)
+	end)
+	cardSpin = math.pi
+	flash(Color3.new(1, 1, 1), 0.35)
+	state.shake = 0.8
+	burst(CARD_HOME, 24, { rarityColor, Color3.new(1, 1, 1) })
+	animate(0.5, function(_, t)
+		placeCard(t)
+	end)
+
+	-- The card lifts up and back; the part pops out onto the pedestal.
+	local freek = ItemModel.buildNormal(result.part.id, result.part.mutations)
+	Lego.apply(freek)
+	-- Everything fits about the same space in front of the card, a bit bigger or smaller
+	-- for big and small sizes.
+	local _, size = freek:GetBoundingBox()
+	local room = 6.5 * math.clamp(Items.weightScale(Items.weightFactor(result.part)), 0.7, 1.8)
+	Items.scaleModel(freek, math.clamp(room / math.max(size.X, size.Y, size.Z, 0.1), 0.3, 2))
+	for _, p in freek:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = true
+			p.CanCollide = false
+		end
+	end
+	freek.Parent = stage
+	local freekRest = at(0, PEDESTAL_TOP, -0.5)
+	camTime = 0.9
+	moveCamera(Vector3.new(0, 5.5, -15), Vector3.new(0, 6.2, 1))
+	animate(0.6, function(a, t)
+		local e = easeOut(a)
+		cardRise = 5 * e
+		card:PivotTo(
+			STAGE
+				* CFrame.new(CARD_HOME + Vector3.new(0, cardRise, 6 * e))
+				* CFrame.Angles(0, math.pi + math.sin(t * 0.9) * 0.12, 0)
+		)
+		local hop = math.sin(a * math.pi) * 3
+		freek:PivotTo(freekRest * CFrame.new(0, hop - 2 * (1 - e), 0) * CFrame.Angles(0, (1 - e) * math.pi * 2, 0))
+	end)
+	flash(rarityColor:Lerp(Color3.new(1, 1, 1), 0.6), 0.3)
+	burst(Vector3.new(0, PEDESTAL_TOP + 1, -0.5), 20, { rarityColor, GOLD })
+	state.shake = 0.6
+
+	-- 7. The name slams in, with NEW! if it's new to them.
+	local nameLabel = UI.label(string.upper(LifeUtil.displayName(result.part)), {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.86),
+		Size = UDim2.fromOffset(800, 70),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = Color3.new(1, 1, 1),
+		ZIndex = 20,
+		Parent = overlay,
+	})
+	nameLabel:FindFirstChildOfClass("UIStroke").Thickness = 4
+	local nameScale = UI.new("UIScale", { Parent = nameLabel })
+	animate(0.2, function(a)
+		nameScale.Scale = 2.2 - 1.2 * easeOut(a)
+	end)
+	local sizeWord = if result.part.weight then Format.weight(result.part.weight):upper() .. "  ·  " else ""
+	UI.label(sizeWord .. string.upper(rarity) .. "  ·  " .. string.upper(series.name), {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.86, -50),
+		Size = UDim2.fromOffset(500, 28),
+		FontFace = UI.fonts.heavy,
+		TextColor3 = rarityColor,
+		ZIndex = 20,
+		Parent = overlay,
+	})
+	if result.isNew then
+		local stamp = UI.label("NEW!", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.64, 0.36),
+			Size = UDim2.fromOffset(120, 50),
+			FontFace = UI.fonts.heavy,
+			TextColor3 = Color3.new(1, 1, 1),
+			BackgroundColor3 = UI.colors.red,
+			BackgroundTransparency = 0,
+			Rotation = 12,
+			ZIndex = 22,
+			Parent = overlay,
+		})
+		UI.corner(12).Parent = stamp
+		UI.stroke(3).Parent = stamp
+		local stampScale = UI.new("UIScale", { Parent = stamp })
+		animate(0.18, function(a)
+			stampScale.Scale = 2 - easeOut(a)
+		end)
+	end
+	local WHERE_TEXT = {
+		house = "It's on your house!",
+		pen = "It's roaming your yard!",
+		yard = "It's in your yard!",
+		garden = "It's in your garden!",
+	}
+	UI.label(WHERE_TEXT[result.where] or "It's in your backpack!", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.86, 48),
+		Size = UDim2.fromOffset(400, 26),
+		TextColor3 = Color3.fromRGB(220, 232, 255),
+		ZIndex = 20,
+		Parent = overlay,
+	})
+
+	-- 8. Show it off until they tap Awesome!
+	local closed = false
+	UI.button("AWESOME!", UI.colors.green, function()
+		closed = true
+	end, {
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -60, 1, -50),
+		Size = UDim2.fromOffset(220, 60),
+		ZIndex = 25,
+		Parent = overlay,
+	})
+	speed = 1
+	camTime = 6
+	moveCamera(Vector3.new(-4, 5.5, -14.5), Vector3.new(0, 6.2, 1))
+	local showTime = 0
+	freek:PivotTo(freekRest)
+	while not closed do
+		animate(0.2, function(_, t)
+			local time = showTime + t
+			card:PivotTo(
+				STAGE
+					* CFrame.new(CARD_HOME + Vector3.new(0, 5 + math.sin(time * 2.2) * 0.25, 6))
+					* CFrame.Angles(0, math.pi + math.sin(time * 0.9) * 0.12, 0)
+			)
+			-- It turns slowly on the pedestal to show off.
+			freek:PivotTo(freekRest * CFrame.new(0, math.sin(time * 2) * 0.25, 0) * CFrame.Angles(0, time * 0.7, 0))
+			if state.rainbow then
+				setRim(rainbow(os.clock()))
+			end
+		end)
+		showTime += 0.2
+	end
+
+	-- Back to the game.
+	stage:Destroy()
+	gui:Destroy()
+	showHud()
+	camera.CameraType = if oldCameraType == Enum.CameraType.Scriptable then Enum.CameraType.Custom else oldCameraType
+	camera.FieldOfView = oldFov
+	if controls then
+		controls:Enable()
+	end
+	done()
+end
+
+return PackReveal
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="65">
           <Properties>
             <string name="Name">PetFX</string>
             <string name="Source"><![CDATA[-- Pets roaming their owner's front lawn, drawn on this client. The server lists each
@@ -17974,7 +21002,7 @@ return PetFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="64">
+        <Item class="ModuleScript" referent="66">
           <Properties>
             <string name="Name">TreadmillRun</string>
             <string name="Source"><![CDATA[-- Running on your treadmill by yourself: while you stand on your own treadmill's belt and
@@ -18040,18 +21068,20 @@ return TreadmillRun
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="65">
+        <Item class="ModuleScript" referent="67">
           <Properties>
             <string name="Name">UI</string>
-            <string name="Source"><![CDATA[-- The building blocks of the screen UI, in one style (the owner's reference: a clean
--- simulator look like the "Daily Rewards" window):
--- - One font, Fredoka One, white or a bright colour with a black outline.
--- - Windows: a dark see-through body with a thin black outline and nearly square corners,
---   a flat coloured header bar (icon, white title, red square X) and a black line under it.
--- - Slots: dark cells with a thin black outline: a white label on top, a big picture in the
---   middle and a coloured value at the bottom; the one that matters gets a gold outline.
--- - Buttons: bright, the top half lighter than the bottom, black outline, white text.
--- - Everything you can press grows a little when hovered and dips when pressed.
+            <string name="Source"><![CDATA[-- The building blocks of the screen UI, in one style (the owner's references: a top
+-- simulator's HUD and its "Daily Rewards" window):
+-- - Chunky text: Luckiest Guy (UI.heavy) for buttons, titles and numbers; Fredoka One
+--   (UI.text) for small labels. White or a bright colour, always with a dark outline.
+-- - The HUD floats on the world with no panels behind it: wide bright buttons (UI.wideButton)
+--   with a stud-dot texture, an icon and a chunky label; big outlined numbers with an icon.
+-- - Windows (UI.window): a dark see-through body with a thin outline and nearly square
+--   corners under a flat coloured header (icon, title, red square X).
+-- - Slots (UI.cell): dark cells; the one that matters gets a gold outline.
+-- - Buttons: bright, the top half lighter than the bottom, dark outline. Everything you can
+--   press grows a little when hovered and dips when pressed.
 -- Pictures are our own 3D models (ItemPictures) or emoji, never uploaded images.
 
 local TweenService = game:GetService("TweenService")
@@ -18059,22 +21089,48 @@ local TweenService = game:GetService("TweenService")
 local UI = {}
 
 UI.FONT = Font.fromEnum(Enum.Font.FredokaOne)
-UI.OUTLINE = Color3.fromRGB(20, 20, 22)
+UI.HEAVY = Font.fromEnum(Enum.Font.LuckiestGuy)
+UI.OUTLINE = Color3.fromRGB(22, 20, 26)
+UI.fonts = { regular = UI.FONT, bold = UI.FONT, heavy = UI.HEAVY }
 
 UI.colors = {
 	white = Color3.fromRGB(255, 255, 255),
+	text = Color3.fromRGB(255, 255, 255),
 	muted = Color3.fromRGB(190, 190, 200),
-	money = Color3.fromRGB(110, 235, 80),
-	speed = Color3.fromRGB(90, 185, 255),
+	money = Color3.fromRGB(110, 240, 70),
+	speed = Color3.fromRGB(255, 205, 50),
 	gold = Color3.fromRGB(255, 205, 45),
-	green = Color3.fromRGB(80, 215, 60),
-	red = Color3.fromRGB(230, 55, 55),
-	blue = Color3.fromRGB(60, 140, 240),
-	orange = Color3.fromRGB(245, 140, 45),
+	green = Color3.fromRGB(110, 210, 30),
+	lime = Color3.fromRGB(150, 225, 30),
+	red = Color3.fromRGB(230, 50, 50),
+	blue = Color3.fromRGB(40, 150, 245),
+	orange = Color3.fromRGB(250, 160, 30),
+	purple = Color3.fromRGB(160, 90, 240),
+	pink = Color3.fromRGB(245, 90, 170),
 	gray = Color3.fromRGB(120, 120, 128),
+	card = Color3.fromRGB(70, 70, 80),
 	body = Color3.fromRGB(28, 28, 32), -- window bodies (see-through)
 	cell = Color3.fromRGB(52, 52, 58), -- slots
+	fusion = Color3.fromRGB(170, 80, 255),
+	fusion2 = Color3.fromRGB(255, 80, 190),
 }
+
+-- Bright colours, picked by name so a thing keeps its colour between refreshes.
+local NAMED = {
+	Color3.fromRGB(245, 90, 170),
+	Color3.fromRGB(110, 210, 30),
+	Color3.fromRGB(40, 150, 245),
+	Color3.fromRGB(250, 160, 30),
+	Color3.fromRGB(160, 90, 240),
+	Color3.fromRGB(30, 195, 190),
+}
+function UI.cardColor(name: string): Color3
+	local sum = 0
+	for i = 1, #name do
+		sum += string.byte(name, i) * i
+	end
+	return NAMED[sum % #NAMED + 1]
+end
 
 -- UI.new("Frame", { Size = ... }, { children... })
 function UI.new(className: string, props, children)
@@ -18097,7 +21153,7 @@ function UI.corner(radius: number?)
 	return UI.new("UICorner", { CornerRadius = UDim.new(0, radius or 6) })
 end
 
--- The black outline round a frame.
+-- The dark outline round a frame.
 function UI.stroke(thickness: number?, color: Color3?)
 	return UI.new("UIStroke", {
 		Color = color or UI.OUTLINE,
@@ -18107,8 +21163,24 @@ function UI.stroke(thickness: number?, color: Color3?)
 	})
 end
 
--- Text: Fredoka One, white (or `color`), black outline, `size` px (it shrinks to fit its
--- box, never grows past `size`).
+local function textStroke(size: number)
+	return UI.new("UIStroke", {
+		Color = UI.OUTLINE,
+		Thickness = if size >= 36 then 3.5 elseif size >= 24 then 3 elseif size >= 16 then 2.2 else 1.6,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual,
+		LineJoinMode = Enum.LineJoinMode.Round,
+	})
+end
+
+-- An outline round text (for labels built by hand).
+function UI.textStroke(thickness: number?)
+	local stroke = textStroke(20)
+	stroke.Thickness = thickness or 2
+	return stroke
+end
+
+-- Text: Fredoka One, white (or `color`), dark outline, `size` px (it shrinks to fit its box,
+-- never grows past `size`).
 function UI.text(text: string, size: number, props)
 	local label = UI.new("TextLabel", {
 		BackgroundTransparency = 1,
@@ -18118,14 +21190,34 @@ function UI.text(text: string, size: number, props)
 		TextScaled = true,
 		Size = UDim2.new(1, 0, 0, size + 4),
 	}, {
-		UI.new("UIStroke", {
-			Color = UI.OUTLINE,
-			Thickness = if size >= 28 then 3 elseif size >= 18 then 2.5 else 2,
-			ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual,
-			LineJoinMode = Enum.LineJoinMode.Round,
-		}),
+		textStroke(size),
 		UI.new("UITextSizeConstraint", { MaxTextSize = size }),
 	})
+	for key, value in props or {} do
+		label[key] = value
+	end
+	return label
+end
+
+-- Chunky text: Luckiest Guy, for buttons, titles and big numbers.
+function UI.heavy(text: string, size: number, props)
+	local label = UI.text(text, size, { FontFace = UI.HEAVY })
+	for key, value in props or {} do
+		label[key] = value
+	end
+	return label
+end
+
+-- Old-style label (fills its box), kept for the reveal animations.
+function UI.label(text: string, props)
+	local label = UI.new("TextLabel", {
+		BackgroundTransparency = 1,
+		FontFace = UI.FONT,
+		Text = text,
+		TextColor3 = UI.colors.white,
+		TextScaled = true,
+		Size = UDim2.new(1, 0, 0, 24),
+	}, { textStroke(20) })
 	for key, value in props or {} do
 		label[key] = value
 	end
@@ -18154,33 +21246,87 @@ function UI.hover(button: GuiButton, grow: number?)
 	button.MouseButton1Up:Connect(function()
 		to(if over then grow or 1.06 else 1)
 	end)
+	return scale
 end
 
 -- The two-tone shine on buttons and tiles: the top half lighter than the bottom.
-local function twoTone(dark: number)
+function UI.twoTone(dark: number?)
+	local d = dark or 0.84
 	return UI.new("UIGradient", {
 		Rotation = 90,
 		Color = ColorSequence.new({
 			ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
 			ColorSequenceKeypoint.new(0.5, Color3.new(1, 1, 1)),
-			ColorSequenceKeypoint.new(0.501, Color3.new(dark, dark, dark)),
-			ColorSequenceKeypoint.new(1, Color3.new(dark, dark, dark)),
+			ColorSequenceKeypoint.new(0.501, Color3.new(d, d, d)),
+			ColorSequenceKeypoint.new(1, Color3.new(d, d, d)),
 		}),
 	})
 end
 
--- A button: bright `color` (top half lighter), black outline, white outlined text.
+-- A texture of little stud dots over a button or tile (like LEGO studs). `w`/`h` are about
+-- how big it is, so there are enough dots.
+function UI.dots(parent: GuiObject, w: number, h: number)
+	local GAP, DOT = 11, 5
+	local holder = UI.new("Frame", {
+		Name = "Dots",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		ClipsDescendants = true,
+		ZIndex = parent.ZIndex,
+		Parent = parent,
+	}, {
+		UI.new("UIGridLayout", {
+			CellSize = UDim2.fromOffset(DOT, DOT),
+			CellPadding = UDim2.fromOffset(GAP - DOT, GAP - DOT),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+		UI.new("UIPadding", { PaddingLeft = UDim.new(0, 3), PaddingTop = UDim.new(0, 3) }),
+	})
+	for _ = 1, math.ceil(w / GAP) * math.ceil(h / GAP) do
+		UI.new("Frame", {
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			BackgroundTransparency = 0.8,
+			BorderSizePixel = 0,
+			ZIndex = parent.ZIndex,
+			Parent = holder,
+		}, { UI.corner(2) })
+	end
+	return holder
+end
+
+-- A red count badge on a button's top-right corner. Returns set(text or nil).
+function UI.badge(parent: GuiObject)
+	local badge = UI.heavy("", 18, {
+		Name = "Badge",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(1, -4, 0, 4),
+		Size = UDim2.fromOffset(30, 30),
+		BackgroundColor3 = UI.colors.red,
+		BackgroundTransparency = 0,
+		Visible = false,
+		ZIndex = parent.ZIndex + 3,
+		Parent = parent,
+	})
+	UI.corner(15).Parent = badge
+	UI.stroke(2.5, Color3.new(1, 1, 1)).Parent = badge
+	return function(text: string?)
+		badge.Visible = text ~= nil
+		badge.Text = text or ""
+	end
+end
+
+-- A button: bright `color` (top half lighter), dark outline, chunky white outlined text.
 function UI.button(text: string, color: Color3, onClick: () -> (), props)
 	local button = UI.new("TextButton", {
 		AutoButtonColor = false,
 		BackgroundColor3 = color,
 		Text = "",
 		Size = UDim2.fromOffset(160, 50),
-	}, { UI.corner(5), UI.stroke(3), twoTone(0.86) })
-	UI.text(text, 26, {
+	}, { UI.corner(6), UI.stroke(3), UI.twoTone() })
+	UI.heavy(text, 26, {
 		Name = "Label",
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 2),
 		Size = UDim2.new(1, -14, 1, -12),
 		Parent = button,
 	})
@@ -18192,7 +21338,85 @@ function UI.button(text: string, color: Color3, onClick: () -> (), props)
 	return button
 end
 
--- A slot: a dark cell with a thin black outline. `gold` gives it the gold outline.
+-- A wide HUD button like the reference's PLOT / SHOP: a bright colour with stud dots, an
+-- icon on the left (an emoji, or a picture GuiObject) and a chunky label. opts = { text,
+-- color, icon, size = Vector2 (default 210 x 58), onClick }. Returns the button and
+-- setBadge(text or nil).
+function UI.wideButton(opts)
+	local size = opts.size or Vector2.new(210, 58)
+	local button = UI.new("TextButton", {
+		Name = opts.name or opts.text,
+		AutoButtonColor = false,
+		BackgroundColor3 = opts.color,
+		Text = "",
+		Size = UDim2.fromOffset(size.X, size.Y),
+	}, { UI.corner(4), UI.stroke(3), UI.twoTone(0.86) })
+	UI.dots(button, size.X, size.Y)
+	local iconSize = size.Y - 8
+	if typeof(opts.icon) == "Instance" then
+		opts.icon.AnchorPoint = Vector2.new(0, 0.5)
+		opts.icon.Position = UDim2.new(0, 6, 0.5, 0)
+		opts.icon.Size = UDim2.fromOffset(iconSize, iconSize)
+		opts.icon.ZIndex = button.ZIndex + 1
+		opts.icon.Parent = button
+	elseif opts.icon then
+		UI.text(opts.icon, math.floor(iconSize * 0.75), {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 6, 0.5, 0),
+			Size = UDim2.fromOffset(iconSize, iconSize),
+			ZIndex = button.ZIndex + 1,
+			Parent = button,
+		})
+	end
+	local hasIcon = opts.icon ~= nil
+	UI.heavy(opts.text, math.floor(size.Y * 0.55), {
+		Name = "Label",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, if hasIcon then iconSize + 10 else 8, 0.5, 3),
+		Size = UDim2.new(1, if hasIcon then -iconSize - 18 else -16, 1, -10),
+		ZIndex = button.ZIndex + 1,
+		Parent = button,
+	})
+	UI.hover(button, 1.05)
+	if opts.onClick then
+		button.Activated:Connect(opts.onClick)
+	end
+	return button, UI.badge(button)
+end
+
+-- A square HUD tile (the reference's egg and crate buttons): a bright colour with stud
+-- dots and a big icon. Returns the button and setBadge.
+function UI.tile(opts)
+	local s = opts.size or 76
+	local button = UI.new("TextButton", {
+		Name = opts.name,
+		AutoButtonColor = false,
+		BackgroundColor3 = opts.color,
+		Text = "",
+		Size = UDim2.fromOffset(s, s),
+	}, { UI.corner(4), UI.stroke(3), UI.twoTone(0.86) })
+	UI.dots(button, s, s)
+	if typeof(opts.icon) == "Instance" then
+		opts.icon.AnchorPoint = Vector2.new(0.5, 0.5)
+		opts.icon.Position = UDim2.fromScale(0.5, 0.5)
+		opts.icon.Size = UDim2.fromOffset(s - 10, s - 10)
+		opts.icon.ZIndex = button.ZIndex + 1
+		opts.icon.Parent = button
+	else
+		UI.text(opts.icon or "", math.floor(s * 0.6), {
+			Size = UDim2.fromScale(1, 1),
+			ZIndex = button.ZIndex + 1,
+			Parent = button,
+		})
+	end
+	UI.hover(button, 1.08)
+	if opts.onClick then
+		button.Activated:Connect(opts.onClick)
+	end
+	return button, UI.badge(button)
+end
+
+-- A slot: a dark cell with a thin dark outline. `gold` gives it the gold outline.
 function UI.cell(props, gold: boolean?)
 	local cell = UI.new("Frame", {
 		BackgroundColor3 = UI.colors.cell,
@@ -18211,7 +21435,7 @@ end
 -- Returns the frame, the content area under the header, setHeader(icon, title, colour)
 -- and the X button.
 function UI.window(props, onClose: () -> ())
-	local HEADER = 52
+	local HEADER = 54
 	local frame = UI.new("Frame", {
 		BackgroundColor3 = UI.colors.body,
 		BackgroundTransparency = 0.2,
@@ -18231,12 +21455,9 @@ function UI.window(props, onClose: () -> ())
 		Parent = frame,
 	}, {
 		UI.corner(6),
-		UI.new("UIGradient", {
-			Rotation = 90,
-			Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.new(0.86, 0.86, 0.86)),
-		}),
+		UI.twoTone(0.88),
 	})
-	-- Square off the header's bottom corners, with a black line under it.
+	-- Square off the header's bottom corners, with a dark line under it.
 	local fill = UI.new("Frame", {
 		Position = UDim2.new(0, 0, 1, -8),
 		Size = UDim2.new(1, 0, 0, 8),
@@ -18245,10 +21466,7 @@ function UI.window(props, onClose: () -> ())
 		ZIndex = z,
 		Parent = header,
 	}, {
-		UI.new("UIGradient", {
-			Rotation = 90,
-			Color = ColorSequence.new(Color3.new(0.88, 0.88, 0.88), Color3.new(0.86, 0.86, 0.86)),
-		}),
+		UI.new("UIGradient", { Color = ColorSequence.new(Color3.new(0.88, 0.88, 0.88)) }),
 	})
 	UI.new("Frame", {
 		Position = UDim2.new(0, 0, 1, 0),
@@ -18258,15 +21476,15 @@ function UI.window(props, onClose: () -> ())
 		ZIndex = z,
 		Parent = header,
 	})
-	local icon = UI.text("", 30, {
+	local icon = UI.text("", 32, {
 		Position = UDim2.fromOffset(10, 0),
-		Size = UDim2.fromOffset(40, HEADER),
+		Size = UDim2.fromOffset(42, HEADER),
 		ZIndex = z + 1,
 		Parent = header,
 	})
-	local title = UI.text("", 28, {
-		Position = UDim2.fromOffset(56, 0),
-		Size = UDim2.new(1, -120, 0, HEADER),
+	local title = UI.heavy("", 32, {
+		Position = UDim2.fromOffset(58, 3),
+		Size = UDim2.new(1, -124, 0, HEADER),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = z + 1,
 		Parent = header,
@@ -18274,7 +21492,7 @@ function UI.window(props, onClose: () -> ())
 	local close = UI.button("X", UI.colors.red, onClose, {
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -8, 0.5, 0),
-		Size = UDim2.fromOffset(40, 40),
+		Size = UDim2.fromOffset(42, 42),
 		ZIndex = z + 1,
 		Parent = header,
 	})

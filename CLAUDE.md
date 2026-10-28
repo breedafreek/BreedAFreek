@@ -12,30 +12,37 @@ The game imitates the bright, chunky cartoon look of the big Roblox simulators (
 Brainrot, Grow a Garden, Pet Simulator). Every new screen, label, model and effect must
 match it.
 
-**UI (rebuilt from scratch from the owner's reference screenshot, a "Daily Rewards"
-window): clean simulator look. Build every screen with `src/client/UI.luau`; the owner
-approves each screen from a render before the next one is built.**
-- One font: Fredoka One (`UI.text(text, size)`), white or a bright colour, black outline.
-  Short labels, no paragraphs.
-- Windows (`UI.window`): dark see-through body (`UI.colors.body`, 0.2 transparency), thin
-  black outline, nearly square corners (6 px); a flat coloured header bar (the menu tile's
-  colour) with an icon, a white title and a red square X, and a black line under it.
-- Slots (`UI.cell`, `slot` in Main): dark cells with a thin outline: white label on top, a
-  big 3D picture in the middle, a coloured value at the bottom (money green, Speed blue),
-  a button under it if needed. The one that matters (affordable, best) gets the gold
+**UI (from the owner's two reference screenshots: a top simulator's HUD and a "Daily
+Rewards" window): clean simulator look. Build every screen with `src/client/UI.luau`;
+render each screen for the owner before calling it done.**
+- Fonts: Luckiest Guy (`UI.heavy`) for buttons, titles and big numbers; Fredoka One
+  (`UI.text`) for small labels. White or a bright colour, black outline. Short labels, no
+  paragraphs.
+- HUD (`Hud.luau`), with no panels behind anything:
+  - top centre: wide travel buttons (HOME, ZONES, SPIN)
+  - left: wide menu buttons (SHOP, MY HOME, BAG, INDEX) and the event timer under them
+  - right: square tiles (STORE, LUCK, and ADMIN for admins)
+  - bottom left: Speed (gold) and money (green) as big outlined numbers with 3D icons,
+    "Earning $x/s" under them, and "+$" pops
+  - bottom right: a dark bar with the next egg's hatch timer
+  - a dark pill at the top (zone / carrying) and messages under it
+  - Wide buttons and tiles (`UI.wideButton`, `UI.tile`) are bright, top half lighter,
+    with stud dots, a thin black outline, an icon and a red count badge (`UI.badge`).
+- Windows (`UI.window`): dark see-through body (`UI.colors.body`, 0.2 transparency),
+  thin black outline, nearly square corners (6 px); a flat coloured header bar (the
+  button's colour) with an icon, a white title and a red square X. The windows are Shop,
+  My Home, Bag, Index, Store, Luck and Admin (all in `Main.client.luau`).
+- Slots (`UI.cell`, `slot` in Main): dark cells with a thin outline: a white label on
+  top, a big 3D picture, coloured lines at the bottom (money green, Speed gold) and
+  buttons under them. The one that matters (affordable, best, ready) gets the gold
   outline.
-- Buttons (`UI.button`): bright, top half lighter than the bottom, black outline, white
-  outlined text. Green = buy/go, gray = can't, red = close.
-- HUD (`Hud.luau`): no panels behind numbers: a 3D icon and a big outlined number (money
-  green, Speed blue) bottom left with "Earning: $x/s" under it; two columns of square
-  coloured menu tiles (top half lighter, big 3D icon, label over the bottom edge, red "!"
-  badge); a dark see-through pill at the top centre (zone / carrying); messages under it.
+- Buttons (`UI.button`): bright, top half lighter, black outline, white outlined text.
+  Green = buy/go, gray = can't, red = close/sell, orange = open.
+- Reveals: hatching and Mystery Boxes play the card-pack reveal (`PackReveal.luau`); the
+  Lucky Wheel spins (`LuckyWheel.luau`) and shows its prize in a small window.
 - Motion is subtle: things you can press grow a little on hover and dip when pressed
   (`UI.hover`); windows pop open. No sparkles, glimmers or bouncing text.
 - No uploaded images: pictures are our own 3D models (ItemPictures) or emoji.
-- Built so far: HUD, side menu, Shop window. Luck, Home (My Life), Bag, Index and Store
-  show "Coming soon!" until rebuilt; their server side is all still there
-  (`ActionService`, `Remotes`).
 
 **World:**
 - The classic Roblox studs look, like Steal an Egg (`src/shared/Lego.luau`): everything is
