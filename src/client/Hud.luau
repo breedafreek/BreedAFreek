@@ -110,6 +110,21 @@ function Hud.money(screen: ScreenGui)
 	})
 	-- The number glides to its new value instead of jumping.
 	local shown = player:GetAttribute("Money") or 0
+	-- The number bounces and the panel glimmers when money comes in.
+	local bump = UI.new("UIScale", { Parent = amount })
+	local flash = UI.shine(pill, 20, 6, 0.4)
+	local last = shown
+	player:GetAttributeChangedSignal("Money"):Connect(function()
+		local now = player:GetAttribute("Money") or 0
+		if now > last then
+			bump.Scale = 1.25
+			TweenService:Create(bump, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+				Scale = 1,
+			}):Play()
+			flash()
+		end
+		last = now
+	end)
 	RunService.RenderStepped:Connect(function(dt)
 		local target = player:GetAttribute("Money") or 0
 		shown += (target - shown) * math.min(1, dt * 8)
@@ -685,7 +700,8 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 		picture.ZIndex = 3
 		picture.Parent = face
 		local iconScale = UI.new("UIScale", { Parent = picture })
-		table.insert(icons, { picture = picture, sway = sway, phase = i * 0.9 })
+		local iconEntry = { picture = picture, sway = sway, phase = i * 0.9 }
+		table.insert(icons, iconEntry)
 		-- The name, straddling the bottom edge.
 		local caption = text(string.upper(name), 17, {
 			Name = "Caption",
@@ -742,6 +758,15 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 			press(false)
 		end)
 		hoverGrow(face)
+		-- A glimmer now and then, and right away on hover, when the picture wiggles.
+		local flash = UI.shine(face, 14, nil, 0.5)
+		face.MouseEnter:Connect(function()
+			flash()
+			iconEntry.hover = os.clock()
+		end)
+		face.MouseLeave:Connect(function()
+			iconEntry.hover = nil
+		end)
 		face.Activated:Connect(function()
 			onSelect(name)
 		end)
@@ -752,8 +777,17 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 	RunService.Heartbeat:Connect(function()
 		local t = os.clock()
 		for _, entry in icons do
-			if entry.sway then
+			if entry.hover then
+				-- Hovered: a quick excited wiggle that settles into a fast sway.
+				local since = t - entry.hover
+				local wiggle = math.sin(since * 22) * 14 * math.exp(-since * 4) + math.sin(t * 6) * 5
+				if entry.sway then
+					entry.sway(t * 4 + entry.phase)
+				end
+				entry.picture.Rotation = wiggle
+			elseif entry.sway then
 				entry.sway(t * 1.4 + entry.phase)
+				entry.picture.Rotation = 0
 			else
 				entry.picture.Rotation = math.sin(t * 1.8 + entry.phase) * 6
 			end

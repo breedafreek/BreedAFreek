@@ -33,6 +33,12 @@ bright and animated.
   outline, white outlined pixel text; they grow when hovered and squish when pressed
   (`UI.juicy`). Green = buy/go (`UI.pricePill`), red = close/danger, gray = disabled.
 - HUD panels (`UI.glass`, `Hud.menu`): bright glossy fill, thick black outline, rounded.
+- Everything moves a little, smoothly: windows spring open and shrink shut; cards and
+  banners pop in one after another when a window or tab opens (`UI.entrance`, `UI.enter`;
+  not on refreshes); glimmers sweep across cards, banners, buttons, menu tiles and the
+  header every few seconds (`UI.shine`); pictures float; tags wobble; money bounces when it
+  goes up. Hover: grow with a little tilt, a glimmer right away, the card's sunburst spins
+  up and its picture bobs higher; menu icons wiggle (`UI.juicy`). Press: squish.
 - Effects run from one loop (`UI.animate`) only while their frame is visible.
 - No uploaded images: pictures are our own 3D models in ViewportFrames (ItemPictures,
   UI.boxViewport), emoji icons and patterns built from frames.

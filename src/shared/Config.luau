@@ -1,7 +1,7 @@
 -- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-23", -- shown small in the corner of the screen and in Output: which build is running
+	BUILD = "life-24", -- shown small in the corner of the screen and in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join. Set to nil
 	-- before the game launches!

@@ -251,8 +251,9 @@ function UI.sunburst(parent: GuiObject, color: Color3?, transparency: number?)
 		ZIndex = parent.ZIndex,
 		Parent = burst,
 	}, { UI.corner(999) })
+	-- Spins faster while its card is hovered (attribute "Speed").
 	UI.animate(burst, function(gui, _t, dt)
-		gui.Rotation = (gui.Rotation + dt * 25) % 360
+		gui.Rotation = (gui.Rotation + dt * 25 * (gui:GetAttribute("Speed") or 1)) % 360
 	end)
 	return burst
 end
@@ -283,28 +284,115 @@ function UI.gleam(label: TextLabel, color: Color3?, period: number?)
 	return gradient
 end
 
--- Grows a little when hovered and squishes when pressed (buttons and clickable cards).
-function UI.juicy(button: GuiButton)
+-- A glimmer: a soft diagonal band of light that sweeps across a frame every few seconds
+-- (cards, banners, buy buttons, menu tiles). `radius` matches the frame's corners.
+-- Returns flash(), which sweeps it right now (used on hover).
+function UI.shine(frame: GuiObject, radius: number?, period: number?, strength: number?)
+	local band = 1 - (strength or 0.55)
+	local sheen = UI.new("Frame", {
+		Name = "Shine",
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		Size = UDim2.fromScale(1, 1),
+		BorderSizePixel = 0,
+		ZIndex = frame.ZIndex + 1,
+		Active = false,
+		Parent = frame,
+	}, {
+		UI.corner(radius or 12),
+	})
+	local gradient = UI.new("UIGradient", {
+		Rotation = 25,
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.42, 1),
+			NumberSequenceKeypoint.new(0.47, band),
+			NumberSequenceKeypoint.new(0.5, band * 0.6),
+			NumberSequenceKeypoint.new(0.53, band),
+			NumberSequenceKeypoint.new(0.58, 1),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Offset = Vector2.new(-1.2, 0),
+		Parent = sheen,
+	})
+	local every = period or (4 + math.random() * 3)
+	local SWEEP = 0.7 -- seconds to cross
+	local started = os.clock() - math.random() * every
+	UI.animate(sheen, function(_gui, t)
+		local f = (t - started) % every / SWEEP
+		gradient.Offset = Vector2.new(if f < 1 then -1.2 + f * 2.4 else 1.2, 0)
+	end)
+	return function()
+		local now = os.clock()
+		if (now - started) % every > SWEEP then
+			started = now
+		end
+	end
+end
+
+-- Puts something in with a springy pop (scale up from nothing), after `delay` seconds.
+function UI.popIn(gui: GuiObject, delay: number?)
+	local scale = gui:FindFirstChildOfClass("UIScale") or UI.new("UIScale", { Parent = gui })
+	scale.Scale = 0
+	task.delay(delay or 0, function()
+		if scale.Parent then
+			TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+				Scale = 1,
+			}):Play()
+		end
+	end)
+end
+
+-- While true, new cards pop in one after another (set while a window or tab opens, not on
+-- every refresh). Main turns it on and off around each render.
+UI.entrance = false
+local entranceIndex, entranceAt = 0, 0
+local function entranceDelay(): number
+	local now = os.clock()
+	if now - entranceAt > 0.05 then
+		entranceIndex = 0
+	end
+	entranceAt = now
+	entranceIndex += 1
+	return math.min(entranceIndex - 1, 12) * 0.04
+end
+function UI.enter(gui: GuiObject)
+	if UI.entrance then
+		UI.popIn(gui, entranceDelay())
+	end
+end
+
+-- Grows a little when hovered (with a little tilt and a glimmer sweeping across) and
+-- squishes when pressed (buttons and clickable cards). `flash` is the frame's
+-- UI.shine flash, if it has one; `grow` is how much it grows (1.08).
+function UI.juicy(button: GuiObject, flash: (() -> ())?, grow: number?)
 	local scale = button:FindFirstChildOfClass("UIScale") or UI.new("UIScale", { Parent = button })
-	local info = TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	local info = TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	local big = grow or 1.08
 	local hovered = false
-	local function to(value: number)
+	local rest = button.Rotation
+	local function to(value: number, tilt: number)
 		TweenService:Create(scale, info, { Scale = value }):Play()
+		TweenService:Create(button, info, { Rotation = rest + tilt }):Play()
 	end
 	button.MouseEnter:Connect(function()
 		hovered = true
-		to(1.08)
+		to(big, if button.AbsoluteSize.X > 140 then -1 else -3)
+		if flash then
+			flash()
+		end
 	end)
 	button.MouseLeave:Connect(function()
 		hovered = false
-		to(1)
+		to(1, 0)
 	end)
-	button.MouseButton1Down:Connect(function()
-		to(0.9)
-	end)
-	button.MouseButton1Up:Connect(function()
-		to(if hovered then 1.08 else 1)
-	end)
+	if button:IsA("GuiButton") then
+		button.MouseButton1Down:Connect(function()
+			to(0.9, 0)
+		end)
+		button.MouseButton1Up:Connect(function()
+			to(if hovered then big else 1, 0)
+		end)
+	end
 	return scale
 end
 
@@ -388,7 +476,9 @@ function UI.button(text: string, color: Color3, onClick: () -> (), props)
 	for key, value in props or {} do
 		button[key] = value
 	end
-	UI.juicy(button)
+	-- Coloured buttons glimmer now and then; gray (disabled) ones stay still.
+	local flash = if color ~= UI.colors.gray then UI.shine(button, 10, nil, 0.45) else nil
+	UI.juicy(button, flash)
 	button.Activated:Connect(onClick)
 	return button
 end
@@ -447,6 +537,13 @@ function UI.tag(parent: GuiObject, text: string, color: Color3?)
 			PaddingBottom = UDim.new(0, 5),
 		}),
 	})
+	-- A gentle wobble and pulse so it catches the eye.
+	local phase = math.random() * 6
+	local pulse = UI.new("UIScale", { Parent = tag })
+	UI.animate(tag, function(gui, t)
+		gui.Rotation = 12 + math.sin(t * 2.2 + phase) * 4
+		pulse.Scale = 1 + math.max(0, math.sin(t * 3 + phase)) * 0.06
+	end)
 	return tag
 end
 
@@ -520,8 +617,8 @@ function UI.card(opts)
 	if opts.onClick then
 		card.Text = ""
 		card.AutoButtonColor = false
-		UI.juicy(card)
 	end
+	local flash = UI.shine(card, 12, nil, 0.4)
 
 	local order = 0
 	local function add(child)
@@ -540,7 +637,7 @@ function UI.card(opts)
 	end
 
 	-- The picture, on a spinning sunburst.
-	local picture
+	local picture, burst
 	if opts.picture then
 		picture = ItemPictures.view(opts.picture, opts.pictureHeight)
 	elseif opts.box then
@@ -556,9 +653,16 @@ function UI.card(opts)
 			Size = picture.Size,
 		})
 		local side = picture.Size.Y.Offset * 1.15
-		UI.sunburst(holder).Size = UDim2.fromOffset(side, side)
+		burst = UI.sunburst(holder)
+		burst.Size = UDim2.fromOffset(side, side)
 		picture.Size = UDim2.fromScale(1, 1)
 		picture.Parent = holder
+		-- The picture floats gently, and bobs higher while the card is hovered.
+		local phase = math.random() * 6
+		UI.animate(picture, function(gui, t)
+			local lift = if burst:GetAttribute("Speed") then 6 else 3
+			gui.Position = UDim2.fromOffset(0, -math.abs(math.sin(t * 2 + phase)) * lift)
+		end)
 		if opts.price then
 			UI.priceTag(holder, opts.price, true)
 			UI.priceTag(holder, opts.price, false)
@@ -583,6 +687,19 @@ function UI.card(opts)
 	if opts.onClick then
 		card.Activated:Connect(opts.onClick)
 	end
+	-- Hover: grow, tilt, glimmer, and the sunburst spins up.
+	UI.juicy(card, flash, 1.05)
+	card.MouseEnter:Connect(function()
+		if burst then
+			burst:SetAttribute("Speed", 4)
+		end
+	end)
+	card.MouseLeave:Connect(function()
+		if burst then
+			burst:SetAttribute("Speed", nil)
+		end
+	end)
+	UI.enter(card)
 
 	return card
 end

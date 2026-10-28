@@ -170,6 +170,7 @@ UI.new("Frame", {
 	Parent = window,
 })
 UI.pattern(header, 880, HEADER + 10, 0.72).ZIndex = 5
+UI.shine(header, 16, 3.5, 0.35)
 -- Sparkles drifting down the header.
 for k = 1, 12 do
 	local size = 4 + (k % 3) * 3
@@ -286,24 +287,49 @@ local function render()
 	end
 	clearBody()
 	renderers[currentWindow]()
+	UI.entrance = false -- only pop cards in when a window or tab opens, not on refreshes
 end
 
 local setActiveTab = function(_name: string?) end
 local TAB_ICONS = {}
 local TAB_COLORS = {}
 
+-- The window springs open (and shrinks away when closed).
+local windowScale = UI.new("UIScale", { Parent = window })
+local closing = nil
+
 local function open(name: string)
 	if currentWindow == name then
 		currentWindow = nil
-		window.Visible = false
 		setActiveTab(nil)
+		local tween = TweenService:Create(
+			windowScale,
+			TweenInfo.new(0.14, Enum.EasingStyle.Back, Enum.EasingDirection.In),
+			{ Scale = 0.6 }
+		)
+		closing = tween
+		tween.Completed:Connect(function()
+			if closing == tween then
+				window.Visible = false
+			end
+		end)
+		tween:Play()
 		return
 	end
+	closing = nil
+	local wasOpen = window.Visible
 	currentWindow = name
 	setActiveTab(name)
 	setTitle(TAB_ICONS[name] or "", if name == "Life" then "MY LIFE" else string.upper(name))
 	window.Visible = true
+	if not wasOpen then
+		windowScale.Scale = 0.6
+	end
+	TweenService:Create(windowScale, TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Scale = 1,
+	}):Play()
 	body.CanvasPosition = Vector2.zero
+	UI.entrance = true
 	render()
 end
 
@@ -396,6 +422,8 @@ local function banner(order: number, colorA: Color3, colorB: Color3, height: num
 		UI.new("UIGradient", { Color = ColorSequence.new(colorA, colorB), Rotation = 20 }),
 	})
 	UI.pattern(frame, 860, height)
+	UI.juicy(frame, UI.shine(frame, 14, nil, 0.4), 1.02)
+	UI.enter(frame)
 	-- Made first so the picture draws over it.
 	local holder = UI.new("Frame", {
 		Name = "Tile",
@@ -643,6 +671,7 @@ local function tabRow(order: number, tabs, current: string, onPick: (string) -> 
 	})
 	for i, tab in tabs do
 		local button = UI.button(tab[2] .. " " .. tab[1], if tab[1] == current then tab[3] else colors.gray, function()
+			UI.entrance = true
 			onPick(tab[1])
 		end)
 		button.LayoutOrder = i
