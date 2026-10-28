@@ -38,7 +38,7 @@ rojo build -o StealALife.rbxlx    # or build a place file
 |---|---|---|
 | `src/shared` | ReplicatedStorage.Shared | Items, eggs and zones, models, tuning, luck, events |
 | `src/server` | ServerScriptService.Server | Saving, homes, zones and guardians, carrying, nests, speed, money |
-| `src/client` | StarterPlayerScripts.Client | All the menus, the HUD, guardian and pet animation |
+| `src/client` | StarterPlayerScripts.Client | Guardian, pet and world effects (the screen UI is being rebuilt from scratch) |
 
 ## How the game works
 
@@ -101,7 +101,7 @@ rojo build -o StealALife.rbxlx    # or build a place file
   grows for 20 s (Common) up to 15 min (Secret), half with Fast Hatching, even while you're
   offline. When it's ready hold **Hatch** on the nest (or press HATCH in 🏡 My Life): out
   comes a random item of the egg's kind and rarity, keeping the egg's mutation, with a
-  card-pack reveal (`src/client/PackReveal.luau`). It goes straight out if it beats what you
+  reveal (the screen UI is being rebuilt; see CLAUDE.md). It goes straight out if it beats what you
   have (the old one goes to your backpack), otherwise into the backpack.
 - **Upgrades** (coins, in the 🛒 Shop; `Config.luau`):
   - **Treadmill** (20 levels): more ⚡ Speed a second.

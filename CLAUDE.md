@@ -12,38 +12,12 @@ The game imitates the bright, chunky cartoon look of the big Roblox simulators (
 Brainrot, Grow a Garden, Pet Simulator). Every new screen, label, model and effect must
 match it.
 
-**UI (built in code with `src/client/UI.luau` helpers; always use them):** the juicy
-pixel-arcade shop look of the top simulators (the owner's reference video): cool, clean,
-bright and animated.
-- Fonts: the pixel font **Press Start 2P** (`UI.fonts.pixel` / `UI.fonts.heavy`,
-  `Enum.Font.Arcade`) for titles, buttons, tags and big numbers (`UI.pixel`); **Fredoka One**
-  (`UI.fonts.bold`) for longer text and small HUD labels. Never Builder Sans/Gotham.
-- Every piece of text is white or bright with a thick black outline (`UI.textStroke`,
-  `UI.OUTLINE`).
-- Windows: a dark slate body (`UI.colors.sheet`) with a thick black outline under a rainbow
-  header (`UI.RAINBOW`) covered in halftone dots (`UI.pattern`) with sparkles drifting
-  down; the window's icon and a big pixel title whose letters bounce like jelly and gleam
-  (`UI.gleam`); a red X. Section headings are small pixel capitals ("UPGRADES").
-- Cards (`UI.card`): a bright gradient in the card's colour (`accent`, or rarity colour for
-  items) under a halftone, white pixel title, a big 3D picture on a slowly spinning
-  sunburst (`UI.sunburst`), optional tilted prices on both sides (`price`, `UI.priceTag`),
-  text lines, buttons and tilted `UI.tag` tags. Wide offers are gradient banners with the
-  picture on a sunburst and a gleaming pixel title.
-- Buttons (`UI.button`): bright glossy fill (light top, deeper bottom), thick black
-  outline, white outlined pixel text; they grow when hovered and squish when pressed
-  (`UI.juicy`). Green = buy/go (`UI.pricePill`), red = close/danger, gray = disabled.
-- HUD panels (`UI.glass`, `Hud.menu`): bright glossy fill, thick black outline, rounded.
-- Everything moves a little, smoothly: windows spring open and shrink shut; cards and
-  banners pop in one after another when a window or tab opens (`UI.entrance`, `UI.enter`;
-  not on refreshes); glimmers sweep across cards, banners, buttons, menu tiles and the
-  header every few seconds (`UI.shine`); pictures float; tags wobble; money bounces when it
-  goes up. Hover: grow with a little tilt, a glimmer right away, the card's sunburst spins
-  up and its picture bobs higher; menu icons wiggle (`UI.juicy`). Press: squish.
-- Effects run from one loop (`UI.animate`) only while their frame is visible.
-- No uploaded images: pictures are our own 3D models in ViewportFrames (ItemPictures,
-  UI.boxViewport), emoji icons and patterns built from frames.
-- Colours: saturated and cheerful. Money is green (#6EEB8C), gold for titles,
-  rarities use `Rarities.info[r].color`.
+**UI:** removed on purpose (build life-25) and being rebuilt from scratch with the owner.
+There is no screen UI right now: no HUD, menus, windows or reveals. Don't bring the old one
+back (it's in git history before life-25 only for reference). Agree the look with the owner
+(renders or their UI pack) before building screens. Gameplay that needs the UI (buying
+upgrades, the Store, the Luck tab, the backpack) is waiting on the rebuild; the server
+side of it is all still there (`ActionService`, `Remotes`).
 
 **World:**
 - The classic Roblox studs look, like Steal an Egg (`src/shared/Lego.luau`): everything is
