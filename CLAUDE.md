@@ -12,12 +12,30 @@ The game imitates the bright, chunky cartoon look of the big Roblox simulators (
 Brainrot, Grow a Garden, Pet Simulator). Every new screen, label, model and effect must
 match it.
 
-**UI:** removed on purpose (build life-25) and being rebuilt from scratch with the owner.
-There is no screen UI right now: no HUD, menus, windows or reveals. Don't bring the old one
-back (it's in git history before life-25 only for reference). Agree the look with the owner
-(renders or their UI pack) before building screens. Gameplay that needs the UI (buying
-upgrades, the Store, the Luck tab, the backpack) is waiting on the rebuild; the server
-side of it is all still there (`ActionService`, `Remotes`).
+**UI (rebuilt from scratch from the owner's reference screenshot, a "Daily Rewards"
+window): clean simulator look. Build every screen with `src/client/UI.luau`; the owner
+approves each screen from a render before the next one is built.**
+- One font: Fredoka One (`UI.text(text, size)`), white or a bright colour, black outline.
+  Short labels, no paragraphs.
+- Windows (`UI.window`): dark see-through body (`UI.colors.body`, 0.2 transparency), thin
+  black outline, nearly square corners (6 px); a flat coloured header bar (the menu tile's
+  colour) with an icon, a white title and a red square X, and a black line under it.
+- Slots (`UI.cell`, `slot` in Main): dark cells with a thin outline: white label on top, a
+  big 3D picture in the middle, a coloured value at the bottom (money green, Speed blue),
+  a button under it if needed. The one that matters (affordable, best) gets the gold
+  outline.
+- Buttons (`UI.button`): bright, top half lighter than the bottom, black outline, white
+  outlined text. Green = buy/go, gray = can't, red = close.
+- HUD (`Hud.luau`): no panels behind numbers: a 3D icon and a big outlined number (money
+  green, Speed blue) bottom left with "Earning: $x/s" under it; two columns of square
+  coloured menu tiles (top half lighter, big 3D icon, label over the bottom edge, red "!"
+  badge); a dark see-through pill at the top centre (zone / carrying); messages under it.
+- Motion is subtle: things you can press grow a little on hover and dip when pressed
+  (`UI.hover`); windows pop open. No sparkles, glimmers or bouncing text.
+- No uploaded images: pictures are our own 3D models (ItemPictures) or emoji.
+- Built so far: HUD, side menu, Shop window. Luck, Home (My Life), Bag, Index and Store
+  show "Coming soon!" until rebuilt; their server side is all still there
+  (`ActionService`, `Remotes`).
 
 **World:**
 - The classic Roblox studs look, like Steal an Egg (`src/shared/Lego.luau`): everything is

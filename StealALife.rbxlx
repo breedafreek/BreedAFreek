@@ -816,7 +816,7 @@ return Bricks
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-25", -- printed in Output: which build is running
+	BUILD = "life-26", -- printed in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join. Set to nil
 	-- before the game launches!
@@ -16466,6 +16466,373 @@ return GuardianFX
         </Item>
         <Item class="ModuleScript" referent="59">
           <Properties>
+            <string name="Name">Hud</string>
+            <string name="Source"><![CDATA[-- The always-on screen pieces, in the UI.luau style: money and Speed as big outlined
+-- numbers with an icon (no panel behind them), the side menu of square coloured tiles,
+-- a dark pill at the top centre (the zone you walked into, or the egg you're carrying),
+-- and short messages from the server.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local Format = require(ReplicatedStorage.Shared.Format)
+local Items = require(ReplicatedStorage.Shared.Items)
+local ZoneLayout = require(ReplicatedStorage.Shared.ZoneLayout)
+local ItemPictures = require(script.Parent.ItemPictures)
+local UI = require(script.Parent.UI)
+
+local colors = UI.colors
+local player = Players.LocalPlayer
+
+local Hud = {}
+
+-- A 3D icon (an ItemPictures key) in a square.
+local function icon(key: string, size: number, props)
+	local view = ItemPictures.icon(key)
+	view.Size = UDim2.fromOffset(size, size)
+	for k, v in props or {} do
+		view[k] = v
+	end
+	return view
+end
+
+-- A number that glides to its new value instead of jumping.
+local function glide(label: TextLabel, read: () -> number, show: (number) -> string)
+	local shown = read()
+	RunService.RenderStepped:Connect(function(dt)
+		local target = read()
+		shown += (target - shown) * math.min(1, dt * 8)
+		if math.abs(target - shown) < 1 then
+			shown = target
+		end
+		label.Text = show(shown)
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- Money and Speed (bottom left, above nothing: just icons and outlined numbers)
+--------------------------------------------------------------------------------
+
+function Hud.stats(screen: ScreenGui)
+	local holder = UI.new("Frame", {
+		Name = "Stats",
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 14, 1, -18),
+		Size = UDim2.fromOffset(300, 140),
+		BackgroundTransparency = 1,
+		Parent = screen,
+	})
+
+	-- Speed: a lightning bolt and the number in blue.
+	icon("Bolt", 40, { Position = UDim2.fromOffset(0, 0), Parent = holder })
+	local speed = UI.text("0", 30, {
+		Position = UDim2.fromOffset(46, 4),
+		Size = UDim2.fromOffset(240, 34),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = colors.speed,
+		Parent = holder,
+	})
+	glide(speed, function()
+		return player:GetAttribute("Speed") or 0
+	end, function(n)
+		local training = player:GetAttribute("Training") == true
+		return Format.number(n) .. (if training then "  TRAINING!" else "")
+	end)
+
+	-- Money: a stack of cash and the number in green, what you earn under it.
+	icon("Cash", 54, { Position = UDim2.fromOffset(-4, 46), Parent = holder })
+	local money = UI.text("$0", 42, {
+		Position = UDim2.fromOffset(56, 48),
+		Size = UDim2.fromOffset(240, 46),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = colors.money,
+		Parent = holder,
+	})
+	glide(money, function()
+		return player:GetAttribute("Money") or 0
+	end, Format.money)
+	local income = UI.text("Earning: $0/s", 18, {
+		Position = UDim2.fromOffset(4, 104),
+		Size = UDim2.fromOffset(290, 22),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = holder,
+	})
+	local function updateIncome()
+		income.Text = "Earning: " .. Format.money(player:GetAttribute("Income") or 0) .. "/s"
+	end
+	player:GetAttributeChangedSignal("Income"):Connect(updateIncome)
+	updateIncome()
+end
+
+--------------------------------------------------------------------------------
+-- Side menu
+--------------------------------------------------------------------------------
+
+-- Two columns of square tiles: a bright colour (top half lighter), a big 3D icon, the name
+-- overlapping the bottom edge, and a red "!" badge when something is waiting there.
+-- entries = { { name, label, colour, iconKey } }. Returns setBadge(name, on).
+function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
+	local TILE, GAP = 70, 12
+	local rows = math.ceil(#entries / 2)
+	local rail = UI.new("Frame", {
+		Name = "Menu",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 12, 0.45, 0),
+		Size = UDim2.fromOffset(TILE * 2 + GAP, rows * (TILE + GAP)),
+		BackgroundTransparency = 1,
+		Parent = screen,
+	}, {
+		UI.new("UIGridLayout", {
+			CellSize = UDim2.fromOffset(TILE, TILE),
+			CellPadding = UDim2.fromOffset(GAP, GAP),
+			FillDirectionMaxCells = 2,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	-- Shrinks on short screens so it never runs off the edge.
+	local fit = UI.new("UIScale", { Parent = rail })
+	local function refit()
+		local available = Workspace.CurrentCamera.ViewportSize.Y * 0.62
+		fit.Scale = math.clamp(available / rail.Size.Y.Offset, 0.6, 1)
+	end
+	Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(refit)
+	refit()
+
+	local badges = {}
+	for i, entry in entries do
+		local name, label, color, iconKey = entry[1], entry[2], entry[3], entry[4]
+		local tile = UI.new("TextButton", {
+			Name = name,
+			AutoButtonColor = false,
+			Text = "",
+			BackgroundColor3 = color,
+			LayoutOrder = i,
+			Parent = rail,
+		}, {
+			UI.corner(6),
+			UI.stroke(3),
+			UI.new("UIGradient", {
+				Rotation = 90,
+				Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+					ColorSequenceKeypoint.new(0.5, Color3.new(1, 1, 1)),
+					ColorSequenceKeypoint.new(0.501, Color3.new(0.85, 0.85, 0.85)),
+					ColorSequenceKeypoint.new(1, Color3.new(0.85, 0.85, 0.85)),
+				}),
+			}),
+		})
+		if ItemPictures.has(iconKey) then
+			icon(iconKey, TILE - 12, {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.new(0.5, 0, 0.42, 0),
+				Parent = tile,
+			})
+		end
+		UI.text(label, 18, {
+			AnchorPoint = Vector2.new(0.5, 1),
+			Position = UDim2.new(0.5, 0, 1, 4),
+			Size = UDim2.new(1, 10, 0, 22),
+			ZIndex = 2,
+			Parent = tile,
+		})
+		badges[name] = UI.text("!", 20, {
+			Name = "Badge",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(1, -4, 0, 4),
+			Size = UDim2.fromOffset(24, 24),
+			BackgroundColor3 = colors.red,
+			BackgroundTransparency = 0,
+			Visible = false,
+			ZIndex = 3,
+			Parent = tile,
+		})
+		UI.corner(12).Parent = badges[name]
+		UI.stroke(2.5).Parent = badges[name]
+		UI.hover(tile, 1.08)
+		tile.Activated:Connect(function()
+			onSelect(name)
+		end)
+	end
+	return function(name: string, on: boolean)
+		if badges[name] then
+			badges[name].Visible = on
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Top pill: the zone you just walked into, or the egg you're carrying
+--------------------------------------------------------------------------------
+
+function Hud.topPill(screen: ScreenGui)
+	local pill = UI.new("Frame", {
+		Name = "TopPill",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 10),
+		Size = UDim2.fromOffset(0, 40),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0.45,
+		Visible = false,
+		Parent = screen,
+	}, {
+		UI.corner(8),
+		UI.stroke(2.5),
+		UI.new("UIPadding", { PaddingLeft = UDim.new(0, 18), PaddingRight = UDim.new(0, 18) }),
+	})
+	local label = UI.text("", 22, {
+		Size = UDim2.fromOffset(0, 40),
+		AutomaticSize = Enum.AutomaticSize.X,
+		TextScaled = false,
+		TextSize = 22,
+		Parent = pill,
+	})
+
+	-- The beam from you to your gate while you carry an egg, so you never get lost.
+	local beam, from, target
+	local function clearBeam()
+		for _, thing in { beam, from, target } do
+			if thing then
+				thing:Destroy()
+			end
+		end
+		beam, from, target = nil, nil, nil
+	end
+	local function beamHome()
+		clearBeam()
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local plotIndex = player:GetAttribute("Plot")
+		local plots = Workspace:FindFirstChild("Plots")
+		local plot = plotIndex and plots and plots:FindFirstChild("Plot" .. plotIndex)
+		local origin = plot and plot:GetAttribute("Origin")
+		if not root or typeof(origin) ~= "CFrame" then
+			return
+		end
+		target = UI.new("Part", {
+			Anchored = true,
+			CanCollide = false,
+			CanQuery = false,
+			Transparency = 1,
+			Size = Vector3.one,
+			CFrame = origin * CFrame.new(0, 3, -40),
+			Parent = Workspace,
+		})
+		local a1 = UI.new("Attachment", { Parent = target })
+		from = UI.new("Attachment", { Position = Vector3.new(0, -2, 0), Parent = root })
+		beam = UI.new("Beam", {
+			Attachment0 = from,
+			Attachment1 = a1,
+			Width0 = 0.8,
+			Width1 = 0.8,
+			FaceCamera = true,
+			LightEmission = 1,
+			Color = ColorSequence.new(Color3.fromRGB(110, 255, 140)),
+			Transparency = NumberSequence.new(0.2),
+			Parent = target,
+		})
+	end
+
+	local zoneUntil = 0
+	local currentZone = nil
+	local function show(text: string, color: Color3)
+		label.Text = text
+		label.TextColor3 = color
+		pill.Visible = true
+	end
+	local function onCarrying()
+		local carrying = player:GetAttribute("Carrying")
+		if typeof(carrying) == "string" then
+			show("🥚 " .. carrying .. " · Run home!", colors.gold)
+			beamHome()
+		else
+			clearBeam()
+			pill.Visible = os.clock() < zoneUntil
+		end
+	end
+	player:GetAttributeChangedSignal("Carrying"):Connect(onCarrying)
+	onCarrying()
+
+	task.spawn(function()
+		while true do
+			task.wait(0.2)
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			local zone = root and ZoneLayout.zoneAt(root.Position)
+			local carrying = typeof(player:GetAttribute("Carrying")) == "string"
+			if zone ~= currentZone then
+				currentZone = zone
+				if zone and not carrying then
+					local info = Items.ZONES[zone]
+					local fast = (player:GetAttribute("Speed") or 0) >= info.speed
+					show(
+						Items.KINDS[info.kind].icon
+							.. " "
+							.. info.name
+							.. (if fast then " · Grab an egg!" else " · Needs ⚡" .. Format.number(info.speed)),
+						if fast then colors.white else Color3.fromRGB(255, 120, 120)
+					)
+					zoneUntil = os.clock() + 3.5
+				end
+			end
+			if not carrying and pill.Visible and os.clock() >= zoneUntil then
+				pill.Visible = false
+			end
+		end
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- Messages
+--------------------------------------------------------------------------------
+
+local MESSAGE_COLORS = {
+	success = UI.colors.money,
+	error = Color3.fromRGB(255, 110, 110),
+	discovery = UI.colors.gold,
+}
+
+-- Short messages under the top pill, fading out after a few seconds. Returns show(text,
+-- kind).
+function Hud.messages(screen: ScreenGui)
+	local holder = UI.new("Frame", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 60),
+		Size = UDim2.new(0.6, 0, 0, 200),
+		Parent = screen,
+	}, {
+		UI.new("UIListLayout", {
+			Padding = UDim.new(0, 4),
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	return function(message: string, kind: string?)
+		local label = UI.text(message, 24, {
+			Size = UDim2.new(1, 0, 0, 30),
+			TextColor3 = MESSAGE_COLORS[kind or ""] or colors.white,
+			Parent = holder,
+		})
+		task.delay(3.5, function()
+			local info = TweenInfo.new(0.4)
+			TweenService:Create(label, info, { TextTransparency = 1 }):Play()
+			TweenService:Create(label.UIStroke, info, { Transparency = 1 }):Play()
+			task.wait(0.4)
+			label:Destroy()
+		end)
+	end
+end
+
+return Hud
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="60">
+          <Properties>
             <string name="Name">ItemPictures</string>
             <string name="Source"><![CDATA[-- 3D pictures for shop items (the treadmill, game passes), items, eggs and the side menu,
 -- built from parts like everything else in the game and shown in ViewportFrames.
@@ -16656,6 +17023,28 @@ local function bolt(model, offset: Vector3, size: number)
 			Material = Enum.Material.Neon,
 		})
 	end
+end
+
+-- Cash: a chunky stack of green bills with a paper band (the HUD's money icon).
+function BUILDERS.Cash(model)
+	for i = 0, 1 do
+		local tilt = CFrame.Angles(0, math.rad(-12 + i * 18), 0)
+		part(model, {
+			Size = Vector3.new(4, 1, 2),
+			CFrame = CFrame.new(i * 0.3, 0.5 + i * 1.02, i * 0.2) * tilt,
+			Color = rgb(80, 200, 80),
+		})
+		part(model, {
+			Size = Vector3.new(0.8, 1.06, 2.06),
+			CFrame = CFrame.new(i * 0.3, 0.5 + i * 1.02, i * 0.2) * tilt,
+			Color = rgb(255, 225, 90),
+		})
+	end
+end
+
+-- Speed: a chunky lightning bolt.
+function BUILDERS.Bolt(model)
+	bolt(model, Vector3.new(0, 2, 0), 1.5)
 end
 
 -- Fast Hatching: a fancy egg with a lightning bolt.
@@ -17141,17 +17530,20 @@ return ItemPictures
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="60">
+        <Item class="LocalScript" referent="61">
           <Properties>
             <string name="Name">Main</string>
-            <string name="Source"><![CDATA[-- The player's client. The screen UI has been removed while it's rebuilt from scratch;
--- this runs the world effects (guardians, attacks, pets, treadmill running, ambience,
--- events, flashing secret eggs) and the bits of gameplay that live on the client.
+            <string name="Source"><![CDATA[-- The player's client: the screen UI (HUD, side menu and windows, built from UI.luau and
+-- Hud.luau; being rebuilt window by window), the world effects (guardians, attacks, pets,
+-- treadmill running, ambience, events, flashing secret eggs) and the bits of gameplay
+-- that live on the client. The server is the source of truth; this shows state and sends
+-- requests.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 print("[Steal a Life] Client starting")
@@ -17188,18 +17580,336 @@ task.delay(8, function()
 end)
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared.Config)
 local EggModel = require(Shared.EggModel)
+local Format = require(Shared.Format)
+local GamePasses = require(Shared.GamePasses)
+local Items = require(Shared.Items)
 local Remotes = require(Shared.Remotes)
 local Ambient = require(script.Parent.Ambient)
 local EventFX = require(script.Parent.EventFX)
 local GuardianAttackFX = require(script.Parent.GuardianAttackFX)
 local GuardianFX = require(script.Parent.GuardianFX)
+local Hud = require(script.Parent.Hud)
+local ItemPictures = require(script.Parent.ItemPictures)
 local PetFX = require(script.Parent.PetFX)
 local TreadmillRun = require(script.Parent.TreadmillRun)
+local UI = require(script.Parent.UI)
 
 local player = Players.LocalPlayer
 
 EventFX.start()
+
+--------------------------------------------------------------------------------
+-- Screen UI (UI.luau style): the HUD, the side menu and the windows
+--------------------------------------------------------------------------------
+
+local colors = UI.colors
+local actionRemote = Remotes.get("Action")
+local function send(action: string, ...)
+	actionRemote:FireServer(action, ...)
+end
+
+local state = nil
+
+local screen = UI.new("ScreenGui", {
+	Name = "StealALifeUI",
+	ResetOnSpawn = false,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	Parent = player:WaitForChild("PlayerGui"),
+})
+Hud.stats(screen)
+Hud.topPill(screen)
+local message = Hud.messages(screen)
+Remotes.get("Notify").OnClientEvent:Connect(function(text: string, kind: string?)
+	message(text, kind)
+end)
+
+-- The one window, reused by every menu button.
+local currentWindow = nil
+local openWindow
+local window, content, setHeader = UI.window({
+	Name = "Window",
+	Visible = false,
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.fromScale(0.5, 0.5),
+	Size = UDim2.fromScale(0.56, 0.7),
+	ZIndex = 5,
+	Parent = screen,
+}, function()
+	openWindow(currentWindow)
+end)
+UI.new("UISizeConstraint", { MaxSize = Vector2.new(780, 560), Parent = window })
+local windowScale = UI.new("UIScale", { Parent = window })
+local body = UI.new("ScrollingFrame", {
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	Size = UDim2.fromScale(1, 1),
+	CanvasSize = UDim2.new(),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	ScrollBarThickness = 6,
+	ScrollBarImageColor3 = Color3.new(1, 1, 1),
+	ZIndex = 5,
+	Parent = content,
+}, {
+	UI.new("UIListLayout", { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }),
+	UI.new("UIPadding", {
+		PaddingTop = UDim.new(0, 12),
+		PaddingBottom = UDim.new(0, 14),
+		PaddingLeft = UDim.new(0, 14),
+		PaddingRight = UDim.new(0, 14),
+	}),
+})
+
+local renderers = {}
+local function render()
+	if not currentWindow or not state then
+		return
+	end
+	for _, child in body:GetChildren() do
+		if child:IsA("GuiObject") then
+			child:Destroy()
+		end
+	end
+	renderers[currentWindow]()
+end
+
+-- A section title in the window.
+local function section(text: string, order: number)
+	return UI.text(text, 22, {
+		Size = UDim2.new(1, 0, 0, 26),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = order,
+		ZIndex = 6,
+		Parent = body,
+	})
+end
+
+-- A grid of slots in the window.
+local function grid(order: number, cellSize: UDim2)
+	return UI.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = order,
+		ZIndex = 6,
+		Parent = body,
+	}, {
+		UI.new("UIGridLayout", {
+			CellSize = cellSize,
+			CellPadding = UDim2.fromOffset(10, 10),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+end
+
+-- A slot: label on top, picture in the middle, value at the bottom, and a button under
+-- that if there is one. `picture` is a ViewportFrame (or nil).
+local function slot(parent, order, label, picture, value, valueColor, gold, button)
+	local cell = UI.cell({ LayoutOrder = order, ZIndex = 6, Parent = parent }, gold)
+	local bottom = if button then 58 else 6
+	UI.text(label, 20, {
+		Position = UDim2.fromOffset(6, 8),
+		Size = UDim2.new(1, -12, 0, 22),
+		ZIndex = 7,
+		Parent = cell,
+	})
+	if picture then
+		picture.AnchorPoint = Vector2.new(0.5, 0)
+		picture.Position = UDim2.new(0.5, 0, 0, 34)
+		picture.Size = UDim2.new(1, -16, 1, -34 - 30 - bottom)
+		picture.ZIndex = 7
+		picture.Parent = cell
+	end
+	UI.text(value, 20, {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 6, 1, -bottom - 4),
+		Size = UDim2.new(1, -12, 0, 24),
+		TextColor3 = valueColor or colors.white,
+		ZIndex = 7,
+		Parent = cell,
+	})
+	if button then
+		button.AnchorPoint = Vector2.new(0.5, 1)
+		button.Position = UDim2.new(0.5, 0, 1, -8)
+		button.Size = UDim2.new(1, -16, 0, 44)
+		button.ZIndex = 7
+		button.Label.ZIndex = 8
+		button.Parent = cell
+	end
+	return cell
+end
+
+--------------------------------------------------------------------------------
+-- Shop: the treadmill, plot and house upgrades, and the zones
+--------------------------------------------------------------------------------
+
+local function speedGain(level: number): number
+	return Config.treadmillGain(level) * GamePasses.speedMultiplier(player)
+end
+
+-- An upgrade slot: name and level, picture, what you get, and the price to buy.
+local function upgradeSlot(parent, order, name, level, maxLevel, pictureKey, value, cost, action)
+	local maxed = level >= maxLevel
+	local canAfford = not maxed and (state.money or 0) >= cost
+	local button = if maxed
+		then UI.button("MAX", colors.gray, function() end)
+		else UI.button(Format.money(cost), if canAfford then colors.green else colors.gray, function()
+			send(action)
+		end)
+	return slot(
+		parent,
+		order,
+		name .. "  Lv " .. level,
+		ItemPictures.view(pictureKey),
+		value,
+		colors.speed,
+		canAfford,
+		button
+	)
+end
+
+function renderers.Shop()
+	section("Upgrades", 1)
+	local upgrades = grid(2, UDim2.new(1 / 3, -7, 0, 250))
+	local level = state.treadmill or 1
+	upgradeSlot(
+		upgrades,
+		1,
+		"Treadmill",
+		level,
+		Config.TREADMILL_MAX,
+		"Treadmill",
+		"+" .. Format.number(speedGain(level)) .. " ⚡/s",
+		Config.treadmillCost(level),
+		"UpgradeTreadmill"
+	)
+	local plotLevel = state.plotLevel or 1
+	local spaces = Config.plotSpaces(plotLevel)
+	upgradeSlot(
+		upgrades,
+		2,
+		"Plot",
+		plotLevel,
+		Config.PLOT_MAX,
+		"MenuLife",
+		spaces.yard + spaces.garden + spaces.pets .. " spots",
+		Config.plotCost(plotLevel),
+		"UpgradePlot"
+	)
+	local houseLevel = state.houseLevel or 1
+	upgradeSlot(
+		upgrades,
+		3,
+		"House",
+		houseLevel,
+		Config.HOUSE_MAX,
+		"MenuHouse",
+		"Size " .. houseLevel,
+		Config.houseCost(houseLevel),
+		"UpgradeHouse"
+	)
+
+	-- The zones: their egg and the Speed each needs. The deepest one you can do is gold.
+	section("Zones", 3)
+	local speed = player:GetAttribute("Speed") or state.speed or 0
+	local best = 1
+	for i, zone in Items.ZONES do
+		if speed >= zone.speed then
+			best = i
+		end
+	end
+	local zones = grid(4, UDim2.new(1 / 5, -8, 0, 168))
+	for i, zone in Items.ZONES do
+		local fast = speed >= zone.speed
+		slot(
+			zones,
+			i,
+			zone.name,
+			ItemPictures.egg(i),
+			"⚡ " .. (if zone.speed > 0 then Format.number(zone.speed) else "Any"),
+			if fast then colors.money else Color3.fromRGB(255, 110, 110),
+			i == best
+		)
+	end
+end
+
+-- Windows that haven't been rebuilt yet.
+local function comingSoon()
+	UI.text("Coming soon!", 30, {
+		Size = UDim2.new(1, 0, 0, 40),
+		LayoutOrder = 1,
+		ZIndex = 6,
+		Parent = body,
+	})
+end
+for _, name in { "Luck", "Life", "Bag", "Index", "Store" } do
+	renderers[name] = comingSoon
+end
+
+-- The side menu: name, label, colour, icon.
+local MENU = {
+	{ "Shop", "SHOP", Color3.fromRGB(235, 60, 70), "MenuShop", "🛒" },
+	{ "Luck", "LUCK", Color3.fromRGB(110, 205, 50), "MenuLuck", "🍀" },
+	{ "Life", "HOME", Color3.fromRGB(60, 140, 240), "MenuLife", "🏡" },
+	{ "Bag", "BAG", Color3.fromRGB(245, 150, 40), "MenuBag", "🎒" },
+	{ "Index", "INDEX", Color3.fromRGB(40, 185, 200), "MenuCatalog", "📖" },
+	{ "Store", "STORE", Color3.fromRGB(165, 90, 240), "MenuStore", "💎" },
+	{ "Home", "TP", Color3.fromRGB(250, 200, 40), "MenuHome", "🚪" },
+}
+local MENU_BY_NAME = {}
+for _, entry in MENU do
+	MENU_BY_NAME[entry[1]] = entry
+end
+
+openWindow = function(name: string?)
+	if not name or currentWindow == name then
+		currentWindow = nil
+		window.Visible = false
+		return
+	end
+	currentWindow = name
+	local entry = MENU_BY_NAME[name]
+	setHeader(entry[5], name, entry[3])
+	if not window.Visible then
+		window.Visible = true
+		windowScale.Scale = 0.85
+		TweenService:Create(windowScale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+			Scale = 1,
+		}):Play()
+	end
+	body.CanvasPosition = Vector2.zero
+	render()
+end
+
+local setBadge = Hud.menu(screen, MENU, function(name: string)
+	if name == "Home" then
+		send("GoHome") -- not a window: takes you back to your house
+	else
+		openWindow(name)
+	end
+end)
+
+-- The Shop's "!" when you can afford an upgrade.
+local function updateBadges()
+	if not state then
+		return
+	end
+	local money = state.money or 0
+	local level, plotLevel, houseLevel = state.treadmill or 1, state.plotLevel or 1, state.houseLevel or 1
+	setBadge(
+		"Shop",
+		(level < Config.TREADMILL_MAX and money >= Config.treadmillCost(level))
+			or (plotLevel < Config.PLOT_MAX and money >= Config.plotCost(plotLevel))
+			or (houseLevel < Config.HOUSE_MAX and money >= Config.houseCost(houseLevel))
+	)
+end
+
+Remotes.get("State").OnClientEvent:Connect(function(newState)
+	state = newState
+	updateBadges()
+	render()
+end)
 
 -- Only the owner sees the Hatch prompts on their own nests.
 local function hideOtherPrompt(instance: Instance)
@@ -17286,13 +17996,14 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
-Remotes.get("GetState"):InvokeServer()
+state = Remotes.get("GetState"):InvokeServer()
+updateBadges()
 print("[Steal a Life] Client ready")
 clientReady = true
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="61">
+        <Item class="ModuleScript" referent="62">
           <Properties>
             <string name="Name">PetFX</string>
             <string name="Source"><![CDATA[-- Pets roaming their owner's front lawn, drawn on this client. The server lists each
@@ -17489,7 +18200,7 @@ return PetFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="62">
+        <Item class="ModuleScript" referent="63">
           <Properties>
             <string name="Name">TreadmillRun</string>
             <string name="Source"><![CDATA[-- Running on your treadmill by yourself: while you stand on your own treadmill's belt and
@@ -17552,6 +18263,269 @@ function TreadmillRun.start()
 end
 
 return TreadmillRun
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="64">
+          <Properties>
+            <string name="Name">UI</string>
+            <string name="Source"><![CDATA[-- The building blocks of the screen UI, in one style (the owner's reference: a clean
+-- simulator look like the "Daily Rewards" window):
+-- - One font, Fredoka One, white or a bright colour with a black outline.
+-- - Windows: a dark see-through body with a thin black outline and nearly square corners,
+--   a flat coloured header bar (icon, white title, red square X) and a black line under it.
+-- - Slots: dark cells with a thin black outline: a white label on top, a big picture in the
+--   middle and a coloured value at the bottom; the one that matters gets a gold outline.
+-- - Buttons: bright, the top half lighter than the bottom, black outline, white text.
+-- - Everything you can press grows a little when hovered and dips when pressed.
+-- Pictures are our own 3D models (ItemPictures) or emoji, never uploaded images.
+
+local TweenService = game:GetService("TweenService")
+
+local UI = {}
+
+UI.FONT = Font.fromEnum(Enum.Font.FredokaOne)
+UI.OUTLINE = Color3.fromRGB(20, 20, 22)
+
+UI.colors = {
+	white = Color3.fromRGB(255, 255, 255),
+	muted = Color3.fromRGB(190, 190, 200),
+	money = Color3.fromRGB(110, 235, 80),
+	speed = Color3.fromRGB(90, 185, 255),
+	gold = Color3.fromRGB(255, 205, 45),
+	green = Color3.fromRGB(80, 215, 60),
+	red = Color3.fromRGB(230, 55, 55),
+	blue = Color3.fromRGB(60, 140, 240),
+	orange = Color3.fromRGB(245, 140, 45),
+	gray = Color3.fromRGB(120, 120, 128),
+	body = Color3.fromRGB(28, 28, 32), -- window bodies (see-through)
+	cell = Color3.fromRGB(52, 52, 58), -- slots
+}
+
+-- UI.new("Frame", { Size = ... }, { children... })
+function UI.new(className: string, props, children)
+	local instance = Instance.new(className)
+	for key, value in props or {} do
+		if key ~= "Parent" then
+			instance[key] = value
+		end
+	end
+	for _, child in children or {} do
+		child.Parent = instance
+	end
+	if props and props.Parent then
+		instance.Parent = props.Parent
+	end
+	return instance
+end
+
+function UI.corner(radius: number?)
+	return UI.new("UICorner", { CornerRadius = UDim.new(0, radius or 6) })
+end
+
+-- The black outline round a frame.
+function UI.stroke(thickness: number?, color: Color3?)
+	return UI.new("UIStroke", {
+		Color = color or UI.OUTLINE,
+		Thickness = thickness or 3,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		LineJoinMode = Enum.LineJoinMode.Round,
+	})
+end
+
+-- Text: Fredoka One, white (or `color`), black outline, `size` px (it shrinks to fit its
+-- box, never grows past `size`).
+function UI.text(text: string, size: number, props)
+	local label = UI.new("TextLabel", {
+		BackgroundTransparency = 1,
+		FontFace = UI.FONT,
+		Text = text,
+		TextColor3 = UI.colors.white,
+		TextScaled = true,
+		Size = UDim2.new(1, 0, 0, size + 4),
+	}, {
+		UI.new("UIStroke", {
+			Color = UI.OUTLINE,
+			Thickness = if size >= 28 then 3 elseif size >= 18 then 2.5 else 2,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual,
+			LineJoinMode = Enum.LineJoinMode.Round,
+		}),
+		UI.new("UITextSizeConstraint", { MaxTextSize = size }),
+	})
+	for key, value in props or {} do
+		label[key] = value
+	end
+	return label
+end
+
+-- Grows a little when hovered and dips when pressed.
+function UI.hover(button: GuiButton, grow: number?)
+	local scale = UI.new("UIScale", { Parent = button })
+	local info = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local over = false
+	local function to(value: number)
+		TweenService:Create(scale, info, { Scale = value }):Play()
+	end
+	button.MouseEnter:Connect(function()
+		over = true
+		to(grow or 1.06)
+	end)
+	button.MouseLeave:Connect(function()
+		over = false
+		to(1)
+	end)
+	button.MouseButton1Down:Connect(function()
+		to(0.94)
+	end)
+	button.MouseButton1Up:Connect(function()
+		to(if over then grow or 1.06 else 1)
+	end)
+end
+
+-- The two-tone shine on buttons and tiles: the top half lighter than the bottom.
+local function twoTone(dark: number)
+	return UI.new("UIGradient", {
+		Rotation = 90,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+			ColorSequenceKeypoint.new(0.5, Color3.new(1, 1, 1)),
+			ColorSequenceKeypoint.new(0.501, Color3.new(dark, dark, dark)),
+			ColorSequenceKeypoint.new(1, Color3.new(dark, dark, dark)),
+		}),
+	})
+end
+
+-- A button: bright `color` (top half lighter), black outline, white outlined text.
+function UI.button(text: string, color: Color3, onClick: () -> (), props)
+	local button = UI.new("TextButton", {
+		AutoButtonColor = false,
+		BackgroundColor3 = color,
+		Text = "",
+		Size = UDim2.fromOffset(160, 50),
+	}, { UI.corner(5), UI.stroke(3), twoTone(0.86) })
+	UI.text(text, 26, {
+		Name = "Label",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(1, -14, 1, -12),
+		Parent = button,
+	})
+	for key, value in props or {} do
+		button[key] = value
+	end
+	UI.hover(button)
+	button.Activated:Connect(onClick)
+	return button
+end
+
+-- A slot: a dark cell with a thin black outline. `gold` gives it the gold outline.
+function UI.cell(props, gold: boolean?)
+	local cell = UI.new("Frame", {
+		BackgroundColor3 = UI.colors.cell,
+		BackgroundTransparency = 0.05,
+	}, {
+		UI.corner(6),
+		UI.stroke(if gold then 3.5 else 2.5, if gold then UI.colors.gold else nil),
+	})
+	for key, value in props or {} do
+		cell[key] = value
+	end
+	return cell
+end
+
+-- A window: the dark see-through body with a flat coloured header (icon, title, red X).
+-- Returns the frame, the content area under the header, setHeader(icon, title, colour)
+-- and the X button.
+function UI.window(props, onClose: () -> ())
+	local HEADER = 52
+	local frame = UI.new("Frame", {
+		BackgroundColor3 = UI.colors.body,
+		BackgroundTransparency = 0.2,
+	}, { UI.corner(6), UI.stroke(3) })
+	for key, value in props or {} do
+		if key ~= "Parent" then
+			frame[key] = value
+		end
+	end
+	local z = frame.ZIndex
+	local header = UI.new("Frame", {
+		Name = "Header",
+		Size = UDim2.new(1, 0, 0, HEADER),
+		BackgroundColor3 = UI.colors.orange,
+		BorderSizePixel = 0,
+		ZIndex = z,
+		Parent = frame,
+	}, {
+		UI.corner(6),
+		UI.new("UIGradient", {
+			Rotation = 90,
+			Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.new(0.86, 0.86, 0.86)),
+		}),
+	})
+	-- Square off the header's bottom corners, with a black line under it.
+	local fill = UI.new("Frame", {
+		Position = UDim2.new(0, 0, 1, -8),
+		Size = UDim2.new(1, 0, 0, 8),
+		BackgroundColor3 = UI.colors.orange,
+		BorderSizePixel = 0,
+		ZIndex = z,
+		Parent = header,
+	}, {
+		UI.new("UIGradient", {
+			Rotation = 90,
+			Color = ColorSequence.new(Color3.new(0.88, 0.88, 0.88), Color3.new(0.86, 0.86, 0.86)),
+		}),
+	})
+	UI.new("Frame", {
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 3),
+		BackgroundColor3 = UI.OUTLINE,
+		BorderSizePixel = 0,
+		ZIndex = z,
+		Parent = header,
+	})
+	local icon = UI.text("", 30, {
+		Position = UDim2.fromOffset(10, 0),
+		Size = UDim2.fromOffset(40, HEADER),
+		ZIndex = z + 1,
+		Parent = header,
+	})
+	local title = UI.text("", 28, {
+		Position = UDim2.fromOffset(56, 0),
+		Size = UDim2.new(1, -120, 0, HEADER),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = z + 1,
+		Parent = header,
+	})
+	local close = UI.button("X", UI.colors.red, onClose, {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -8, 0.5, 0),
+		Size = UDim2.fromOffset(40, 40),
+		ZIndex = z + 1,
+		Parent = header,
+	})
+	close.Label.ZIndex = z + 2
+	local content = UI.new("Frame", {
+		Name = "Content",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(0, HEADER + 3),
+		Size = UDim2.new(1, 0, 1, -HEADER - 3),
+		ZIndex = z,
+		Parent = frame,
+	})
+	local function setHeader(iconText: string, titleText: string, color: Color3?)
+		icon.Text = iconText
+		title.Text = titleText
+		header.BackgroundColor3 = color or UI.colors.orange
+		fill.BackgroundColor3 = header.BackgroundColor3
+	end
+	if props and props.Parent then
+		frame.Parent = props.Parent
+	end
+	return frame, content, setHeader, close
+end
+
+return UI
 ]]></string>
           </Properties>
         </Item>

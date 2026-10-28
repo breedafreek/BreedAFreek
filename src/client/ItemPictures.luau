@@ -189,6 +189,28 @@ local function bolt(model, offset: Vector3, size: number)
 	end
 end
 
+-- Cash: a chunky stack of green bills with a paper band (the HUD's money icon).
+function BUILDERS.Cash(model)
+	for i = 0, 1 do
+		local tilt = CFrame.Angles(0, math.rad(-12 + i * 18), 0)
+		part(model, {
+			Size = Vector3.new(4, 1, 2),
+			CFrame = CFrame.new(i * 0.3, 0.5 + i * 1.02, i * 0.2) * tilt,
+			Color = rgb(80, 200, 80),
+		})
+		part(model, {
+			Size = Vector3.new(0.8, 1.06, 2.06),
+			CFrame = CFrame.new(i * 0.3, 0.5 + i * 1.02, i * 0.2) * tilt,
+			Color = rgb(255, 225, 90),
+		})
+	end
+end
+
+-- Speed: a chunky lightning bolt.
+function BUILDERS.Bolt(model)
+	bolt(model, Vector3.new(0, 2, 0), 1.5)
+end
+
 -- Fast Hatching: a fancy egg with a lightning bolt.
 function BUILDERS.FastBreeding(model)
 	addEgg(model, 6, CFrame.new(0, 0, 0))

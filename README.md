@@ -38,7 +38,7 @@ rojo build -o StealALife.rbxlx    # or build a place file
 |---|---|---|
 | `src/shared` | ReplicatedStorage.Shared | Items, eggs and zones, models, tuning, luck, events |
 | `src/server` | ServerScriptService.Server | Saving, homes, zones and guardians, carrying, nests, speed, money |
-| `src/client` | StarterPlayerScripts.Client | Guardian, pet and world effects (the screen UI is being rebuilt from scratch) |
+| `src/client` | StarterPlayerScripts.Client | The screen UI (HUD, menu, windows; being rebuilt window by window), guardian, pet and world effects |
 
 ## How the game works
 
