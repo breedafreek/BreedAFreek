@@ -452,7 +452,7 @@ RunService.RenderStepped:Connect(function()
 		local flash = (math.sin(t * 9 + i) + 1) / 2 -- 0..1, a few flashes a second
 		if glow and glow:IsA("BasePart") then
 			glow.Color = color
-			glow.Transparency = 0.25 + 0.5 * (1 - flash)
+			glow.Transparency = 0.55 + 0.3 * (1 - flash)
 		end
 		if light and light:IsA("PointLight") then
 			light.Color = color

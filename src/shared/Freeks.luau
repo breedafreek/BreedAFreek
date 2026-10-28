@@ -534,91 +534,120 @@ Freeks.list = {
 		rarity = "Uncommon",
 		income = 14,
 		look = (function()
-			-- An orange tabby: cream chest and muzzle, cheek fluff, green eyes, pink nose
-			-- and a :3 mouth, tabby stripes, whiskers and a curling tail.
+			-- The crafted look (like the owner's reference): a low-poly prowling cat built from
+			-- angled blocks and wedges, a muted dusty-orange body with darker stripes, glowing
+			-- amber eyes under cross brows, neon whiskers, toes and spine strips, a layered
+			-- cheek ruff, a collar and bell, and a jointed tail curling up.
 			local list, add = newParts()
-			local orange, stripe, cream = rgb(255, 168, 78), rgb(220, 115, 40), rgb(255, 236, 210)
-			add({ name = "Body", shape = "Ellipsoid", size = { 2.4, 2.2, 3.0 }, pos = { 0, 1.75, 0.4 }, color = orange })
-			add({ shape = "Ellipsoid", size = { 1.5, 1.5, 0.75 }, pos = { 0, 1.8, -0.85 }, color = cream })
-			legs(add, { { -0.6, -0.45 }, { 0.6, -0.45 }, { -0.6, 1.1 }, { 0.6, 1.1 } }, 0.95, 0.52, orange, cream)
-			for _, z in { 0.1, 0.7, 1.3 } do
-				add({
-					shape = "Ellipsoid",
-					size = { 1.9, 0.25, 0.32 },
-					pos = { 0, 2.82, z },
-					rot = { 0, 0, 0 },
-					color = stripe,
-				})
+			local fur, dark, light = rgb(196, 118, 66), rgb(140, 78, 44), rgb(232, 196, 150)
+			local glow, ink = rgb(255, 176, 40), rgb(30, 24, 22)
+			local function box(size, pos, rot, color, extra)
+				local spec = { shape = "Block", size = size, pos = pos, rot = rot, color = color }
+				for k, v in extra or {} do
+					spec[k] = v
+				end
+				add(spec)
 			end
-			local c, r = { 0, 3.4, -0.85 }, 1.25
-			add({ name = "Head", shape = "Ball", size = r * 2, pos = c, color = orange })
-			for _, side in { -1, 1 } do
-				add({
-					shape = "Ellipsoid",
-					size = { 0.95, 0.65, 0.75 },
-					pos = onBall(c, r, side * 0.82, -0.38, -0.25),
-					color = orange,
-				})
-				pointyEar(add, side * 0.72, 4.55, -0.7, 0.9, 1.0, orange)
-				pointyEar(add, side * 0.72, 4.48, -0.84, 0.5, 0.6, rgb(255, 160, 185))
+			local function neon(size, pos, rot)
+				box(size, pos, rot, glow, { material = "Neon", detail = true })
 			end
-			local muzzle = onBall(c, r, 0, -0.42, -0.12)
-			add({ shape = "Ellipsoid", size = { 0.95, 0.6, 0.42 }, pos = muzzle, color = cream })
-			add({
-				shape = "Ellipsoid",
-				size = { 0.32, 0.2, 0.14 },
-				pos = { 0, muzzle[2] + 0.14, muzzle[3] - 0.2 },
-				color = rgb(255, 120, 150),
-				detail = true,
-			})
-			for _, side in { -1, 1 } do
-				smile(add, { side * 0.16, c[2], c[3] }, r, -0.58, 0.3, nil, 0.08)
+			-- Body: a low torso, a deep chest in front, a raised back with stripes.
+			box({ 2.1, 1.5, 2.8 }, { 0, 1.75, 0.55 }, { -6, 0, 0 }, fur, { name = "Body" })
+			box({ 1.9, 1.7, 1.0 }, { 0, 2.0, -0.85 }, { 8, 0, 0 }, light)
+			box({ 1.7, 0.4, 2.3 }, { 0, 2.62, 0.55 }, { -6, 0, 0 }, dark)
+			for _, z in { -0.15, 0.55, 1.25 } do
+				box({ 2.18, 0.28, 0.32 }, { 0, 2.2, z }, { -6, 0, 0 }, dark)
 			end
-			cuteEyes(add, c, r, 0.46, 0.25, 0.62, rgb(110, 205, 80))
-			blush(add, c, r, 0.82, -0.12, 0.36)
-			-- Its signature ribbon and bell.
-			Accessories.put(add, "bell", { c[1], c[2] - 0.75 * r, c[3] + 0.25 * r }, r)
-			for _, x in { -0.25, 0, 0.25 } do
-				add({
-					shape = "Ellipsoid",
-					size = { 0.12, 0.42, 0.08 },
-					pos = onBall(c, r, x, 0.8, 0.0),
-					rot = { -35, 0, 0 },
-					color = stripe,
-					detail = true,
-				})
-			end
-			for _, side in { -1, 1 } do
-				for i, tilt in { -12, 0, 12 } do
-					add({
-						shape = "Block",
-						size = { 0.95, 0.04, 0.04 },
-						pos = { side * 0.95, muzzle[2] + (i - 2) * 0.12, muzzle[3] + 0.1 },
-						rot = { 0, 0, side * tilt },
-						color = rgb(255, 255, 255),
-						detail = true,
-					})
+			neon({ 0.16, 0.08, 1.9 }, { -0.42, 2.84, 0.6 }, { -6, 0, 0 })
+			neon({ 0.16, 0.08, 1.9 }, { 0.42, 2.84, 0.6 }, { -6, 0, 0 })
+			-- Legs: blocky, with wide paws and glowing toes.
+			for i, leg in { { -0.68, -0.55 }, { 0.68, -0.55 }, { -0.72, 1.45 }, { 0.72, 1.45 } } do
+				local swing = { hinge = { leg[1], 1.4, leg[2] }, phase = DIAGONAL[i] }
+				box({ 0.62, 1.3, 0.7 }, { leg[1], 0.85, leg[2] }, nil, if i <= 2 then fur else dark, { swing = swing })
+				box({ 0.78, 0.32, 0.95 }, { leg[1], 0.16, leg[2] - 0.12 }, nil, light, { swing = swing })
+				for _, t in { -0.22, 0, 0.22 } do
+					neon({ 0.14, 0.12, 0.16 }, { leg[1] + t, 0.2, leg[2] - 0.62 }, nil)
 				end
 			end
-			for k, p in
+			-- Head: a wide block with a muzzle, cheek ruffs, wedge ears.
+			local hy, hz = 3.55, -1.25
+			box({ 2.3, 1.75, 1.8 }, { 0, hy, hz }, nil, fur, { name = "Head" })
+			box({ 2.0, 0.35, 1.6 }, { 0, hy + 0.98, hz + 0.05 }, nil, dark)
+			box({ 1.25, 0.62, 0.55 }, { 0, hy - 0.5, hz - 1.05 }, nil, light)
+			box({ 0.42, 0.26, 0.16 }, { 0, hy - 0.22, hz - 1.36 }, nil, rgb(240, 120, 140), { detail = true })
+			box({ 0.5, 0.08, 0.06 }, { 0, hy - 0.62, hz - 1.34 }, nil, ink, { detail = true })
+			for _, side in { -1, 1 } do
+				-- Layered cheek ruff.
+				box({ 0.3, 0.7, 0.9 }, { side * 1.2, hy - 0.4, hz - 0.15 }, { 0, 0, side * 14 }, fur)
+				box({ 0.24, 0.45, 0.7 }, { side * 1.3, hy - 0.62, hz - 0.1 }, { 0, 0, side * 32 }, light)
+				-- Ears: a wedge with a glowing inner wedge.
+				box({ 0.32, 0.95, 0.75 }, { side * 0.72, hy + 1.45, hz + 0.1 }, { 0, 90, side * -14 }, dark, {
+					shape = "Wedge",
+					rig = "ear",
+					side = side,
+					pivot = { side * 0.72, hy + 1.0, hz + 0.1 },
+				})
+				box(
+					{ 0.12, 0.6, 0.45 },
+					{ side * 0.72, hy + 1.38, hz - 0.08 },
+					{ 0, 90, side * -14 },
+					glow,
+					{ shape = "Wedge", material = "Neon", detail = true }
+				)
+				-- Eyes: glowing amber, a slit pupil, and a cross brow.
+				box(
+					{ 0.62, 0.44, 0.1 },
+					{ side * 0.5, hy + 0.2, hz - 0.92 },
+					nil,
+					glow,
+					{ material = "Neon", detail = true }
+				)
+				box({ 0.12, 0.38, 0.06 }, { side * 0.46, hy + 0.2, hz - 0.98 }, nil, ink, { detail = true })
+				box(
+					{ 0.75, 0.16, 0.18 },
+					{ side * 0.5, hy + 0.55, hz - 0.95 },
+					{ 0, 0, side * 18 },
+					ink,
+					{ detail = true }
+				)
+				-- Whiskers: thin glowing slabs fanning out from the muzzle.
+				for k, tilt in { -14, 0, 14 } do
+					neon(
+						{ 1.1, 0.06, 0.08 },
+						{ side * 1.05, hy - 0.42 + (k - 2) * 0.13, hz - 1.05 },
+						{ 0, side * 12, side * tilt }
+					)
+				end
+			end
+			-- Collar and its gold bell.
+			box({ 1.95, 0.24, 1.75 }, { 0, hy - 0.95, hz + 0.1 }, nil, rgb(200, 40, 50), { detail = true })
+			add({
+				shape = "Ball",
+				size = 0.45,
+				pos = { 0, hy - 1.18, hz - 0.9 },
+				color = rgb(255, 205, 60),
+				material = "Metal",
+				detail = true,
+			})
+			-- Tail: jointed blocks curling up behind, tipped with a glowing band.
+			for k, seg in
 				{
-					{ 0, 1.9, 1.75 },
-					{ 0, 2.3, 2.1 },
-					{ 0, 2.8, 2.3 },
-					{ 0, 3.3, 2.3 },
-					{ 0, 3.7, 2.1 },
-					{ 0, 3.9, 1.8 },
+					{ 0, 1.95, 2.15, -30 },
+					{ 0, 2.45, 2.55, -55 },
+					{ 0, 3.1, 2.7, -80 },
+					{ 0, 3.7, 2.55, -110 },
 				}
 			do
-				add({
-					shape = "Ball",
-					size = 0.48,
-					pos = p,
-					color = if k % 2 == 0 then stripe else orange,
-					swing = { hinge = { 0, 1.9, 1.6 }, axis = "Y", amount = 0.6 },
-				})
+				box(
+					{ 0.42, 0.42, 0.8 },
+					{ seg[1], seg[2], seg[3] },
+					{ seg[4], 0, 0 },
+					if k % 2 == 0 then dark else fur,
+					{ swing = { hinge = { 0, 1.9, 1.9 }, axis = "Y", amount = 0.6 } }
+				)
 			end
-			return { parts = list }
+			neon({ 0.46, 0.46, 0.18 }, { 0, 4.0, 2.35 }, { -110, 0, 0 })
+			return { parts = list, crafted = true }
 		end)(),
 	},
 	{

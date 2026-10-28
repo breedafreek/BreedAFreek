@@ -136,6 +136,22 @@ local function keepRound(part: BasePart): boolean
 	return false
 end
 
+-- True if this part (or a model it's in) is a "Crafted" model: the detailed low-poly look
+-- (eggs, creatures) that keeps its own smooth materials and colours, with no studs.
+local function crafted(part: BasePart): boolean
+	if part:GetAttribute("Crafted") then
+		return true
+	end
+	local model = part:FindFirstAncestorOfClass("Model")
+	while model do
+		if model:GetAttribute("Crafted") then
+			return true
+		end
+		model = model:FindFirstAncestorOfClass("Model")
+	end
+	return false
+end
+
 -- Turns a big ball or sphere-meshed part into a square brick of about the same size.
 local function brickify(part: BasePart)
 	local isBall = part:IsA("Part") and part.Shape == Enum.PartType.Ball
@@ -163,7 +179,7 @@ function Lego.part(part: BasePart)
 	if not Lego.ENABLED or part.Transparency >= 1 or part:IsA("Terrain") then
 		return
 	end
-	if KEEP[part.Material] then
+	if KEEP[part.Material] or crafted(part) then
 		return
 	end
 	brickify(part)

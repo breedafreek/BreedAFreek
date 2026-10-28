@@ -45,6 +45,13 @@ approves each screen from a render before the next one is built.**
   bright and clear (little haze). Neon, Glass, Foil and ForceField keep their look; roads,
   sidewalks and paths are smooth "tiles" (the SMOOTH list). House walls get brick seams;
   trees are stacked bricks. Build new things as bricks (blocks) where you can.
+- **Models are moving to the "crafted" look** (the owner's references: a plated egg and a
+  low-poly cat): detailed low-poly models of many slightly offset or angled blocks and
+  wedges, smooth (no studs), a muted main colour with a bright Neon accent (glowing eyes,
+  seams, strips, toes), small gold details, sparks and lights. Mark a model with the
+  attribute "Crafted" and Lego leaves it alone. Done so far: eggs (`EggModel`) and the
+  Whiskerz pet (`Freeks.luau`, `look.crafted`). The owner approves each kind before the
+  rest follow (pets, guardians, house parts, yard items, plants).
 - Everything is LEGO (`Lego.part` does it automatically): big round pieces (balls, sphere
   meshes) become square bricks, so creatures, plants and props are brick-built; small round
   details (eyes, noses) stay round. Eggs stay egg-shaped (attribute "Round") and are covered

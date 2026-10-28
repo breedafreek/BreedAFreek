@@ -300,6 +300,10 @@ local function buildFromParts(species, mutationId: string?): (Model, number)
 	local look = species.look
 	local model = Instance.new("Model")
 	model.Name = species.name
+	if look.crafted then
+		-- The detailed low-poly look: keeps its own smooth materials and colours (see Lego).
+		model:SetAttribute("Crafted", true)
+	end
 
 	local parts = {}
 	local top = 0
