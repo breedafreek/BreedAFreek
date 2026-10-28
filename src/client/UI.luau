@@ -1,9 +1,10 @@
 -- Small helpers for building the UI in code (so there's nothing to set up in Studio).
--- Style: the clean cartoon look of the big Roblox simulators (Pet Simulator, PLS DONATE,
--- Grow a Garden) in Steal a Life colours: light windows with a coloured header and a
--- slanted title tab, bright glossy gradient cards with a big 3D picture, black price
--- pills, chunky shaded buttons that squish when pressed, Luckiest Guy titles, Fredoka One
--- text, and every bit of text outlined in dark navy.
+-- Style: the flat, chunky cartoon look of Steal an Egg / Steal a Brainrot: plain white
+-- windows with a thick black outline, a small dark title tab on the top edge and a red
+-- square X; dark rounded text on white; flat bright buttons with a thick black outline, a
+-- darker lip along the bottom and white outlined text, squishing when pressed. No glossy
+-- gradients or shine. White or bright text always gets a black outline; dark text on
+-- white doesn't.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -18,17 +19,18 @@ local UI = {}
 UI.fonts = {
 	regular = Font.fromEnum(Enum.Font.FredokaOne),
 	bold = Font.fromEnum(Enum.Font.FredokaOne),
-	heavy = Font.fromEnum(Enum.Font.LuckiestGuy),
+	heavy = Font.fromEnum(Enum.Font.FredokaOne), -- (was Luckiest Guy; the flat style is all rounded)
 }
 
 -- The dark outline around panels, buttons and text.
-UI.OUTLINE = Color3.fromRGB(20, 22, 48)
+UI.OUTLINE = Color3.fromRGB(18, 18, 24)
 
 UI.colors = {
 	panel = Color3.fromRGB(62, 128, 245), -- windows and HUD panels
 	card = Color3.fromRGB(110, 170, 255),
 	text = Color3.fromRGB(255, 255, 255),
-	muted = Color3.fromRGB(220, 232, 255),
+	muted = Color3.fromRGB(125, 120, 140), -- hints on white
+	dark = Color3.fromRGB(45, 42, 58), -- text on white
 	green = Color3.fromRGB(60, 200, 110),
 	blue = Color3.fromRGB(70, 140, 255),
 	pink = Color3.fromRGB(255, 95, 170),
@@ -38,7 +40,8 @@ UI.colors = {
 	money = Color3.fromRGB(110, 235, 140),
 	gold = Color3.fromRGB(255, 200, 60),
 	purple = Color3.fromRGB(160, 110, 240),
-	sheet = Color3.fromRGB(236, 230, 255), -- window bodies
+	sheet = Color3.fromRGB(255, 255, 255), -- window bodies and cards
+	tab = Color3.fromRGB(48, 46, 58), -- window title tabs
 	ink = Color3.fromRGB(28, 26, 48), -- price pills
 	fusion = Color3.fromRGB(170, 80, 255), -- the game's own purple-to-pink
 	fusion2 = Color3.fromRGB(255, 80, 190),
@@ -107,15 +110,26 @@ function UI.textStroke(thickness: number?)
 	})
 end
 
--- Shading from light at the top to darker at the bottom. It multiplies whatever colour the
--- frame is, so it works on any button or panel. (color/lighten are kept for old callers.)
-function UI.gradient(_color: Color3?, lighten: number?)
-	local top = 1
-	local bottom = 0.78 - (lighten or 0) * 0.3
+-- The darker lip along the bottom of a button or panel: flat colour, then a hard step to
+-- a darker band. It multiplies whatever colour the frame is, so it works on any of them.
+-- `lip` is how tall the band is (a fraction of the height). (color is kept for old callers.)
+function UI.gradient(_color: Color3?, lip: number?)
+	local from = 1 - (lip or 0.22)
+	local dark = Color3.new(0.74, 0.74, 0.74)
 	return UI.new("UIGradient", {
-		Color = ColorSequence.new(Color3.new(top, top, top), Color3.new(bottom, bottom, bottom)),
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+			ColorSequenceKeypoint.new(from - 0.001, Color3.new(1, 1, 1)),
+			ColorSequenceKeypoint.new(from, dark),
+			ColorSequenceKeypoint.new(1, dark),
+		}),
 		Rotation = 90,
 	})
+end
+
+-- Whether text in this colour is dark (no outline) or bright (black outline).
+local function isDark(color: Color3): boolean
+	return color.R * 0.3 + color.G * 0.59 + color.B * 0.11 < 0.55
 end
 
 -- A bright cartoon panel with a thick outline (the name is from the old glass style).
@@ -123,7 +137,7 @@ function UI.glass(props, children)
 	local frame = UI.new("Frame", {
 		BackgroundColor3 = UI.colors.panel,
 		BackgroundTransparency = UI.GLASS_TRANSPARENCY,
-	}, { UI.corner(16), UI.stroke(nil, 3.5), UI.gradient() })
+	}, { UI.corner(12), UI.stroke(nil, 3.5), UI.gradient(nil, 0.12) })
 	for key, value in props or {} do
 		if key ~= "Parent" then
 			frame[key] = value
@@ -150,33 +164,44 @@ function UI.label(text: string, props)
 	for key, value in props or {} do
 		label[key] = value
 	end
+	-- Dark text on white goes without an outline.
+	label.UIStroke.Enabled = not isDark(label.TextColor3)
 	return label
 end
 
--- A chunky cartoon button: bright shaded fill, thick dark outline, outlined text, and a
--- squish when pressed.
+-- Dark rounded text for window bodies and cards.
+function UI.text(text: string, props)
+	local label = UI.label(text, { TextColor3 = UI.colors.dark })
+	for key, value in props or {} do
+		label[key] = value
+	end
+	label.UIStroke.Enabled = not isDark(label.TextColor3)
+	return label
+end
+
+-- A chunky cartoon button: flat bright fill with a darker lip along the bottom, thick black
+-- outline, white outlined text, and a squish when pressed.
 function UI.button(text: string, color: Color3, onClick: () -> (), props)
 	local scale = UI.new("UIScale")
 	local button = UI.new("TextButton", {
 		BackgroundColor3 = color,
-		FontFace = UI.fonts.heavy,
+		FontFace = UI.fonts.bold,
 		Text = text,
 		TextColor3 = UI.colors.text,
-		TextStrokeColor3 = UI.OUTLINE,
-		TextStrokeTransparency = 0,
 		TextScaled = true,
 		AutoButtonColor = false,
 		Size = UDim2.new(1, 0, 0, 30),
 	}, {
-		UI.corner(12),
+		UI.corner(10),
 		UI.gradient(),
 		UI.stroke(nil, 3),
+		UI.textStroke(2),
 		scale,
 		UI.new("UIPadding", {
 			PaddingLeft = UDim.new(0, 8),
 			PaddingRight = UDim.new(0, 8),
-			PaddingTop = UDim.new(0, 5),
-			PaddingBottom = UDim.new(0, 5),
+			PaddingTop = UDim.new(0, 4),
+			PaddingBottom = UDim.new(0, 9), -- the text sits above the lip
 		}),
 	})
 	for key, value in props or {} do
@@ -220,30 +245,20 @@ end
 
 -- A card for grids: picture, lines of text, and buttons.
 -- opts = { species, mutations?, silhouette?, lines = { {text, color?} }, buttons = { button instances } }
--- A black price pill (like PLS DONATE): coin or Robux icon and the price in white.
+-- A price button: green, like the Buy buttons, with the price in white.
 function UI.pricePill(text: string, onClick: () -> (), props)
-	local pill = UI.button(text, UI.colors.ink, onClick, props)
-	pill.TextColor3 = Color3.new(1, 1, 1)
-	local corner = pill:FindFirstChildOfClass("UICorner")
-	if corner then
-		corner.CornerRadius = UDim.new(1, 0)
-	end
-	local shade = pill:FindFirstChildOfClass("UIGradient")
-	if shade then
-		shade:Destroy() -- flat and glossy black
-	end
-	return pill
+	return UI.button(text, UI.colors.green, onClick, props)
 end
 
--- A little slanted tag on a card's corner: "NEW", "BEST", "x2"...
+-- A little tag on a card's corner: "NEW", "BEST", "x2"...
 function UI.tag(parent: GuiObject, text: string, color: Color3?)
 	local tag = UI.new("TextLabel", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, 6, 0, -8),
 		Size = UDim2.fromOffset(64, 26),
-		Rotation = 10,
+		Rotation = 6,
 		BackgroundColor3 = color or UI.colors.red,
-		FontFace = UI.fonts.heavy,
+		FontFace = UI.fonts.bold,
 		Text = text,
 		TextScaled = true,
 		TextColor3 = Color3.new(1, 1, 1),
@@ -263,9 +278,8 @@ function UI.tag(parent: GuiObject, text: string, color: Color3?)
 	return tag
 end
 
--- A bright glossy card (like Pet Simulator's shop): a gradient in the card's colour with a
--- shine across the top, the title in white, a big picture on a glowing disc, then text
--- lines and buttons. opts: accent (colour), border (a highlight outline, e.g. owned),
+-- A flat white card with a thick black outline: the title in dark text, a big picture on
+-- a tile in the card's colour (its rarity colour for items), then text lines and buttons. opts: accent (colour), border (a highlight outline, e.g. owned),
 -- picture (an ItemPictures key) / part (any item id, + mutations, silhouette) / egg (a zone
 -- index, + eggItem for what's inside) / box, lines = { { text,
 -- colour?, height? } }, buttons, tag = { text, colour? }, onClick.
@@ -286,24 +300,11 @@ function UI.card(opts)
 
 	-- Clickable cards are buttons; buttons inside them still get their own clicks.
 	local card = UI.new(if opts.onClick then "TextButton" else "Frame", {
-		BackgroundColor3 = accent,
+		BackgroundColor3 = UI.colors.sheet,
 	}, {
-		UI.corner(16),
+		UI.corner(14),
 		if opts.border then UI.stroke(opts.border, 4.5) else UI.stroke(nil, 3.5),
-		UI.new("UIGradient", {
-			Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(165, 165, 175)),
-			Rotation = 90,
-		}),
 	})
-	-- The glossy shine across the top.
-	UI.new("Frame", {
-		Name = "Shine",
-		Position = UDim2.fromOffset(5, 4),
-		Size = UDim2.new(1, -10, 0.38, 0),
-		BackgroundColor3 = Color3.new(1, 1, 1),
-		BackgroundTransparency = 0.8,
-		Parent = card,
-	}, { UI.corner(12) })
 	local content = UI.new("Frame", {
 		Name = "Content",
 		BackgroundTransparency = 1,
@@ -335,17 +336,24 @@ function UI.card(opts)
 		child.Parent = content
 	end
 
-	-- The title on top, big and white.
+	-- Plain white text on a white card turns dark; bright colours keep their outline.
+	local function lineColor(color: Color3?): Color3
+		if not color or color == UI.colors.text then
+			return UI.colors.dark
+		end
+		return color
+	end
+
+	-- The title on top.
 	local lines = opts.lines or {}
 	if lines[1] then
-		add(UI.label(lines[1][1], {
-			FontFace = UI.fonts.heavy,
-			TextColor3 = Color3.new(1, 1, 1),
+		add(UI.text(lines[1][1], {
+			TextColor3 = lineColor(lines[1][2]),
 			Size = UDim2.new(1, 0, 0, math.max(lines[1][3] or 22, 22)),
 		}))
 	end
 
-	-- The picture, on a soft glowing disc.
+	-- The picture, on a tile in the card's colour.
 	local picture
 	if opts.picture then
 		picture = ItemPictures.view(opts.picture, opts.pictureHeight)
@@ -363,12 +371,11 @@ function UI.card(opts)
 		})
 		UI.new("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.52),
-			Size = UDim2.fromScale(0.62, 0.95),
-			BackgroundColor3 = Color3.new(1, 1, 1),
-			BackgroundTransparency = 0.72,
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(1, 1),
+			BackgroundColor3 = accent:Lerp(Color3.new(1, 1, 1), 0.45),
 			Parent = holder,
-		}, { UI.corner(999), UI.new("UIAspectRatioConstraint", { AspectRatio = 1 }) })
+		}, { UI.corner(10), UI.stroke(nil, 2.5) })
 		picture.Size = UDim2.fromScale(1, 1)
 		picture.Parent = holder
 		add(holder)
@@ -376,8 +383,8 @@ function UI.card(opts)
 
 	for i = 2, #lines do
 		local line = lines[i]
-		add(UI.label(line[1], {
-			TextColor3 = line[2] or UI.colors.text,
+		add(UI.text(line[1], {
+			TextColor3 = lineColor(line[2]),
 			Size = UDim2.new(1, 0, 0, line[3] or 18),
 		}))
 	end

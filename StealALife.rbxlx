@@ -816,7 +816,7 @@ return Bricks
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-21", -- shown small in the corner of the screen and in Output: which build is running
+	BUILD = "life-22", -- shown small in the corner of the screen and in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join. Set to nil
 	-- before the game launches!
@@ -16951,10 +16951,6 @@ function Hud.money(screen: ScreenGui)
 		Parent = pill,
 	}, {
 		UI.corner(20),
-		UI.new("UIGradient", {
-			Color = ColorSequence.new(Color3.fromRGB(255, 226, 120), Color3.fromRGB(235, 150, 30)),
-			Rotation = 90,
-		}),
 		UI.stroke(nil, 3),
 		text("$", 24, {
 			Size = UDim2.fromScale(1, 1),
@@ -17428,10 +17424,6 @@ function Hud.starterOffer(screen: ScreenGui, onOpen: () -> ())
 		Parent = screen,
 	})
 	button:FindFirstChildOfClass("UIPadding"):Destroy()
-	local gradient = button:FindFirstChildOfClass("UIGradient")
-	if gradient then
-		gradient.Color = ColorSequence.new(Color3.fromRGB(80, 230, 120), Color3.fromRGB(30, 170, 150))
-	end
 	text("🎁 STARTER PACK", 18, {
 		Position = UDim2.fromOffset(0, 8),
 		Size = UDim2.new(1, 0, 0, 24),
@@ -17470,10 +17462,10 @@ end
 -- Menu buttons
 --------------------------------------------------------------------------------
 
--- The side buttons, like the big simulators': a two-column grid of chunky 3D buttons (a
--- bright face on a darker base, so they look pressable), each with a glossy shine, a big
--- wobbling emoji, its name across the bottom edge and a red alert badge when something is
--- waiting there.
+-- The side buttons, like Steal an Egg's: a two-column grid of chunky flat buttons (a
+-- bright face with a darker lip, on a darker base so they look pressable), each with a big
+-- wobbling picture, its name across the bottom edge and a red alert badge when something
+-- is waiting there.
 --
 -- entries = { { name, icon, color } }. Returns setActive(name or nil) and
 -- setBadge(name, text or nil, color?).
@@ -17525,7 +17517,7 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 			Size = UDim2.fromOffset(TILE, TILE),
 			BackgroundColor3 = color:Lerp(Color3.new(0, 0, 0), 0.45),
 			Parent = holder,
-		}, { UI.corner(20), UI.stroke(nil, 3.5) })
+		}, { UI.corner(14), UI.stroke(nil, 3.5) })
 
 		local face = UI.new("TextButton", {
 			Name = "Face",
@@ -17536,34 +17528,11 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 			ZIndex = 2,
 			Parent = holder,
 		}, {
-			UI.corner(20),
-			UI.new("UIGradient", {
-				Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
-					ColorSequenceKeypoint.new(0.55, Color3.fromRGB(235, 235, 235)),
-					ColorSequenceKeypoint.new(1, Color3.fromRGB(175, 175, 185)),
-				}),
-				Rotation = 90,
-			}),
+			UI.corner(14),
+			UI.gradient(nil, 0.16),
 		})
 		local ring = UI.stroke(nil, 3.5)
 		ring.Parent = face
-		-- Glossy shine across the top.
-		UI.new("Frame", {
-			Name = "Shine",
-			Position = UDim2.fromOffset(7, 5),
-			Size = UDim2.new(1, -14, 0.38, 0),
-			BackgroundColor3 = Color3.new(1, 1, 1),
-			BackgroundTransparency = 0.55,
-			ZIndex = 2,
-			Parent = face,
-		}, {
-			UI.corner(14),
-			UI.new("UIGradient", {
-				Transparency = NumberSequence.new(0, 1),
-				Rotation = 90,
-			}),
-		})
 		-- The big picture: a 3D model if there is one, otherwise the emoji.
 		local pictureKey = "Menu" .. name
 		local picture, sway
@@ -17709,12 +17678,8 @@ function Hud.leaderboard(screen: ScreenGui)
 		BackgroundColor3 = colors.sheet,
 		Parent = screen,
 	}, {
-		UI.corner(16),
+		UI.corner(14),
 		UI.stroke(nil, 3.5),
-		UI.new("UIGradient", {
-			Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(215, 205, 240)),
-			Rotation = 90,
-		}),
 		UI.new("UIPadding", {
 			PaddingTop = UDim.new(0, 26),
 			PaddingBottom = UDim.new(0, 8),
@@ -17723,22 +17688,21 @@ function Hud.leaderboard(screen: ScreenGui)
 		}),
 	})
 
-	-- The slanted purple-to-pink title tab over the top-left corner (click to fold).
+	-- The dark title tab on the top edge (click to fold).
 	local tab = UI.new("TextButton", {
 		Name = "TitleTab",
 		Text = "",
 		AutoButtonColor = false,
-		Position = UDim2.fromOffset(-14, -44),
-		Size = UDim2.fromOffset(172, 34),
-		Rotation = -3,
-		BackgroundColor3 = Color3.new(1, 1, 1),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0, -26),
+		Size = UDim2.fromOffset(172, 32),
+		BackgroundColor3 = colors.tab,
 		ZIndex = 3,
 		Parent = board,
 	}, {
-		UI.corner(10),
+		UI.corner(9),
 		UI.stroke(nil, 3),
-		UI.new("UIGradient", { Color = ColorSequence.new(colors.fusion, colors.fusion2) }),
-		text("🏆 LEADERBOARD", 19, {
+		text("🏆 Leaderboard", 19, {
 			Size = UDim2.fromScale(1, 1),
 			TextXAlignment = Enum.TextXAlignment.Center,
 			FontFace = UI.fonts.heavy,
@@ -17818,29 +17782,11 @@ function Hud.leaderboard(screen: ScreenGui)
 			BackgroundColor3 = OTHER.color,
 			Parent = list,
 		}, {
-			UI.corner(12),
-			UI.new("UIGradient", {
-				Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
-					ColorSequenceKeypoint.new(0.5, Color3.fromRGB(240, 240, 240)),
-					ColorSequenceKeypoint.new(1, Color3.fromRGB(185, 185, 195)),
-				}),
-				Rotation = 90,
-			}),
+			UI.corner(10),
+			UI.gradient(nil, 0.18),
 		})
 		local ring = UI.stroke(nil, 2.5)
 		ring.Parent = frame
-		-- Glossy shine across the top.
-		UI.new("Frame", {
-			Position = UDim2.fromOffset(6, 3),
-			Size = UDim2.new(1, -12, 0.36, 0),
-			BackgroundColor3 = Color3.new(1, 1, 1),
-			BackgroundTransparency = 0.6,
-			Parent = frame,
-		}, {
-			UI.corner(8),
-			UI.new("UIGradient", { Transparency = NumberSequence.new(0, 1), Rotation = 90 }),
-		})
 
 		-- Rank medal.
 		local medal = UI.new("TextLabel", {
@@ -19232,9 +19178,8 @@ do
 	update()
 end
 
--- Windows: a light body under a header bar in the window's own colour, with a slanted
--- title tab in the game's purple-to-pink sticking out over the top-left corner and a red
--- square X (the clean simulator style of Pet Simulator and PLS DONATE).
+-- Windows: a plain white body with a thick black outline, a small dark title tab sitting
+-- on the top edge, and a red square X on the top-right corner (Steal an Egg's shop).
 local window = UI.new("Frame", {
 	Name = "Window",
 	Visible = false,
@@ -19245,90 +19190,43 @@ local window = UI.new("Frame", {
 	ZIndex = 5, -- above the leaderboard and other HUD pieces
 	Parent = screen,
 }, {
-	UI.corner(22),
-	UI.stroke(nil, 4),
-	UI.new("UIGradient", {
-		Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(220, 215, 235)),
-		Rotation = 90,
-	}),
+	UI.corner(16),
+	UI.stroke(nil, 4.5),
 	UI.new("UISizeConstraint", { MaxSize = Vector2.new(860, 600) }),
 })
-local header = UI.new("Frame", {
-	Name = "Header",
-	Size = UDim2.new(1, 0, 0, 58),
-	BackgroundColor3 = colors.green,
-	ZIndex = 5,
-	Parent = window,
-}, {
-	UI.corner(20),
-	UI.new("UIGradient", {
-		Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(190, 190, 200)),
-		Rotation = 90,
-	}),
-})
--- Square off the header's bottom corners, with a dark line under it.
-local headerFill = UI.new("Frame", {
-	Position = UDim2.new(0, 0, 1, -20),
-	Size = UDim2.new(1, 0, 0, 20),
-	BackgroundColor3 = colors.green,
-	BorderSizePixel = 0,
-	ZIndex = 5,
-	Parent = header,
-}, {
-	UI.new("UIGradient", {
-		Color = ColorSequence.new(Color3.fromRGB(215, 215, 222), Color3.fromRGB(190, 190, 200)),
-		Rotation = 90,
-	}),
-})
-UI.new("Frame", {
-	Position = UDim2.new(0, 0, 1, 0),
-	Size = UDim2.new(1, 0, 0, 4),
-	BackgroundColor3 = UI.OUTLINE,
-	BorderSizePixel = 0,
-	ZIndex = 5,
-	Parent = header,
-})
-local titleRibbon = UI.new("Frame", {
+local titleTab = UI.new("Frame", {
 	Name = "TitleTab",
-	Position = UDim2.fromOffset(18, -22),
-	Size = UDim2.fromOffset(0, 58),
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.new(0.5, 0, 0, 0),
+	Size = UDim2.fromOffset(0, 40),
 	AutomaticSize = Enum.AutomaticSize.X,
-	Rotation = -4,
-	BackgroundColor3 = Color3.new(1, 1, 1),
+	BackgroundColor3 = colors.tab,
 	ZIndex = 6,
 	Parent = window,
 }, {
-	UI.corner(14),
-	UI.stroke(nil, 4),
-	UI.new("UIGradient", {
-		Color = ColorSequence.new(colors.fusion, colors.fusion2),
-		Rotation = 0,
-	}),
-	UI.new("UIPadding", { PaddingLeft = UDim.new(0, 18), PaddingRight = UDim.new(0, 22) }),
+	UI.corner(10),
+	UI.stroke(nil, 3),
+	UI.new("UIPadding", { PaddingLeft = UDim.new(0, 18), PaddingRight = UDim.new(0, 18) }),
 	UI.new("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
 		VerticalAlignment = Enum.VerticalAlignment.Center,
 	}),
 })
 local windowTitle = UI.new("TextLabel", {
-	Size = UDim2.fromOffset(0, 46),
+	Size = UDim2.fromOffset(0, 32),
 	AutomaticSize = Enum.AutomaticSize.X,
 	BackgroundTransparency = 1,
-	FontFace = UI.fonts.heavy,
-	TextSize = 36,
+	FontFace = UI.fonts.bold,
+	TextSize = 26,
 	TextColor3 = Color3.new(1, 1, 1),
 	ZIndex = 7,
-	Parent = titleRibbon,
-}, { UI.textStroke(3) })
-local function paintHeader(color: Color3)
-	header.BackgroundColor3 = color
-	headerFill.BackgroundColor3 = color
-end
+	Parent = titleTab,
+}, { UI.textStroke(2.5) })
 local body = UI.new("ScrollingFrame", {
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
-	Position = UDim2.fromOffset(14, 70),
-	Size = UDim2.new(1, -28, 1, -82),
+	Position = UDim2.fromOffset(14, 30),
+	Size = UDim2.new(1, -28, 1, -40),
 	CanvasSize = UDim2.new(),
 	AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	ScrollBarThickness = 8,
@@ -19381,8 +19279,7 @@ local function open(name: string)
 	end
 	currentWindow = name
 	setActiveTab(name)
-	windowTitle.Text = (TAB_ICONS[name] or "") .. " " .. (if name == "Life" then "MY LIFE" else string.upper(name))
-	paintHeader(TAB_COLORS[name] or colors.blue)
+	windowTitle.Text = (TAB_ICONS[name] or "") .. " " .. (if name == "Life" then "My Life" else name) .. "!"
 	window.Visible = true
 	body.CanvasPosition = Vector2.zero
 	render()
@@ -19391,9 +19288,9 @@ end
 UI.button("X", colors.red, function()
 	open(currentWindow)
 end, {
-	AnchorPoint = Vector2.new(1, 0.5),
-	Size = UDim2.fromOffset(50, 50),
-	Position = UDim2.new(1, 12, 0, 6),
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Size = UDim2.fromOffset(48, 48),
+	Position = UDim2.new(1, -6, 0, 6),
 	ZIndex = 7,
 	Parent = window,
 })
@@ -19401,11 +19298,10 @@ end, {
 -- A line of text over the cards: short ones are bold section titles, long ones are hints.
 local function heading(text: string, order: number, color: Color3?)
 	local title = #text <= 28
-	return UI.label(text, {
-		Size = UDim2.new(1, 0, 0, if title then 32 else 26),
+	return UI.text(text, {
+		Size = UDim2.new(1, 0, 0, if title then 30 else 24),
 		TextXAlignment = Enum.TextXAlignment.Left,
-		FontFace = if title then UI.fonts.heavy else UI.fonts.bold,
-		TextColor3 = color or (if title then Color3.new(1, 1, 1) else colors.muted),
+		TextColor3 = if color and color ~= colors.text then color elseif title then colors.dark else colors.muted,
 		LayoutOrder = order,
 		Parent = body,
 	})
@@ -19463,39 +19359,48 @@ local function partColor(record): Color3
 	return Items.color(record.id)
 end
 
--- A wide glossy banner card (treadmill, Starter Pack, box bundles, VIP): returns the frame.
-local function banner(order: number, colorA: Color3, colorB: Color3, height: number)
+-- A wide white banner card (treadmill, Starter Pack, box bundles, VIP) with a thick black
+-- outline; its picture sits on a tile in its colour on the left (sized by bannerTile):
+-- returns the frame.
+local function banner(order: number, colorA: Color3, _colorB: Color3, height: number)
 	local frame = UI.new("Frame", {
 		Size = UDim2.new(1, -8, 0, height),
-		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundColor3 = colors.sheet,
 		LayoutOrder = order,
 		Parent = body,
 	}, {
-		UI.corner(18),
+		UI.corner(14),
 		UI.stroke(nil, 4),
-		UI.new("UIGradient", { Color = ColorSequence.new(colorA, colorB), Rotation = 15 }),
 	})
+	-- Made first so the picture draws over it.
 	UI.new("Frame", {
-		Position = UDim2.fromOffset(6, 5),
-		Size = UDim2.new(1, -12, 0.4, 0),
-		BackgroundColor3 = Color3.new(1, 1, 1),
-		BackgroundTransparency = 0.8,
+		Name = "Tile",
+		Position = UDim2.fromOffset(8, 8),
+		Size = UDim2.new(0, 150, 1, -16),
+		BackgroundColor3 = colorA:Lerp(Color3.new(1, 1, 1), 0.3),
 		Parent = frame,
-	}, { UI.corner(14) })
+	}, { UI.corner(10), UI.stroke(nil, 2.5) })
 	return frame
 end
 
-local function bannerText(parent: Instance, title: string, lines: string, x: number, color: Color3)
-	local titleLabel = UI.label(title, {
+-- Sets how wide the coloured tile behind a banner's picture is.
+local function bannerTile(parent: Instance, width: number)
+	local tile = parent:FindFirstChild("Tile")
+	if tile then
+		tile.Size = UDim2.new(0, width, 1, -16)
+	end
+end
+
+local function bannerText(parent: Instance, title: string, lines: string, x: number, _color: Color3?)
+	bannerTile(parent, x - 20)
+	UI.text(title, {
 		Position = UDim2.fromOffset(x, 12),
-		Size = UDim2.new(1, -x - 230, 0, 44),
-		FontFace = UI.fonts.heavy,
-		TextColor3 = color,
+		Size = UDim2.new(1, -x - 230, 0, 40),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = parent,
 	})
-	titleLabel.UIStroke.Thickness = 3
-	return UI.label(lines, {
+	return UI.text(lines, {
+		TextColor3 = colors.muted,
 		Position = UDim2.fromOffset(x + 2, 58),
 		Size = UDim2.new(1, -x - 232, 0, 70),
 		TextScaled = false,
@@ -20190,49 +20095,26 @@ end
 
 function renderers.Store()
 	starterBanner(0)
-	-- VIP, big and rainbow across the top (like the VIP banners in PLS DONATE).
-	local vipBanner = UI.new("Frame", {
-		Size = UDim2.new(1, -8, 0, 150),
-		BackgroundColor3 = Color3.new(1, 1, 1),
-		LayoutOrder = 1,
-		Parent = body,
-	}, {
-		UI.corner(18),
-		UI.stroke(nil, 4),
-		UI.new("UIGradient", {
-			Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 80, 120)),
-				ColorSequenceKeypoint.new(0.3, Color3.fromRGB(255, 170, 40)),
-				ColorSequenceKeypoint.new(0.6, Color3.fromRGB(190, 90, 255)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 160, 255)),
-			}),
-			Rotation = 15,
-		}),
-	})
-	UI.new("Frame", {
-		Position = UDim2.fromOffset(6, 5),
-		Size = UDim2.new(1, -12, 0.4, 0),
-		BackgroundColor3 = Color3.new(1, 1, 1),
-		BackgroundTransparency = 0.8,
-		Parent = vipBanner,
-	}, { UI.corner(14) })
+	-- VIP, big across the top.
+	local vipBanner = banner(1, colors.purple, colors.purple, 150)
 	local crown = ItemPictures.view("VIP", 140)
 	crown.Position = UDim2.fromOffset(10, 5)
 	crown.Size = UDim2.fromOffset(150, 140)
 	crown.Parent = vipBanner
+	bannerTile(vipBanner, 154)
 	UI.label("VIP", {
-		Position = UDim2.fromOffset(170, 14),
+		Position = UDim2.fromOffset(176, 14),
 		Size = UDim2.new(1, -400, 0, 48),
-		FontFace = UI.fonts.heavy,
 		TextColor3 = colors.gold,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = vipBanner,
 	}).UIStroke.Thickness =
 		3
-	UI.label(
+	UI.text(
 		"👑 Gold VIP badge on the leaderboard and in chat\n💰 +10% coins forever\n🎡 Spin the Lucky Wheel more often",
 		{
-			Position = UDim2.fromOffset(172, 64),
+			TextColor3 = colors.muted,
+			Position = UDim2.fromOffset(178, 64),
 			Size = UDim2.new(1, -400, 0, 72),
 			TextScaled = false,
 			TextSize = 17,
@@ -20321,6 +20203,7 @@ end
 local function prizeCard(box: Frame, title: string, part, color: Color3, subtitle: string, close: () -> ())
 	local card = UI.glass({
 		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = colors.sheet,
 		ZIndex = 52,
 		Parent = box,
 	}, {
@@ -20452,26 +20335,7 @@ function renderers.Luck()
 			send("SpinWheel")
 		end
 	end
-	local wheelCard = UI.new("Frame", {
-		Size = UDim2.new(1, -8, 0, 300),
-		BackgroundColor3 = Color3.new(1, 1, 1),
-		LayoutOrder = 1,
-		Parent = body,
-	}, {
-		UI.corner(18),
-		UI.stroke(nil, 4),
-		UI.new("UIGradient", {
-			Color = ColorSequence.new(colors.fusion, colors.fusion2),
-			Rotation = 20,
-		}),
-	})
-	UI.new("Frame", {
-		Position = UDim2.fromOffset(6, 5),
-		Size = UDim2.new(1, -12, 0.35, 0),
-		BackgroundColor3 = Color3.new(1, 1, 1),
-		BackgroundTransparency = 0.82,
-		Parent = wheelCard,
-	}, { UI.corner(14) })
+	local wheelCard = banner(1, colors.purple, colors.purple, 300)
 	local wheelHolder = UI.new("Frame", {
 		Position = UDim2.fromOffset(10, 10),
 		Size = UDim2.fromOffset(280, 280),
@@ -20479,15 +20343,13 @@ function renderers.Luck()
 		Parent = wheelCard,
 	})
 	LuckyWheel.build(wheelHolder, 280, { hubText = if ready then "SPIN!" else "⏳", onHub = spin })
-	UI.label("LUCKY WHEEL", {
+	bannerTile(wheelCard, 286)
+	UI.text("Lucky Wheel", {
 		Position = UDim2.fromOffset(310, 22),
 		Size = UDim2.new(1, -330, 0, 52),
-		FontFace = UI.fonts.heavy,
-		TextColor3 = colors.gold,
 		Parent = wheelCard,
-	}).UIStroke.Thickness =
-		3
-	UI.label(if ready then "Your free spin is ready!" else "Free spin every day!", {
+	})
+	UI.text(if ready then "Your free spin is ready!" else "Free spin every day!", {
 		Position = UDim2.fromOffset(310, 80),
 		Size = UDim2.new(1, -330, 0, 30),
 		Parent = wheelCard,
@@ -20498,7 +20360,7 @@ function renderers.Luck()
 		TextScaled = false,
 		TextSize = 17,
 		TextWrapped = true,
-		TextColor3 = Color3.fromRGB(255, 235, 255),
+		TextColor3 = colors.muted,
 		Parent = wheelCard,
 	})
 	local spinButton = UI.button(
@@ -20516,10 +20378,9 @@ function renderers.Luck()
 	end
 
 	-- Mystery Boxes (Robux): every chance is shown before buying.
-	UI.label("📦 MYSTERY BOXES · a random item of any kind, odds below", {
+	UI.text("📦 Mystery Boxes · a random item of any kind, odds below", {
 		Size = UDim2.new(1, 0, 0, 30),
 		TextXAlignment = Enum.TextXAlignment.Left,
-		FontFace = UI.fonts.heavy,
 		LayoutOrder = 2,
 		Parent = body,
 	})
@@ -22421,11 +22282,12 @@ return TreadmillRun
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- Small helpers for building the UI in code (so there's nothing to set up in Studio).
--- Style: the clean cartoon look of the big Roblox simulators (Pet Simulator, PLS DONATE,
--- Grow a Garden) in Steal a Life colours: light windows with a coloured header and a
--- slanted title tab, bright glossy gradient cards with a big 3D picture, black price
--- pills, chunky shaded buttons that squish when pressed, Luckiest Guy titles, Fredoka One
--- text, and every bit of text outlined in dark navy.
+-- Style: the flat, chunky cartoon look of Steal an Egg / Steal a Brainrot: plain white
+-- windows with a thick black outline, a small dark title tab on the top edge and a red
+-- square X; dark rounded text on white; flat bright buttons with a thick black outline, a
+-- darker lip along the bottom and white outlined text, squishing when pressed. No glossy
+-- gradients or shine. White or bright text always gets a black outline; dark text on
+-- white doesn't.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -22440,17 +22302,18 @@ local UI = {}
 UI.fonts = {
 	regular = Font.fromEnum(Enum.Font.FredokaOne),
 	bold = Font.fromEnum(Enum.Font.FredokaOne),
-	heavy = Font.fromEnum(Enum.Font.LuckiestGuy),
+	heavy = Font.fromEnum(Enum.Font.FredokaOne), -- (was Luckiest Guy; the flat style is all rounded)
 }
 
 -- The dark outline around panels, buttons and text.
-UI.OUTLINE = Color3.fromRGB(20, 22, 48)
+UI.OUTLINE = Color3.fromRGB(18, 18, 24)
 
 UI.colors = {
 	panel = Color3.fromRGB(62, 128, 245), -- windows and HUD panels
 	card = Color3.fromRGB(110, 170, 255),
 	text = Color3.fromRGB(255, 255, 255),
-	muted = Color3.fromRGB(220, 232, 255),
+	muted = Color3.fromRGB(125, 120, 140), -- hints on white
+	dark = Color3.fromRGB(45, 42, 58), -- text on white
 	green = Color3.fromRGB(60, 200, 110),
 	blue = Color3.fromRGB(70, 140, 255),
 	pink = Color3.fromRGB(255, 95, 170),
@@ -22460,7 +22323,8 @@ UI.colors = {
 	money = Color3.fromRGB(110, 235, 140),
 	gold = Color3.fromRGB(255, 200, 60),
 	purple = Color3.fromRGB(160, 110, 240),
-	sheet = Color3.fromRGB(236, 230, 255), -- window bodies
+	sheet = Color3.fromRGB(255, 255, 255), -- window bodies and cards
+	tab = Color3.fromRGB(48, 46, 58), -- window title tabs
 	ink = Color3.fromRGB(28, 26, 48), -- price pills
 	fusion = Color3.fromRGB(170, 80, 255), -- the game's own purple-to-pink
 	fusion2 = Color3.fromRGB(255, 80, 190),
@@ -22529,15 +22393,26 @@ function UI.textStroke(thickness: number?)
 	})
 end
 
--- Shading from light at the top to darker at the bottom. It multiplies whatever colour the
--- frame is, so it works on any button or panel. (color/lighten are kept for old callers.)
-function UI.gradient(_color: Color3?, lighten: number?)
-	local top = 1
-	local bottom = 0.78 - (lighten or 0) * 0.3
+-- The darker lip along the bottom of a button or panel: flat colour, then a hard step to
+-- a darker band. It multiplies whatever colour the frame is, so it works on any of them.
+-- `lip` is how tall the band is (a fraction of the height). (color is kept for old callers.)
+function UI.gradient(_color: Color3?, lip: number?)
+	local from = 1 - (lip or 0.22)
+	local dark = Color3.new(0.74, 0.74, 0.74)
 	return UI.new("UIGradient", {
-		Color = ColorSequence.new(Color3.new(top, top, top), Color3.new(bottom, bottom, bottom)),
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+			ColorSequenceKeypoint.new(from - 0.001, Color3.new(1, 1, 1)),
+			ColorSequenceKeypoint.new(from, dark),
+			ColorSequenceKeypoint.new(1, dark),
+		}),
 		Rotation = 90,
 	})
+end
+
+-- Whether text in this colour is dark (no outline) or bright (black outline).
+local function isDark(color: Color3): boolean
+	return color.R * 0.3 + color.G * 0.59 + color.B * 0.11 < 0.55
 end
 
 -- A bright cartoon panel with a thick outline (the name is from the old glass style).
@@ -22545,7 +22420,7 @@ function UI.glass(props, children)
 	local frame = UI.new("Frame", {
 		BackgroundColor3 = UI.colors.panel,
 		BackgroundTransparency = UI.GLASS_TRANSPARENCY,
-	}, { UI.corner(16), UI.stroke(nil, 3.5), UI.gradient() })
+	}, { UI.corner(12), UI.stroke(nil, 3.5), UI.gradient(nil, 0.12) })
 	for key, value in props or {} do
 		if key ~= "Parent" then
 			frame[key] = value
@@ -22572,33 +22447,44 @@ function UI.label(text: string, props)
 	for key, value in props or {} do
 		label[key] = value
 	end
+	-- Dark text on white goes without an outline.
+	label.UIStroke.Enabled = not isDark(label.TextColor3)
 	return label
 end
 
--- A chunky cartoon button: bright shaded fill, thick dark outline, outlined text, and a
--- squish when pressed.
+-- Dark rounded text for window bodies and cards.
+function UI.text(text: string, props)
+	local label = UI.label(text, { TextColor3 = UI.colors.dark })
+	for key, value in props or {} do
+		label[key] = value
+	end
+	label.UIStroke.Enabled = not isDark(label.TextColor3)
+	return label
+end
+
+-- A chunky cartoon button: flat bright fill with a darker lip along the bottom, thick black
+-- outline, white outlined text, and a squish when pressed.
 function UI.button(text: string, color: Color3, onClick: () -> (), props)
 	local scale = UI.new("UIScale")
 	local button = UI.new("TextButton", {
 		BackgroundColor3 = color,
-		FontFace = UI.fonts.heavy,
+		FontFace = UI.fonts.bold,
 		Text = text,
 		TextColor3 = UI.colors.text,
-		TextStrokeColor3 = UI.OUTLINE,
-		TextStrokeTransparency = 0,
 		TextScaled = true,
 		AutoButtonColor = false,
 		Size = UDim2.new(1, 0, 0, 30),
 	}, {
-		UI.corner(12),
+		UI.corner(10),
 		UI.gradient(),
 		UI.stroke(nil, 3),
+		UI.textStroke(2),
 		scale,
 		UI.new("UIPadding", {
 			PaddingLeft = UDim.new(0, 8),
 			PaddingRight = UDim.new(0, 8),
-			PaddingTop = UDim.new(0, 5),
-			PaddingBottom = UDim.new(0, 5),
+			PaddingTop = UDim.new(0, 4),
+			PaddingBottom = UDim.new(0, 9), -- the text sits above the lip
 		}),
 	})
 	for key, value in props or {} do
@@ -22642,30 +22528,20 @@ end
 
 -- A card for grids: picture, lines of text, and buttons.
 -- opts = { species, mutations?, silhouette?, lines = { {text, color?} }, buttons = { button instances } }
--- A black price pill (like PLS DONATE): coin or Robux icon and the price in white.
+-- A price button: green, like the Buy buttons, with the price in white.
 function UI.pricePill(text: string, onClick: () -> (), props)
-	local pill = UI.button(text, UI.colors.ink, onClick, props)
-	pill.TextColor3 = Color3.new(1, 1, 1)
-	local corner = pill:FindFirstChildOfClass("UICorner")
-	if corner then
-		corner.CornerRadius = UDim.new(1, 0)
-	end
-	local shade = pill:FindFirstChildOfClass("UIGradient")
-	if shade then
-		shade:Destroy() -- flat and glossy black
-	end
-	return pill
+	return UI.button(text, UI.colors.green, onClick, props)
 end
 
--- A little slanted tag on a card's corner: "NEW", "BEST", "x2"...
+-- A little tag on a card's corner: "NEW", "BEST", "x2"...
 function UI.tag(parent: GuiObject, text: string, color: Color3?)
 	local tag = UI.new("TextLabel", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, 6, 0, -8),
 		Size = UDim2.fromOffset(64, 26),
-		Rotation = 10,
+		Rotation = 6,
 		BackgroundColor3 = color or UI.colors.red,
-		FontFace = UI.fonts.heavy,
+		FontFace = UI.fonts.bold,
 		Text = text,
 		TextScaled = true,
 		TextColor3 = Color3.new(1, 1, 1),
@@ -22685,9 +22561,8 @@ function UI.tag(parent: GuiObject, text: string, color: Color3?)
 	return tag
 end
 
--- A bright glossy card (like Pet Simulator's shop): a gradient in the card's colour with a
--- shine across the top, the title in white, a big picture on a glowing disc, then text
--- lines and buttons. opts: accent (colour), border (a highlight outline, e.g. owned),
+-- A flat white card with a thick black outline: the title in dark text, a big picture on
+-- a tile in the card's colour (its rarity colour for items), then text lines and buttons. opts: accent (colour), border (a highlight outline, e.g. owned),
 -- picture (an ItemPictures key) / part (any item id, + mutations, silhouette) / egg (a zone
 -- index, + eggItem for what's inside) / box, lines = { { text,
 -- colour?, height? } }, buttons, tag = { text, colour? }, onClick.
@@ -22708,24 +22583,11 @@ function UI.card(opts)
 
 	-- Clickable cards are buttons; buttons inside them still get their own clicks.
 	local card = UI.new(if opts.onClick then "TextButton" else "Frame", {
-		BackgroundColor3 = accent,
+		BackgroundColor3 = UI.colors.sheet,
 	}, {
-		UI.corner(16),
+		UI.corner(14),
 		if opts.border then UI.stroke(opts.border, 4.5) else UI.stroke(nil, 3.5),
-		UI.new("UIGradient", {
-			Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(165, 165, 175)),
-			Rotation = 90,
-		}),
 	})
-	-- The glossy shine across the top.
-	UI.new("Frame", {
-		Name = "Shine",
-		Position = UDim2.fromOffset(5, 4),
-		Size = UDim2.new(1, -10, 0.38, 0),
-		BackgroundColor3 = Color3.new(1, 1, 1),
-		BackgroundTransparency = 0.8,
-		Parent = card,
-	}, { UI.corner(12) })
 	local content = UI.new("Frame", {
 		Name = "Content",
 		BackgroundTransparency = 1,
@@ -22757,17 +22619,24 @@ function UI.card(opts)
 		child.Parent = content
 	end
 
-	-- The title on top, big and white.
+	-- Plain white text on a white card turns dark; bright colours keep their outline.
+	local function lineColor(color: Color3?): Color3
+		if not color or color == UI.colors.text then
+			return UI.colors.dark
+		end
+		return color
+	end
+
+	-- The title on top.
 	local lines = opts.lines or {}
 	if lines[1] then
-		add(UI.label(lines[1][1], {
-			FontFace = UI.fonts.heavy,
-			TextColor3 = Color3.new(1, 1, 1),
+		add(UI.text(lines[1][1], {
+			TextColor3 = lineColor(lines[1][2]),
 			Size = UDim2.new(1, 0, 0, math.max(lines[1][3] or 22, 22)),
 		}))
 	end
 
-	-- The picture, on a soft glowing disc.
+	-- The picture, on a tile in the card's colour.
 	local picture
 	if opts.picture then
 		picture = ItemPictures.view(opts.picture, opts.pictureHeight)
@@ -22785,12 +22654,11 @@ function UI.card(opts)
 		})
 		UI.new("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.52),
-			Size = UDim2.fromScale(0.62, 0.95),
-			BackgroundColor3 = Color3.new(1, 1, 1),
-			BackgroundTransparency = 0.72,
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(1, 1),
+			BackgroundColor3 = accent:Lerp(Color3.new(1, 1, 1), 0.45),
 			Parent = holder,
-		}, { UI.corner(999), UI.new("UIAspectRatioConstraint", { AspectRatio = 1 }) })
+		}, { UI.corner(10), UI.stroke(nil, 2.5) })
 		picture.Size = UDim2.fromScale(1, 1)
 		picture.Parent = holder
 		add(holder)
@@ -22798,8 +22666,8 @@ function UI.card(opts)
 
 	for i = 2, #lines do
 		local line = lines[i]
-		add(UI.label(line[1], {
-			TextColor3 = line[2] or UI.colors.text,
+		add(UI.text(line[1], {
+			TextColor3 = lineColor(line[2]),
 			Size = UDim2.new(1, 0, 0, line[3] or 18),
 		}))
 	end

@@ -124,9 +124,8 @@ do
 	update()
 end
 
--- Windows: a light body under a header bar in the window's own colour, with a slanted
--- title tab in the game's purple-to-pink sticking out over the top-left corner and a red
--- square X (the clean simulator style of Pet Simulator and PLS DONATE).
+-- Windows: a plain white body with a thick black outline, a small dark title tab sitting
+-- on the top edge, and a red square X on the top-right corner (Steal an Egg's shop).
 local window = UI.new("Frame", {
 	Name = "Window",
 	Visible = false,
@@ -137,90 +136,43 @@ local window = UI.new("Frame", {
 	ZIndex = 5, -- above the leaderboard and other HUD pieces
 	Parent = screen,
 }, {
-	UI.corner(22),
-	UI.stroke(nil, 4),
-	UI.new("UIGradient", {
-		Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(220, 215, 235)),
-		Rotation = 90,
-	}),
+	UI.corner(16),
+	UI.stroke(nil, 4.5),
 	UI.new("UISizeConstraint", { MaxSize = Vector2.new(860, 600) }),
 })
-local header = UI.new("Frame", {
-	Name = "Header",
-	Size = UDim2.new(1, 0, 0, 58),
-	BackgroundColor3 = colors.green,
-	ZIndex = 5,
-	Parent = window,
-}, {
-	UI.corner(20),
-	UI.new("UIGradient", {
-		Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(190, 190, 200)),
-		Rotation = 90,
-	}),
-})
--- Square off the header's bottom corners, with a dark line under it.
-local headerFill = UI.new("Frame", {
-	Position = UDim2.new(0, 0, 1, -20),
-	Size = UDim2.new(1, 0, 0, 20),
-	BackgroundColor3 = colors.green,
-	BorderSizePixel = 0,
-	ZIndex = 5,
-	Parent = header,
-}, {
-	UI.new("UIGradient", {
-		Color = ColorSequence.new(Color3.fromRGB(215, 215, 222), Color3.fromRGB(190, 190, 200)),
-		Rotation = 90,
-	}),
-})
-UI.new("Frame", {
-	Position = UDim2.new(0, 0, 1, 0),
-	Size = UDim2.new(1, 0, 0, 4),
-	BackgroundColor3 = UI.OUTLINE,
-	BorderSizePixel = 0,
-	ZIndex = 5,
-	Parent = header,
-})
-local titleRibbon = UI.new("Frame", {
+local titleTab = UI.new("Frame", {
 	Name = "TitleTab",
-	Position = UDim2.fromOffset(18, -22),
-	Size = UDim2.fromOffset(0, 58),
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.new(0.5, 0, 0, 0),
+	Size = UDim2.fromOffset(0, 40),
 	AutomaticSize = Enum.AutomaticSize.X,
-	Rotation = -4,
-	BackgroundColor3 = Color3.new(1, 1, 1),
+	BackgroundColor3 = colors.tab,
 	ZIndex = 6,
 	Parent = window,
 }, {
-	UI.corner(14),
-	UI.stroke(nil, 4),
-	UI.new("UIGradient", {
-		Color = ColorSequence.new(colors.fusion, colors.fusion2),
-		Rotation = 0,
-	}),
-	UI.new("UIPadding", { PaddingLeft = UDim.new(0, 18), PaddingRight = UDim.new(0, 22) }),
+	UI.corner(10),
+	UI.stroke(nil, 3),
+	UI.new("UIPadding", { PaddingLeft = UDim.new(0, 18), PaddingRight = UDim.new(0, 18) }),
 	UI.new("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
 		VerticalAlignment = Enum.VerticalAlignment.Center,
 	}),
 })
 local windowTitle = UI.new("TextLabel", {
-	Size = UDim2.fromOffset(0, 46),
+	Size = UDim2.fromOffset(0, 32),
 	AutomaticSize = Enum.AutomaticSize.X,
 	BackgroundTransparency = 1,
-	FontFace = UI.fonts.heavy,
-	TextSize = 36,
+	FontFace = UI.fonts.bold,
+	TextSize = 26,
 	TextColor3 = Color3.new(1, 1, 1),
 	ZIndex = 7,
-	Parent = titleRibbon,
-}, { UI.textStroke(3) })
-local function paintHeader(color: Color3)
-	header.BackgroundColor3 = color
-	headerFill.BackgroundColor3 = color
-end
+	Parent = titleTab,
+}, { UI.textStroke(2.5) })
 local body = UI.new("ScrollingFrame", {
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
-	Position = UDim2.fromOffset(14, 70),
-	Size = UDim2.new(1, -28, 1, -82),
+	Position = UDim2.fromOffset(14, 30),
+	Size = UDim2.new(1, -28, 1, -40),
 	CanvasSize = UDim2.new(),
 	AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	ScrollBarThickness = 8,
@@ -273,8 +225,7 @@ local function open(name: string)
 	end
 	currentWindow = name
 	setActiveTab(name)
-	windowTitle.Text = (TAB_ICONS[name] or "") .. " " .. (if name == "Life" then "MY LIFE" else string.upper(name))
-	paintHeader(TAB_COLORS[name] or colors.blue)
+	windowTitle.Text = (TAB_ICONS[name] or "") .. " " .. (if name == "Life" then "My Life" else name) .. "!"
 	window.Visible = true
 	body.CanvasPosition = Vector2.zero
 	render()
@@ -283,9 +234,9 @@ end
 UI.button("X", colors.red, function()
 	open(currentWindow)
 end, {
-	AnchorPoint = Vector2.new(1, 0.5),
-	Size = UDim2.fromOffset(50, 50),
-	Position = UDim2.new(1, 12, 0, 6),
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Size = UDim2.fromOffset(48, 48),
+	Position = UDim2.new(1, -6, 0, 6),
 	ZIndex = 7,
 	Parent = window,
 })
@@ -293,11 +244,10 @@ end, {
 -- A line of text over the cards: short ones are bold section titles, long ones are hints.
 local function heading(text: string, order: number, color: Color3?)
 	local title = #text <= 28
-	return UI.label(text, {
-		Size = UDim2.new(1, 0, 0, if title then 32 else 26),
+	return UI.text(text, {
+		Size = UDim2.new(1, 0, 0, if title then 30 else 24),
 		TextXAlignment = Enum.TextXAlignment.Left,
-		FontFace = if title then UI.fonts.heavy else UI.fonts.bold,
-		TextColor3 = color or (if title then Color3.new(1, 1, 1) else colors.muted),
+		TextColor3 = if color and color ~= colors.text then color elseif title then colors.dark else colors.muted,
 		LayoutOrder = order,
 		Parent = body,
 	})
@@ -355,39 +305,48 @@ local function partColor(record): Color3
 	return Items.color(record.id)
 end
 
--- A wide glossy banner card (treadmill, Starter Pack, box bundles, VIP): returns the frame.
-local function banner(order: number, colorA: Color3, colorB: Color3, height: number)
+-- A wide white banner card (treadmill, Starter Pack, box bundles, VIP) with a thick black
+-- outline; its picture sits on a tile in its colour on the left (sized by bannerTile):
+-- returns the frame.
+local function banner(order: number, colorA: Color3, _colorB: Color3, height: number)
 	local frame = UI.new("Frame", {
 		Size = UDim2.new(1, -8, 0, height),
-		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundColor3 = colors.sheet,
 		LayoutOrder = order,
 		Parent = body,
 	}, {
-		UI.corner(18),
+		UI.corner(14),
 		UI.stroke(nil, 4),
-		UI.new("UIGradient", { Color = ColorSequence.new(colorA, colorB), Rotation = 15 }),
 	})
+	-- Made first so the picture draws over it.
 	UI.new("Frame", {
-		Position = UDim2.fromOffset(6, 5),
-		Size = UDim2.new(1, -12, 0.4, 0),
-		BackgroundColor3 = Color3.new(1, 1, 1),
-		BackgroundTransparency = 0.8,
+		Name = "Tile",
+		Position = UDim2.fromOffset(8, 8),
+		Size = UDim2.new(0, 150, 1, -16),
+		BackgroundColor3 = colorA:Lerp(Color3.new(1, 1, 1), 0.3),
 		Parent = frame,
-	}, { UI.corner(14) })
+	}, { UI.corner(10), UI.stroke(nil, 2.5) })
 	return frame
 end
 
-local function bannerText(parent: Instance, title: string, lines: string, x: number, color: Color3)
-	local titleLabel = UI.label(title, {
+-- Sets how wide the coloured tile behind a banner's picture is.
+local function bannerTile(parent: Instance, width: number)
+	local tile = parent:FindFirstChild("Tile")
+	if tile then
+		tile.Size = UDim2.new(0, width, 1, -16)
+	end
+end
+
+local function bannerText(parent: Instance, title: string, lines: string, x: number, _color: Color3?)
+	bannerTile(parent, x - 20)
+	UI.text(title, {
 		Position = UDim2.fromOffset(x, 12),
-		Size = UDim2.new(1, -x - 230, 0, 44),
-		FontFace = UI.fonts.heavy,
-		TextColor3 = color,
+		Size = UDim2.new(1, -x - 230, 0, 40),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = parent,
 	})
-	titleLabel.UIStroke.Thickness = 3
-	return UI.label(lines, {
+	return UI.text(lines, {
+		TextColor3 = colors.muted,
 		Position = UDim2.fromOffset(x + 2, 58),
 		Size = UDim2.new(1, -x - 232, 0, 70),
 		TextScaled = false,
@@ -1082,49 +1041,26 @@ end
 
 function renderers.Store()
 	starterBanner(0)
-	-- VIP, big and rainbow across the top (like the VIP banners in PLS DONATE).
-	local vipBanner = UI.new("Frame", {
-		Size = UDim2.new(1, -8, 0, 150),
-		BackgroundColor3 = Color3.new(1, 1, 1),
-		LayoutOrder = 1,
-		Parent = body,
-	}, {
-		UI.corner(18),
-		UI.stroke(nil, 4),
-		UI.new("UIGradient", {
-			Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 80, 120)),
-				ColorSequenceKeypoint.new(0.3, Color3.fromRGB(255, 170, 40)),
-				ColorSequenceKeypoint.new(0.6, Color3.fromRGB(190, 90, 255)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 160, 255)),
-			}),
-			Rotation = 15,
-		}),
-	})
-	UI.new("Frame", {
-		Position = UDim2.fromOffset(6, 5),
-		Size = UDim2.new(1, -12, 0.4, 0),
-		BackgroundColor3 = Color3.new(1, 1, 1),
-		BackgroundTransparency = 0.8,
-		Parent = vipBanner,
-	}, { UI.corner(14) })
+	-- VIP, big across the top.
+	local vipBanner = banner(1, colors.purple, colors.purple, 150)
 	local crown = ItemPictures.view("VIP", 140)
 	crown.Position = UDim2.fromOffset(10, 5)
 	crown.Size = UDim2.fromOffset(150, 140)
 	crown.Parent = vipBanner
+	bannerTile(vipBanner, 154)
 	UI.label("VIP", {
-		Position = UDim2.fromOffset(170, 14),
+		Position = UDim2.fromOffset(176, 14),
 		Size = UDim2.new(1, -400, 0, 48),
-		FontFace = UI.fonts.heavy,
 		TextColor3 = colors.gold,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = vipBanner,
 	}).UIStroke.Thickness =
 		3
-	UI.label(
+	UI.text(
 		"👑 Gold VIP badge on the leaderboard and in chat\n💰 +10% coins forever\n🎡 Spin the Lucky Wheel more often",
 		{
-			Position = UDim2.fromOffset(172, 64),
+			TextColor3 = colors.muted,
+			Position = UDim2.fromOffset(178, 64),
 			Size = UDim2.new(1, -400, 0, 72),
 			TextScaled = false,
 			TextSize = 17,
@@ -1213,6 +1149,7 @@ end
 local function prizeCard(box: Frame, title: string, part, color: Color3, subtitle: string, close: () -> ())
 	local card = UI.glass({
 		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = colors.sheet,
 		ZIndex = 52,
 		Parent = box,
 	}, {
@@ -1344,26 +1281,7 @@ function renderers.Luck()
 			send("SpinWheel")
 		end
 	end
-	local wheelCard = UI.new("Frame", {
-		Size = UDim2.new(1, -8, 0, 300),
-		BackgroundColor3 = Color3.new(1, 1, 1),
-		LayoutOrder = 1,
-		Parent = body,
-	}, {
-		UI.corner(18),
-		UI.stroke(nil, 4),
-		UI.new("UIGradient", {
-			Color = ColorSequence.new(colors.fusion, colors.fusion2),
-			Rotation = 20,
-		}),
-	})
-	UI.new("Frame", {
-		Position = UDim2.fromOffset(6, 5),
-		Size = UDim2.new(1, -12, 0.35, 0),
-		BackgroundColor3 = Color3.new(1, 1, 1),
-		BackgroundTransparency = 0.82,
-		Parent = wheelCard,
-	}, { UI.corner(14) })
+	local wheelCard = banner(1, colors.purple, colors.purple, 300)
 	local wheelHolder = UI.new("Frame", {
 		Position = UDim2.fromOffset(10, 10),
 		Size = UDim2.fromOffset(280, 280),
@@ -1371,15 +1289,13 @@ function renderers.Luck()
 		Parent = wheelCard,
 	})
 	LuckyWheel.build(wheelHolder, 280, { hubText = if ready then "SPIN!" else "⏳", onHub = spin })
-	UI.label("LUCKY WHEEL", {
+	bannerTile(wheelCard, 286)
+	UI.text("Lucky Wheel", {
 		Position = UDim2.fromOffset(310, 22),
 		Size = UDim2.new(1, -330, 0, 52),
-		FontFace = UI.fonts.heavy,
-		TextColor3 = colors.gold,
 		Parent = wheelCard,
-	}).UIStroke.Thickness =
-		3
-	UI.label(if ready then "Your free spin is ready!" else "Free spin every day!", {
+	})
+	UI.text(if ready then "Your free spin is ready!" else "Free spin every day!", {
 		Position = UDim2.fromOffset(310, 80),
 		Size = UDim2.new(1, -330, 0, 30),
 		Parent = wheelCard,
@@ -1390,7 +1306,7 @@ function renderers.Luck()
 		TextScaled = false,
 		TextSize = 17,
 		TextWrapped = true,
-		TextColor3 = Color3.fromRGB(255, 235, 255),
+		TextColor3 = colors.muted,
 		Parent = wheelCard,
 	})
 	local spinButton = UI.button(
@@ -1408,10 +1324,9 @@ function renderers.Luck()
 	end
 
 	-- Mystery Boxes (Robux): every chance is shown before buying.
-	UI.label("📦 MYSTERY BOXES · a random item of any kind, odds below", {
+	UI.text("📦 Mystery Boxes · a random item of any kind, odds below", {
 		Size = UDim2.new(1, 0, 0, 30),
 		TextXAlignment = Enum.TextXAlignment.Left,
-		FontFace = UI.fonts.heavy,
 		LayoutOrder = 2,
 		Parent = body,
 	})

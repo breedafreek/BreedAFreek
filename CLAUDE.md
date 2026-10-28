@@ -12,25 +12,31 @@ The game imitates the bright, chunky cartoon look of the big Roblox simulators (
 Brainrot, Grow a Garden, Pet Simulator). Every new screen, label, model and effect must
 match it.
 
-**UI (built in code with `src/client/UI.luau` helpers; always use them):**
-- Fonts: **Luckiest Guy** (`UI.fonts.heavy`) for titles, buttons and big numbers;
-  **Fredoka One** (`UI.fonts.bold`) for everything else. Never Builder Sans/Gotham.
-- Every piece of text has a dark outline (`UI.textStroke`, colour `UI.OUTLINE`
-  #141630). Text is white or a bright colour, never dark-on-light.
-- Windows: a light lavender body (`UI.colors.sheet`) under a header bar in the window's
-  own colour, a slanted purple-to-pink title tab (`UI.colors.fusion` to `fusion2`) sticking
-  out over the top-left corner, and a red X. Like Pet Simulator / PLS DONATE shops.
-- Cards (`UI.card`): bright glossy gradient in the card's colour (`accent`, or rarity
-  colour for parts), white title on top, a big 3D picture (part/box/item viewport) on a
-  glowing disc, `UI.tag` corner tags ("NEW", "x2"), and black price pills
-  (`UI.pricePill`) for prices. Big offers get a wide banner card (Store VIP).
-- HUD panels (`UI.glass`): bright saturated fill, thick dark outline (3–3.5 px), rounded
-  corners, shaded top-to-bottom. No dark/frosted/transparent panels.
-- Buttons (`UI.button`): bright fill, thick dark outline, Luckiest Guy text, squish when
-  pressed. Green = buy/go, red = close/danger, gray = disabled.
+**UI (built in code with `src/client/UI.luau` helpers; always use them):** the flat,
+chunky look of Steal an Egg's shop dialogs. No glossy gradients, shine strips or slanted
+ribbons.
+- Font: **Fredoka One** everywhere (`UI.fonts.bold`; `UI.fonts.heavy` is the same font).
+  Never Builder Sans/Gotham.
+- Windows: a plain white body (`UI.colors.sheet`) with a thick black outline (`UI.OUTLINE`,
+  4–4.5 px), a small dark title tab (`UI.colors.tab`) centred on the top edge with white
+  outlined text ("Shop!"), and a red rounded-square X on the top-right corner.
+- Text in windows and cards is dark (`UI.text`, `UI.colors.dark`; hints `UI.colors.muted`)
+  with no outline. White or bright text (on buttons, coloured panels, money, rarity
+  colours) always has a black outline; `UI.label` adds or drops it by colour.
+- Buttons (`UI.button`): flat bright fill with a darker lip along the bottom
+  (`UI.gradient`), thick black outline, rounded corners, white outlined text, squish when
+  pressed. Green = buy/go (prices too: `UI.pricePill` is a green button), red =
+  close/danger, gray = disabled.
+- Cards (`UI.card`): white with a thick black outline, dark title, a big 3D picture on a
+  rounded tile in the card's colour (`accent`, or rarity colour for items), dark text
+  lines, buttons, and `UI.tag` corner tags ("NEW", "x2"). Wide offers are white banners
+  with the picture on a coloured tile on the left (Shop upgrades, Store VIP).
+- HUD panels and side buttons (`UI.glass`, `Hud.menu`): flat bright fill with a darker
+  lip, thick black outline, rounded corners, white outlined text. No dark, frosted or
+  transparent panels.
 - No uploaded images: pictures are our own 3D models in ViewportFrames (ItemPictures,
   UI.boxViewport) and emoji icons.
-- Colours: saturated and cheerful. Money is green (#6EEB8C), prices gold (#FFD73C),
+- Colours: saturated and cheerful. Money is green (#6EEB8C), prices on green buttons,
   rarities use `Rarities.info[r].color`.
 
 **World:**
@@ -52,8 +58,8 @@ match it.
   floor (the same greens as the town) with the eggs on it, and the zone's theme only along
   its walls (wall colours, the entrance arch and a row of themed props against each wall).
   Keep the middle open.
-- Floating text (zone piles, gates, signs): Luckiest Guy / Fredoka One with a thick dark
-  `UIStroke`. Eggs on pedestals show rarity, name, kind and hatch time.
+- Floating text (zone piles, gates, signs): Fredoka One (or Luckiest Guy for big signs)
+  with a thick dark `UIStroke`. Eggs on pedestals show rarity, name, kind and hatch time.
 - Models are built from simple parts (balls, blocks, cylinders, wedges) with bold, flat,
   saturated colours and chunky proportions. Neon for glowing bits.
 - Items are built by `src/shared/ItemModel.luau` (house parts by `HouseModel.luau`, pets by

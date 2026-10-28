@@ -86,10 +86,6 @@ function Hud.money(screen: ScreenGui)
 		Parent = pill,
 	}, {
 		UI.corner(20),
-		UI.new("UIGradient", {
-			Color = ColorSequence.new(Color3.fromRGB(255, 226, 120), Color3.fromRGB(235, 150, 30)),
-			Rotation = 90,
-		}),
 		UI.stroke(nil, 3),
 		text("$", 24, {
 			Size = UDim2.fromScale(1, 1),
@@ -563,10 +559,6 @@ function Hud.starterOffer(screen: ScreenGui, onOpen: () -> ())
 		Parent = screen,
 	})
 	button:FindFirstChildOfClass("UIPadding"):Destroy()
-	local gradient = button:FindFirstChildOfClass("UIGradient")
-	if gradient then
-		gradient.Color = ColorSequence.new(Color3.fromRGB(80, 230, 120), Color3.fromRGB(30, 170, 150))
-	end
 	text("🎁 STARTER PACK", 18, {
 		Position = UDim2.fromOffset(0, 8),
 		Size = UDim2.new(1, 0, 0, 24),
@@ -605,10 +597,10 @@ end
 -- Menu buttons
 --------------------------------------------------------------------------------
 
--- The side buttons, like the big simulators': a two-column grid of chunky 3D buttons (a
--- bright face on a darker base, so they look pressable), each with a glossy shine, a big
--- wobbling emoji, its name across the bottom edge and a red alert badge when something is
--- waiting there.
+-- The side buttons, like Steal an Egg's: a two-column grid of chunky flat buttons (a
+-- bright face with a darker lip, on a darker base so they look pressable), each with a big
+-- wobbling picture, its name across the bottom edge and a red alert badge when something
+-- is waiting there.
 --
 -- entries = { { name, icon, color } }. Returns setActive(name or nil) and
 -- setBadge(name, text or nil, color?).
@@ -660,7 +652,7 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 			Size = UDim2.fromOffset(TILE, TILE),
 			BackgroundColor3 = color:Lerp(Color3.new(0, 0, 0), 0.45),
 			Parent = holder,
-		}, { UI.corner(20), UI.stroke(nil, 3.5) })
+		}, { UI.corner(14), UI.stroke(nil, 3.5) })
 
 		local face = UI.new("TextButton", {
 			Name = "Face",
@@ -671,34 +663,11 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 			ZIndex = 2,
 			Parent = holder,
 		}, {
-			UI.corner(20),
-			UI.new("UIGradient", {
-				Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
-					ColorSequenceKeypoint.new(0.55, Color3.fromRGB(235, 235, 235)),
-					ColorSequenceKeypoint.new(1, Color3.fromRGB(175, 175, 185)),
-				}),
-				Rotation = 90,
-			}),
+			UI.corner(14),
+			UI.gradient(nil, 0.16),
 		})
 		local ring = UI.stroke(nil, 3.5)
 		ring.Parent = face
-		-- Glossy shine across the top.
-		UI.new("Frame", {
-			Name = "Shine",
-			Position = UDim2.fromOffset(7, 5),
-			Size = UDim2.new(1, -14, 0.38, 0),
-			BackgroundColor3 = Color3.new(1, 1, 1),
-			BackgroundTransparency = 0.55,
-			ZIndex = 2,
-			Parent = face,
-		}, {
-			UI.corner(14),
-			UI.new("UIGradient", {
-				Transparency = NumberSequence.new(0, 1),
-				Rotation = 90,
-			}),
-		})
 		-- The big picture: a 3D model if there is one, otherwise the emoji.
 		local pictureKey = "Menu" .. name
 		local picture, sway
@@ -844,12 +813,8 @@ function Hud.leaderboard(screen: ScreenGui)
 		BackgroundColor3 = colors.sheet,
 		Parent = screen,
 	}, {
-		UI.corner(16),
+		UI.corner(14),
 		UI.stroke(nil, 3.5),
-		UI.new("UIGradient", {
-			Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(215, 205, 240)),
-			Rotation = 90,
-		}),
 		UI.new("UIPadding", {
 			PaddingTop = UDim.new(0, 26),
 			PaddingBottom = UDim.new(0, 8),
@@ -858,22 +823,21 @@ function Hud.leaderboard(screen: ScreenGui)
 		}),
 	})
 
-	-- The slanted purple-to-pink title tab over the top-left corner (click to fold).
+	-- The dark title tab on the top edge (click to fold).
 	local tab = UI.new("TextButton", {
 		Name = "TitleTab",
 		Text = "",
 		AutoButtonColor = false,
-		Position = UDim2.fromOffset(-14, -44),
-		Size = UDim2.fromOffset(172, 34),
-		Rotation = -3,
-		BackgroundColor3 = Color3.new(1, 1, 1),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0, -26),
+		Size = UDim2.fromOffset(172, 32),
+		BackgroundColor3 = colors.tab,
 		ZIndex = 3,
 		Parent = board,
 	}, {
-		UI.corner(10),
+		UI.corner(9),
 		UI.stroke(nil, 3),
-		UI.new("UIGradient", { Color = ColorSequence.new(colors.fusion, colors.fusion2) }),
-		text("🏆 LEADERBOARD", 19, {
+		text("🏆 Leaderboard", 19, {
 			Size = UDim2.fromScale(1, 1),
 			TextXAlignment = Enum.TextXAlignment.Center,
 			FontFace = UI.fonts.heavy,
@@ -953,29 +917,11 @@ function Hud.leaderboard(screen: ScreenGui)
 			BackgroundColor3 = OTHER.color,
 			Parent = list,
 		}, {
-			UI.corner(12),
-			UI.new("UIGradient", {
-				Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
-					ColorSequenceKeypoint.new(0.5, Color3.fromRGB(240, 240, 240)),
-					ColorSequenceKeypoint.new(1, Color3.fromRGB(185, 185, 195)),
-				}),
-				Rotation = 90,
-			}),
+			UI.corner(10),
+			UI.gradient(nil, 0.18),
 		})
 		local ring = UI.stroke(nil, 2.5)
 		ring.Parent = frame
-		-- Glossy shine across the top.
-		UI.new("Frame", {
-			Position = UDim2.fromOffset(6, 3),
-			Size = UDim2.new(1, -12, 0.36, 0),
-			BackgroundColor3 = Color3.new(1, 1, 1),
-			BackgroundTransparency = 0.6,
-			Parent = frame,
-		}, {
-			UI.corner(8),
-			UI.new("UIGradient", { Transparency = NumberSequence.new(0, 1), Rotation = 90 }),
-		})
 
 		-- Rank medal.
 		local medal = UI.new("TextLabel", {
