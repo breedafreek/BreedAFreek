@@ -214,26 +214,6 @@ local function buildScenery()
 	})
 	outlinedBillboard(title, "STEAL A LIFE", Color3.fromRGB(255, 225, 80), UDim2.fromScale(44, 9), 500)
 
-	-- A signpost at the west end of the street pointing to the zones.
-	local signpost = CFrame.new(STREET_WEST + 10, 0, -14)
-	Decor.part({
-		Name = "SignPost",
-		Size = Vector3.new(1, 12, 1),
-		CFrame = signpost * CFrame.new(0, 6, 0),
-		Color = Color3.fromRGB(120, 80, 50),
-		Material = Enum.Material.Wood,
-		Parent = folder,
-	})
-	local board = Decor.part({
-		Name = "SignBoard",
-		Size = Vector3.new(1, 3.4, 12),
-		CFrame = signpost * CFrame.new(0, 10, 4),
-		Color = Color3.fromRGB(255, 230, 150),
-		Material = Enum.Material.WoodPlanks,
-		Parent = folder,
-	})
-	outlinedBillboard(board, "🥚 EGG ZONES ➜", Color3.fromRGB(255, 120, 80), UDim2.fromScale(12, 3), 160)
-
 	-- Edges of the map: hedges along the back of the homes, invisible walls all round the
 	-- town (the zones have their own cliffs).
 	for _, side in { -1, 1 } do

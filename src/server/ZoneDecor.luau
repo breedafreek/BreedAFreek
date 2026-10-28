@@ -1,5 +1,5 @@
--- The scenery of each zone: its ground, the cliffs along its sides, the entrance arch with
--- its name and speed requirement, a path to the pile, and themed props (junk piles, pine
+-- The scenery of each zone: its ground (each zone has its own colour, which is how you
+-- tell zones apart; there are no signs), the walls along its sides, and themed props (junk piles, pine
 -- trees, cacti, lollipops, lava pools, crystals...).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -10,7 +10,6 @@ local ZoneLayout = require(ReplicatedStorage.Shared.ZoneLayout)
 local ZoneDecor = {}
 
 local M = Enum.Material
-local OUTLINE = Color3.fromRGB(20, 22, 48)
 
 local function rgb(r, g, b)
 	return Color3.fromRGB(r, g, b)
@@ -544,7 +543,7 @@ local THEMES = {
 		accent = rgb(255, 160, 50),
 	},
 	{ -- Pine Woods
-		ground = rgb(64, 196, 70),
+		ground = rgb(45, 145, 65),
 		groundMat = M.Grass,
 		wall = rgb(40, 120, 70),
 		trim = rgb(110, 225, 90),
@@ -604,7 +603,7 @@ local THEMES = {
 		accent = rgb(255, 110, 30),
 	},
 	{ -- Royal Kingdom
-		ground = rgb(80, 200, 90),
+		ground = rgb(205, 60, 75),
 		groundMat = M.Grass,
 		wall = rgb(235, 230, 220),
 		trim = rgb(255, 200, 60),
@@ -660,71 +659,7 @@ function ZoneDecor.theme(index: number)
 	return THEMES[LOOK[index]]
 end
 
--- The arch over a zone's entrance: its name and the Speed you need.
-local function buildArch(parent, index: number, theme)
-	local zone = Items.ZONES[index]
-	local east = ZoneLayout.edges(index)
-	local width = 26
-	local height = 18
-	for _, side in { -1, 1 } do
-		local spot = CFrame.new(east, 0, side * (width / 2 + 2))
-		block(
-			parent,
-			Vector3.new(4, height, 4),
-			spot * CFrame.new(0, height / 2, 0),
-			theme.cliff:Lerp(rgb(255, 255, 255), 0.15),
-			theme.cliffMat,
-			true
-		)
-		block(parent, Vector3.new(5, 1.2, 5), spot * CFrame.new(0, height + 0.6, 0), theme.accent)
-		ball(parent, 2.6, spot * CFrame.new(0, height + 2.4, 0), theme.accent, M.Neon)
-	end
-	local beam =
-		block(parent, Vector3.new(3, 6, width + 8), CFrame.new(east, height - 1, 0), rgb(255, 250, 235), nil, true)
-	block(parent, Vector3.new(2.6, 6.8, width + 8.8), CFrame.new(east + 0.3, height - 1, 0), OUTLINE)
-	-- Text on the town side of the beam (facing +X, toward players arriving).
-	local gui = Instance.new("SurfaceGui")
-	gui.Face = Enum.NormalId.Right
-	gui.CanvasSize = Vector2.new(700, 160)
-	gui.LightInfluence = 0
-	gui.Parent = beam
-	local name = Instance.new("TextLabel")
-	name.BackgroundTransparency = 1
-	name.Size = UDim2.fromScale(1, 0.58)
-	name.TextScaled = true
-	name.Font = Enum.Font.LuckiestGuy
-	name.Text = string.upper(zone.name)
-	name.TextColor3 = theme.accent
-	name.Parent = gui
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = OUTLINE
-	stroke.Thickness = 5
-	stroke.Parent = name
-	local speed = name:Clone()
-	speed.Position = UDim2.fromScale(0, 0.58)
-	speed.Size = UDim2.fromScale(1, 0.42)
-	local kind = Items.KINDS[zone.kind]
-	speed.Text = (if zone.speed > 0 then "⚡ " .. ZoneDecor.formatSpeed(zone.speed) else "⚡ ANY")
-		.. "  ·  "
-		.. kind.icon
-		.. " "
-		.. string.upper(kind.egg)
-		.. " EGGS"
-	speed.TextColor3 = rgb(255, 225, 80)
-	speed.Parent = gui
-end
-
-function ZoneDecor.formatSpeed(n: number): string
-	if n >= 1e6 then
-		return (string.format("%.1f", n / 1e6):gsub("%.0$", "")) .. "M"
-	elseif n >= 1e3 then
-		return (string.format("%.1f", n / 1e3):gsub("%.0$", "")) .. "K"
-	end
-	return tostring(math.floor(n))
-end
-
 ZoneDecor.propSpots = {} -- [zone index] = { Vector3 } where the props stand
-local FLOOR_A, FLOOR_B = rgb(64, 196, 70), rgb(52, 176, 60) -- the same greens as the town
 
 function ZoneDecor.build(parent: Instance, index: number)
 	local theme = ZoneDecor.theme(index)
@@ -735,13 +670,12 @@ function ZoneDecor.build(parent: Instance, index: number)
 	folder.Name = "Zone" .. index .. "_" .. Items.ZONES[index].name
 	folder.Parent = parent
 
-	-- A checkerboard floor in two shades of the zone's colour, and the path to the pile.
+	-- A checkerboard floor in two shades of the zone's own ground colour: the colour
+	-- change is what tells you you've walked into the next zone (there are no signs).
+	-- Floors keep their own colours (see Lego: they're marked AnyColor).
 	local tile = 13
 	local countX, countZ = math.round(length / tile), math.round(width / tile)
-	-- Every zone has the same open, bright green studded floor (like Steal an Egg): the
-	-- zone's theme is only along its walls. Floors keep their own two close shades (see
-	-- Lego: they're marked AnyColor).
-	local groundA, groundB = FLOOR_A, FLOOR_B
+	local groundA, groundB = theme.ground, theme.ground:Lerp(rgb(0, 0, 0), 0.1)
 	for i = 0, countX - 1 do
 		for k = 0, countZ - 1 do
 			local w, d = length / countX, width / countZ
@@ -800,7 +734,6 @@ function ZoneDecor.build(parent: Instance, index: number)
 	if index == #Items.ZONES then
 		block(folder, Vector3.new(6, 32, width + 12), CFrame.new(west - 3, 16, 0), theme.wall, theme.cliffMat, true)
 	end
-	buildArch(folder, index, theme)
 
 	-- The theme lives along the walls: a row of the zone's props tucked against each side
 	-- wall. The middle stays open for the eggs. Their spots are kept (ZoneDecor.propSpots)

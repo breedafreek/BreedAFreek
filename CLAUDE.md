@@ -69,11 +69,12 @@ render each screen for the owner before calling it done.**
   checkerboard floors (attribute "AnyColor"), Neon and the UI keep their own colours.
 - Keep floating text to a minimum: labels on eggs, nests and pets only show up close
   (short `MaxDistance`); put information in the UI or on physical signs instead.
-- Zones are simple, like Steal an Egg (`ZoneDecor.build`): a big open bright green studded
-  floor (the same greens as the town) with the eggs on it, and the zone's theme only along
-  its walls (wall colours, the entrance arch and a row of themed props against each wall).
-  Keep the middle open.
-- Floating text (zone piles, gates, signs): Fredoka One (or Luckiest Guy for big signs)
+- Zones are simple, like Steal an Egg (`ZoneDecor.build`): a big open checkerboard floor
+  in the zone's own ground colour (`THEMES[...].ground`; neighbouring zones must differ,
+  since the colour change is what separates them) with the eggs on it, and the zone's
+  theme only along its walls (wall colours and a row of themed props against each wall).
+  No arches or signs between zones. Keep the middle open.
+- Floating text (eggs, plots, signs): Fredoka One (or Luckiest Guy for big signs)
   with a thick dark `UIStroke`. Eggs on pedestals show rarity, name, kind and hatch time.
 - Models are built from simple parts (balls, blocks, cylinders, wedges) with bold, flat,
   saturated colours and chunky proportions. Neon for glowing bits.
