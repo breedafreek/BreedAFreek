@@ -643,7 +643,8 @@ local function updateNests(plot, data, player: Player?)
 		if data and player then
 			state, egg = nestState(data, player, n)
 		end
-		local key = if egg then egg.zone .. ":" .. egg.rarity .. ":" .. egg.endsAt else state
+		-- (Not endsAt: night moves that along while the egg stays the same.)
+		local key = if egg then egg.zone .. ":" .. egg.rarity .. ":" .. tostring(egg.seed or egg.startAt) else state
 		if nest.key ~= key then
 			nest.key = key
 			if nest.egg then

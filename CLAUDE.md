@@ -25,6 +25,7 @@ render each screen for the owner before calling it done.**
   - bottom left: Speed (gold) and money (green) as big outlined numbers with 3D icons,
     "Earning $x/s" under them, and "+$" pops
   - bottom right: a dark bar with the next egg's hatch timer
+  - top right: the day / night clock (`Hud.dayClock`)
   - a dark pill at the top (zone / carrying) and messages under it
   - Wide buttons and tiles (`UI.wideButton`, `UI.tile`) are bright, top half lighter,
     with stud dots, a thin black outline, an icon and a red count badge (`UI.badge`).
@@ -91,6 +92,10 @@ render each screen for the owner before calling it done.**
   `FreekAnimator.luau`): crafted low-poly creatures with glowing eyes, each with its
   signature item (bow, collar, bell, flower, top hat, shades, horn, horns, lightning, clown
   nose, glasses, sweatband, tiara, witch hat, bolts, bandages, cape, spiked collar).
+- Day and night (`DayNight.luau`, the same clock in every server): 5 minutes of day, 15
+  seconds of night. At nightfall every zone's eggs re-roll (`ZoneService.restock`) and
+  while it's night nest eggs grow x30 (`DayNightService`); clients darken the sky and tint
+  the picture blue (`DayNightFX`) on top of the server's daytime lighting.
 - Seasonal themes (currently Halloween) dress things up: pumpkins, purples, oranges,
   cobwebs, glowing eyes, bats.
 

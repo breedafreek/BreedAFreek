@@ -16,6 +16,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
+local DayNight = require(ReplicatedStorage.Shared.DayNight)
 local Events = require(ReplicatedStorage.Shared.Events)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Items = require(ReplicatedStorage.Shared.Items)
@@ -311,6 +312,58 @@ function Hud.eventTimer(menu: GuiObject)
 				end
 			end
 			task.wait(0.5)
+		end
+	end)
+end
+
+-- The day / night clock in the top right corner: time left until night (and the egg
+-- restock), or how long the night (and its fast hatching) lasts.
+function Hud.dayClock(screen: ScreenGui)
+	local holder = UI.new("Frame", {
+		Name = "DayClock",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -16, 0, 10),
+		Size = UDim2.fromOffset(240, 64),
+		BackgroundTransparency = 1,
+		Parent = screen,
+	})
+	fit(holder, 600)
+	local icon = UI.text("", 40, {
+		Position = UDim2.fromOffset(0, 6),
+		Size = UDim2.fromOffset(54, 54),
+		Parent = holder,
+	})
+	local name = UI.heavy("", 18, {
+		Position = UDim2.fromOffset(58, 4),
+		Size = UDim2.fromOffset(182, 22),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = holder,
+	})
+	local clock = UI.heavy("", 32, {
+		Position = UDim2.fromOffset(58, 26),
+		Size = UDim2.fromOffset(182, 36),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = holder,
+	})
+	local function show()
+		local left = math.ceil(DayNight.timeLeft())
+		local clockText = string.format("%d:%02d", left // 60, left % 60)
+		if DayNight.isNight() then
+			icon.Text = "🌙"
+			name.Text = "NIGHT · HATCH x" .. DayNight.NIGHT_SPEED
+			name.TextColor3 = Color3.fromRGB(150, 170, 255)
+		else
+			icon.Text = "☀️"
+			name.Text = "NIGHT IN"
+			name.TextColor3 = colors.speed
+		end
+		clock.Text = clockText
+	end
+	show()
+	task.spawn(function()
+		while holder.Parent do
+			show()
+			task.wait(0.25)
 		end
 	end)
 end

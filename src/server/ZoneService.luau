@@ -208,8 +208,8 @@ function ZoneService.eggName(record): string
 end
 
 -- Shows an egg on a spot. keepSpot = true puts it back exactly where the spot was (an egg a
--- guardian took back); otherwise it turns up somewhere new.
-local function showEgg(index: number, pedestal, record, keepSpot: boolean?)
+-- guardian took back); otherwise it turns up somewhere new. quiet = true never announces it.
+local function showEgg(index: number, pedestal, record, keepSpot: boolean?, quiet: boolean?)
 	if pedestal.model then
 		pedestal.model:Destroy()
 	end
@@ -263,7 +263,11 @@ local function showEgg(index: number, pedestal, record, keepSpot: boolean?)
 	prompt:SetAttribute("Pedestal", table.find(zones[index].pedestals, pedestal))
 	prompt.Parent = pedestal.base
 
-	if not keepSpot and (Rarities.rank[record.rarity] >= Rarities.rank.Ultra or top == "Rainbow" or factor >= 10) then
+	if
+		not keepSpot
+		and not quiet
+		and (Rarities.rank[record.rarity] >= Rarities.rank.Ultra or top == "Rainbow" or factor >= 10)
+	then
 		for _, player in Players:GetPlayers() do
 			notifyRemote:FireClient(
 				player,
@@ -421,6 +425,38 @@ function ZoneService.spawnNow(index: number, rarity: string?, mutations: { strin
 			if rarity then
 				return
 			end
+		end
+	end
+end
+
+-- Nightfall: every egg in every zone is swapped for a new random one (eggs being carried
+-- are left alone). New Ultra-or-better eggs are announced once, all together.
+function ZoneService.restock()
+	local best = nil
+	for index, zone in zones do
+		for _, pedestal in zone.pedestals do
+			if not pedestal.taken then
+				local record = rollEgg(index)
+				showEgg(index, pedestal, record, false, true)
+				if not best or Rarities.rank[record.rarity] > Rarities.rank[best.record.rarity] then
+					best = { record = record, index = index }
+				end
+			end
+		end
+	end
+	if best and Rarities.rank[best.record.rarity] >= Rarities.rank.Ultra then
+		for _, player in Players:GetPlayers() do
+			notifyRemote:FireClient(
+				player,
+				"🥚 A "
+					.. string.upper(best.record.rarity)
+					.. " "
+					.. ZoneService.eggName(best.record)
+					.. " is in "
+					.. Items.ZONES[best.index].name
+					.. "!",
+				"discovery"
+			)
 		end
 	end
 end

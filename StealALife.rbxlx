@@ -873,7 +873,7 @@ return Bricks
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-31", -- printed in Output: which build is running
+	BUILD = "life-32", -- printed in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join. Set to nil
 	-- before the game launches!
@@ -1993,6 +1993,52 @@ return CraftedFreeks
       </Item>
       <Item class="ModuleScript" referent="9">
         <Properties>
+          <string name="Name">DayNight</string>
+          <string name="Source"><![CDATA[-- The day and night cycle, the same in every server and on every client: DAY seconds of
+-- day, then NIGHT seconds of night. At nightfall every zone's eggs are swapped for new
+-- random ones, and while it's night the eggs in everyone's nests grow NIGHT_SPEED times
+-- as fast. Time is the server clock (Workspace:GetServerTimeNow()), so clients agree.
+
+local Workspace = game:GetService("Workspace")
+
+local DayNight = {}
+
+DayNight.DAY = 5 * 60
+DayNight.NIGHT = 15
+DayNight.CYCLE = DayNight.DAY + DayNight.NIGHT
+DayNight.NIGHT_SPEED = 30
+
+-- Seconds into the current cycle (0 = sunrise; DAY = nightfall).
+function DayNight.phase(now: number?): number
+	return (now or Workspace:GetServerTimeNow()) % DayNight.CYCLE
+end
+
+function DayNight.isNight(now: number?): boolean
+	return DayNight.phase(now) >= DayNight.DAY
+end
+
+-- Seconds until the next change (nightfall during the day, sunrise at night).
+function DayNight.timeLeft(now: number?): number
+	local phase = DayNight.phase(now)
+	return if phase >= DayNight.DAY then DayNight.CYCLE - phase else DayNight.DAY - phase
+end
+
+-- How dark it is, 0 (day) to 1 (night): it gets dark over the last few seconds of the day
+-- and light again over the last few seconds of the night.
+function DayNight.darkness(now: number?): number
+	local phase = DayNight.phase(now)
+	if phase < DayNight.DAY then
+		return math.clamp((phase - (DayNight.DAY - 4)) / 4, 0, 1)
+	end
+	return math.clamp((DayNight.CYCLE - phase) / 3, 0, 1)
+end
+
+return DayNight
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="10">
+        <Properties>
           <string name="Name">EggModel</string>
           <string name="Source"><![CDATA[-- The eggs you steal from the zones, in the "crafted" look (detailed low-poly, no LEGO
 -- studs; attribute "Crafted"): a shell of many small dark plates, each set a little in or
@@ -2352,7 +2398,7 @@ return EggModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="10">
+      <Item class="ModuleScript" referent="11">
         <Properties>
           <string name="Name">Events</string>
           <string name="Source"><![CDATA[-- Scheduled events, like the "admin abuse" events of the big Roblox games.
@@ -2551,7 +2597,7 @@ return Events
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="11">
+      <Item class="ModuleScript" referent="12">
         <Properties>
           <string name="Name">Format</string>
           <string name="Source"><![CDATA[local Format = {}
@@ -2610,7 +2656,7 @@ return Format
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">FreekAnimator</string>
           <string name="Source"><![CDATA[-- Brings Freek models to life: idle animations for Freeks standing in barns and on the
@@ -3099,7 +3145,7 @@ return FreekAnimator
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">FreekModel</string>
           <string name="Source"><![CDATA[-- Builds the 3D model for a Freek out of plain parts.
@@ -4033,7 +4079,7 @@ return FreekModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">Freeks</string>
           <string name="Source"><![CDATA[-- Every Freek species in the game.
@@ -4279,7 +4325,7 @@ return Freeks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">GamePasses</string>
           <string name="Source"><![CDATA[-- Game passes: one-time Robux purchases with permanent perks.
@@ -4431,7 +4477,7 @@ return GamePasses
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">GuardianAttacks</string>
           <string name="Source"><![CDATA[-- Each zone's guardian has a signature attack, on top of catching anyone it runs into.
@@ -4528,7 +4574,7 @@ return GuardianAttacks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">HouseModel</string>
           <string name="Source"><![CDATA[-- Builds houses and house parts out of simple parts, in the game's chunky cartoon style.
@@ -6311,7 +6357,7 @@ return HouseModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">Hybrids</string>
           <string name="Source"><![CDATA[-- Hybrids: what you get when two different Freeks fuse.
@@ -6496,7 +6542,7 @@ return Hybrids
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">ItemModel</string>
           <string name="Source"><![CDATA[-- One model for any item (see Items.luau), standing on its pivot: a house part as a small
@@ -6559,7 +6605,7 @@ return ItemModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">Items</string>
           <string name="Source"><![CDATA[-- Everything you can own in Steal a Life, in four kinds:
@@ -7088,7 +7134,7 @@ return Items
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">Lego</string>
           <string name="Source"><![CDATA[-- The LEGO look: everything is shiny plastic with studs on every face (inlets underneath),
@@ -7341,7 +7387,7 @@ return Lego
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="22">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">LifeUtil</string>
           <string name="Source"><![CDATA[-- Helpers for a player's save, shared by the server and the UI.
@@ -7616,7 +7662,7 @@ return LifeUtil
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="24">
         <Properties>
           <string name="Name">Luck</string>
           <string name="Source"><![CDATA[-- Luck: Mystery Boxes, the daily Lucky Wheel and Lucky Hour events. Shared so the client
@@ -7820,7 +7866,7 @@ return Luck
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="25">
         <Properties>
           <string name="Name">Mutations</string>
           <string name="Source"><![CDATA[-- Mutations multiply a house part's income. Parts grow with them in the zone piles (chance
@@ -7886,7 +7932,7 @@ return Mutations
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">Parts</string>
           <string name="Source"><![CDATA[-- House parts: one of the four kinds of item (see Items.luau), hatched from Hardware Eggs
@@ -7989,7 +8035,7 @@ return Parts
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">PlantModel</string>
           <string name="Source"><![CDATA[-- Plants in the crafted look (low-poly, smooth, no studs; see Lego): built from blocks and
@@ -8362,7 +8408,7 @@ return PlantModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
@@ -8391,7 +8437,7 @@ return Rarities
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">Remotes</string>
           <string name="Source"><![CDATA[-- One place that names every remote. The server creates them; clients wait for them.
@@ -8454,7 +8500,7 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">Seasons</string>
           <string name="Source"><![CDATA[-- Limited events for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred
@@ -8591,7 +8637,7 @@ return Seasons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">YardModel</string>
           <string name="Source"><![CDATA[-- Yard items in the crafted look (low-poly, smooth, no studs; see Lego): built from blocks
@@ -8970,7 +9016,7 @@ return YardModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="31">
+      <Item class="ModuleScript" referent="32">
         <Properties>
           <string name="Name">ZoneLayout</string>
           <string name="Source"><![CDATA[-- Where the zones are. They run in a line west from the end of the town street: zone 1
@@ -9061,15 +9107,15 @@ return ZoneLayout
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="32">
+  <Item class="ServerScriptService" referent="33">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="33">
+    <Item class="Folder" referent="34">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -9425,7 +9471,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">AdminService</string>
           <string name="Source"><![CDATA[-- The admin panel's server side. Only admins (Config.ADMIN_NAMES / ADMIN_USER_IDS, or
@@ -9570,7 +9616,7 @@ return AdminService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -9905,7 +9951,88 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
+        <Properties>
+          <string name="Name">DayNightService</string>
+          <string name="Source"><![CDATA[-- Runs the day and night cycle (DayNight.luau) on the server. At nightfall every zone's
+-- eggs are swapped for new random ones and everyone is told; while it's night, the eggs in
+-- every nest grow NIGHT_SPEED times as fast (each second of night counts as NIGHT_SPEED).
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local DayNight = require(ReplicatedStorage.Shared.DayNight)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local DataService = require(script.Parent.DataService)
+local ZoneService = require(script.Parent.ZoneService)
+
+local DayNightService = {}
+
+-- Moves every growing egg `seconds` closer to hatching. The whole growing window shifts
+-- back, so its weight curve (startAt..endsAt) moves along with it.
+local function speedUpNests(seconds: number)
+	local now = os.time()
+	for player, data in DataService.all() do
+		local changed = false
+		for _, egg in data.nests or {} do
+			if egg.endsAt and egg.endsAt > now then
+				local shift = math.min(seconds, egg.endsAt - now)
+				egg.endsAt -= shift
+				if egg.startAt then
+					egg.startAt -= shift
+				end
+				changed = true
+			end
+		end
+		if changed then
+			DataService.changed(player)
+		end
+	end
+end
+
+function DayNightService.init()
+	local notify = Remotes.get("Notify")
+	local wasNight = DayNight.isNight()
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			local night = DayNight.isNight()
+			if night and not wasNight then
+				local ok, err = pcall(ZoneService.restock)
+				if not ok then
+					warn("[DayNightService] " .. tostring(err))
+				end
+				for _, player in Players:GetPlayers() do
+					notify:FireClient(
+						player,
+						"🌙 Night! New eggs in every zone, and your eggs hatch x"
+							.. DayNight.NIGHT_SPEED
+							.. " faster!",
+						"discovery"
+					)
+				end
+			elseif wasNight and not night then
+				for _, player in Players:GetPlayers() do
+					notify:FireClient(player, "☀️ Good morning!", "success")
+				end
+			end
+			wasNight = night
+			if night then
+				-- This second counts as NIGHT_SPEED seconds: NIGHT_SPEED - 1 extra.
+				local ok, err = pcall(speedUpNests, DayNight.NIGHT_SPEED - 1)
+				if not ok then
+					warn("[DayNightService] " .. tostring(err))
+				end
+			end
+		end
+	end)
+end
+
+return DayNightService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">Decor</string>
           <string name="Source"><![CDATA[-- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
@@ -10321,7 +10448,7 @@ return Decor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Catalog: the first player in the whole game to get each rare item (Legendary and up:
@@ -10476,7 +10603,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the parts on their house, plus offline earnings
@@ -10557,7 +10684,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">Environment</string>
           <string name="Source"><![CDATA[-- Lighting, sky, terrain and the town: the street between the two rows of homes, the
@@ -10821,7 +10948,7 @@ return Environment
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">EventService</string>
           <string name="Source"><![CDATA[-- Runs the scheduled events (see shared/Events.luau) and the ones the admin starts.
@@ -11060,7 +11187,7 @@ return EventService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">HalloweenDecor</string>
           <string name="Source"><![CDATA[-- Halloween props: ghosts, bats, cobwebs, tombstones, dead trees, a witch's cauldron,
@@ -11520,7 +11647,7 @@ return HalloweenDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="45">
         <Properties>
           <string name="Name">LuckService</string>
           <string name="Source"><![CDATA[-- Mystery Boxes, the daily Lucky Wheel and Lucky Hour events (rules and odds in
@@ -12026,7 +12153,7 @@ return LuckService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="44">
+      <Item class="Script" referent="46">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -12062,6 +12189,7 @@ local SERVICES = {
 	"PassService",
 	"LuckService",
 	"EventService",
+	"DayNightService", -- after the zones exist
 	"AdminService",
 	"SeasonalService", -- after the map and homes exist
 	"DataService",
@@ -12096,7 +12224,7 @@ print("[Steal a Life] Server started, build " .. require(ReplicatedStorage.Share
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="45">
+      <Item class="ModuleScript" referent="47">
         <Properties>
           <string name="Name">NestService</string>
           <string name="Source"><![CDATA[-- Eggs growing at home, and hatching them.
@@ -12307,7 +12435,7 @@ return NestService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="46">
+      <Item class="ModuleScript" referent="48">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -12380,7 +12508,7 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="47">
+      <Item class="ModuleScript" referent="49">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the town and gives every player a home: a big fenced yard with their house (see
@@ -13028,7 +13156,8 @@ local function updateNests(plot, data, player: Player?)
 		if data and player then
 			state, egg = nestState(data, player, n)
 		end
-		local key = if egg then egg.zone .. ":" .. egg.rarity .. ":" .. egg.endsAt else state
+		-- (Not endsAt: night moves that along while the egg stays the same.)
+		local key = if egg then egg.zone .. ":" .. egg.rarity .. ":" .. tostring(egg.seed or egg.startAt) else state
 		if nest.key ~= key then
 			nest.key = key
 			if nest.egg then
@@ -13319,7 +13448,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="48">
+      <Item class="ModuleScript" referent="50">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -13587,7 +13716,7 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="49">
+      <Item class="ModuleScript" referent="51">
         <Properties>
           <string name="Name">SpeedService</string>
           <string name="Source"><![CDATA[-- Speed: trained on your treadmill, it decides how fast you run (Items.walkSpeed), which
@@ -13670,7 +13799,7 @@ return SpeedService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="50">
+      <Item class="ModuleScript" referent="52">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Carrying eggs home from the zones.
@@ -13946,7 +14075,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="51">
+      <Item class="ModuleScript" referent="53">
         <Properties>
           <string name="Name">ZoneDecor</string>
           <string name="Source"><![CDATA[-- The scenery of each zone: its ground (each zone has its own colour, which is how you
@@ -14713,7 +14842,7 @@ return ZoneDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="52">
+      <Item class="ModuleScript" referent="54">
         <Properties>
           <string name="Name">ZoneService</string>
           <string name="Source"><![CDATA[-- The zones: eggs to steal, each zone guarded by a giant Freek.
@@ -14926,8 +15055,8 @@ function ZoneService.eggName(record): string
 end
 
 -- Shows an egg on a spot. keepSpot = true puts it back exactly where the spot was (an egg a
--- guardian took back); otherwise it turns up somewhere new.
-local function showEgg(index: number, pedestal, record, keepSpot: boolean?)
+-- guardian took back); otherwise it turns up somewhere new. quiet = true never announces it.
+local function showEgg(index: number, pedestal, record, keepSpot: boolean?, quiet: boolean?)
 	if pedestal.model then
 		pedestal.model:Destroy()
 	end
@@ -14981,7 +15110,11 @@ local function showEgg(index: number, pedestal, record, keepSpot: boolean?)
 	prompt:SetAttribute("Pedestal", table.find(zones[index].pedestals, pedestal))
 	prompt.Parent = pedestal.base
 
-	if not keepSpot and (Rarities.rank[record.rarity] >= Rarities.rank.Ultra or top == "Rainbow" or factor >= 10) then
+	if
+		not keepSpot
+		and not quiet
+		and (Rarities.rank[record.rarity] >= Rarities.rank.Ultra or top == "Rainbow" or factor >= 10)
+	then
 		for _, player in Players:GetPlayers() do
 			notifyRemote:FireClient(
 				player,
@@ -15139,6 +15272,38 @@ function ZoneService.spawnNow(index: number, rarity: string?, mutations: { strin
 			if rarity then
 				return
 			end
+		end
+	end
+end
+
+-- Nightfall: every egg in every zone is swapped for a new random one (eggs being carried
+-- are left alone). New Ultra-or-better eggs are announced once, all together.
+function ZoneService.restock()
+	local best = nil
+	for index, zone in zones do
+		for _, pedestal in zone.pedestals do
+			if not pedestal.taken then
+				local record = rollEgg(index)
+				showEgg(index, pedestal, record, false, true)
+				if not best or Rarities.rank[record.rarity] > Rarities.rank[best.record.rarity] then
+					best = { record = record, index = index }
+				end
+			end
+		end
+	end
+	if best and Rarities.rank[best.record.rarity] >= Rarities.rank.Ultra then
+		for _, player in Players:GetPlayers() do
+			notifyRemote:FireClient(
+				player,
+				"🥚 A "
+					.. string.upper(best.record.rarity)
+					.. " "
+					.. ZoneService.eggName(best.record)
+					.. " is in "
+					.. Items.ZONES[best.index].name
+					.. "!",
+				"discovery"
+			)
 		end
 	end
 end
@@ -15559,19 +15724,19 @@ return ZoneService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="53">
+  <Item class="StarterPlayer" referent="55">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="54">
+    <Item class="StarterPlayerScripts" referent="56">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="55">
+      <Item class="Folder" referent="57">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="56">
+        <Item class="ModuleScript" referent="58">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -15645,7 +15810,50 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="57">
+        <Item class="ModuleScript" referent="59">
+          <Properties>
+            <string name="Name">DayNightFX</string>
+            <string name="Source"><![CDATA[-- Night falls on this client's screen (DayNight.luau): the sun sets, the sky turns to
+-- night and the picture tints blue, then morning comes back. Done locally every frame so
+-- it's smooth; the server's lighting (and any seasonal theme's) is the daytime look.
+
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local DayNight = require(ReplicatedStorage.Shared.DayNight)
+
+local DayNightFX = {}
+
+local NIGHT_CLOCK = 22 -- the clock time at full night (the moon is up)
+local NIGHT_TINT = Color3.fromRGB(140, 160, 255)
+
+function DayNightFX.start()
+	local tint = Instance.new("ColorCorrectionEffect")
+	tint.Name = "NightTint"
+	tint.Parent = Lighting
+	local dayClock = Lighting.ClockTime
+	local dark = 0
+	RunService.RenderStepped:Connect(function()
+		local wanted = DayNight.darkness()
+		if wanted == 0 and dark == 0 then
+			-- Daytime: whatever the server sets is the day look.
+			dayClock = Lighting.ClockTime
+			return
+		end
+		dark = wanted
+		Lighting.ClockTime = dayClock + (NIGHT_CLOCK - dayClock) * dark
+		tint.TintColor = Color3.new(1, 1, 1):Lerp(NIGHT_TINT, dark)
+		tint.Brightness = -0.12 * dark
+		tint.Saturation = -0.15 * dark
+	end)
+end
+
+return DayNightFX
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="60">
           <Properties>
             <string name="Name">EventFX</string>
             <string name="Source"><![CDATA[-- What big events and weather look like (see Events.luau), on each player's own screen:
@@ -15737,7 +15945,7 @@ return EventFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="58">
+        <Item class="ModuleScript" referent="61">
           <Properties>
             <string name="Name">GuardianAttackFX</string>
             <string name="Source"><![CDATA[-- Draws the guardians' attacks (GuardianAttacks.luau) on this client, from the server's
@@ -16010,7 +16218,7 @@ return GuardianAttackFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="59">
+        <Item class="ModuleScript" referent="62">
           <Properties>
             <string name="Name">GuardianFX</string>
             <string name="Source"><![CDATA[-- The zone guardians, drawn on this client: a giant Freek per zone that walks after its
@@ -16175,7 +16383,7 @@ return GuardianFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="60">
+        <Item class="ModuleScript" referent="63">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on screen pieces, laid out like the owner's reference (a top simulator's
@@ -16196,6 +16404,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
+local DayNight = require(ReplicatedStorage.Shared.DayNight)
 local Events = require(ReplicatedStorage.Shared.Events)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Items = require(ReplicatedStorage.Shared.Items)
@@ -16495,6 +16704,58 @@ function Hud.eventTimer(menu: GuiObject)
 	end)
 end
 
+-- The day / night clock in the top right corner: time left until night (and the egg
+-- restock), or how long the night (and its fast hatching) lasts.
+function Hud.dayClock(screen: ScreenGui)
+	local holder = UI.new("Frame", {
+		Name = "DayClock",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -16, 0, 10),
+		Size = UDim2.fromOffset(240, 64),
+		BackgroundTransparency = 1,
+		Parent = screen,
+	})
+	fit(holder, 600)
+	local icon = UI.text("", 40, {
+		Position = UDim2.fromOffset(0, 6),
+		Size = UDim2.fromOffset(54, 54),
+		Parent = holder,
+	})
+	local name = UI.heavy("", 18, {
+		Position = UDim2.fromOffset(58, 4),
+		Size = UDim2.fromOffset(182, 22),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = holder,
+	})
+	local clock = UI.heavy("", 32, {
+		Position = UDim2.fromOffset(58, 26),
+		Size = UDim2.fromOffset(182, 36),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = holder,
+	})
+	local function show()
+		local left = math.ceil(DayNight.timeLeft())
+		local clockText = string.format("%d:%02d", left // 60, left % 60)
+		if DayNight.isNight() then
+			icon.Text = "🌙"
+			name.Text = "NIGHT · HATCH x" .. DayNight.NIGHT_SPEED
+			name.TextColor3 = Color3.fromRGB(150, 170, 255)
+		else
+			icon.Text = "☀️"
+			name.Text = "NIGHT IN"
+			name.TextColor3 = colors.speed
+		end
+		clock.Text = clockText
+	end
+	show()
+	task.spawn(function()
+		while holder.Parent do
+			show()
+			task.wait(0.25)
+		end
+	end)
+end
+
 -- A small dark bar (bottom right, like the reference's restock timer). Returns
 -- set(text, colour?) (nil text hides it).
 function Hud.bar(screen: ScreenGui)
@@ -16691,7 +16952,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="61">
+        <Item class="ModuleScript" referent="64">
           <Properties>
             <string name="Name">ItemPictures</string>
             <string name="Source"><![CDATA[-- 3D pictures for shop items (the treadmill, game passes), items, eggs and the side menu,
@@ -17390,7 +17651,7 @@ return ItemPictures
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="62">
+        <Item class="ModuleScript" referent="65">
           <Properties>
             <string name="Name">LuckyWheel</string>
             <string name="Source"><![CDATA[-- The Lucky Wheel, drawn like the prize wheels in the big simulators: bright pie slices
@@ -17686,7 +17947,7 @@ return LuckyWheel
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="63">
+        <Item class="LocalScript" referent="66">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's client: the screen UI (HUD, side menu and windows, built from UI.luau and
@@ -17752,6 +18013,7 @@ local Parts = require(Shared.Parts)
 local Rarities = require(Shared.Rarities)
 local Remotes = require(Shared.Remotes)
 local Ambient = require(script.Parent.Ambient)
+local DayNightFX = require(script.Parent.DayNightFX)
 local EventFX = require(script.Parent.EventFX)
 local GuardianAttackFX = require(script.Parent.GuardianAttackFX)
 local GuardianFX = require(script.Parent.GuardianFX)
@@ -18999,6 +19261,7 @@ local setMenuBadge, _, menuHolder = Hud.buttons(screen, "left", {
 	{ "Index", "INDEX", Color3.fromRGB(165, 90, 240), Hud.icon("MenuCatalog", "📖") },
 }, openWindow)
 Hud.eventTimer(menuHolder)
+Hud.dayClock(screen)
 
 -- Right: square tiles.
 local setTileBadge, tiles = Hud.tiles(screen, {
@@ -19299,6 +19562,7 @@ GuardianAttackFX.start()
 PetFX.start()
 TreadmillRun.start()
 Ambient.start()
+DayNightFX.start()
 
 -- The Mystery Boxes on the stand turn slowly and bob up and down.
 RunService.RenderStepped:Connect(function()
@@ -19343,7 +19607,7 @@ clientReady = true
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="64">
+        <Item class="ModuleScript" referent="67">
           <Properties>
             <string name="Name">PackReveal</string>
             <string name="Source"><![CDATA[-- Hatching an egg (or opening a Mystery Box), done like a card-pack reveal in the big
@@ -20721,7 +20985,7 @@ return PackReveal
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="65">
+        <Item class="ModuleScript" referent="68">
           <Properties>
             <string name="Name">PetFX</string>
             <string name="Source"><![CDATA[-- Pets roaming their owner's front lawn, drawn on this client. The server lists each
@@ -20915,7 +21179,7 @@ return PetFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="66">
+        <Item class="ModuleScript" referent="69">
           <Properties>
             <string name="Name">TreadmillRun</string>
             <string name="Source"><![CDATA[-- Running on your treadmill by yourself: while you stand on your own treadmill's belt and
@@ -20981,7 +21245,7 @@ return TreadmillRun
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="67">
+        <Item class="ModuleScript" referent="70">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- The building blocks of the screen UI, in one style (the owner's references: a top

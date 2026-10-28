@@ -61,6 +61,7 @@ local Parts = require(Shared.Parts)
 local Rarities = require(Shared.Rarities)
 local Remotes = require(Shared.Remotes)
 local Ambient = require(script.Parent.Ambient)
+local DayNightFX = require(script.Parent.DayNightFX)
 local EventFX = require(script.Parent.EventFX)
 local GuardianAttackFX = require(script.Parent.GuardianAttackFX)
 local GuardianFX = require(script.Parent.GuardianFX)
@@ -1308,6 +1309,7 @@ local setMenuBadge, _, menuHolder = Hud.buttons(screen, "left", {
 	{ "Index", "INDEX", Color3.fromRGB(165, 90, 240), Hud.icon("MenuCatalog", "📖") },
 }, openWindow)
 Hud.eventTimer(menuHolder)
+Hud.dayClock(screen)
 
 -- Right: square tiles.
 local setTileBadge, tiles = Hud.tiles(screen, {
@@ -1608,6 +1610,7 @@ GuardianAttackFX.start()
 PetFX.start()
 TreadmillRun.start()
 Ambient.start()
+DayNightFX.start()
 
 -- The Mystery Boxes on the stand turn slowly and bob up and down.
 RunService.RenderStepped:Connect(function()

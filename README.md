@@ -103,6 +103,10 @@ rojo build -o StealALife.rbxlx    # or build a place file
   comes a random item of the egg's kind and rarity, keeping the egg's mutation, with a
   reveal (the screen UI is being rebuilt; see CLAUDE.md). It goes straight out if it beats what you
   have (the old one goes to your backpack), otherwise into the backpack.
+- **Day and night** (`src/shared/DayNight.luau`, `src/server/DayNightService.luau`): 5 minutes
+  of day, then 15 seconds of night, on the same clock in every server. At nightfall every
+  zone's eggs are swapped for new random ones, and during the night the eggs in everyone's
+  nests grow 30 times as fast. The clock is in the top right of the screen.
 - **Upgrades** (coins, in the 🛒 Shop; `Config.luau`):
   - **Treadmill** (20 levels): more ⚡ Speed a second.
   - **Plot** (5 levels): level 1 has room for 2 yard items, 2 plants and 4 pets; each level

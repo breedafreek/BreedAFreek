@@ -30,6 +30,7 @@ local SERVICES = {
 	"PassService",
 	"LuckService",
 	"EventService",
+	"DayNightService", -- after the zones exist
 	"AdminService",
 	"SeasonalService", -- after the map and homes exist
 	"DataService",
