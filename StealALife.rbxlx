@@ -797,6 +797,63 @@ function Bricks.wedge(model: Instance, size: Vector3, cframe: CFrame, color: Col
 	return p
 end
 
+-- Helpers for the crafted look (low-poly, smooth, a muted main colour with glowing bits).
+
+-- A glowing piece (Neon).
+function Bricks.glow(model: Instance, size: Vector3, cframe: CFrame, color: Color3)
+	local p = Bricks.block(model, size, cframe, color, Enum.Material.Neon)
+	p.CastShadow = false
+	return p
+end
+
+-- An octagonal slab (four strips across it, a 45 degrees apart) standing on `cframe`;
+-- `diameter` is from flat side to flat side.
+function Bricks.octo(model: Instance, diameter: number, height: number, cframe: CFrame, color: Color3, material)
+	local width = diameter * math.tan(math.pi / 8)
+	local first
+	for k = 0, 3 do
+		local p = Bricks.block(
+			model,
+			Vector3.new(diameter, height, width),
+			cframe * CFrame.new(0, height / 2, 0) * CFrame.Angles(0, k * math.pi / 4, 0),
+			color,
+			material
+		)
+		first = first or p
+	end
+	return first
+end
+
+-- A ring of `count` blocks (a rim, a frame) lying flat, centred on `cframe`.
+function Bricks.ring(
+	model: Instance,
+	diameter: number,
+	width: number,
+	height: number,
+	cframe: CFrame,
+	color: Color3,
+	material,
+	count: number?
+)
+	local n = count or 8
+	local length = math.pi * diameter / n + 0.05
+	for i = 0, n - 1 do
+		local a = i / n * math.pi * 2
+		Bricks.block(
+			model,
+			Vector3.new(length, height, width),
+			cframe * CFrame.Angles(0, -a, 0) * CFrame.new(0, 0, diameter / 2),
+			color,
+			material
+		)
+	end
+end
+
+-- Marks a model as crafted: it keeps its own smooth look, with no LEGO studs (see Lego).
+function Bricks.crafted(model: Model)
+	model:SetAttribute("Crafted", true)
+end
+
 Bricks.RAINBOW = {
 	Color3.fromRGB(255, 70, 90),
 	Color3.fromRGB(255, 150, 40),
@@ -816,7 +873,7 @@ return Bricks
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-28", -- printed in Output: which build is running
+	BUILD = "life-29", -- printed in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join. Set to nil
 	-- before the game launches!
@@ -4499,6 +4556,7 @@ local M = Enum.Material
 -- How each style looks. Flags add each style's signature details.
 local LOOKS = {
 	Basic = {
+		glow = rgb(255, 210, 120), -- its windows, edges and trims in the crafted look
 		wall = rgb(238, 224, 196),
 		trim = rgb(255, 255, 255),
 		roof = rgb(205, 85, 70),
@@ -4509,6 +4567,7 @@ local LOOKS = {
 		shutters = true,
 	},
 	Scrap = {
+		glow = rgb(80, 230, 210), -- its windows, edges and trims in the crafted look
 		wall = rgb(120, 160, 175),
 		wallMat = M.CorrodedMetal,
 		trim = rgb(120, 122, 130),
@@ -4523,6 +4582,7 @@ local LOOKS = {
 		patches = true,
 	},
 	Log = {
+		glow = rgb(255, 180, 80), -- its windows, edges and trims in the crafted look
 		wall = rgb(160, 100, 55),
 		wallMat = M.Wood,
 		trim = rgb(110, 68, 35),
@@ -4538,6 +4598,7 @@ local LOOKS = {
 		shutters = true,
 	},
 	Stone = {
+		glow = rgb(110, 210, 255), -- its windows, edges and trims in the crafted look
 		wall = rgb(165, 165, 170),
 		wallMat = M.Cobblestone,
 		trim = rgb(115, 115, 122),
@@ -4552,6 +4613,7 @@ local LOOKS = {
 		ivy = true,
 	},
 	Sand = {
+		glow = rgb(255, 160, 60), -- its windows, edges and trims in the crafted look
 		wall = rgb(242, 208, 148),
 		wallMat = M.Sandstone,
 		trim = rgb(250, 238, 205),
@@ -4565,6 +4627,7 @@ local LOOKS = {
 		arched = true,
 	},
 	Ice = {
+		glow = rgb(150, 230, 255), -- its windows, edges and trims in the crafted look
 		wall = rgb(125, 205, 255),
 		wallMat = M.Ice,
 		trim = rgb(235, 250, 255),
@@ -4580,6 +4643,7 @@ local LOOKS = {
 		icicles = true,
 	},
 	Candy = {
+		glow = rgb(255, 110, 200), -- its windows, edges and trims in the crafted look
 		wall = rgb(255, 160, 205),
 		trim = rgb(255, 255, 255),
 		roof = rgb(120, 65, 40),
@@ -4591,6 +4655,7 @@ local LOOKS = {
 		icing = true,
 	},
 	Lava = {
+		glow = rgb(255, 90, 30), -- its windows, edges and trims in the crafted look
 		wall = rgb(50, 38, 55),
 		wallMat = M.Basalt,
 		trim = rgb(255, 115, 30),
@@ -4606,6 +4671,7 @@ local LOOKS = {
 		cracks = true,
 	},
 	Royal = {
+		glow = rgb(255, 205, 60), -- its windows, edges and trims in the crafted look
 		wall = rgb(245, 240, 230),
 		wallMat = M.Marble,
 		trim = rgb(255, 200, 60),
@@ -4618,6 +4684,7 @@ local LOOKS = {
 		arched = true,
 	},
 	Crystal = {
+		glow = rgb(200, 120, 255), -- its windows, edges and trims in the crafted look
 		wall = rgb(165, 110, 255),
 		wallMat = M.Glass,
 		trim = rgb(110, 240, 255),
@@ -4634,6 +4701,7 @@ local LOOKS = {
 		gems = true,
 	},
 	Cloud = {
+		glow = rgb(140, 210, 255), -- its windows, edges and trims in the crafted look
 		wall = rgb(250, 250, 255),
 		trim = rgb(255, 215, 90),
 		trimMat = M.Foil,
@@ -4646,6 +4714,7 @@ local LOOKS = {
 		clouds = true,
 	},
 	Rainbow = {
+		glow = rgb(255, 255, 255), -- its windows, edges and trims in the crafted look
 		wall = rgb(255, 255, 255),
 		trim = rgb(255, 255, 255),
 		trimMat = M.Neon,
@@ -6035,6 +6104,127 @@ HouseModel.ANCHORS = {
 }
 
 --------------------------------------------------------------------------------
+-- The crafted finish (like the eggs and creatures; see Lego): smooth plastic instead of
+-- textured materials and studs, round pieces turned into angled blocks, windows glowing in
+-- the style's colour, and glowing strips along the walls' base and top and the roof's eaves.
+--------------------------------------------------------------------------------
+
+local TEXTURED = {
+	[M.Wood] = true,
+	[M.WoodPlanks] = true,
+	[M.CorrodedMetal] = true,
+	[M.Brick] = true,
+	[M.Cobblestone] = true,
+	[M.Basalt] = true,
+	[M.Sandstone] = true,
+	[M.Slate] = true,
+	[M.Ground] = true,
+	[M.Snow] = true,
+	[M.Marble] = true,
+}
+
+local function strip(model: Model, size: Vector3, cframe: CFrame, color: Color3)
+	local p = block(model, size, cframe, color, M.Neon)
+	p.Name = "Glow"
+	p.CastShadow = false
+	return p
+end
+
+local function craftify(model: Model, slotId: string, look)
+	model:SetAttribute("Crafted", true)
+	local glow = look.glow or rgb(255, 210, 120)
+	local n = 0
+	for _, p in model:GetDescendants() do
+		if not p:IsA("BasePart") then
+			continue
+		end
+		n += 1
+		if TEXTURED[p.Material] then
+			p.Material = M.SmoothPlastic
+		elseif p.Material == M.Ice then
+			p.Material = M.Glass
+			p.Transparency = math.max(p.Transparency, 0.15)
+		end
+		-- Round pieces become blocks, a little askew (small details stay round).
+		local mesh = p:FindFirstChildOfClass("SpecialMesh")
+		local isBall = p:IsA("Part") and p.Shape == Enum.PartType.Ball
+		local isSphere = mesh and mesh.MeshType == Enum.MeshType.Sphere
+		if isBall or isSphere then
+			local size = p.Size * (if isSphere then mesh.Scale else Vector3.one)
+			if math.min(size.X, size.Y, size.Z) >= 0.8 then
+				local cframe = p.CFrame * CFrame.Angles(0, math.rad((n % 5 - 2) * 6), math.rad((n % 3 - 1) * 5))
+				if mesh then
+					mesh:Destroy()
+				end
+				if isBall then
+					p.Shape = Enum.PartType.Block
+				end
+				p.Size = size * 0.86
+				p.CFrame = cframe
+			end
+		end
+		-- Windows (and any glass) light up.
+		local thin = math.min(p.Size.X, p.Size.Y, p.Size.Z) < 0.6 and math.max(p.Size.X, p.Size.Y, p.Size.Z) < 8
+		if p.Name == "Glass" or (p.Material == M.Glass and thin) then
+			p.Material = M.Neon
+			p.Color = glow:Lerp(Color3.new(1, 1, 1), 0.2)
+			p.Transparency = 0.15
+		end
+	end
+	local body = model:FindFirstChild("Body")
+	if slotId == "Walls" and body and body:IsA("BasePart") then
+		-- Glowing strips along the foot and the top of the front and sides.
+		local size, cf = body.Size, body.CFrame
+		local t = math.max(0.12, size.Y * 0.02)
+		for _, y in { -size.Y / 2 + t, size.Y / 2 - t * 4 } do
+			strip(model, Vector3.new(size.X + 0.1, t, t), cf * CFrame.new(0, y, -size.Z / 2 - t), glow)
+			for _, side in { -1, 1 } do
+				strip(model, Vector3.new(t, t, size.Z + 0.1), cf * CFrame.new(side * (size.X / 2 + t), y, 0), glow)
+			end
+		end
+	elseif slotId == "Roof" then
+		-- Rows of shingles on every big slope (a wedge's slope rises from its front-bottom
+		-- edge to its back-top edge), a shade lighter and darker in turn.
+		for _, p in model:GetDescendants() do
+			if p:IsA("WedgePart") and p.Size.Y > 1.5 and p.Size.Z > 1.5 and p.Material ~= M.Neon then
+				local size, cframe = p.Size, p.CFrame
+				local up = Vector3.new(0, size.Y, size.Z).Unit
+				local normal = Vector3.new(0, size.Z, -size.Y).Unit
+				local length = math.sqrt(size.Y ^ 2 + size.Z ^ 2)
+				local rows = math.max(2, math.floor(length / 1.4))
+				for i = 0, rows - 1 do
+					local f = (i + 0.5) / rows
+					local at = Vector3.new(0, -size.Y / 2 + f * size.Y, -size.Z / 2 + f * size.Z) + normal * 0.08
+					local shingle = block(
+						model,
+						Vector3.new(size.X + 0.2, length / rows * 0.92, 0.16),
+						cframe * CFrame.fromMatrix(at, Vector3.xAxis, up),
+						p.Color:Lerp(if i % 2 == 0 then rgb(255, 255, 255) else rgb(0, 0, 0), 0.08),
+						p.Material
+					)
+					shingle.Name = "Shingle"
+					shingle.CastShadow = false
+				end
+			end
+		end
+		-- A glowing strip along the front eave.
+		local cframe, size = model:GetBoundingBox()
+		local t = math.max(0.12, size.Y * 0.025)
+		strip(
+			model,
+			Vector3.new(size.X * 0.98, t, t),
+			cframe * CFrame.new(0, -size.Y / 2 + t * 2, -size.Z / 2 + t),
+			glow
+		)
+	elseif slotId == "Chimney" or slotId == "Tower" then
+		-- Embers or a glowing band round the top.
+		local cframe, size = model:GetBoundingBox()
+		local t = math.max(0.1, size.Y * 0.02)
+		strip(model, Vector3.new(size.X * 0.5, t, t), cframe * CFrame.new(0, size.Y * 0.18, -size.Z / 2 - t), glow)
+	end
+end
+
+--------------------------------------------------------------------------------
 -- Public
 --------------------------------------------------------------------------------
 
@@ -6047,6 +6237,7 @@ function HouseModel.slot(slotId: string, partId: string?): Model
 	model.Name = slotId
 	model:SetAttribute("Part", id)
 	PLACEMENTS[slotId](model, look)
+	craftify(model, slotId, look)
 	return model
 end
 
@@ -6103,6 +6294,7 @@ function HouseModel.item(partId: string): Model
 	model:SetAttribute("Part", partId)
 	if part then
 		ITEMS[part.slot](model, lookFor(part.style))
+		craftify(model, part.slot, lookFor(part.style))
 	end
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then
@@ -7800,248 +7992,354 @@ return Parts
       <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">PlantModel</string>
-          <string name="Source"><![CDATA[-- Plants, built from bricks. PlantModel.build(itemId) returns a model standing on its pivot
--- (the middle of a garden bed, about 7 x 7 studs).
+          <string name="Source"><![CDATA[-- Plants in the crafted look (low-poly, smooth, no studs; see Lego): built from blocks and
+-- wedges, some set at angles, in muted greens and bold flower colours with glowing bits.
+-- PlantModel.build(itemId) returns a model standing on its pivot (the middle of a garden
+-- bed, about 7 x 7 studs).
 
 local Bricks = require(script.Parent.Bricks)
 local Items = require(script.Parent.Items)
 
 local PlantModel = {}
 
-local rgb, block, ball, post = Bricks.rgb, Bricks.block, Bricks.ball, Bricks.post
+local rgb, block, wedge, glow, octo = Bricks.rgb, Bricks.block, Bricks.wedge, Bricks.glow, Bricks.octo
 local M = Enum.Material
-local STEM = rgb(70, 165, 70)
-local LEAF = rgb(60, 180, 75)
-local TRUNK = rgb(125, 85, 50)
+local STEM = rgb(70, 150, 70)
+local LEAF = rgb(62, 160, 74)
+local LEAF_DARK = rgb(46, 122, 60)
+local TRUNK = rgb(120, 82, 50)
+local SOIL = rgb(92, 64, 44)
+local GOLD = rgb(255, 200, 60)
 
--- A flower head: `petals` blocks round a centre ball, facing -Z.
-local function flower(m, cf: CFrame, size: number, petal: Color3, middle: Color3, petals: number?)
-	local n = petals or 8
-	for k = 0, n - 1 do
-		local a = k / n * math.pi * 2
-		ball(
+local function cf(x, y, z, rx, ry, rz)
+	return CFrame.new(x, y, z) * CFrame.Angles(math.rad(rx or 0), math.rad(ry or 0), math.rad(rz or 0))
+end
+
+-- A low mound of soil clods.
+local function soil(m, width: number)
+	block(m, Vector3.new(width, 0.3, width), cf(0, 0.15, 0), SOIL)
+	for i = 0, 5 do
+		local a = i / 6 * math.pi * 2
+		block(
 			m,
-			Vector3.new(size * 0.55, size * 0.3, size * 0.15),
-			cf * CFrame.Angles(0, 0, a) * CFrame.new(size * 0.45, 0, 0),
+			Vector3.new(0.7, 0.3, 0.6),
+			cf(math.cos(a) * width * 0.32, 0.35, math.sin(a) * width * 0.32, 0, i * 37, 0),
+			rgb(110, 78, 52)
+		)
+	end
+end
+
+-- A stem from the ground up to `top`, with a leaf on each side.
+local function stem(m, x: number, z: number, top: number, lean: number?)
+	block(m, Vector3.new(0.18, top, 0.18), cf(x, top / 2, z, 0, 0, lean or 0), STEM)
+	for _, side in { -1, 1 } do
+		wedge(m, Vector3.new(0.12, 0.35, 0.9), cf(x + side * 0.4, top * 0.4, z, 0, 90 * side, 35 * side), LEAF)
+	end
+end
+
+-- A flower head facing -Z: `petals` petal blocks round a middle.
+local function flower(m, at: CFrame, size: number, petal: Color3, middle: Color3, petals: number?, glowing: boolean?)
+	local n = petals or 8
+	for i = 0, n - 1 do
+		local a = i / n * math.pi * 2
+		block(
+			m,
+			Vector3.new(size * 0.42, size * 0.24, 0.12),
+			at * CFrame.Angles(0, 0, a) * CFrame.new(size * 0.38, 0, 0),
 			petal
 		)
 	end
-	ball(m, Vector3.new(size * 0.45, size * 0.45, size * 0.25), cf * CFrame.new(0, 0, -0.05), middle)
-end
-
-local function leaves(m, cf: CFrame, size: number)
-	for _, side in { -1, 1 } do
-		ball(
-			m,
-			Vector3.new(size, size * 0.3, size * 0.55),
-			cf * CFrame.new(side * size * 0.45, 0, 0) * CFrame.Angles(0, 0, math.rad(side * 25)),
-			LEAF
-		)
+	if glowing then
+		glow(m, Vector3.new(size * 0.38, size * 0.38, 0.16), at * CFrame.new(0, 0, -0.02), middle)
+	else
+		block(m, Vector3.new(size * 0.38, size * 0.38, 0.16), at * CFrame.new(0, 0, -0.02), middle)
 	end
 end
 
--- A tree of stacked leaf bricks (like the town trees).
-local function brickTree(m, height: number, width: number, colors: { Color3 }, trunk: Color3?)
-	block(m, Vector3.new(width * 0.2, height * 0.45, width * 0.2), CFrame.new(0, height * 0.225, 0), trunk or TRUNK)
-	local y = height * 0.38
-	local layers = #colors
-	for i, color in colors do
-		local w = width * (1 - (i - 1) / (layers + 1))
-		local h = height * 0.62 / layers
+-- A cloud of leafy blocks round `centre` (a tree's crown).
+local function crown(m, centre: Vector3, radius: number, colors, count: number?)
+	local n = count or 9
+	for i = 0, n - 1 do
+		local a = i * 2.4
+		local r = radius * (0.35 + (i % 3) * 0.25)
+		local y = (i % 4 - 1.5) * radius * 0.28
+		local s = radius * (0.8 + (i % 2) * 0.25)
 		block(
 			m,
-			Vector3.new(w, h, w),
-			CFrame.new(0, y + h / 2, 0) * CFrame.Angles(0, if i % 2 == 0 then math.rad(45) else 0, 0),
-			color
+			Vector3.new(s, s * 0.8, s),
+			CFrame.new(centre + Vector3.new(math.cos(a) * r, y, math.sin(a) * r))
+				* CFrame.Angles(0, a, (i % 3 - 1) * 0.15),
+			colors[i % #colors + 1]
 		)
-		y += h
 	end
-	return y
+end
+
+-- A trunk of stacked, slightly twisted blocks.
+local function trunk(m, height: number, width: number, color: Color3?)
+	local n = math.max(2, math.floor(height / 1.2))
+	for i = 0, n - 1 do
+		local w = width * (1 - i * 0.06)
+		block(m, Vector3.new(w, height / n + 0.05, w), cf(0, (i + 0.5) * height / n, 0, 0, i * 14, 0), color or TRUNK)
+	end
 end
 
 local builders = {}
 
 function builders.Daisy(m)
-	for i, x in { -1.6, 0, 1.6 } do
-		local h = 2.4 + (i % 2) * 0.8
-		post(m, h, 0.25, CFrame.new(x, 0, (i % 2) * 0.8), STEM)
-		flower(m, CFrame.new(x, h, (i % 2) * 0.8), 1.4, rgb(255, 255, 255), rgb(255, 210, 40))
-		leaves(m, CFrame.new(x, h * 0.4, (i % 2) * 0.8), 0.9)
+	soil(m, 3.2)
+	for i, spot in { { -0.7, 2.2, 0.1, -8 }, { 0.6, 2.7, -0.2, 6 }, { 0.1, 1.8, 0.7, 0 } } do
+		stem(m, spot[1], spot[3], spot[2], spot[4])
+		flower(
+			m,
+			cf(spot[1] - spot[4] * 0.02, spot[2], spot[3], -20, i * 15, 0),
+			1.2,
+			rgb(245, 245, 240),
+			rgb(255, 210, 50),
+			8,
+			i == 2
+		)
 	end
 end
 
 function builders.Tulip(m)
-	for i, x in { -1.8, 0, 1.8 } do
-		local h = 3 + (i % 2) * 0.7
-		local color = ({ rgb(255, 70, 110), rgb(255, 200, 40), rgb(190, 90, 255) })[i]
-		post(m, h, 0.3, CFrame.new(x, 0, 0), STEM)
-		ball(m, Vector3.new(1.2, 1.5, 1.2), CFrame.new(x, h + 0.6, 0), color)
-		for k = 0, 2 do
-			local a = k / 3 * math.pi * 2
-			ball(m, Vector3.new(0.5, 1, 0.5), CFrame.new(x + math.cos(a) * 0.4, h + 1.2, math.sin(a) * 0.4), color)
+	soil(m, 3.2)
+	local colors = { rgb(235, 60, 80), rgb(255, 200, 50), rgb(240, 110, 180) }
+	for i, spot in { { -0.8, 2.4, 0 }, { 0.15, 2.9, -0.3 }, { 0.9, 2.2, 0.4 } } do
+		stem(m, spot[1], spot[3], spot[2])
+		for k = 0, 3 do
+			local a = k * 90 + 45
+			wedge(
+				m,
+				Vector3.new(0.12, 0.85, 0.5),
+				cf(spot[1], spot[2] + 0.4, spot[3], 0, a, 0)
+					* CFrame.new(0, 0, 0.18)
+					* CFrame.Angles(math.rad(-10), 0, 0),
+				colors[i]
+			)
 		end
-		leaves(m, CFrame.new(x, 0.9, 0), 1.1)
+		glow(m, Vector3.new(0.22, 0.22, 0.22), cf(spot[1], spot[2] + 0.35, spot[3]), rgb(255, 230, 120))
 	end
 end
 
 function builders.Sunflower(m)
-	post(m, 7, 0.5, CFrame.new(0, 0, 0), STEM)
-	leaves(m, CFrame.new(0, 2.5, 0), 1.6)
-	leaves(m, CFrame.new(0, 4.5, 0) * CFrame.Angles(0, math.pi / 2, 0), 1.4)
-	local head = CFrame.new(0, 7.4, -0.3) * CFrame.Angles(math.rad(-15), 0, 0)
-	flower(m, head, 3.6, rgb(255, 210, 30), rgb(120, 70, 30), 12)
-	-- A face, for fun.
-	for _, x in { -0.35, 0.35 } do
-		ball(m, 0.3, head * CFrame.new(x, 0.25, -0.5), rgb(30, 25, 20))
+	soil(m, 3.4)
+	block(m, Vector3.new(0.35, 5.2, 0.35), cf(0, 2.6, 0), STEM)
+	for i, y in { 1.4, 2.6, 3.6 } do
+		local side = if i % 2 == 0 then -1 else 1
+		wedge(m, Vector3.new(0.14, 0.6, 1.6), cf(side * 0.8, y, 0, 0, 90 * side, 30 * side), LEAF)
+	end
+	local head = cf(0, 5.7, -0.2, -15, 0, 0)
+	for i = 0, 13 do
+		local a = i / 14 * math.pi * 2
+		wedge(
+			m,
+			Vector3.new(0.14, 0.9, 0.45),
+			head * CFrame.Angles(0, 0, a) * CFrame.new(0, 1.2, 0) * CFrame.Angles(0, math.pi / 2, 0),
+			rgb(255, 200, 40)
+		)
+	end
+	block(m, Vector3.new(1.6, 1.6, 0.3), head, rgb(110, 70, 40))
+	for i = 0, 4 do
+		glow(
+			m,
+			Vector3.new(0.14, 0.14, 0.06),
+			head * CFrame.new((i - 2) * 0.28, (i % 2 - 0.5) * 0.4, -0.17),
+			rgb(255, 170, 40)
+		)
 	end
 end
 
 function builders.RoseBush(m)
-	for k = 0, 4 do
-		local a = k / 5 * math.pi * 2
-		ball(m, 2.6, CFrame.new(math.cos(a) * 1.4, 1.4 + (k % 2) * 0.5, math.sin(a) * 1.4), LEAF)
+	soil(m, 4)
+	crown(m, Vector3.new(0, 1.3, 0), 1.6, { LEAF, LEAF_DARK }, 11)
+	for i, spot in
+		{ { -0.9, 2.2, -1.0 }, { 0.8, 2.5, -0.8 }, { 0.1, 2.9, -0.2 }, { -0.4, 1.7, -1.4 }, { 1.2, 1.7, -1.1 } }
+	do
+		for k = 0, 2 do
+			block(
+				m,
+				Vector3.new(0.6 - k * 0.15, 0.25, 0.6 - k * 0.15),
+				cf(spot[1], spot[2] + k * 0.18, spot[3], 0, i * 20 + k * 30, 0),
+				rgb(210, 30, 60)
+			)
+		end
+		glow(m, Vector3.new(0.12, 0.12, 0.12), cf(spot[1], spot[2] + 0.55, spot[3]), rgb(255, 120, 150))
 	end
-	ball(m, 2.8, CFrame.new(0, 2.6, 0), rgb(50, 160, 65))
-	for k = 0, 8 do
-		local a = k / 9 * math.pi * 2
-		ball(m, 0.8, CFrame.new(math.cos(a) * 1.9, 2 + (k % 3) * 0.6, math.sin(a) * 1.9), rgb(230, 30, 60))
-	end
-	ball(m, 0.9, CFrame.new(0, 4, 0), rgb(255, 60, 90))
 end
 
 function builders.Cactus(m)
-	local green = rgb(60, 175, 80)
-	block(m, Vector3.new(1.8, 7, 1.8), CFrame.new(0, 3.5, 0), green)
+	-- A saguaro in a clay pot, with spines and a glowing pink flower.
+	octo(m, 2.6, 1.2, CFrame.new(), rgb(200, 110, 70))
+	octo(m, 2.9, 0.3, CFrame.new(0, 1.2, 0), rgb(220, 128, 84))
+	local green = rgb(70, 145, 85)
+	block(m, Vector3.new(1.1, 4.2, 1.1), cf(0, 3.3, 0), green)
 	for _, side in { -1, 1 } do
-		block(m, Vector3.new(1.6, 1.2, 1.2), CFrame.new(side * 1.5, 3 + (side + 1) * 0.6, 0), green)
-		block(m, Vector3.new(1.2, 2.6, 1.2), CFrame.new(side * 2, 4.4 + (side + 1) * 0.6, 0), green)
+		local y = if side < 0 then 3.0 else 3.6
+		block(m, Vector3.new(0.9, 0.7, 0.8), cf(side * 0.9, y, 0), green)
+		block(m, Vector3.new(0.7, 1.5, 0.7), cf(side * 1.25, y + 0.9, 0), green)
 	end
-	ball(m, 1.1, CFrame.new(0, 7.3, 0), rgb(255, 110, 170))
-	-- A sandy pot.
-	block(m, Vector3.new(3.4, 1, 3.4), CFrame.new(0, 0.5, 0), rgb(220, 120, 70))
+	for i = 0, 9 do
+		block(m, Vector3.new(0.04, 0.04, 0.3), cf(((i % 3) - 1) * 0.35, 1.8 + i * 0.4, -0.65), rgb(245, 240, 220))
+	end
+	for k = 0, 4 do
+		local a = k / 5 * math.pi * 2
+		block(
+			m,
+			Vector3.new(0.3, 0.15, 0.3),
+			cf(math.cos(a) * 0.25, 5.5, math.sin(a) * 0.25, 0, k * 72, 20),
+			rgb(255, 110, 170)
+		)
+	end
+	glow(m, Vector3.new(0.22, 0.22, 0.22), cf(0, 5.6, 0), rgb(255, 200, 230))
 end
 
 function builders.AppleTree(m)
-	local top = brickTree(m, 10, 6, { rgb(60, 170, 70), rgb(75, 185, 75), rgb(90, 200, 85) })
-	for k = 0, 7 do
-		local a = k / 8 * math.pi * 2
-		ball(m, 0.8, CFrame.new(math.cos(a) * 2.6, 6 + (k % 3) * 0.9, math.sin(a) * 2.6), rgb(230, 40, 40))
+	trunk(m, 3.6, 0.9)
+	crown(m, Vector3.new(0, 4.8, 0), 2.0, { LEAF, LEAF_DARK, rgb(80, 170, 80) }, 12)
+	for i, spot in
+		{ { -1.2, 4.2, -1.4 }, { 1.0, 5.0, -1.5 }, { 0.2, 3.9, -1.9 }, { -1.6, 5.4, -0.6 }, { 1.7, 4.3, -0.4 } }
+	do
+		block(m, Vector3.new(0.55, 0.5, 0.55), cf(spot[1], spot[2], spot[3], 0, i * 25, 0), rgb(220, 40, 50))
+		block(m, Vector3.new(0.1, 0.25, 0.1), cf(spot[1], spot[2] + 0.35, spot[3]), TRUNK)
 	end
-	ball(m, 0.7, CFrame.new(0, top + 0.3, 0), rgb(230, 40, 40))
 end
 
 function builders.Pumpkin(m)
-	local orange = rgb(255, 140, 30)
-	for k = 0, 5 do
-		local a = k / 6 * math.pi * 2
-		ball(
+	-- A giant pumpkin of ribbed slabs with a carved, glowing jack-o'-lantern face.
+	local orange, deep = rgb(240, 130, 40), rgb(205, 100, 28)
+	for i = 0, 7 do
+		local a = i * 45
+		block(
 			m,
-			Vector3.new(2.6, 3.6, 2.6),
-			CFrame.new(math.cos(a) * 1.4, 1.8, math.sin(a) * 1.4),
-			orange:Lerp(rgb(230, 100, 20), (k % 2) * 0.4)
+			Vector3.new(1.6, 2.6, 0.9),
+			cf(0, 1.4, 0, 0, a, 0) * CFrame.new(0, 0, 1.4),
+			if i % 2 == 0 then orange else deep
 		)
 	end
-	ball(m, Vector3.new(3.6, 3.8, 3.6), CFrame.new(0, 1.9, 0), orange)
-	post(m, 1.2, 0.6, CFrame.new(0, 3.6, 0), rgb(90, 140, 50))
-	leaves(m, CFrame.new(0, 0.4, 2.4), 2)
+	octo(m, 3.2, 2.4, CFrame.new(0, 0.2, 0), orange)
+	block(m, Vector3.new(0.4, 0.9, 0.4), cf(0.1, 3.0, 0.1, 0, 0, 12), rgb(90, 120, 50))
+	wedge(m, Vector3.new(0.1, 0.5, 1.4), cf(0.8, 2.7, 0.6, 0, 40, 30), LEAF)
+	-- The face.
+	for _, side in { -1, 1 } do
+		wedge(m, Vector3.new(0.6, 0.55, 0.1), cf(side * 0.6, 1.9, -1.86), rgb(255, 200, 60), M.Neon)
+	end
+	glow(m, Vector3.new(1.4, 0.32, 0.1), cf(0, 1.05, -1.86), rgb(255, 200, 60))
+	for i = 0, 2 do
+		block(m, Vector3.new(0.2, 0.2, 0.12), cf(-0.4 + i * 0.4, 1.25, -1.88), deep)
+	end
 end
 
 function builders.Blossom(m)
-	local pinks = { rgb(255, 160, 200), rgb(255, 185, 215), rgb(255, 210, 230) }
-	local top = brickTree(m, 10, 6.5, pinks, rgb(100, 60, 50))
-	for k = 0, 9 do
-		local a = k * 2.3
-		ball(m, 0.5, CFrame.new(math.cos(a) * 3, 3 + (k % 4) * 1.3, math.sin(a) * 3), rgb(255, 230, 240))
+	trunk(m, 3.4, 0.8, rgb(100, 66, 50))
+	block(m, Vector3.new(0.4, 1.6, 0.4), cf(0.7, 3.6, 0, 0, 0, -35), rgb(100, 66, 50))
+	crown(m, Vector3.new(0, 4.6, 0), 2.1, { rgb(255, 170, 205), rgb(250, 140, 190), rgb(255, 205, 225) }, 12)
+	for i = 0, 7 do
+		local a = i * 0.8
+		block(
+			m,
+			Vector3.new(0.18, 0.05, 0.18),
+			cf(math.cos(a) * (1.5 + i * 0.2), 0.5 + (i % 4) * 0.8, math.sin(a) * 1.8, 20, i * 40, 30),
+			rgb(255, 190, 215)
+		)
 	end
-	ball(m, 0.8, CFrame.new(0, top + 0.3, 0), rgb(255, 120, 180))
+	for i = 0, 3 do
+		glow(
+			m,
+			Vector3.new(0.2, 0.2, 0.2),
+			cf(math.cos(i * 1.6) * 1.6, 5.2 + (i % 2) * 0.6, math.sin(i * 1.6) * 1.6),
+			rgb(255, 230, 240)
+		)
+	end
 end
 
 function builders.CrystalFlower(m)
-	post(m, 4.6, 0.4, CFrame.new(0, 0, 0), rgb(90, 200, 190))
-	leaves(m, CFrame.new(0, 1.6, 0), 1.2)
-	for k = 0, 5 do
-		local a = k / 6 * math.pi * 2
-		block(
+	-- Crystal shards round a glowing flower on a crystal stem.
+	octo(m, 2.8, 0.4, CFrame.new(), rgb(90, 80, 120))
+	for i = 0, 6 do
+		local a = i / 7 * math.pi * 2
+		local h = 0.9 + (i % 3) * 0.45
+		local p = block(
 			m,
-			Vector3.new(0.7, 2.6, 0.7),
-			CFrame.new(0, 5.2, 0)
-				* CFrame.Angles(math.rad(35) * math.cos(a), 0, math.rad(35) * math.sin(a))
-				* CFrame.new(0, 1, 0),
-			if k % 2 == 0 then rgb(130, 240, 255) else rgb(200, 140, 255),
-			M.Neon
+			Vector3.new(0.4, h, 0.4),
+			cf(math.cos(a) * 1.0, 0.4 + h / 2, math.sin(a) * 1.0, math.sin(a) * 20, i * 30, -math.cos(a) * 20),
+			rgb(180, 140, 255),
+			M.Glass
+		)
+		p.Transparency = 0.2
+	end
+	block(m, Vector3.new(0.22, 3.2, 0.22), cf(0, 2.0, 0), rgb(150, 220, 255), M.Glass)
+	local head = cf(0, 3.8, -0.1, -15, 0, 0)
+	for i = 0, 5 do
+		local a = i / 6 * math.pi * 2
+		wedge(
+			m,
+			Vector3.new(0.12, 1.0, 0.5),
+			head * CFrame.Angles(0, 0, a) * CFrame.new(0, 0.6, 0) * CFrame.Angles(0, math.pi / 2, 0),
+			rgb(150, 220, 255),
+			M.Glass
 		)
 	end
-	ball(m, 1, CFrame.new(0, 5.2, 0), rgb(255, 255, 255), M.Neon)
+	glow(m, Vector3.new(0.6, 0.6, 0.6), head * CFrame.Angles(0, 0, math.pi / 4), rgb(200, 120, 255))
 end
 
 function builders.GlowShroom(m)
-	post(m, 3.6, 1.4, CFrame.new(0, 0, 0), rgb(245, 235, 215))
-	ball(m, Vector3.new(5.6, 2.8, 5.6), CFrame.new(0, 4, 0), rgb(150, 60, 220))
-	for k = 0, 6 do
-		local a = k / 7 * math.pi * 2
-		ball(m, 0.8, CFrame.new(math.cos(a) * 1.8, 4.6 + (k % 2) * 0.3, math.sin(a) * 1.8), rgb(120, 255, 200), M.Neon)
-	end
-	ball(m, 0.9, CFrame.new(0, 5.4, 0), rgb(120, 255, 200), M.Neon)
-	-- Two little ones.
-	for _, x in { -2.3, 2.2 } do
-		post(m, 1.2, 0.5, CFrame.new(x, 0, -1.4), rgb(245, 235, 215))
-		ball(m, Vector3.new(1.6, 0.9, 1.6), CFrame.new(x, 1.4, -1.4), rgb(150, 60, 220))
+	-- A cluster of mushrooms with layered purple caps and glowing spots.
+	soil(m, 3.6)
+	for i, spec in { { 0, 0, 2.6, 2.2 }, { -1.2, 0.6, 1.6, 1.4 }, { 1.1, -0.5, 1.2, 1.1 } } do
+		local x, z, h, s = spec[1], spec[2], spec[3], spec[4]
+		block(m, Vector3.new(s * 0.32, h, s * 0.32), cf(x, h / 2, z), rgb(235, 230, 215))
+		octo(m, s, s * 0.3, CFrame.new(x, h, z), rgb(130, 70, 200))
+		octo(m, s * 0.7, s * 0.25, CFrame.new(x, h + s * 0.3, z), rgb(110, 55, 180))
+		for k = 0, 3 do
+			local a = k / 4 * math.pi * 2 + i
+			glow(
+				m,
+				Vector3.new(0.18, 0.08, 0.18),
+				cf(x + math.cos(a) * s * 0.3, h + s * 0.31, z + math.sin(a) * s * 0.3),
+				rgb(110, 255, 230)
+			)
+		end
+		glow(m, Vector3.new(0.2, 0.06, 0.2), cf(x, h + s * 0.56, z), rgb(110, 255, 230))
 	end
 end
 
 function builders.MoneyTree(m)
-	local greens = { rgb(70, 180, 80), rgb(90, 200, 90), rgb(110, 215, 100) }
-	brickTree(m, 11, 6.5, greens)
-	-- Bills and gold coins growing on it.
-	for k = 0, 9 do
-		local a = k / 10 * math.pi * 2
+	-- A tree in a gold pot with a crown of green bills and gold coins.
+	octo(m, 2.6, 1.0, CFrame.new(), GOLD, M.Metal)
+	trunk(m, 3.4, 0.7)
+	crown(m, Vector3.new(0, 4.6, 0), 1.9, { rgb(80, 170, 90), rgb(60, 140, 75) }, 10)
+	for i = 0, 9 do
+		local a = i * 0.63
+		local y = 3.8 + (i % 3) * 0.8
 		block(
 			m,
-			Vector3.new(1.2, 0.6, 0.1),
-			CFrame.new(math.cos(a) * 3.1, 6 + (k % 3) * 1.1, math.sin(a) * 3.1) * CFrame.Angles(0, -a, math.rad(15)),
-			rgb(120, 220, 110)
+			Vector3.new(0.8, 0.04, 0.4),
+			cf(math.cos(a) * 1.9, y, math.sin(a) * 1.9, 0, math.deg(a), 25),
+			rgb(110, 200, 100)
 		)
+		glow(m, Vector3.new(0.12, 0.05, 0.12), cf(math.cos(a) * 1.9, y + 0.03, math.sin(a) * 1.9), rgb(200, 255, 180))
 	end
-	for k = 0, 5 do
-		local a = k / 6 * math.pi * 2 + 0.3
-		local coin = Bricks.rod(
+	for i = 0, 5 do
+		local a = i * 1.05 + 0.3
+		block(
 			m,
-			0.2,
-			0.9,
-			CFrame.new(math.cos(a) * 2.4, 8.5 + (k % 2), math.sin(a) * 2.4) * CFrame.Angles(0, -a, 0),
-			rgb(255, 205, 60),
-			M.Foil
-		)
-		coin.Name = "Coin"
-	end
-	-- A pile of gold at the bottom.
-	for k = 0, 3 do
-		Bricks.rod(
-			m,
-			0.25,
-			1.1,
-			CFrame.new(-1.6 + k * 0.4, 0.15 + k * 0.25, -2) * CFrame.Angles(0, 0, math.pi / 2),
-			rgb(255, 205, 60),
-			M.Foil
+			Vector3.new(0.4, 0.4, 0.08),
+			cf(math.cos(a) * 1.5, 4.0 + (i % 2) * 1.2, math.sin(a) * 1.5, 0, math.deg(a), 0),
+			GOLD,
+			M.Metal
 		)
 	end
 end
 
 function builders.RainbowTree(m)
-	block(m, Vector3.new(1.4, 5, 1.4), CFrame.new(0, 2.5, 0), rgb(255, 255, 255))
-	local y = 4.4
+	-- A tree whose crown is layered in every colour, with a glowing star on top.
+	trunk(m, 3.0, 0.8, rgb(150, 110, 200))
 	for i, color in Bricks.RAINBOW do
-		local w = 7.2 - i * 0.9
-		block(
-			m,
-			Vector3.new(w, 1.1, w),
-			CFrame.new(0, y + 0.55, 0) * CFrame.Angles(0, math.rad(i * 15), 0),
-			color,
-			if i % 2 == 0 then M.Neon else nil
-		)
-		y += 1.1
+		local s = 3.6 - i * 0.45
+		octo(m, s, 0.55, CFrame.new(0, 2.8 + i * 0.55, 0) * CFrame.Angles(0, math.rad(i * 12), 0), color)
 	end
-	ball(m, 1.2, CFrame.new(0, y + 0.5, 0), rgb(255, 255, 220), M.Neon)
+	glow(m, Vector3.new(0.7, 0.7, 0.2), cf(0, 6.9, 0, 0, 0, 45), rgb(255, 245, 200))
+	glow(m, Vector3.new(0.7, 0.7, 0.2), cf(0, 6.9, 0, 0, 90, 45), rgb(255, 245, 200))
 end
 
 function PlantModel.build(itemId: string): Model
@@ -8049,6 +8347,7 @@ function PlantModel.build(itemId: string): Model
 	local model = Instance.new("Model")
 	model.Name = itemId
 	model:SetAttribute("Item", itemId)
+	Bricks.crafted(model)
 	local builder = item and builders[item.model]
 	if builder then
 		builder(model)
@@ -8295,271 +8594,360 @@ return Seasons
       <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">YardModel</string>
-          <string name="Source"><![CDATA[-- Yard items, built from bricks. YardModel.build(itemId) returns a model standing on its
--- pivot (the middle of its footprint, front facing -Z) that fits a yard spot (about 11 x 11
--- studs).
+          <string name="Source"><![CDATA[-- Yard items in the crafted look (low-poly, smooth, no studs; see Lego): built from blocks
+-- and wedges, some set at angles, in muted main colours with glowing bits and gold trims.
+-- YardModel.build(itemId) returns a model standing on its pivot (the middle of its
+-- footprint, front facing -Z) that fits a yard spot (about 11 x 11 studs).
 
 local Bricks = require(script.Parent.Bricks)
 local Items = require(script.Parent.Items)
 
 local YardModel = {}
 
-local rgb, block, ball, post, rod, cone, wedge =
-	Bricks.rgb, Bricks.block, Bricks.ball, Bricks.post, Bricks.rod, Bricks.cone, Bricks.wedge
+local rgb, block, post, wedge, glow, octo, ring =
+	Bricks.rgb, Bricks.block, Bricks.post, Bricks.wedge, Bricks.glow, Bricks.octo, Bricks.ring
 local M = Enum.Material
-local WOOD = rgb(170, 115, 65)
-local DARK = rgb(45, 45, 55)
-local WATER = rgb(70, 190, 255)
+local WOOD = rgb(160, 108, 66)
+local WOOD_DARK = rgb(116, 76, 46)
+local DARK = rgb(44, 44, 54)
+local STONE = rgb(150, 150, 160)
+local WATER = rgb(60, 170, 235)
+local GOLD = rgb(255, 200, 60)
+
+local function cf(x, y, z, rx, ry, rz)
+	return CFrame.new(x, y, z) * CFrame.Angles(math.rad(rx or 0), math.rad(ry or 0), math.rad(rz or 0))
+end
+
+-- Water: a see-through slab with glowing ripple lines on top.
+local function water(m, size: Vector3, at: CFrame, ripples: number?)
+	local p = block(m, size, at, WATER, M.Glass)
+	p.Transparency = 0.25
+	for i = 1, ripples or 3 do
+		local z = (i / ((ripples or 3) + 1) - 0.5) * size.Z
+		glow(
+			m,
+			Vector3.new(size.X * 0.5, 0.05, 0.08),
+			at * CFrame.new((i % 2 - 0.5) * size.X * 0.2, size.Y / 2, z),
+			rgb(170, 235, 255)
+		)
+	end
+end
 
 local builders = {}
 
 function builders.Gnome(m)
-	post(m, 0.6, 3, CFrame.new(0, 0, 0), rgb(120, 200, 90)) -- grass tuft base
-	cone(m, 2.4, 2.2, CFrame.new(0, 0.6, 0), rgb(60, 120, 230), nil, 4) -- body
-	ball(m, 1.6, CFrame.new(0, 3.2, 0), rgb(255, 205, 170)) -- face
-	ball(m, Vector3.new(1.5, 1.2, 1), CFrame.new(0, 2.7, -0.45), rgb(255, 255, 255)) -- beard
-	ball(m, 0.45, CFrame.new(0, 3.25, -0.8), rgb(255, 150, 140)) -- nose
-	cone(m, 2.2, 1.7, CFrame.new(0, 3.6, 0), rgb(230, 50, 60), nil, 5) -- hat
+	-- A garden gnome on a stone plinth, holding a glowing lantern.
+	octo(m, 3.2, 0.5, CFrame.new(), STONE)
+	octo(m, 2.6, 0.3, CFrame.new(0, 0.5, 0), rgb(120, 190, 90))
 	for _, x in { -0.35, 0.35 } do
-		ball(m, 0.25, CFrame.new(x, 3.5, -0.72), rgb(30, 30, 40))
+		block(m, Vector3.new(0.55, 0.4, 0.8), cf(x, 1.0, -0.1), DARK)
 	end
+	block(m, Vector3.new(1.6, 1.1, 1.3), cf(0, 1.75, 0), rgb(60, 110, 210))
+	block(m, Vector3.new(1.3, 0.8, 1.1), cf(0, 2.65, 0), rgb(70, 125, 225))
+	block(m, Vector3.new(1.65, 0.22, 1.35), cf(0, 2.2, 0), rgb(70, 50, 40))
+	block(m, Vector3.new(0.35, 0.3, 0.1), cf(0, 2.2, -0.7), GOLD, M.Metal)
+	block(m, Vector3.new(1.2, 1.0, 1.0), cf(0, 3.5, 0), rgb(245, 205, 175))
+	wedge(m, Vector3.new(1.3, 1.1, 0.5), cf(0, 2.75, -0.62, 0, 180, 0), rgb(240, 240, 235))
+	block(m, Vector3.new(1.25, 0.35, 0.45), cf(0, 3.3, -0.55), rgb(240, 240, 235))
+	block(m, Vector3.new(0.32, 0.3, 0.3), cf(0, 3.55, -0.62), rgb(240, 140, 130))
+	for _, x in { -0.28, 0.28 } do
+		glow(m, Vector3.new(0.16, 0.16, 0.06), cf(x, 3.75, -0.52), rgb(120, 220, 255))
+	end
+	for i, s in { 1.35, 1.05, 0.75, 0.45 } do
+		block(m, Vector3.new(s, 0.45, s), cf(0.05 * i, 4.15 + i * 0.36, 0.04 * i, 0, 15 * i, -5 * i), rgb(220, 50, 60))
+	end
+	glow(m, Vector3.new(0.22, 0.22, 0.22), cf(0.25, 5.75, 0.2), GOLD)
+	-- The lantern.
+	block(m, Vector3.new(0.3, 0.9, 0.3), cf(0.95, 2.1, -0.4, 0, 0, -20), rgb(70, 125, 225))
+	block(m, Vector3.new(0.5, 0.6, 0.5), cf(1.2, 1.5, -0.55), DARK)
+	glow(m, Vector3.new(0.36, 0.42, 0.36), cf(1.2, 1.5, -0.55), rgb(255, 210, 90))
 end
 
 function builders.Lemonade(m)
-	block(m, Vector3.new(6, 3.2, 3), CFrame.new(0, 1.6, 0), WOOD)
-	block(m, Vector3.new(6.3, 0.4, 3.3), CFrame.new(0, 3.3, 0), rgb(255, 230, 90))
-	for _, x in { -2.8, 2.8 } do
-		block(m, Vector3.new(0.4, 4, 0.4), CFrame.new(x, 5.2, 1.2), WOOD)
-	end
-	-- Striped canopy.
-	for i = 0, 5 do
+	-- A wooden lemonade stand with a striped awning, lemons and a glowing jug.
+	block(m, Vector3.new(6, 0.3, 3), cf(0, 0.15, 0), WOOD_DARK)
+	for i = 0, 3 do
 		block(
 			m,
-			Vector3.new(1.1, 0.3, 3.4),
-			CFrame.new(-2.75 + i * 1.1, 7.3, 0.5) * CFrame.Angles(math.rad(15), 0, 0),
-			if i % 2 == 0 then rgb(255, 230, 60) else rgb(255, 255, 255)
+			Vector3.new(6.2, 0.5, 0.25),
+			cf(0, 0.6 + i * 0.55, -1.4, 0, 0, (i % 2 - 0.5) * 2),
+			if i % 2 == 0 then WOOD else WOOD_DARK
 		)
 	end
-	post(m, 1.4, 0.9, CFrame.new(-1.6, 3.5, -0.5), rgb(255, 235, 120), M.Glass)
-	for i = 0, 2 do
-		post(m, 0.7, 0.45, CFrame.new(0.2 + i * 0.7, 3.5, -0.6), rgb(255, 240, 150), M.Glass)
+	block(m, Vector3.new(6.4, 0.25, 3.2), cf(0, 2.75, 0), WOOD)
+	for _, x in { -2.9, 2.9 } do
+		block(m, Vector3.new(0.35, 5.2, 0.35), cf(x, 2.6, 1.2), WOOD_DARK)
+		block(m, Vector3.new(0.35, 2.8, 0.35), cf(x, 1.4, -1.4), WOOD_DARK)
 	end
-	block(m, Vector3.new(4, 1.2, 0.2), CFrame.new(0, 1.8, -1.6), rgb(255, 255, 255))
-	block(m, Vector3.new(3.4, 0.5, 0.25), CFrame.new(0, 1.8, -1.65), rgb(255, 200, 40))
+	for i = 0, 7 do
+		wedge(
+			m,
+			Vector3.new(0.8, 0.9, 2.2),
+			cf(-2.8 + i * 0.8, 5.3, -0.2, 0, 180, 0),
+			if i % 2 == 0 then rgb(255, 215, 60) else rgb(245, 245, 240)
+		)
+	end
+	glow(m, Vector3.new(6.4, 0.08, 0.1), cf(0, 4.88, -1.32), rgb(255, 230, 90))
+	-- A sign board, lemons and the jug.
+	block(m, Vector3.new(3.4, 0.9, 0.15), cf(0, 1.45, -1.62), rgb(255, 230, 120))
+	glow(m, Vector3.new(3.0, 0.1, 0.06), cf(0, 1.45, -1.72), rgb(255, 190, 40))
+	for i, spot in { { -2, 0.3 }, { -1.5, -0.4 }, { 1.8, 0.2 } } do
+		block(m, Vector3.new(0.5, 0.45, 0.5), cf(spot[1], 3.1, spot[2], 0, i * 30, 10), rgb(255, 220, 50))
+	end
+	block(m, Vector3.new(0.9, 1.1, 0.9), cf(0.4, 3.45, 0), rgb(220, 240, 255), M.Glass)
+	glow(m, Vector3.new(0.75, 0.7, 0.75), cf(0.4, 3.3, 0), rgb(255, 235, 90))
 end
 
 function builders.Grill(m)
-	block(m, Vector3.new(5, 2.4, 2.6), CFrame.new(0, 2.6, 0), rgb(200, 40, 50))
-	block(m, Vector3.new(5.2, 0.5, 2.8), CFrame.new(0, 4, 0), DARK)
-	for i = 0, 4 do
-		block(m, Vector3.new(0.15, 0.2, 2.6), CFrame.new(-2 + i, 4.3, 0), rgb(150, 150, 160), M.Metal)
+	-- A kettle grill with the lid up, glowing coals and sausages, and a side tray.
+	for _, a in { 0, 120, 240 } do
+		block(m, Vector3.new(0.25, 2.2, 0.25), CFrame.Angles(0, math.rad(a), 0) * cf(0, 1.0, 0.9, 12, 0, 0), DARK)
 	end
-	for i, food in { rgb(140, 70, 40), rgb(230, 120, 80), rgb(140, 70, 40) } do
-		rod(m, 1.4, 0.45, CFrame.new(-1.5 + i, 4.6, 0) * CFrame.Angles(0, math.pi / 2, 0), food)
+	octo(m, 3.0, 0.9, CFrame.new(0, 1.9, 0), rgb(190, 40, 45))
+	octo(m, 2.4, 0.3, CFrame.new(0, 1.6, 0), rgb(150, 30, 36))
+	glow(m, Vector3.new(2.2, 0.12, 2.2), cf(0, 2.72, 0), rgb(255, 120, 30))
+	for i = -3, 3 do
+		block(m, Vector3.new(2.5, 0.06, 0.08), cf(0, 2.86, i * 0.35), rgb(70, 70, 80), M.Metal)
 	end
-	for _, x in { -2.2, 2.2 } do
-		block(m, Vector3.new(0.4, 1.4, 0.4), CFrame.new(x, 0.7, -1), DARK)
-		local wheel = rod(m, 0.4, 1, CFrame.new(x, 0.5, 1), DARK)
-		wheel.CFrame = CFrame.new(x, 0.5, 1)
+	for i, x in { -0.6, 0, 0.6 } do
+		block(m, Vector3.new(0.3, 0.3, 1.2), cf(x, 3.0, 0, 0, i * 10, 0), rgb(170, 70, 50))
 	end
-	block(m, Vector3.new(1.2, 0.2, 2.6), CFrame.new(3.1, 3.6, 0), WOOD) -- side shelf
-	ball(m, 0.8, CFrame.new(-0.5, 5.8, 0), rgb(220, 220, 225))
-	ball(m, 1, CFrame.new(0.1, 6.6, 0), rgb(235, 235, 240))
+	-- The lid, tipped up behind.
+	block(m, Vector3.new(2.9, 0.4, 2.9), cf(0, 3.6, 1.6, -65, 0, 0), rgb(190, 40, 45))
+	block(m, Vector3.new(0.8, 0.2, 0.2), cf(0, 4.5, 1.3, -65, 0, 0), DARK)
+	block(m, Vector3.new(1.4, 0.15, 1.4), cf(2.2, 2.4, 0), WOOD)
+	block(m, Vector3.new(0.15, 0.6, 0.15), cf(2.2, 2.1, 0.5), DARK)
 end
 
 function builders.Swing(m)
-	local red = rgb(230, 60, 60)
-	for _, x in { -4.5, 4.5 } do
-		for _, z in { -1.6, 1.6 } do
-			block(
-				m,
-				Vector3.new(0.6, 7.6, 0.6),
-				CFrame.new(x, 3.6, z * 0.7) * CFrame.Angles(math.rad(z * 8), 0, 0),
-				red
-			)
+	-- A wooden swing set: A-frame legs, a top bar with a glowing strip, two swings.
+	for _, x in { -3.3, 3.3 } do
+		for _, z in { -1, 1 } do
+			block(m, Vector3.new(0.4, 5.6, 0.4), cf(x, 2.7, z * 0.85, z * -17, 0, 0), WOOD)
 		end
+		block(m, Vector3.new(0.3, 0.3, 2.2), cf(x, 1.4, 0), WOOD_DARK)
 	end
-	block(m, Vector3.new(9.8, 0.7, 0.7), CFrame.new(0, 7.3, 0), rgb(60, 140, 255))
-	for i, x in { -2, 2 } do
-		for _, rx in { -0.9, 0.9 } do
-			block(m, Vector3.new(0.12, 4.6, 0.12), CFrame.new(x + rx, 4.9, 0), rgb(80, 80, 90))
+	block(m, Vector3.new(7.2, 0.45, 0.45), cf(0, 5.4, 0), WOOD_DARK)
+	glow(m, Vector3.new(6.6, 0.08, 0.08), cf(0, 5.66, 0), rgb(255, 200, 60))
+	for i, x in { -1.5, 1.5 } do
+		for _, dx in { -0.45, 0.45 } do
+			block(m, Vector3.new(0.07, 3.8, 0.07), cf(x + dx, 3.4, 0), rgb(90, 90, 100), M.Metal)
 		end
-		block(
-			m,
-			Vector3.new(2.2, 0.3, 1),
-			CFrame.new(x, 2.5, 0),
-			if i == 1 then rgb(255, 210, 50) else rgb(80, 210, 120)
-		)
+		block(m, Vector3.new(1.2, 0.18, 0.6), cf(x, 1.5, 0), if i == 1 then rgb(220, 60, 60) else rgb(60, 140, 230))
 	end
-	-- A little slide on the side.
-	wedge(m, Vector3.new(1.8, 3.4, 4.6), CFrame.new(6.6, 1.7, -1.5), rgb(255, 210, 50))
 end
 
 function builders.Trampoline(m)
-	for k = 0, 5 do
-		local a = k / 6 * math.pi * 2
-		block(m, Vector3.new(0.5, 1.6, 0.5), CFrame.new(math.cos(a) * 4, 0.8, math.sin(a) * 4), DARK)
-		block(m, Vector3.new(0.3, 4.5, 0.3), CFrame.new(math.cos(a) * 4.6, 3.6, math.sin(a) * 4.6), rgb(60, 140, 255))
+	-- A round trampoline: a black mat on a padded blue rim with a glowing edge, on legs.
+	for i = 0, 5 do
+		local a = i / 6 * math.pi * 2
+		block(m, Vector3.new(0.25, 1.4, 0.25), CFrame.new(math.cos(a) * 3.6, 0.7, math.sin(a) * 3.6), DARK)
 	end
-	rod(m, 0.6, 9.6, CFrame.new(0, 1.7, 0) * CFrame.Angles(0, 0, math.pi / 2), rgb(60, 140, 255))
-	rod(m, 0.7, 8, CFrame.new(0, 1.75, 0) * CFrame.Angles(0, 0, math.pi / 2), DARK)
-	-- A padded ring round the top of the net poles.
-	for k = 0, 11 do
-		local a = k / 12 * math.pi * 2
-		block(
-			m,
-			Vector3.new(2.5, 0.35, 0.35),
-			CFrame.new(math.cos(a) * 4.6, 5.8, math.sin(a) * 4.6) * CFrame.Angles(0, -a + math.pi / 2, 0),
-			rgb(255, 220, 60)
-		)
-	end
-	ball(m, 1.2, CFrame.new(1, 3.8, 0.5), rgb(255, 90, 90)) -- a bouncy ball mid-air
+	octo(m, 7.0, 0.25, CFrame.new(0, 1.3, 0), rgb(36, 36, 44))
+	ring(m, 7.6, 0.7, 0.35, CFrame.new(0, 1.5, 0), rgb(50, 120, 220), nil, 12)
+	ring(m, 6.8, 0.1, 0.06, CFrame.new(0, 1.57, 0), rgb(110, 220, 255), M.Neon, 12)
+	glow(m, Vector3.new(1.2, 0.05, 1.2), cf(0, 1.45, 0, 0, 45, 0), rgb(110, 220, 255))
 end
 
 function builders.KiddiePool(m)
-	rod(m, 1.4, 8, CFrame.new(0, 0.7, 0) * CFrame.Angles(0, 0, math.pi / 2), rgb(80, 150, 255))
-	rod(m, 1.42, 6.6, CFrame.new(0, 0.72, 0) * CFrame.Angles(0, 0, math.pi / 2), WATER, M.Glass)
-	for k = 0, 7 do
-		local a = k / 8 * math.pi * 2
-		ball(
-			m,
-			0.7,
-			CFrame.new(math.cos(a) * 3.7, 1.4, math.sin(a) * 3.7),
-			if k % 2 == 0 then rgb(255, 255, 255) else rgb(255, 90, 90)
-		)
+	-- An inflatable paddling pool: a ring of fat coloured tubes, water and a rubber duck.
+	local colors = { rgb(255, 90, 120), rgb(255, 210, 60), rgb(80, 200, 255), rgb(120, 220, 110) }
+	for i = 0, 7 do
+		local a = i / 8 * math.pi * 2
+		block(m, Vector3.new(2.6, 1.1, 1.0), CFrame.Angles(0, -a, 0) * cf(0, 0.55, 2.9), colors[i % 4 + 1])
 	end
-	-- A rubber duck.
-	ball(m, Vector3.new(1.4, 1, 1.8), CFrame.new(0.8, 1.6, 0.5), rgb(255, 220, 40))
-	ball(m, 0.9, CFrame.new(0.8, 2.3, -0.1), rgb(255, 220, 40))
-	block(m, Vector3.new(0.5, 0.2, 0.5), CFrame.new(0.8, 2.25, -0.6), rgb(255, 140, 30))
+	octo(m, 5.6, 0.15, CFrame.new(0, 0, 0), rgb(70, 160, 220))
+	water(m, Vector3.new(4.6, 0.6, 4.6), CFrame.new(0, 0.4, 0) * CFrame.Angles(0, math.rad(22), 0), 3)
+	-- The duck.
+	block(m, Vector3.new(0.8, 0.5, 1.0), cf(0.8, 0.95, -0.4, 0, 30, 0), rgb(255, 220, 50))
+	block(m, Vector3.new(0.5, 0.5, 0.5), cf(0.6, 1.4, -0.75, 0, 30, 0), rgb(255, 220, 50))
+	block(m, Vector3.new(0.3, 0.15, 0.3), cf(0.48, 1.35, -1.0, 0, 30, 0), rgb(255, 140, 40))
 end
 
 function builders.HotTub(m)
-	block(m, Vector3.new(8, 2.6, 8), CFrame.new(0, 1.3, 0), WOOD)
-	block(m, Vector3.new(7, 0.3, 7), CFrame.new(0, 2.5, 0), rgb(80, 230, 255), M.Neon)
-	for _, x in { -3.9, 3.9 } do
-		block(m, Vector3.new(0.4, 0.4, 8.2), CFrame.new(x, 2.7, 0), rgb(130, 85, 45))
+	-- A square wooden hot tub with a gold rim, glowing water, bubbles and a step.
+	for i = 0, 3 do
+		local a = i * 90
+		for j = 0, 2 do
+			block(
+				m,
+				Vector3.new(6.2, 0.6, 0.45),
+				CFrame.Angles(0, math.rad(a), 0) * cf(0, 0.35 + j * 0.62, 2.9, 0, 0, (j % 2 - 0.5) * 1.5),
+				if j % 2 == 0 then WOOD else WOOD_DARK
+			)
+		end
+		block(m, Vector3.new(6.4, 0.2, 0.6), CFrame.Angles(0, math.rad(a), 0) * cf(0, 2.15, 2.95), GOLD, M.Metal)
 	end
-	block(m, Vector3.new(3, 0.8, 1.6), CFrame.new(0, 0.4, -4.8), rgb(130, 85, 45)) -- step
-	for k = 0, 9 do
-		ball(
+	water(m, Vector3.new(5.4, 0.4, 5.4), CFrame.new(0, 1.75, 0), 3)
+	glow(m, Vector3.new(5.2, 0.1, 5.2), cf(0, 1.0, 0), rgb(80, 230, 255))
+	for i = 1, 7 do
+		block(
 			m,
-			0.4 + (k % 3) * 0.15,
-			CFrame.new(math.sin(k * 2.4) * 2.5, 2.9, math.cos(k * 1.7) * 2.5),
-			rgb(230, 250, 255)
+			Vector3.new(0.2, 0.2, 0.2),
+			cf(math.sin(i * 2.1) * 2, 2.05, math.cos(i * 1.7) * 2, 0, i * 20, 0),
+			rgb(240, 250, 255)
 		)
 	end
+	block(m, Vector3.new(2.4, 0.6, 1.0), cf(0, 0.3, -3.6), WOOD_DARK)
 end
 
 function builders.Fountain(m)
-	local stone = rgb(200, 200, 210)
-	rod(m, 1.6, 9, CFrame.new(0, 0.8, 0) * CFrame.Angles(0, 0, math.pi / 2), stone)
-	rod(m, 1.62, 7.6, CFrame.new(0, 0.85, 0) * CFrame.Angles(0, 0, math.pi / 2), WATER, M.Glass)
-	post(m, 4, 1.4, CFrame.new(0, 1, 0), stone)
-	rod(m, 0.8, 4.4, CFrame.new(0, 4.6, 0) * CFrame.Angles(0, 0, math.pi / 2), stone)
-	rod(m, 0.82, 3.4, CFrame.new(0, 4.65, 0) * CFrame.Angles(0, 0, math.pi / 2), WATER, M.Glass)
-	post(m, 2, 0.8, CFrame.new(0, 5, 0), stone)
-	ball(m, 1.4, CFrame.new(0, 7.4, 0), WATER, M.Glass)
-	for k = 0, 5 do
-		local a = k / 6 * math.pi * 2
-		ball(m, 0.5, CFrame.new(math.cos(a) * 1.6, 6.2, math.sin(a) * 1.6), rgb(150, 220, 255), M.Glass)
+	-- A tiered stone fountain: a wide pool, two bowls, glowing water spouts and a gold top.
+	octo(m, 8.0, 0.9, CFrame.new(), STONE)
+	water(m, Vector3.new(6.2, 0.3, 6.2), CFrame.new(0, 0.85, 0) * CFrame.Angles(0, math.rad(22), 0), 4)
+	ring(m, 8.0, 0.6, 0.35, CFrame.new(0, 1.05, 0), rgb(175, 175, 185), nil, 8)
+	block(m, Vector3.new(1.0, 2.6, 1.0), cf(0, 2.2, 0), STONE)
+	octo(m, 3.6, 0.5, CFrame.new(0, 3.3, 0), rgb(175, 175, 185))
+	water(m, Vector3.new(2.6, 0.2, 2.6), CFrame.new(0, 3.75, 0), 2)
+	block(m, Vector3.new(0.6, 1.4, 0.6), cf(0, 4.4, 0), STONE)
+	octo(m, 1.8, 0.35, CFrame.new(0, 5.0, 0), rgb(175, 175, 185))
+	glow(m, Vector3.new(0.3, 1.2, 0.3), cf(0, 5.9, 0), rgb(130, 220, 255))
+	block(m, Vector3.new(0.5, 0.5, 0.5), cf(0, 6.6, 0, 45, 45, 0), GOLD, M.Metal)
+	for i = 0, 3 do
+		local a = i / 4 * math.pi * 2 + math.pi / 4
+		glow(
+			m,
+			Vector3.new(0.18, 1.2, 0.18),
+			CFrame.new(math.cos(a) * 1.5, 2.7, math.sin(a) * 1.5)
+				* CFrame.Angles(math.sin(a) * 0.5, 0, -math.cos(a) * 0.5),
+			rgb(130, 220, 255)
+		)
 	end
 end
 
 function builders.Treehouse(m)
-	block(m, Vector3.new(2, 7, 2), CFrame.new(0, 3.5, 0), rgb(120, 80, 50))
-	block(m, Vector3.new(7, 0.6, 7), CFrame.new(0, 7.2, 0), WOOD)
-	block(m, Vector3.new(5, 3.6, 4.4), CFrame.new(0, 9.3, 0.4), rgb(230, 170, 90))
-	block(m, Vector3.new(1.4, 2.2, 0.3), CFrame.new(0, 8.6, -1.85), rgb(110, 70, 40))
-	block(m, Vector3.new(1.2, 1.2, 0.3), CFrame.new(1.6, 9.6, -1.85), rgb(150, 220, 255))
-	for _, side in { 1, -1 } do
-		wedge(
+	-- A treehouse: a chunky trunk, a plank platform, a little house with a peaked roof and a
+	-- glowing window, a ladder and leafy blocks round the top.
+	for i = 0, 3 do
+		block(
 			m,
-			Vector3.new(5.6, 2, 2.6),
-			CFrame.new(0, 12.1, 0.4 + side * -1.3) * CFrame.Angles(0, if side == 1 then 0 else math.pi, 0),
-			rgb(220, 60, 60)
+			Vector3.new(1.4 - i * 0.05, 1.5, 1.4 - i * 0.05),
+			cf(0, 0.75 + i * 1.5, 0, 0, i * 12, 0),
+			if i % 2 == 0 then WOOD_DARK else rgb(128, 86, 52)
 		)
 	end
-	-- Leaves round the top and a ladder.
-	for k = 0, 3 do
-		local a = k / 4 * math.pi * 2 + 0.4
-		block(m, Vector3.new(3.4, 2.6, 3.4), CFrame.new(math.cos(a) * 3.6, 10.5, math.sin(a) * 3.6), rgb(70, 170, 70))
+	block(m, Vector3.new(6.2, 0.35, 5.6), cf(0, 5.6, 0), WOOD)
+	block(m, Vector3.new(4.4, 2.8, 3.6), cf(0, 7.2, 0.4), rgb(200, 150, 90))
+	for _, side in { -1, 1 } do
+		wedge(
+			m,
+			Vector3.new(4.0, 1.8, 2.5),
+			cf(0, 9.5, 0.4 + side * 1.2, 0, if side < 0 then 0 else 180, 0),
+			rgb(200, 60, 60)
+		)
 	end
-	for i = 0, 5 do
-		block(m, Vector3.new(1.6, 0.25, 0.25), CFrame.new(2.2, 1 + i * 1.1, -2.3), WOOD)
+	block(m, Vector3.new(1.2, 1.0, 0.1), cf(0, 7.4, -1.42), DARK)
+	glow(m, Vector3.new(1.0, 0.8, 0.08), cf(0, 7.4, -1.46), rgb(255, 200, 90))
+	for i = 0, 4 do
+		block(m, Vector3.new(1.1, 0.15, 0.2), cf(1.6, 1.0 + i * 1.0, -1.0), WOOD_DARK)
 	end
-	for _, x in { 1.5, 2.9 } do
-		block(m, Vector3.new(0.25, 7, 0.25), CFrame.new(x, 3.5, -2.3), WOOD)
+	for _, x in { 1.05, 2.15 } do
+		block(m, Vector3.new(0.18, 5.4, 0.18), cf(x, 2.9, -1.0), WOOD)
+	end
+	for i, spot in { { -2.6, 8.2, 1.8 }, { 2.7, 8.6, 1.5 }, { -2.2, 10.2, 0.8 }, { 1.8, 10.6, 1.6 }, { 0, 11.0, 2.2 } } do
+		block(
+			m,
+			Vector3.new(2.4, 1.8, 2.2),
+			cf(spot[1], spot[2], spot[3], 0, i * 23, i * 7),
+			if i % 2 == 0 then rgb(70, 150, 70) else rgb(90, 175, 80)
+		)
 	end
 end
 
 function builders.SportsCar(m)
-	local red = rgb(230, 30, 40)
-	block(m, Vector3.new(4.6, 1.4, 9), CFrame.new(0, 1.3, 0), red)
-	block(m, Vector3.new(4, 1.2, 4.2), CFrame.new(0, 2.6, 0.6), red)
-	block(
-		m,
-		Vector3.new(3.8, 1.1, 0.2),
-		CFrame.new(0, 2.6, -1.55) * CFrame.Angles(math.rad(-30), 0, 0),
-		rgb(160, 220, 255),
-		M.Glass
-	)
-	block(m, Vector3.new(4.8, 0.3, 1), CFrame.new(0, 3, 4.3), DARK) -- spoiler
-	for _, x in { -1.6, 1.6 } do
-		block(m, Vector3.new(0.3, 0.8, 0.3), CFrame.new(x, 2.4, 4.3), DARK)
+	-- A low red sports car: wedge nose and tail, dark glass, glowing headlights, underglow,
+	-- a spoiler and gold rims.
+	local red, deep = rgb(210, 40, 45), rgb(150, 26, 34)
+	block(m, Vector3.new(3.6, 0.9, 7.4), cf(0, 1.15, 0), red)
+	wedge(m, Vector3.new(3.6, 0.6, 2.2), cf(0, 1.9, -2.6), red)
+	block(m, Vector3.new(3.2, 0.9, 2.6), cf(0, 2.05, 0.4), deep)
+	wedge(m, Vector3.new(3.0, 0.85, 1.4), cf(0, 2.05, -1.55), rgb(30, 40, 60), M.Glass)
+	block(m, Vector3.new(3.25, 0.6, 2.2), cf(0, 2.1, 0.4), rgb(30, 40, 60), M.Glass)
+	wedge(m, Vector3.new(3.4, 0.6, 1.6), cf(0, 1.9, 2.5, 0, 180, 0), red)
+	block(m, Vector3.new(3.4, 0.15, 0.8), cf(0, 2.65, 3.4), DARK)
+	for _, x in { -1.3, 1.3 } do
+		block(m, Vector3.new(0.15, 0.6, 0.15), cf(x, 2.3, 3.4), DARK)
+		glow(m, Vector3.new(0.8, 0.25, 0.08), cf(x, 1.3, -3.72), rgb(255, 250, 220))
+		glow(m, Vector3.new(0.8, 0.2, 0.08), cf(x, 1.3, 3.72), rgb(255, 40, 40))
 	end
-	for _, x in { -2.3, 2.3 } do
-		for _, z in { -3, 3 } do
-			local wheel = rod(m, 0.8, 1.8, CFrame.new(x, 0.9, z), DARK)
-			wheel.CFrame = CFrame.new(x, 0.9, z)
-			rod(m, 0.85, 0.9, CFrame.new(x, 0.9, z), rgb(200, 200, 210), M.Metal)
+	for _, x in { -1.8, 1.8 } do
+		for _, z in { -2.3, 2.3 } do
+			local wheel = post(
+				m,
+				0.7,
+				1.5,
+				CFrame.new(x, 0.75, z) * CFrame.Angles(0, 0, math.pi / 2) * CFrame.new(0, -0.35, 0),
+				DARK
+			)
+			wheel.Shape = Enum.PartType.Cylinder
+			post(
+				m,
+				0.75,
+				0.8,
+				CFrame.new(x, 0.75, z) * CFrame.Angles(0, 0, math.pi / 2) * CFrame.new(0, -0.375, 0),
+				GOLD,
+				M.Metal
+			)
 		end
 	end
-	for _, x in { -1.6, 1.6 } do
-		block(m, Vector3.new(0.9, 0.4, 0.2), CFrame.new(x, 1.5, -4.5), rgb(255, 250, 200), M.Neon)
-	end
-	block(m, Vector3.new(4.7, 0.3, 0.3), CFrame.new(0, 1.9, -4.5), rgb(255, 255, 255))
+	glow(m, Vector3.new(3.0, 0.08, 6.6), cf(0, 0.55, 0), rgb(255, 60, 200))
 end
 
 function builders.Pool(m)
-	local tile = rgb(240, 240, 245)
-	block(m, Vector3.new(11, 0.6, 11), CFrame.new(0, 0.3, 0), tile)
-	block(m, Vector3.new(9, 0.62, 9), CFrame.new(0, 0.32, 0), WATER, M.Glass)
-	block(m, Vector3.new(8.6, 0.1, 8.6), CFrame.new(0, 0.05, 0), rgb(40, 130, 230))
-	-- Diving board and ladder.
-	block(m, Vector3.new(1.4, 0.3, 4), CFrame.new(-3, 1.6, -5.6), rgb(60, 140, 255))
-	block(m, Vector3.new(1.4, 1.3, 0.8), CFrame.new(-3, 0.75, -7.2), tile)
-	for _, x in { 3, 4 } do
-		rod(m, 0.2, 2.4, CFrame.new(x, 1.4, -4.3) * CFrame.Angles(0, 0, math.pi / 2), rgb(200, 200, 210), M.Metal)
+	-- A swimming pool: a tiled deck, glowing lights in the walls, water, a diving board, a
+	-- ladder and a float ring.
+	block(m, Vector3.new(10.4, 0.5, 9.0), cf(0, 0.25, 0), rgb(235, 230, 215))
+	for i = 0, 6 do
+		block(m, Vector3.new(0.08, 0.04, 9.0), cf(-4.5 + i * 1.5, 0.52, 0), rgb(205, 200, 185))
 	end
-	-- A floaty ring.
-	rod(m, 0.6, 2.2, CFrame.new(1.5, 0.75, 1.5) * CFrame.Angles(0, 0, math.pi / 2), rgb(255, 90, 140))
-	rod(m, 0.62, 1.2, CFrame.new(1.5, 0.76, 1.5) * CFrame.Angles(0, 0, math.pi / 2), WATER, M.Glass)
+	block(m, Vector3.new(8.4, 0.2, 7.0), cf(0, 0.45, 0), rgb(60, 140, 200))
+	water(m, Vector3.new(8.2, 0.25, 6.8), CFrame.new(0, 0.6, 0), 4)
+	for _, x in { -4.15, 4.15 } do
+		for _, z in { -2, 0, 2 } do
+			glow(m, Vector3.new(0.08, 0.2, 0.6), cf(x, 0.55, z), rgb(110, 230, 255))
+		end
+	end
+	block(m, Vector3.new(1.2, 0.25, 4.0), cf(0, 1.2, 4.6), rgb(60, 140, 230))
+	block(m, Vector3.new(1.0, 0.8, 0.6), cf(0, 0.8, 5.8), rgb(200, 200, 210))
+	for _, x in { 3.1, 3.9 } do
+		block(m, Vector3.new(0.1, 1.6, 0.1), cf(x, 1.3, -3.6), rgb(200, 200, 210), M.Metal)
+	end
+	ring(m, 1.6, 0.4, 0.35, CFrame.new(-1.8, 0.85, -1.2), rgb(255, 80, 90), nil, 8)
 end
 
 function builders.Rocket(m)
-	local white = rgb(245, 245, 250)
-	post(m, 9, 3.4, CFrame.new(0, 1.5, 0), white)
-	cone(m, 3.6, 3.4, CFrame.new(0, 10.5, 0), rgb(230, 40, 60), nil, 6)
-	for k = 0, 3 do
-		local a = k / 4 * math.pi * 2
-		wedge(
+	-- A rocket ship on its launch pad: a white and red body of stacked octagons, fins, a
+	-- glowing round window, a pointed nose, a glowing flame and a rainbow-lit pad.
+	octo(m, 7.5, 0.4, CFrame.new(), rgb(120, 120, 135))
+	for i, color in Bricks.RAINBOW do
+		glow(m, Vector3.new(0.6, 0.06, 0.9), cf(-3.0 + i * 0.86, 0.42, -3.0), color)
+	end
+	glow(m, Vector3.new(1.2, 0.8, 1.2), cf(0, 0.8, 0, 0, 45, 0), rgb(255, 150, 30))
+	for i = 0, 5 do
+		local width = 2.6 - math.max(0, i - 3) * 0.5
+		octo(
 			m,
-			Vector3.new(0.4, 3, 2.4),
-			CFrame.new(math.cos(a) * 2.2, 2.7, math.sin(a) * 2.2) * CFrame.Angles(0, -a + math.pi / 2, 0),
-			rgb(230, 40, 60)
+			width,
+			1.5,
+			CFrame.new(0, 1.2 + i * 1.5, 0),
+			if i % 3 == 1 then rgb(220, 50, 60) else rgb(240, 240, 245)
 		)
 	end
-	rod(m, 0.3, 1.6, CFrame.new(0, 7.5, -1.62) * CFrame.Angles(0, math.pi / 2, 0), rgb(120, 200, 255), M.Glass)
-	rod(m, 0.25, 2, CFrame.new(0, 7.5, -1.58) * CFrame.Angles(0, math.pi / 2, 0), rgb(255, 200, 60), M.Foil)
-	post(m, 1.2, 2.2, CFrame.new(0, 0.3, 0), DARK)
-	-- Flames.
-	cone(m, 1.6, 2, CFrame.new(0, -1.3, 0) * CFrame.Angles(math.pi, 0, 0), rgb(255, 150, 30), M.Neon, 3)
-	-- Launch pad.
-	block(m, Vector3.new(7, 0.4, 7), CFrame.new(0, 0.2, 0), rgb(120, 120, 135))
-	for i, color in Bricks.RAINBOW do
-		block(m, Vector3.new(0.4, 0.42, 1), CFrame.new(-3 + i * 0.86, 0.22, -3.4), color, M.Neon)
+	for i, s in { 1.6, 1.1, 0.6 } do
+		octo(m, s, 0.7, CFrame.new(0, 10.2 + i * 0.6, 0), rgb(220, 50, 60))
 	end
+	glow(m, Vector3.new(0.3, 0.4, 0.3), cf(0, 12.4, 0), GOLD)
+	for i = 0, 3 do
+		local a = i * 90 + 45
+		wedge(
+			m,
+			Vector3.new(0.3, 2.2, 1.6),
+			CFrame.Angles(0, math.rad(a), 0) * cf(0, 2.3, 1.7, 0, 180, 0),
+			rgb(220, 50, 60)
+		)
+	end
+	block(m, Vector3.new(1.1, 1.1, 0.15), cf(0, 7.0, -1.1, 0, 0, 45), rgb(200, 200, 210), M.Metal)
+	glow(m, Vector3.new(0.8, 0.8, 0.1), cf(0, 7.0, -1.16, 0, 0, 45), rgb(110, 230, 255))
 end
 
 function YardModel.build(itemId: string): Model
@@ -8567,6 +8955,7 @@ function YardModel.build(itemId: string): Model
 	local model = Instance.new("Model")
 	model.Name = itemId
 	model:SetAttribute("Item", itemId)
+	Bricks.crafted(model)
 	local builder = item and builders[item.model]
 	if builder then
 		builder(model)

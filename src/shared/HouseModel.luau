@@ -23,6 +23,7 @@ local M = Enum.Material
 -- How each style looks. Flags add each style's signature details.
 local LOOKS = {
 	Basic = {
+		glow = rgb(255, 210, 120), -- its windows, edges and trims in the crafted look
 		wall = rgb(238, 224, 196),
 		trim = rgb(255, 255, 255),
 		roof = rgb(205, 85, 70),
@@ -33,6 +34,7 @@ local LOOKS = {
 		shutters = true,
 	},
 	Scrap = {
+		glow = rgb(80, 230, 210), -- its windows, edges and trims in the crafted look
 		wall = rgb(120, 160, 175),
 		wallMat = M.CorrodedMetal,
 		trim = rgb(120, 122, 130),
@@ -47,6 +49,7 @@ local LOOKS = {
 		patches = true,
 	},
 	Log = {
+		glow = rgb(255, 180, 80), -- its windows, edges and trims in the crafted look
 		wall = rgb(160, 100, 55),
 		wallMat = M.Wood,
 		trim = rgb(110, 68, 35),
@@ -62,6 +65,7 @@ local LOOKS = {
 		shutters = true,
 	},
 	Stone = {
+		glow = rgb(110, 210, 255), -- its windows, edges and trims in the crafted look
 		wall = rgb(165, 165, 170),
 		wallMat = M.Cobblestone,
 		trim = rgb(115, 115, 122),
@@ -76,6 +80,7 @@ local LOOKS = {
 		ivy = true,
 	},
 	Sand = {
+		glow = rgb(255, 160, 60), -- its windows, edges and trims in the crafted look
 		wall = rgb(242, 208, 148),
 		wallMat = M.Sandstone,
 		trim = rgb(250, 238, 205),
@@ -89,6 +94,7 @@ local LOOKS = {
 		arched = true,
 	},
 	Ice = {
+		glow = rgb(150, 230, 255), -- its windows, edges and trims in the crafted look
 		wall = rgb(125, 205, 255),
 		wallMat = M.Ice,
 		trim = rgb(235, 250, 255),
@@ -104,6 +110,7 @@ local LOOKS = {
 		icicles = true,
 	},
 	Candy = {
+		glow = rgb(255, 110, 200), -- its windows, edges and trims in the crafted look
 		wall = rgb(255, 160, 205),
 		trim = rgb(255, 255, 255),
 		roof = rgb(120, 65, 40),
@@ -115,6 +122,7 @@ local LOOKS = {
 		icing = true,
 	},
 	Lava = {
+		glow = rgb(255, 90, 30), -- its windows, edges and trims in the crafted look
 		wall = rgb(50, 38, 55),
 		wallMat = M.Basalt,
 		trim = rgb(255, 115, 30),
@@ -130,6 +138,7 @@ local LOOKS = {
 		cracks = true,
 	},
 	Royal = {
+		glow = rgb(255, 205, 60), -- its windows, edges and trims in the crafted look
 		wall = rgb(245, 240, 230),
 		wallMat = M.Marble,
 		trim = rgb(255, 200, 60),
@@ -142,6 +151,7 @@ local LOOKS = {
 		arched = true,
 	},
 	Crystal = {
+		glow = rgb(200, 120, 255), -- its windows, edges and trims in the crafted look
 		wall = rgb(165, 110, 255),
 		wallMat = M.Glass,
 		trim = rgb(110, 240, 255),
@@ -158,6 +168,7 @@ local LOOKS = {
 		gems = true,
 	},
 	Cloud = {
+		glow = rgb(140, 210, 255), -- its windows, edges and trims in the crafted look
 		wall = rgb(250, 250, 255),
 		trim = rgb(255, 215, 90),
 		trimMat = M.Foil,
@@ -170,6 +181,7 @@ local LOOKS = {
 		clouds = true,
 	},
 	Rainbow = {
+		glow = rgb(255, 255, 255), -- its windows, edges and trims in the crafted look
 		wall = rgb(255, 255, 255),
 		trim = rgb(255, 255, 255),
 		trimMat = M.Neon,
@@ -1559,6 +1571,127 @@ HouseModel.ANCHORS = {
 }
 
 --------------------------------------------------------------------------------
+-- The crafted finish (like the eggs and creatures; see Lego): smooth plastic instead of
+-- textured materials and studs, round pieces turned into angled blocks, windows glowing in
+-- the style's colour, and glowing strips along the walls' base and top and the roof's eaves.
+--------------------------------------------------------------------------------
+
+local TEXTURED = {
+	[M.Wood] = true,
+	[M.WoodPlanks] = true,
+	[M.CorrodedMetal] = true,
+	[M.Brick] = true,
+	[M.Cobblestone] = true,
+	[M.Basalt] = true,
+	[M.Sandstone] = true,
+	[M.Slate] = true,
+	[M.Ground] = true,
+	[M.Snow] = true,
+	[M.Marble] = true,
+}
+
+local function strip(model: Model, size: Vector3, cframe: CFrame, color: Color3)
+	local p = block(model, size, cframe, color, M.Neon)
+	p.Name = "Glow"
+	p.CastShadow = false
+	return p
+end
+
+local function craftify(model: Model, slotId: string, look)
+	model:SetAttribute("Crafted", true)
+	local glow = look.glow or rgb(255, 210, 120)
+	local n = 0
+	for _, p in model:GetDescendants() do
+		if not p:IsA("BasePart") then
+			continue
+		end
+		n += 1
+		if TEXTURED[p.Material] then
+			p.Material = M.SmoothPlastic
+		elseif p.Material == M.Ice then
+			p.Material = M.Glass
+			p.Transparency = math.max(p.Transparency, 0.15)
+		end
+		-- Round pieces become blocks, a little askew (small details stay round).
+		local mesh = p:FindFirstChildOfClass("SpecialMesh")
+		local isBall = p:IsA("Part") and p.Shape == Enum.PartType.Ball
+		local isSphere = mesh and mesh.MeshType == Enum.MeshType.Sphere
+		if isBall or isSphere then
+			local size = p.Size * (if isSphere then mesh.Scale else Vector3.one)
+			if math.min(size.X, size.Y, size.Z) >= 0.8 then
+				local cframe = p.CFrame * CFrame.Angles(0, math.rad((n % 5 - 2) * 6), math.rad((n % 3 - 1) * 5))
+				if mesh then
+					mesh:Destroy()
+				end
+				if isBall then
+					p.Shape = Enum.PartType.Block
+				end
+				p.Size = size * 0.86
+				p.CFrame = cframe
+			end
+		end
+		-- Windows (and any glass) light up.
+		local thin = math.min(p.Size.X, p.Size.Y, p.Size.Z) < 0.6 and math.max(p.Size.X, p.Size.Y, p.Size.Z) < 8
+		if p.Name == "Glass" or (p.Material == M.Glass and thin) then
+			p.Material = M.Neon
+			p.Color = glow:Lerp(Color3.new(1, 1, 1), 0.2)
+			p.Transparency = 0.15
+		end
+	end
+	local body = model:FindFirstChild("Body")
+	if slotId == "Walls" and body and body:IsA("BasePart") then
+		-- Glowing strips along the foot and the top of the front and sides.
+		local size, cf = body.Size, body.CFrame
+		local t = math.max(0.12, size.Y * 0.02)
+		for _, y in { -size.Y / 2 + t, size.Y / 2 - t * 4 } do
+			strip(model, Vector3.new(size.X + 0.1, t, t), cf * CFrame.new(0, y, -size.Z / 2 - t), glow)
+			for _, side in { -1, 1 } do
+				strip(model, Vector3.new(t, t, size.Z + 0.1), cf * CFrame.new(side * (size.X / 2 + t), y, 0), glow)
+			end
+		end
+	elseif slotId == "Roof" then
+		-- Rows of shingles on every big slope (a wedge's slope rises from its front-bottom
+		-- edge to its back-top edge), a shade lighter and darker in turn.
+		for _, p in model:GetDescendants() do
+			if p:IsA("WedgePart") and p.Size.Y > 1.5 and p.Size.Z > 1.5 and p.Material ~= M.Neon then
+				local size, cframe = p.Size, p.CFrame
+				local up = Vector3.new(0, size.Y, size.Z).Unit
+				local normal = Vector3.new(0, size.Z, -size.Y).Unit
+				local length = math.sqrt(size.Y ^ 2 + size.Z ^ 2)
+				local rows = math.max(2, math.floor(length / 1.4))
+				for i = 0, rows - 1 do
+					local f = (i + 0.5) / rows
+					local at = Vector3.new(0, -size.Y / 2 + f * size.Y, -size.Z / 2 + f * size.Z) + normal * 0.08
+					local shingle = block(
+						model,
+						Vector3.new(size.X + 0.2, length / rows * 0.92, 0.16),
+						cframe * CFrame.fromMatrix(at, Vector3.xAxis, up),
+						p.Color:Lerp(if i % 2 == 0 then rgb(255, 255, 255) else rgb(0, 0, 0), 0.08),
+						p.Material
+					)
+					shingle.Name = "Shingle"
+					shingle.CastShadow = false
+				end
+			end
+		end
+		-- A glowing strip along the front eave.
+		local cframe, size = model:GetBoundingBox()
+		local t = math.max(0.12, size.Y * 0.025)
+		strip(
+			model,
+			Vector3.new(size.X * 0.98, t, t),
+			cframe * CFrame.new(0, -size.Y / 2 + t * 2, -size.Z / 2 + t),
+			glow
+		)
+	elseif slotId == "Chimney" or slotId == "Tower" then
+		-- Embers or a glowing band round the top.
+		local cframe, size = model:GetBoundingBox()
+		local t = math.max(0.1, size.Y * 0.02)
+		strip(model, Vector3.new(size.X * 0.5, t, t), cframe * CFrame.new(0, size.Y * 0.18, -size.Z / 2 - t), glow)
+	end
+end
+
+--------------------------------------------------------------------------------
 -- Public
 --------------------------------------------------------------------------------
 
@@ -1571,6 +1704,7 @@ function HouseModel.slot(slotId: string, partId: string?): Model
 	model.Name = slotId
 	model:SetAttribute("Part", id)
 	PLACEMENTS[slotId](model, look)
+	craftify(model, slotId, look)
 	return model
 end
 
@@ -1627,6 +1761,7 @@ function HouseModel.item(partId: string): Model
 	model:SetAttribute("Part", partId)
 	if part then
 		ITEMS[part.slot](model, lookFor(part.style))
+		craftify(model, part.slot, lookFor(part.style))
 	end
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then

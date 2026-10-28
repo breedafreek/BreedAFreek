@@ -45,15 +45,17 @@ approves each screen from a render before the next one is built.**
   bright and clear (little haze). Neon, Glass, Foil and ForceField keep their look; roads,
   sidewalks and paths are smooth "tiles" (the SMOOTH list). House walls get brick seams;
   trees are stacked bricks. Build new things as bricks (blocks) where you can.
-- **Models are moving to the "crafted" look** (the owner's references: a plated egg and a
+- **Models are in the "crafted" look** (the owner's references: a plated egg and a
   low-poly cat): detailed low-poly models of many slightly offset or angled blocks and
   wedges, smooth (no studs), a muted main colour with a bright Neon accent (glowing eyes,
-  seams, strips, toes), small gold details, sparks and lights. Mark a model with the
-  attribute "Crafted" and Lego leaves it alone. Done: eggs (`EggModel`) and all 18 Freeks
-  (pets and guardians; `CraftedFreeks.luau`, built with its kit: block legs with glowing
-  toes, glowing eyes in a mood, a chibi `person` body). Next, once the owner approves each:
-  house parts, yard items, plants.
-- Everything is LEGO (`Lego.part` does it automatically): big round pieces (balls, sphere
+  seams, strips, toes, windows), small gold details, sparks and lights. Mark a model with
+  the attribute "Crafted" and Lego leaves it alone (no studs, no palette snapping). Done:
+  eggs (`EggModel`), all 18 Freeks (`CraftedFreeks.luau` and its kit), yard items
+  (`YardModel`), plants (`PlantModel`; both use the crafted helpers in `Bricks`: `glow`,
+  `octo`, `ring`, `crafted`) and house parts (`HouseModel`: each style's `glow` colour, and
+  `craftify` gives every slot smooth materials, angled blocks for round pieces, lit
+  windows, roof shingles and glow strips). The town, zones and plots keep the LEGO look.
+- The world around the models is LEGO (`Lego.part` does it automatically): big round pieces (balls, sphere
   meshes) become square bricks, so creatures, plants and props are brick-built; small round
   details (eyes, noses) stay round. Eggs stay egg-shaped (attribute "Round") and are covered
   in studs. Every brick is snapped to the LEGO colour palette (`Lego.PALETTE`); only
