@@ -124,55 +124,131 @@ do
 	update()
 end
 
--- Windows: a plain white body with a thick black outline, a small dark title tab sitting
--- on the top edge, and a red square X on the top-right corner (Steal an Egg's shop).
+-- Windows: a dark slate body under a rainbow header full of halftone dots and falling
+-- sparkles, with the window's icon and a big bouncing pixel title, and a red X.
+local HEADER = 76
 local window = UI.new("Frame", {
 	Name = "Window",
 	Visible = false,
 	AnchorPoint = Vector2.new(0.5, 0.5),
 	Position = UDim2.fromScale(0.53, 0.53),
-	Size = UDim2.fromScale(0.66, 0.74),
+	Size = UDim2.fromScale(0.6, 0.74),
 	BackgroundColor3 = colors.sheet,
 	ZIndex = 5, -- above the leaderboard and other HUD pieces
 	Parent = screen,
 }, {
-	UI.corner(16),
-	UI.stroke(nil, 4.5),
+	UI.corner(18),
+	UI.stroke(nil, 5),
 	UI.new("UISizeConstraint", { MaxSize = Vector2.new(860, 600) }),
 })
-local titleTab = UI.new("Frame", {
-	Name = "TitleTab",
-	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.new(0.5, 0, 0, 0),
-	Size = UDim2.fromOffset(0, 40),
-	AutomaticSize = Enum.AutomaticSize.X,
-	BackgroundColor3 = colors.tab,
-	ZIndex = 6,
+local header = UI.new("Frame", {
+	Name = "Header",
+	Size = UDim2.new(1, 0, 0, HEADER),
+	BackgroundColor3 = Color3.new(1, 1, 1),
+	ClipsDescendants = true,
+	ZIndex = 5,
 	Parent = window,
 }, {
-	UI.corner(10),
-	UI.stroke(nil, 3),
-	UI.new("UIPadding", { PaddingLeft = UDim.new(0, 18), PaddingRight = UDim.new(0, 18) }),
+	UI.corner(16),
+	UI.new("UIGradient", { Color = UI.RAINBOW }),
+})
+-- Square off the header's bottom corners, with a thick dark line under it.
+UI.new("Frame", {
+	Position = UDim2.new(0, 0, 0, HEADER - 20),
+	Size = UDim2.new(1, 0, 0, 20),
+	BackgroundColor3 = Color3.new(1, 1, 1),
+	BorderSizePixel = 0,
+	ZIndex = 5,
+	Parent = window,
+}, { UI.new("UIGradient", { Color = UI.RAINBOW }) })
+UI.new("Frame", {
+	Position = UDim2.new(0, 0, 0, HEADER),
+	Size = UDim2.new(1, 0, 0, 5),
+	BackgroundColor3 = UI.OUTLINE,
+	BorderSizePixel = 0,
+	ZIndex = 6,
+	Parent = window,
+})
+UI.pattern(header, 880, HEADER + 10, 0.72).ZIndex = 5
+-- Sparkles drifting down the header.
+for k = 1, 12 do
+	local size = 4 + (k % 3) * 3
+	local sparkle = UI.new("Frame", {
+		Size = UDim2.fromOffset(size, size),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 0.35,
+		BorderSizePixel = 0,
+		ZIndex = 5,
+		Parent = header,
+	})
+	local x, speed, phase = (k * 0.137) % 1, 14 + (k % 4) * 6, k * 1.7
+	UI.animate(sparkle, function(gui, t)
+		local y = ((t * speed + phase * 20) % (HEADER + 20)) - 10
+		gui.Position = UDim2.new(x, math.sin(t + phase) * 8, 0, y)
+		gui.Rotation = t * 60 + phase * 30
+	end)
+end
+local titleRow = UI.new("Frame", {
+	Name = "Title",
+	Position = UDim2.fromOffset(18, 0),
+	Size = UDim2.new(1, -100, 0, HEADER),
+	BackgroundTransparency = 1,
+	ZIndex = 7,
+	Parent = window,
+}, {
 	UI.new("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
 		VerticalAlignment = Enum.VerticalAlignment.Center,
+		Padding = UDim.new(0, 4),
+		SortOrder = Enum.SortOrder.LayoutOrder,
 	}),
 })
-local windowTitle = UI.new("TextLabel", {
-	Size = UDim2.fromOffset(0, 32),
-	AutomaticSize = Enum.AutomaticSize.X,
-	BackgroundTransparency = 1,
-	FontFace = UI.fonts.bold,
-	TextSize = 26,
-	TextColor3 = Color3.new(1, 1, 1),
-	ZIndex = 7,
-	Parent = titleTab,
-}, { UI.textStroke(2.5) })
+-- The title, one pixel letter at a time so each can bounce like jelly.
+local function setTitle(icon: string, title: string)
+	for _, child in titleRow:GetChildren() do
+		if child:IsA("GuiObject") then
+			child:Destroy()
+		end
+	end
+	UI.label(icon, {
+		Size = UDim2.fromOffset(52, 52),
+		TextColor3 = Color3.new(1, 1, 1),
+		LayoutOrder = 0,
+		ZIndex = 7,
+		Parent = titleRow,
+	})
+	for i = 1, #title do
+		local char = string.sub(title, i, i)
+		local holder = UI.new("Frame", {
+			Size = UDim2.fromOffset(if char == " " then 18 else 40, 52),
+			BackgroundTransparency = 1,
+			LayoutOrder = i,
+			ZIndex = 7,
+			Parent = titleRow,
+		})
+		if char ~= " " then
+			local letter = UI.pixel(char, {
+				Size = UDim2.fromScale(1, 1),
+				TextScaled = false,
+				TextSize = 38,
+				ZIndex = 7,
+				Parent = holder,
+			})
+			letter.UIStroke.Thickness = 4
+			UI.gleam(letter, nil, 3.2)
+			UI.animate(letter, function(gui, t)
+				local wave = math.sin(t * 4 - i * 0.6)
+				gui.Position = UDim2.fromOffset(0, -math.max(wave, 0) * 5)
+				gui.Rotation = wave * 3
+			end)
+		end
+	end
+end
 local body = UI.new("ScrollingFrame", {
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
-	Position = UDim2.fromOffset(14, 30),
-	Size = UDim2.new(1, -28, 1, -40),
+	Position = UDim2.fromOffset(14, HEADER + 8),
+	Size = UDim2.new(1, -28, 1, -HEADER - 16),
 	CanvasSize = UDim2.new(),
 	AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	ScrollBarThickness = 8,
@@ -225,7 +301,7 @@ local function open(name: string)
 	end
 	currentWindow = name
 	setActiveTab(name)
-	windowTitle.Text = (TAB_ICONS[name] or "") .. " " .. (if name == "Life" then "My Life" else name) .. "!"
+	setTitle(TAB_ICONS[name] or "", if name == "Life" then "MY LIFE" else string.upper(name))
 	window.Visible = true
 	body.CanvasPosition = Vector2.zero
 	render()
@@ -234,9 +310,9 @@ end
 UI.button("X", colors.red, function()
 	open(currentWindow)
 end, {
-	AnchorPoint = Vector2.new(0.5, 0.5),
-	Size = UDim2.fromOffset(48, 48),
-	Position = UDim2.new(1, -6, 0, 6),
+	AnchorPoint = Vector2.new(1, 0.5),
+	Size = UDim2.fromOffset(54, 54),
+	Position = UDim2.new(1, -12, 0, HEADER / 2),
 	ZIndex = 7,
 	Parent = window,
 })
@@ -244,8 +320,8 @@ end, {
 -- A line of text over the cards: short ones are bold section titles, long ones are hints.
 local function heading(text: string, order: number, color: Color3?)
 	local title = #text <= 28
-	return UI.text(text, {
-		Size = UDim2.new(1, 0, 0, if title then 30 else 24),
+	return (if title then UI.pixel else UI.text)(if title then string.upper(text) else text, {
+		Size = UDim2.new(1, 0, 0, if title then 26 else 24),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = if color and color ~= colors.text then color elseif title then colors.dark else colors.muted,
 		LayoutOrder = order,
@@ -305,48 +381,52 @@ local function partColor(record): Color3
 	return Items.color(record.id)
 end
 
--- A wide white banner card (treadmill, Starter Pack, box bundles, VIP) with a thick black
--- outline; its picture sits on a tile in its colour on the left (sized by bannerTile):
--- returns the frame.
-local function banner(order: number, colorA: Color3, _colorB: Color3, height: number)
+-- A wide banner card (treadmill, Starter Pack, box bundles, VIP): a bright gradient from
+-- colorA to colorB under a halftone, with a spinning sunburst behind its picture on the
+-- left (bannerTile says how wide that picture is): returns the frame.
+local function banner(order: number, colorA: Color3, colorB: Color3, height: number)
 	local frame = UI.new("Frame", {
 		Size = UDim2.new(1, -8, 0, height),
-		BackgroundColor3 = colors.sheet,
+		BackgroundColor3 = Color3.new(1, 1, 1),
 		LayoutOrder = order,
 		Parent = body,
 	}, {
 		UI.corner(14),
 		UI.stroke(nil, 4),
+		UI.new("UIGradient", { Color = ColorSequence.new(colorA, colorB), Rotation = 20 }),
 	})
+	UI.pattern(frame, 860, height)
 	-- Made first so the picture draws over it.
-	UI.new("Frame", {
+	local holder = UI.new("Frame", {
 		Name = "Tile",
-		Position = UDim2.fromOffset(8, 8),
-		Size = UDim2.new(0, 150, 1, -16),
-		BackgroundColor3 = colorA:Lerp(Color3.new(1, 1, 1), 0.3),
+		Position = UDim2.fromOffset(8, 0),
+		Size = UDim2.new(0, 150, 1, 0),
+		BackgroundTransparency = 1,
 		Parent = frame,
-	}, { UI.corner(10), UI.stroke(nil, 2.5) })
+	})
+	UI.sunburst(holder).Size = UDim2.fromOffset(height * 1.05, height * 1.05)
 	return frame
 end
 
--- Sets how wide the coloured tile behind a banner's picture is.
+-- Sets how wide the picture area (with its sunburst) on the left of a banner is.
 local function bannerTile(parent: Instance, width: number)
 	local tile = parent:FindFirstChild("Tile")
 	if tile then
-		tile.Size = UDim2.new(0, width, 1, -16)
+		tile.Size = UDim2.new(0, width, 1, 0)
 	end
 end
 
-local function bannerText(parent: Instance, title: string, lines: string, x: number, _color: Color3?)
+local function bannerText(parent: Instance, title: string, lines: string, x: number, color: Color3?)
 	bannerTile(parent, x - 20)
-	UI.text(title, {
-		Position = UDim2.fromOffset(x, 12),
-		Size = UDim2.new(1, -x - 230, 0, 40),
+	local titleLabel = UI.pixel(string.upper(title), {
+		Position = UDim2.fromOffset(x, 14),
+		Size = UDim2.new(1, -x - 230, 0, 36),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = parent,
 	})
-	return UI.text(lines, {
-		TextColor3 = colors.muted,
+	titleLabel.UIStroke.Thickness = 3.5
+	UI.gleam(titleLabel, color)
+	return UI.label(lines, {
 		Position = UDim2.fromOffset(x + 2, 58),
 		Size = UDim2.new(1, -x - 232, 0, 70),
 		TextScaled = false,
@@ -393,6 +473,7 @@ end
 function renderers.Shop()
 	-- The treadmill, big across the top.
 	local level = state.treadmill or 1
+	heading("Upgrades", 0)
 	local frame = banner(1, Color3.fromRGB(70, 160, 255), Color3.fromRGB(120, 90, 255), 150)
 	local picture = ItemPictures.view("Treadmill", 140)
 	picture.Position = UDim2.fromOffset(10, 5)
@@ -1042,24 +1123,23 @@ end
 function renderers.Store()
 	starterBanner(0)
 	-- VIP, big across the top.
-	local vipBanner = banner(1, colors.purple, colors.purple, 150)
+	local vipBanner = banner(1, Color3.fromRGB(255, 170, 30), Color3.fromRGB(255, 90, 60), 150)
 	local crown = ItemPictures.view("VIP", 140)
 	crown.Position = UDim2.fromOffset(10, 5)
 	crown.Size = UDim2.fromOffset(150, 140)
 	crown.Parent = vipBanner
 	bannerTile(vipBanner, 154)
-	UI.label("VIP", {
-		Position = UDim2.fromOffset(176, 14),
+	local vipTitle = UI.pixel("VIP", {
+		Position = UDim2.fromOffset(176, 12),
 		Size = UDim2.new(1, -400, 0, 48),
-		TextColor3 = colors.gold,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = vipBanner,
-	}).UIStroke.Thickness =
-		3
-	UI.text(
+	})
+	vipTitle.UIStroke.Thickness = 4
+	UI.gleam(vipTitle, colors.gold)
+	UI.label(
 		"👑 Gold VIP badge on the leaderboard and in chat\n💰 +10% coins forever\n🎡 Spin the Lucky Wheel more often",
 		{
-			TextColor3 = colors.muted,
 			Position = UDim2.fromOffset(178, 64),
 			Size = UDim2.new(1, -400, 0, 72),
 			TextScaled = false,
@@ -1281,7 +1361,7 @@ function renderers.Luck()
 			send("SpinWheel")
 		end
 	end
-	local wheelCard = banner(1, colors.purple, colors.purple, 300)
+	local wheelCard = banner(1, Color3.fromRGB(170, 80, 255), Color3.fromRGB(255, 80, 190), 300)
 	local wheelHolder = UI.new("Frame", {
 		Position = UDim2.fromOffset(10, 10),
 		Size = UDim2.fromOffset(280, 280),
@@ -1290,12 +1370,14 @@ function renderers.Luck()
 	})
 	LuckyWheel.build(wheelHolder, 280, { hubText = if ready then "SPIN!" else "⏳", onHub = spin })
 	bannerTile(wheelCard, 286)
-	UI.text("Lucky Wheel", {
-		Position = UDim2.fromOffset(310, 22),
-		Size = UDim2.new(1, -330, 0, 52),
+	local wheelTitle = UI.pixel("LUCKY WHEEL", {
+		Position = UDim2.fromOffset(310, 26),
+		Size = UDim2.new(1, -330, 0, 40),
 		Parent = wheelCard,
 	})
-	UI.text(if ready then "Your free spin is ready!" else "Free spin every day!", {
+	wheelTitle.UIStroke.Thickness = 4
+	UI.gleam(wheelTitle, colors.gold)
+	UI.label(if ready then "Your free spin is ready!" else "Free spin every day!", {
 		Position = UDim2.fromOffset(310, 80),
 		Size = UDim2.new(1, -330, 0, 30),
 		Parent = wheelCard,
@@ -1306,7 +1388,6 @@ function renderers.Luck()
 		TextScaled = false,
 		TextSize = 17,
 		TextWrapped = true,
-		TextColor3 = colors.muted,
 		Parent = wheelCard,
 	})
 	local spinButton = UI.button(
@@ -1324,12 +1405,7 @@ function renderers.Luck()
 	end
 
 	-- Mystery Boxes (Robux): every chance is shown before buying.
-	UI.text("📦 Mystery Boxes · a random item of any kind, odds below", {
-		Size = UDim2.new(1, 0, 0, 30),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		LayoutOrder = 2,
-		Parent = body,
-	})
+	heading("📦 Mystery Boxes · a random item of any kind, odds below", 2)
 	local restricted = player:GetAttribute("CratesRestricted")
 	local grid = UI.grid(250, 480)
 	grid.LayoutOrder = 3

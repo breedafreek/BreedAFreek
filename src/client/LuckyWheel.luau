@@ -188,7 +188,7 @@ function LuckyWheel.build(parent: Instance, size: number, opts)
 		})
 		UI.label(SHORT[slice.label] or string.upper(slice.label), {
 			Size = UDim2.fromScale(1, 0.6),
-			FontFace = UI.fonts.heavy,
+			FontFace = UI.fonts.bold,
 			ZIndex = z + 5,
 			Parent = text,
 		})
@@ -207,7 +207,7 @@ function LuckyWheel.build(parent: Instance, size: number, opts)
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromOffset(size * 0.21, size * 0.21),
 		BackgroundColor3 = Color3.new(1, 1, 1),
-		FontFace = UI.fonts.heavy,
+		FontFace = UI.fonts.bold,
 		Text = opts.hubText or "🎡",
 		TextScaled = true,
 		TextColor3 = Color3.new(1, 1, 1),

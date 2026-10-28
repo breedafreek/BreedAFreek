@@ -207,7 +207,7 @@ function Hud.zoneBanner(screen: ScreenGui)
 		Position = UDim2.fromOffset(0, 6),
 		Size = UDim2.new(1, 0, 0, 46),
 		TextXAlignment = Enum.TextXAlignment.Center,
-		FontFace = UI.fonts.heavy,
+		FontFace = UI.fonts.bold,
 		Parent = banner,
 	})
 	local need = text("", 19, {
@@ -286,7 +286,7 @@ function Hud.carrying(screen: ScreenGui)
 	local label = text("", 22, {
 		Size = UDim2.fromOffset(0, 50),
 		AutomaticSize = Enum.AutomaticSize.X,
-		FontFace = UI.fonts.heavy,
+		FontFace = UI.fonts.bold,
 		Parent = banner,
 	})
 	local beam, from, target
@@ -410,7 +410,7 @@ function Hud.luckChip(screen: ScreenGui)
 	local label = text("", 15, {
 		Size = UDim2.fromOffset(0, 30),
 		AutomaticSize = Enum.AutomaticSize.X,
-		FontFace = UI.fonts.heavy,
+		FontFace = UI.fonts.bold,
 		Parent = chip,
 	})
 	task.spawn(function()
@@ -481,7 +481,7 @@ function Hud.eventBanner(screen: ScreenGui)
 		local label = text("", height * 0.55, {
 			Size = UDim2.fromOffset(0, height),
 			AutomaticSize = Enum.AutomaticSize.X,
-			FontFace = UI.fonts.heavy,
+			FontFace = UI.fonts.bold,
 			TextXAlignment = Enum.TextXAlignment.Center,
 			Parent = frame,
 		})
@@ -562,7 +562,7 @@ function Hud.starterOffer(screen: ScreenGui, onOpen: () -> ())
 	text("🎁 STARTER PACK", 18, {
 		Position = UDim2.fromOffset(0, 8),
 		Size = UDim2.new(1, 0, 0, 24),
-		FontFace = UI.fonts.heavy,
+		FontFace = UI.fonts.bold,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		ZIndex = 11,
 		Parent = button,
@@ -570,14 +570,16 @@ function Hud.starterOffer(screen: ScreenGui, onOpen: () -> ())
 	local timer = text("", 22, {
 		Position = UDim2.fromOffset(0, 36),
 		Size = UDim2.new(1, 0, 0, 28),
-		FontFace = UI.fonts.heavy,
+		FontFace = UI.fonts.bold,
 		TextColor3 = colors.gold,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		ZIndex = 11,
 		Parent = button,
 	})
-	UI.tag(button, "LIMITED", colors.red).Size = UDim2.fromOffset(84, 24)
-	local scale = UI.new("UIScale", { Parent = button })
+	local limited = UI.tag(button, "LIMITED", colors.red)
+	limited.Size = UDim2.fromOffset(84, 24)
+	limited.Position = UDim2.new(1, 6, 0, -10)
+	local scale = button:FindFirstChildOfClass("UIScale") or UI.new("UIScale", { Parent = button })
 	task.spawn(function()
 		while true do
 			local ends = player:GetAttribute("StarterEnds")
@@ -664,7 +666,7 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 			Parent = holder,
 		}, {
 			UI.corner(14),
-			UI.gradient(nil, 0.16),
+			UI.gradient(),
 		})
 		local ring = UI.stroke(nil, 3.5)
 		ring.Parent = face
@@ -691,7 +693,7 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 			Position = UDim2.new(0.5, 0, 1, -6),
 			Size = UDim2.new(1, 12, 0, 20),
 			TextXAlignment = Enum.TextXAlignment.Center,
-			FontFace = UI.fonts.heavy,
+			FontFace = UI.fonts.bold,
 			ZIndex = 4,
 			Parent = face,
 		})
@@ -705,7 +707,7 @@ function Hud.menu(screen: ScreenGui, entries, onSelect: (string) -> ())
 			Size = UDim2.fromOffset(0, 26),
 			AutomaticSize = Enum.AutomaticSize.X,
 			BackgroundColor3 = colors.red,
-			FontFace = UI.fonts.heavy,
+			FontFace = UI.fonts.bold,
 			Text = "!",
 			TextSize = 18,
 			TextColor3 = colors.text,
@@ -823,7 +825,7 @@ function Hud.leaderboard(screen: ScreenGui)
 		}),
 	})
 
-	-- The dark title tab on the top edge (click to fold).
+	-- The rainbow title tab on the top edge (click to fold).
 	local tab = UI.new("TextButton", {
 		Name = "TitleTab",
 		Text = "",
@@ -831,16 +833,17 @@ function Hud.leaderboard(screen: ScreenGui)
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0, -26),
 		Size = UDim2.fromOffset(172, 32),
-		BackgroundColor3 = colors.tab,
+		BackgroundColor3 = Color3.new(1, 1, 1),
 		ZIndex = 3,
 		Parent = board,
 	}, {
 		UI.corner(9),
 		UI.stroke(nil, 3),
+		UI.new("UIGradient", { Color = UI.RAINBOW }),
 		text("🏆 Leaderboard", 19, {
 			Size = UDim2.fromScale(1, 1),
 			TextXAlignment = Enum.TextXAlignment.Center,
-			FontFace = UI.fonts.heavy,
+			FontFace = UI.fonts.bold,
 			ZIndex = 4,
 		}),
 	})
@@ -852,7 +855,7 @@ function Hud.leaderboard(screen: ScreenGui)
 		Size = UDim2.fromOffset(0, 22),
 		AutomaticSize = Enum.AutomaticSize.X,
 		BackgroundColor3 = colors.ink,
-		FontFace = UI.fonts.heavy,
+		FontFace = UI.fonts.bold,
 		Text = "",
 		TextSize = 14,
 		TextColor3 = colors.text,
@@ -892,7 +895,7 @@ function Hud.leaderboard(screen: ScreenGui)
 			Size = UDim2.fromOffset(0, 16),
 			AutomaticSize = Enum.AutomaticSize.X,
 			BackgroundColor3 = color,
-			FontFace = UI.fonts.heavy,
+			FontFace = UI.fonts.bold,
 			TextSize = 11,
 			TextColor3 = colors.text,
 			LayoutOrder = order,
@@ -918,7 +921,7 @@ function Hud.leaderboard(screen: ScreenGui)
 			Parent = list,
 		}, {
 			UI.corner(10),
-			UI.gradient(nil, 0.18),
+			UI.gradient(),
 		})
 		local ring = UI.stroke(nil, 2.5)
 		ring.Parent = frame
@@ -929,7 +932,7 @@ function Hud.leaderboard(screen: ScreenGui)
 			Position = UDim2.new(0, 6, 0.5, 0),
 			Size = UDim2.fromOffset(26, 26),
 			BackgroundColor3 = OTHER.medal,
-			FontFace = UI.fonts.heavy,
+			FontFace = UI.fonts.bold,
 			Text = "1",
 			TextSize = 15,
 			TextColor3 = colors.text,
@@ -1016,7 +1019,7 @@ function Hud.leaderboard(screen: ScreenGui)
 			Size = UDim2.fromOffset(0, 26),
 			AutomaticSize = Enum.AutomaticSize.X,
 			BackgroundColor3 = colors.ink,
-			FontFace = UI.fonts.heavy,
+			FontFace = UI.fonts.bold,
 			Text = "$0",
 			TextSize = 16,
 			TextColor3 = colors.money,
@@ -1191,7 +1194,7 @@ function Hud.toasts(screen: ScreenGui)
 		local label = text(message, if big then 22 else 17, {
 			Size = UDim2.fromOffset(0, 28),
 			AutomaticSize = Enum.AutomaticSize.X,
-			FontFace = if big then UI.fonts.heavy else UI.fonts.bold,
+			FontFace = if big then UI.fonts.bold else UI.fonts.bold,
 			TextColor3 = colors.text,
 			Parent = frame,
 		})

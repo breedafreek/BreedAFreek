@@ -12,31 +12,31 @@ The game imitates the bright, chunky cartoon look of the big Roblox simulators (
 Brainrot, Grow a Garden, Pet Simulator). Every new screen, label, model and effect must
 match it.
 
-**UI (built in code with `src/client/UI.luau` helpers; always use them):** the flat,
-chunky look of Steal an Egg's shop dialogs. No glossy gradients, shine strips or slanted
-ribbons.
-- Font: **Fredoka One** everywhere (`UI.fonts.bold`; `UI.fonts.heavy` is the same font).
-  Never Builder Sans/Gotham.
-- Windows: a plain white body (`UI.colors.sheet`) with a thick black outline (`UI.OUTLINE`,
-  4–4.5 px), a small dark title tab (`UI.colors.tab`) centred on the top edge with white
-  outlined text ("Shop!"), and a red rounded-square X on the top-right corner.
-- Text in windows and cards is dark (`UI.text`, `UI.colors.dark`; hints `UI.colors.muted`)
-  with no outline. White or bright text (on buttons, coloured panels, money, rarity
-  colours) always has a black outline; `UI.label` adds or drops it by colour.
-- Buttons (`UI.button`): flat bright fill with a darker lip along the bottom
-  (`UI.gradient`), thick black outline, rounded corners, white outlined text, squish when
-  pressed. Green = buy/go (prices too: `UI.pricePill` is a green button), red =
-  close/danger, gray = disabled.
-- Cards (`UI.card`): white with a thick black outline, dark title, a big 3D picture on a
-  rounded tile in the card's colour (`accent`, or rarity colour for items), dark text
-  lines, buttons, and `UI.tag` corner tags ("NEW", "x2"). Wide offers are white banners
-  with the picture on a coloured tile on the left (Shop upgrades, Store VIP).
-- HUD panels and side buttons (`UI.glass`, `Hud.menu`): flat bright fill with a darker
-  lip, thick black outline, rounded corners, white outlined text. No dark, frosted or
-  transparent panels.
+**UI (built in code with `src/client/UI.luau` helpers; always use them):** the juicy
+pixel-arcade shop look of the top simulators (the owner's reference video): cool, clean,
+bright and animated.
+- Fonts: the pixel font **Press Start 2P** (`UI.fonts.pixel` / `UI.fonts.heavy`,
+  `Enum.Font.Arcade`) for titles, buttons, tags and big numbers (`UI.pixel`); **Fredoka One**
+  (`UI.fonts.bold`) for longer text and small HUD labels. Never Builder Sans/Gotham.
+- Every piece of text is white or bright with a thick black outline (`UI.textStroke`,
+  `UI.OUTLINE`).
+- Windows: a dark slate body (`UI.colors.sheet`) with a thick black outline under a rainbow
+  header (`UI.RAINBOW`) covered in halftone dots (`UI.pattern`) with sparkles drifting
+  down; the window's icon and a big pixel title whose letters bounce like jelly and gleam
+  (`UI.gleam`); a red X. Section headings are small pixel capitals ("UPGRADES").
+- Cards (`UI.card`): a bright gradient in the card's colour (`accent`, or rarity colour for
+  items) under a halftone, white pixel title, a big 3D picture on a slowly spinning
+  sunburst (`UI.sunburst`), optional tilted prices on both sides (`price`, `UI.priceTag`),
+  text lines, buttons and tilted `UI.tag` tags. Wide offers are gradient banners with the
+  picture on a sunburst and a gleaming pixel title.
+- Buttons (`UI.button`): bright glossy fill (light top, deeper bottom), thick black
+  outline, white outlined pixel text; they grow when hovered and squish when pressed
+  (`UI.juicy`). Green = buy/go (`UI.pricePill`), red = close/danger, gray = disabled.
+- HUD panels (`UI.glass`, `Hud.menu`): bright glossy fill, thick black outline, rounded.
+- Effects run from one loop (`UI.animate`) only while their frame is visible.
 - No uploaded images: pictures are our own 3D models in ViewportFrames (ItemPictures,
-  UI.boxViewport) and emoji icons.
-- Colours: saturated and cheerful. Money is green (#6EEB8C), prices on green buttons,
+  UI.boxViewport), emoji icons and patterns built from frames.
+- Colours: saturated and cheerful. Money is green (#6EEB8C), gold for titles,
   rarities use `Rarities.info[r].color`.
 
 **World:**

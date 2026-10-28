@@ -35,7 +35,7 @@ local DURATIONS = { 5, 15, 30, 60 }
 local function heading(text: string, parent: Instance, order: number)
 	return UI.label(text, {
 		Size = UDim2.new(1, 0, 0, 24),
-		FontFace = UI.fonts.heavy,
+		FontFace = UI.fonts.bold,
 		TextColor3 = colors.gold,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		LayoutOrder = order,
@@ -111,7 +111,7 @@ function AdminPanel.start(screen: ScreenGui)
 	UI.label("ADMIN PANEL", {
 		Size = UDim2.new(1, -20, 1, -8),
 		Position = UDim2.fromOffset(10, 4),
-		FontFace = UI.fonts.heavy,
+		FontFace = UI.fonts.bold,
 		ZIndex = 22,
 		Parent = ribbon,
 	})
