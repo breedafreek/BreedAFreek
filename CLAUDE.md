@@ -49,9 +49,10 @@ approves each screen from a render before the next one is built.**
   low-poly cat): detailed low-poly models of many slightly offset or angled blocks and
   wedges, smooth (no studs), a muted main colour with a bright Neon accent (glowing eyes,
   seams, strips, toes), small gold details, sparks and lights. Mark a model with the
-  attribute "Crafted" and Lego leaves it alone. Done so far: eggs (`EggModel`) and the
-  Whiskerz pet (`Freeks.luau`, `look.crafted`). The owner approves each kind before the
-  rest follow (pets, guardians, house parts, yard items, plants).
+  attribute "Crafted" and Lego leaves it alone. Done: eggs (`EggModel`) and all 18 Freeks
+  (pets and guardians; `CraftedFreeks.luau`, built with its kit: block legs with glowing
+  toes, glowing eyes in a mood, a chibi `person` body). Next, once the owner approves each:
+  house parts, yard items, plants.
 - Everything is LEGO (`Lego.part` does it automatically): big round pieces (balls, sphere
   meshes) become square bricks, so creatures, plants and props are brick-built; small round
   details (eyes, noses) stay round. Eggs stay egg-shaped (attribute "Round") and are covered
@@ -76,8 +77,10 @@ approves each screen from a render before the next one is built.**
   colours, materials, roof shape and signature details like candy stripes, icicles or lava
   cracks). A new style needs a look there and an entry in `Parts.STYLES`. Every part must
   work both full-size on a house and as a small item (pedestals, carrying, pictures).
-- Guardians are giant Freeks (`Freeks.luau` / `FreekModel.luau` / `FreekAnimator.luau`,
-  kept as the creature library): big googly eyes, chunky, each with a signature accessory.
+- Guardians are giant Freeks (`Freeks.luau` / `CraftedFreeks.luau` / `FreekModel.luau` /
+  `FreekAnimator.luau`): crafted low-poly creatures with glowing eyes, each with its
+  signature item (bow, collar, bell, flower, top hat, shades, horn, horns, lightning, clown
+  nose, glasses, sweatband, tiara, witch hat, bolts, bandages, cape, spiked collar).
 - Seasonal themes (currently Halloween) dress things up: pumpkins, purples, oranges,
   cobwebs, glowing eyes, bats.
 

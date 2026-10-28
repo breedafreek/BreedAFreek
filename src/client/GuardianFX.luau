@@ -12,6 +12,7 @@ local Workspace = game:GetService("Workspace")
 
 local FreekAnimator = require(ReplicatedStorage.Shared.FreekAnimator)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
+local Items = require(ReplicatedStorage.Shared.Items)
 local Lego = require(ReplicatedStorage.Shared.Lego)
 
 local GuardianFX = {}
@@ -22,12 +23,9 @@ local OUTLINE = Color3.fromRGB(20, 22, 48)
 -- Builds a Freek scaled up round its pivot.
 local function giant(species: string): (Model, number)
 	local model, height = FreekModel.build(species)
-	local pivot = model:GetPivot()
+	Items.scaleModel(model, SCALE) -- (keeps the pivot at its feet)
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then
-			local rel = pivot:ToObjectSpace(p.CFrame)
-			p.Size *= SCALE
-			p.CFrame = pivot * (rel.Rotation + rel.Position * SCALE)
 			p.Anchored = true
 			p.CanCollide = false
 			p.CanQuery = false

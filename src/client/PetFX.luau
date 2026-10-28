@@ -53,18 +53,15 @@ end
 -- A Freek, scaled up round its feet (more for heavier pets).
 local function build(itemId: string, mutation: string?, weightScale: number): (Model, number)
 	local model = ItemModel.buildNormal(itemId, if mutation ~= "" then mutation else nil)
-	local scale = SCALE * weightScale
+	Items.scaleModel(model, SCALE * weightScale) -- (keeps the pivot at its feet)
 	local pivot = model:GetPivot()
 	local top = 0
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then
-			local rel = pivot:ToObjectSpace(p.CFrame)
-			p.Size *= scale
-			p.CFrame = pivot * (rel.Rotation + rel.Position * scale)
 			p.Anchored = true
 			p.CanCollide = false
 			p.CanQuery = false
-			top = math.max(top, rel.Position.Y * scale + p.Size.Y / 2)
+			top = math.max(top, pivot:PointToObjectSpace(p.Position).Y + p.Size.Y / 2)
 		end
 	end
 	Lego.apply(model)

@@ -816,7 +816,7 @@ return Bricks
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-27", -- printed in Output: which build is running
+	BUILD = "life-28", -- printed in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join. Set to nil
 	-- before the game launches!
@@ -895,6 +895,1046 @@ return Config
         </Properties>
       </Item>
       <Item class="ModuleScript" referent="8">
+        <Properties>
+          <string name="Name">CraftedFreeks</string>
+          <string name="Source"><![CDATA[-- The crafted looks of the Freeks (pets and guardians), like the owner's reference cat:
+-- low-poly creatures built from many blocks and wedges, some set at angles, in a muted main
+-- colour with one bright Neon accent (glowing eyes, toes, strips, gems), chunky and smooth,
+-- with no LEGO studs (look.crafted marks the model "Crafted"; see Lego). Each keeps its
+-- character and signature item from Freeks.luau.
+--
+-- CraftedFreeks[id]() returns a look for FreekModel (see the part list format there): face
+-- toward -Z, feet on y = 0, the first part is the body, a part named "Head" turns to look
+-- around, parts with a swing hinge walk.
+
+local CraftedFreeks = {}
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+local INK = rgb(28, 24, 26)
+local WHITE = rgb(245, 245, 240)
+local GOLD = rgb(255, 200, 60)
+local DIAGONAL = { 0, 0.5, 0.5, 0 } -- leg phases: front-left, front-right, back-left, back-right
+
+-- The kit: a part list and helpers that add to it.
+local function kit()
+	local list = {}
+	local k = {}
+	function k.add(spec)
+		table.insert(list, spec)
+		return #list
+	end
+	-- A block (or `extra.shape`), at pos, turned by rot (degrees).
+	function k.box(size, pos, rot, color, extra)
+		local spec = { shape = "Block", size = size, pos = pos, rot = rot, color = color }
+		for key, value in extra or {} do
+			spec[key] = value
+		end
+		return k.add(spec)
+	end
+	function k.wedge(size, pos, rot, color, extra)
+		local spec = { shape = "Wedge" }
+		for key, value in extra or {} do
+			spec[key] = value
+		end
+		return k.box(size, pos, rot, color, spec)
+	end
+	-- A glowing detail (keeps its colour when mutated).
+	function k.glow(size, pos, rot, color, extra)
+		local spec = { material = "Neon", detail = true }
+		for key, value in extra or {} do
+			spec[key] = value
+		end
+		return k.box(size, pos, rot, color, spec)
+	end
+	-- A dark detail (pupils, brows, mouths).
+	function k.ink(size, pos, rot, extra)
+		local spec = { detail = true }
+		for key, value in extra or {} do
+			spec[key] = value
+		end
+		return k.box(size, pos, rot, INK, spec)
+	end
+	-- Four block legs at (x, z) (front-left, front-right, back-left, back-right), `height`
+	-- tall, with chunky paws and glowing toes. colors = { leg, paw, toe }.
+	function k.legs(spots, height: number, width: number, colors)
+		for i, spot in spots do
+			local x, z = spot[1], spot[2]
+			local swing = { hinge = { x, height, z }, phase = DIAGONAL[i] or 0 }
+			k.box({ width, height, width * 1.1 }, { x, height / 2 + 0.15, z }, nil, colors[1], { swing = swing })
+			k.box({ width + 0.16, 0.3, width * 1.1 + 0.3 }, { x, 0.15, z - 0.12 }, nil, colors[2] or colors[1], {
+				swing = swing,
+			})
+			if colors[3] then
+				for _, t in { -0.2, 0, 0.2 } do
+					k.glow(
+						{ 0.13, 0.12, 0.14 },
+						{ x + t * width * 1.4, 0.18, z - 0.12 - (width * 1.1 + 0.3) / 2 },
+						nil,
+						colors[3],
+						{
+							swing = swing,
+						}
+					)
+				end
+			end
+		end
+	end
+	-- Two glowing eyes on a face at depth z (the face's front), centred at height y, `gap`
+	-- from the middle. mood: "fierce" (slit pupils, cross brows), "cute" (big square pupils
+	-- with a shine) or "sleepy" (heavy lids, in lidColor).
+	function k.eyes(y: number, z: number, gap: number, w: number, h: number, color: Color3, mood: string, lidColor)
+		for _, side in { -1, 1 } do
+			local x = side * gap
+			k.glow({ w, h, 0.1 }, { x, y, z - 0.04 }, nil, color)
+			if mood == "fierce" then
+				k.ink({ w * 0.2, h * 0.85, 0.06 }, { x - side * w * 0.06, y, z - 0.1 })
+				k.ink({ w * 1.25, 0.16, 0.18 }, { x, y + h * 0.5 + 0.14, z - 0.08 }, { 0, 0, side * 18 })
+			elseif mood == "sleepy" then
+				k.ink({ w * 0.36, h * 0.4, 0.06 }, { x, y - h * 0.15, z - 0.1 })
+				k.box({ w * 1.15, h * 0.5, 0.14 }, { x, y + h * 0.3, z - 0.1 }, { 0, 0, side * -6 }, lidColor or INK, {
+					detail = true,
+				})
+			else
+				k.ink({ w * 0.46, h * 0.62, 0.06 }, { x + side * w * 0.08, y - h * 0.06, z - 0.1 })
+				k.box({ w * 0.16, w * 0.16, 0.05 }, { x + side * w * 0.2, y + h * 0.18, z - 0.14 }, nil, WHITE, {
+					material = "Neon",
+					detail = true,
+				})
+			end
+		end
+	end
+	function k.done(effects)
+		return { parts = list, crafted = true, effects = effects }
+	end
+	return k
+end
+
+-- A chibi person (the Human and Monster lines): block legs and shoes, hips, a torso (the
+-- body), arms that swing (or stick out in front with o.armsForward) and a big block head.
+-- o = { skin, shirt, pants, shoes, sleeves?, accent (shoe glow), torsoWidth?, head? }.
+-- Returns the kit and where the head is: { y, z = its front, w = its width, top }.
+local function person(o)
+	local k = kit()
+	local torsoW = o.torsoWidth or 1.85
+	local head = o.head or { 2.0, 1.8, 1.75 }
+	k.box({ torsoW, 1.5, 1.05 }, { 0, 2.4, 0 }, nil, o.shirt, { name = "Body" })
+	k.box({ torsoW * 0.92, 0.55, 1.0 }, { 0, 1.5, 0 }, nil, o.pants)
+	for i, x in { -0.42, 0.42 } do
+		local swing = { hinge = { x, 1.35, 0 }, phase = (i - 1) * 0.5 }
+		k.box({ 0.62, 1.1, 0.66 }, { x, 0.8, 0 }, nil, o.pants, { swing = swing })
+		k.box({ 0.74, 0.36, 0.98 }, { x, 0.2, -0.14 }, nil, o.shoes, { swing = swing, detail = true })
+		k.glow({ 0.62, 0.07, 0.07 }, { x, 0.08, -0.64 }, nil, o.accent, { swing = swing })
+	end
+	local shoulder = torsoW / 2 + 0.3
+	for _, side in { -1, 1 } do
+		if o.armsForward then
+			local swing = { hinge = { side * shoulder, 2.9, 0 }, phase = if side < 0 then 0.5 else 0, amount = 0.25 }
+			k.box({ 0.5, 0.5, 1.4 }, { side * shoulder, 2.9, -0.65 }, nil, o.sleeves or o.skin, { swing = swing })
+			k.box({ 0.56, 0.5, 0.45 }, { side * shoulder, 2.9, -1.5 }, nil, o.skin, { swing = swing })
+		else
+			local swing = { hinge = { side * shoulder, 3.05, 0 }, phase = if side < 0 then 0.5 else 0, amount = 0.8 }
+			local arm = { swing = swing, rig = "arm", side = side }
+			k.box({ 0.5, 1.3, 0.55 }, { side * shoulder, 2.45, 0 }, { 0, 0, side * 6 }, o.sleeves or o.skin, arm)
+			k.box({ 0.58, 0.46, 0.6 }, { side * (shoulder + 0.08), 1.62, 0 }, nil, o.skin, {
+				swing = swing,
+				rig = "arm",
+				side = side,
+			})
+		end
+	end
+	k.box({ 0.6, 0.3, 0.6 }, { 0, 3.28, 0 }, nil, o.skin)
+	local y = 3.35 + head[2] / 2
+	k.box(head, { 0, y, 0 }, nil, o.skin, { name = "Head" })
+	return k, { y = y, z = -head[3] / 2, w = head[1], top = y + head[2] / 2 }
+end
+
+--------------------------------------------------------------------------------
+-- Animals
+--------------------------------------------------------------------------------
+
+function CraftedFreeks.Oinkle()
+	-- A chubby piglet: a round-ish body of layered blocks, a big snout, floppy wedge ears,
+	-- glowing pink eyes, little hooves and a curly tail, and its signature bow.
+	local k = kit()
+	local pink, deep, pale = rgb(222, 140, 155), rgb(186, 104, 122), rgb(245, 186, 196)
+	local glow = rgb(255, 80, 170)
+	k.box({ 2.3, 1.6, 2.6 }, { 0, 1.5, 0.4 }, nil, pink, { name = "Body" })
+	k.box({ 2.0, 0.4, 2.2 }, { 0, 2.42, 0.4 }, nil, deep)
+	k.box({ 1.9, 0.4, 2.2 }, { 0, 0.7, 0.4 }, nil, pale)
+	k.legs({ { -0.65, -0.45 }, { 0.65, -0.45 }, { -0.65, 1.2 }, { 0.65, 1.2 } }, 0.9, 0.55, { pink, rgb(90, 60, 66) })
+	local hy, hz = 2.45, -1.35
+	k.box({ 2.0, 1.75, 1.6 }, { 0, hy, hz }, nil, pink, { name = "Head" })
+	k.box({ 1.7, 0.3, 1.4 }, { 0, hy + 0.98, hz + 0.05 }, nil, deep)
+	k.box({ 1.05, 0.72, 0.42 }, { 0, hy - 0.35, hz - 0.98 }, nil, pale)
+	for _, side in { -1, 1 } do
+		k.ink({ 0.18, 0.28, 0.06 }, { side * 0.22, hy - 0.35, hz - 1.22 })
+		k.wedge({ 0.25, 0.8, 0.7 }, { side * 0.72, hy + 1.05, hz - 0.2 }, { 35, 0, side * -20 }, deep, {
+			rig = "ear",
+			side = side,
+			pivot = { side * 0.72, hy + 0.85, hz },
+		})
+	end
+	k.eyes(hy + 0.3, hz - 0.8, 0.52, 0.42, 0.42, glow, "cute")
+	k.glow({ 0.5, 0.08, 0.06 }, { 0, hy - 0.82, hz - 0.82 }, nil, glow)
+	-- Curly tail and its glowing tip.
+	for i, seg in { { 0, 1.9, 1.85, 30 }, { 0.15, 2.2, 2.0, -20 }, { 0, 2.42, 1.85, 60 } } do
+		k.box({ 0.28, 0.28, 0.42 }, { seg[1], seg[2], seg[3] }, { seg[4], 0, 0 }, if i == 3 then glow else deep, {
+			swing = { hinge = { 0, 1.8, 1.7 }, axis = "Y", amount = 0.6 },
+			material = if i == 3 then "Neon" else nil,
+		})
+	end
+	-- Its signature bow, on top of the head.
+	for _, side in { -1, 1 } do
+		k.wedge(
+			{ 0.2, 0.55, 0.5 },
+			{ 0.55 + side * 0.32, hy + 1.3, hz - 0.1 },
+			{ 0, side * 90, 0 },
+			rgb(255, 80, 150),
+			{
+				detail = true,
+			}
+		)
+	end
+	k.glow({ 0.22, 0.22, 0.22 }, { 0.55, hy + 1.3, hz - 0.1 }, nil, glow)
+	return k.done()
+end
+
+function CraftedFreeks.Woofles()
+	-- A golden puppy: cream chest and muzzle, a black nose and tongue out, long floppy ears,
+	-- glowing sky-blue eyes, a red collar with a glowing tag and a wagging tail.
+	local k = kit()
+	local fur, deep, cream = rgb(205, 150, 72), rgb(160, 108, 50), rgb(240, 214, 168)
+	local glow = rgb(90, 210, 255)
+	k.box({ 2.0, 1.5, 2.6 }, { 0, 1.85, 0.45 }, { -5, 0, 0 }, fur, { name = "Body" })
+	k.box({ 1.8, 1.4, 0.9 }, { 0, 1.95, -0.85 }, { 8, 0, 0 }, cream)
+	k.box({ 1.6, 0.35, 2.2 }, { 0, 2.65, 0.5 }, { -5, 0, 0 }, deep)
+	k.legs({ { -0.62, -0.5 }, { 0.62, -0.5 }, { -0.66, 1.4 }, { 0.66, 1.4 } }, 1.3, 0.58, { fur, cream, glow })
+	local hy, hz = 3.35, -1.2
+	k.box({ 1.95, 1.7, 1.75 }, { 0, hy, hz }, nil, fur, { name = "Head" })
+	k.box({ 1.7, 0.3, 1.5 }, { 0, hy + 0.95, hz + 0.05 }, nil, deep)
+	k.box({ 1.15, 0.66, 0.65 }, { 0, hy - 0.45, hz - 1.15 }, nil, cream)
+	k.ink({ 0.44, 0.3, 0.22 }, { 0, hy - 0.16, hz - 1.48 })
+	k.box({ 0.36, 0.42, 0.08 }, { 0.12, hy - 0.92, hz - 1.4 }, { 0, 0, -8 }, rgb(240, 110, 130), { detail = true })
+	for _, side in { -1, 1 } do
+		k.box({ 0.32, 1.25, 0.8 }, { side * 1.1, hy - 0.2, hz + 0.1 }, { 0, 0, side * 10 }, deep, {
+			rig = "ear",
+			side = side,
+			pivot = { side * 1.0, hy + 0.5, hz + 0.1 },
+		})
+	end
+	k.eyes(hy + 0.25, hz - 0.88, 0.48, 0.44, 0.44, glow, "cute")
+	-- Collar and its glowing tag.
+	k.box({ 1.75, 0.24, 1.6 }, { 0, hy - 0.95, hz + 0.15 }, nil, rgb(205, 40, 50), { detail = true })
+	k.glow({ 0.34, 0.34, 0.1 }, { 0, hy - 1.2, hz - 0.68 }, { 0, 0, 45 }, glow)
+	-- A wagging tail.
+	for i, seg in { { 0, 2.6, 1.8, -40 }, { 0, 3.05, 2.05, -60 }, { 0, 3.5, 2.15, -80 } } do
+		k.box({ 0.36, 0.36, 0.7 }, { seg[1], seg[2], seg[3] }, { seg[4], 0, 0 }, if i == 3 then cream else fur, {
+			swing = { hinge = { 0, 2.4, 1.6 }, axis = "Y", amount = 1 },
+		})
+	end
+	return k.done()
+end
+
+function CraftedFreeks.Whiskerz()
+	-- A low-poly prowling cat: a dusty-orange body with darker stripes, glowing amber eyes
+	-- under cross brows, glowing whiskers, toes and spine strips, a layered cheek ruff, a
+	-- collar and bell, and a jointed tail curling up.
+	local k = kit()
+	local fur, dark, light = rgb(196, 118, 66), rgb(140, 78, 44), rgb(232, 196, 150)
+	local glow = rgb(255, 176, 40)
+	k.box({ 2.1, 1.5, 2.8 }, { 0, 1.75, 0.55 }, { -6, 0, 0 }, fur, { name = "Body" })
+	k.box({ 1.9, 1.7, 1.0 }, { 0, 2.0, -0.85 }, { 8, 0, 0 }, light)
+	k.box({ 1.7, 0.4, 2.3 }, { 0, 2.62, 0.55 }, { -6, 0, 0 }, dark)
+	for _, z in { -0.15, 0.55, 1.25 } do
+		k.box({ 2.18, 0.28, 0.32 }, { 0, 2.2, z }, { -6, 0, 0 }, dark)
+	end
+	for _, x in { -0.42, 0.42 } do
+		k.glow({ 0.16, 0.08, 1.9 }, { x, 2.84, 0.6 }, { -6, 0, 0 }, glow)
+	end
+	k.legs({ { -0.68, -0.55 }, { 0.68, -0.55 }, { -0.72, 1.45 }, { 0.72, 1.45 } }, 1.25, 0.62, { fur, light, glow })
+	local hy, hz = 3.55, -1.25
+	k.box({ 2.3, 1.75, 1.8 }, { 0, hy, hz }, nil, fur, { name = "Head" })
+	k.box({ 2.0, 0.35, 1.6 }, { 0, hy + 0.98, hz + 0.05 }, nil, dark)
+	k.box({ 1.25, 0.62, 0.55 }, { 0, hy - 0.5, hz - 1.05 }, nil, light)
+	k.box({ 0.42, 0.26, 0.16 }, { 0, hy - 0.22, hz - 1.36 }, nil, rgb(240, 120, 140), { detail = true })
+	k.ink({ 0.5, 0.08, 0.06 }, { 0, hy - 0.62, hz - 1.34 })
+	for _, side in { -1, 1 } do
+		k.box({ 0.3, 0.7, 0.9 }, { side * 1.2, hy - 0.4, hz - 0.15 }, { 0, 0, side * 14 }, fur)
+		k.box({ 0.24, 0.45, 0.7 }, { side * 1.3, hy - 0.62, hz - 0.1 }, { 0, 0, side * 32 }, light)
+		k.wedge({ 0.32, 0.95, 0.75 }, { side * 0.72, hy + 1.45, hz + 0.1 }, { 0, 90, side * -14 }, dark, {
+			rig = "ear",
+			side = side,
+			pivot = { side * 0.72, hy + 1.0, hz + 0.1 },
+		})
+		k.wedge({ 0.12, 0.6, 0.45 }, { side * 0.72, hy + 1.38, hz - 0.08 }, { 0, 90, side * -14 }, glow, {
+			material = "Neon",
+			detail = true,
+		})
+		for i, tilt in { -14, 0, 14 } do
+			k.glow({ 1.1, 0.06, 0.08 }, { side * 1.05, hy - 0.42 + (i - 2) * 0.13, hz - 1.05 }, {
+				0,
+				side * 12,
+				side * tilt,
+			}, glow)
+		end
+	end
+	k.eyes(hy + 0.2, hz - 0.88, 0.5, 0.62, 0.44, glow, "fierce")
+	-- Collar and its gold bell.
+	k.box({ 1.95, 0.24, 1.75 }, { 0, hy - 0.95, hz + 0.1 }, nil, rgb(200, 40, 50), { detail = true })
+	k.add({
+		shape = "Ball",
+		size = 0.45,
+		pos = { 0, hy - 1.18, hz - 0.9 },
+		color = GOLD,
+		material = "Metal",
+		detail = true,
+	})
+	for i, seg in { { 0, 1.95, 2.15, -30 }, { 0, 2.45, 2.55, -55 }, { 0, 3.1, 2.7, -80 }, { 0, 3.7, 2.55, -110 } } do
+		k.box({ 0.42, 0.42, 0.8 }, { seg[1], seg[2], seg[3] }, { seg[4], 0, 0 }, if i % 2 == 0 then dark else fur, {
+			swing = { hinge = { 0, 1.9, 1.9 }, axis = "Y", amount = 0.6 },
+		})
+	end
+	k.glow({ 0.46, 0.46, 0.18 }, { 0, 4.0, 2.35 }, { -110, 0, 0 }, glow)
+	return k.done()
+end
+
+function CraftedFreeks.Lizzle()
+	-- A happy lizard: a low flat body with glowing spine plates, a wide flat head with a big
+	-- grin, bulgy eye turrets on top, splayed legs, a long tapering tail, and its signature
+	-- flower on its head.
+	local k = kit()
+	local scale, deep, belly = rgb(112, 168, 78), rgb(74, 122, 56), rgb(214, 214, 140)
+	local glow = rgb(255, 225, 60)
+	k.box({ 2.1, 0.95, 2.8 }, { 0, 1.0, 0.35 }, nil, scale, { name = "Body" })
+	k.box({ 1.7, 0.3, 2.4 }, { 0, 0.55, 0.35 }, nil, belly)
+	for i, z in { -0.6, 0.1, 0.8, 1.5 } do
+		k.wedge({ 0.3, 0.45, 0.45 }, { 0, 1.7, z }, nil, deep)
+		k.glow({ 0.1, 0.2, 0.2 }, { 0, 1.82 + (i % 2) * 0.02, z + 0.1 }, nil, glow)
+	end
+	for i, leg in { { -1, -0.45 }, { 1, -0.45 }, { -1, 1.2 }, { 1, 1.2 } } do
+		local swing = { hinge = { leg[1] * 0.85, 0.85, leg[2] }, phase = DIAGONAL[i] }
+		k.box({ 0.8, 0.42, 0.5 }, { leg[1] * 1.2, 0.7, leg[2] }, { 0, 0, leg[1] * -25 }, scale, { swing = swing })
+		k.box({ 0.5, 0.5, 0.5 }, { leg[1] * 1.55, 0.3, leg[2] }, nil, deep, { swing = swing })
+		k.glow({ 0.55, 0.1, 0.12 }, { leg[1] * 1.55, 0.08, leg[2] - 0.3 }, nil, glow, { swing = swing })
+	end
+	local hy, hz = 1.35, -1.75
+	k.box({ 2.2, 0.95, 1.6 }, { 0, hy, hz }, nil, scale, { name = "Head" })
+	k.box({ 1.9, 0.3, 1.0 }, { 0, hy - 0.5, hz - 0.15 }, nil, belly)
+	k.ink({ 1.5, 0.12, 0.08 }, { 0, hy - 0.18, hz - 0.82 })
+	k.box({ 0.9, 0.16, 0.08 }, { 0, hy - 0.3, hz - 0.82 }, nil, rgb(240, 110, 130), { detail = true })
+	for _, side in { -1, 1 } do
+		k.box({ 0.62, 0.55, 0.62 }, { side * 0.6, hy + 0.7, hz - 0.2 }, nil, scale)
+	end
+	k.eyes(hy + 0.72, hz - 0.52, 0.6, 0.42, 0.4, glow, "cute")
+	-- Tail: tapering segments that swish.
+	for i, seg in { { 1.95, 0.85 }, { 2.7, 0.7 }, { 3.4, 0.55 }, { 4.0, 0.4 } } do
+		k.box({ seg[2], seg[2] * 0.8, 0.8 }, { 0, 0.8 - i * 0.08, seg[1] }, nil, if i % 2 == 0 then deep else scale, {
+			swing = { hinge = { 0, 0.9, 1.7 }, axis = "Y", amount = 0.9 },
+		})
+	end
+	-- Its signature flower.
+	for i = 0, 4 do
+		local a = i / 5 * math.pi * 2
+		k.box({ 0.32, 0.12, 0.32 }, { 0.55 + math.cos(a) * 0.28, hy + 0.95, hz + 0.45 + math.sin(a) * 0.28 }, {
+			0,
+			math.deg(a),
+			0,
+		}, rgb(255, 120, 170), { detail = true })
+	end
+	k.glow({ 0.24, 0.16, 0.24 }, { 0.55, hy + 1.0, hz + 0.45 }, nil, glow)
+	return k.done()
+end
+
+function CraftedFreeks.Hootsworth()
+	-- A posh owl: a tall layered body with feather chevrons, a pale face disc with two big
+	-- glowing orange eyes (one behind a gold monocle), ear tufts, a beak, wings that flap, and
+	-- its signature top hat.
+	local k = kit()
+	local brown, deep, cream = rgb(132, 92, 60), rgb(92, 62, 40), rgb(232, 212, 176)
+	local glow = rgb(255, 160, 30)
+	k.box({ 2.1, 2.2, 1.9 }, { 0, 1.65, 0.1 }, nil, brown, { name = "Body" })
+	k.box({ 1.5, 1.7, 0.3 }, { 0, 1.5, -0.88 }, nil, cream)
+	for _, y in { 1.0, 1.45, 1.9 } do
+		for _, x in { -0.35, 0.35 } do
+			k.wedge({ 0.36, 0.22, 0.12 }, { x, y, -1.06 }, { 0, 180, 0 }, deep, { detail = true })
+		end
+	end
+	for _, side in { -1, 1 } do
+		k.box({ 0.35, 1.7, 1.5 }, { side * 1.2, 1.7, 0.15 }, { 0, 0, side * -6 }, deep, {
+			swing = { hinge = { side * 1.05, 2.5, 0.15 }, axis = "Z", amount = 1 },
+		})
+		k.box({ 0.6, 0.3, 0.7 }, { side * 0.45, 0.15, -0.2 }, nil, rgb(240, 150, 40), {
+			swing = { hinge = { side * 0.45, 0.6, 0 }, phase = if side < 0 then 0 else 0.5 },
+		})
+	end
+	local hy, hz = 3.45, 0
+	k.box({ 2.3, 1.5, 1.95 }, { 0, hy, hz }, nil, brown, { name = "Head" })
+	k.box({ 2.0, 1.15, 0.2 }, { 0, hy - 0.05, hz - 1.0 }, nil, cream)
+	for _, side in { -1, 1 } do
+		k.wedge({ 0.3, 0.7, 0.55 }, { side * 0.9, hy + 1.0, hz }, { 0, 90, side * -18 }, deep, {
+			rig = "ear",
+			side = side,
+			pivot = { side * 0.9, hy + 0.7, hz },
+		})
+	end
+	k.eyes(hy + 0.05, hz - 1.08, 0.5, 0.62, 0.62, glow, "cute")
+	k.wedge({ 0.32, 0.45, 0.3 }, { 0, hy - 0.45, hz - 1.25 }, { 180, 0, 0 }, rgb(240, 150, 40), { detail = true })
+	-- A gold monocle on the right eye.
+	k.box({ 0.82, 0.08, 0.08 }, { 0.5, hy + 0.41, hz - 1.18 }, nil, GOLD, { material = "Metal", detail = true })
+	k.box({ 0.82, 0.08, 0.08 }, { 0.5, hy - 0.31, hz - 1.18 }, nil, GOLD, { material = "Metal", detail = true })
+	k.box({ 0.08, 0.8, 0.08 }, { 0.12, hy + 0.05, hz - 1.18 }, nil, GOLD, { material = "Metal", detail = true })
+	k.box({ 0.08, 0.8, 0.08 }, { 0.88, hy + 0.05, hz - 1.18 }, nil, GOLD, { material = "Metal", detail = true })
+	k.box(
+		{ 0.05, 0.9, 0.05 },
+		{ 0.92, hy - 0.75, hz - 1.15 },
+		{ 0, 0, 12 },
+		GOLD,
+		{ material = "Metal", detail = true }
+	)
+	-- Its signature top hat, with a glowing band.
+	k.box({ 1.6, 0.12, 1.5 }, { 0, hy + 0.8, hz }, nil, INK, { detail = true })
+	k.box({ 1.0, 1.0, 0.95 }, { 0, hy + 1.35, hz }, nil, INK, { detail = true })
+	k.glow({ 1.04, 0.16, 0.99 }, { 0, hy + 1.0, hz }, nil, glow)
+	return k.done()
+end
+
+function CraftedFreeks.Chompers()
+	-- A cool croc: a long low body with ridges down the back, a long snout with the jaws
+	-- open and full of teeth, eye bumps behind black shades with a glowing rim, a gold chain
+	-- and a long tapering tail that swishes.
+	local k = kit()
+	local green, deep, belly = rgb(72, 118, 70), rgb(46, 82, 50), rgb(196, 200, 140)
+	local glow = rgb(60, 255, 170)
+	k.box({ 2.0, 1.0, 3.4 }, { 0, 1.0, 0.4 }, nil, green, { name = "Body" })
+	k.box({ 1.7, 0.3, 3.0 }, { 0, 0.55, 0.4 }, nil, belly)
+	for i, z in { -0.9, -0.2, 0.5, 1.2, 1.9 } do
+		for _, x in { -0.45, 0.45 } do
+			k.wedge({ 0.26, 0.35, 0.4 }, { x, 1.62, z }, nil, deep)
+		end
+		if i % 2 == 1 then
+			k.glow({ 0.08, 0.08, 0.36 }, { 0, 1.53, z }, nil, glow)
+		end
+	end
+	for i, leg in { { -1, -0.6 }, { 1, -0.6 }, { -1, 1.4 }, { 1, 1.4 } } do
+		local swing = { hinge = { leg[1] * 0.85, 0.85, leg[2] }, phase = DIAGONAL[i] }
+		k.box({ 0.7, 0.45, 0.55 }, { leg[1] * 1.15, 0.7, leg[2] }, { 0, 0, leg[1] * -25 }, green, { swing = swing })
+		k.box({ 0.55, 0.5, 0.6 }, { leg[1] * 1.45, 0.3, leg[2] }, nil, deep, { swing = swing })
+	end
+	local hy, hz = 1.3, -1.45
+	k.box({ 1.8, 0.95, 1.3 }, { 0, hy, hz }, nil, green, { name = "Head" })
+	k.box({ 1.5, 0.42, 2.1 }, { 0, hy + 0.05, hz - 1.6 }, { -6, 0, 0 }, green)
+	k.box({ 1.4, 0.3, 1.9 }, { 0, hy - 0.5, hz - 1.45 }, { 10, 0, 0 }, deep)
+	k.box({ 1.2, 0.08, 1.6 }, { 0, hy - 0.3, hz - 1.45 }, { 4, 0, 0 }, rgb(200, 70, 80), { detail = true })
+	for i = 0, 4 do
+		for _, side in { -1, 1 } do
+			k.wedge({ 0.12, 0.2, 0.16 }, { side * 0.62, hy - 0.22, hz - 0.85 - i * 0.36 }, { 180, 0, 0 }, WHITE, {
+				detail = true,
+			})
+		end
+	end
+	for _, side in { -1, 1 } do
+		k.box({ 0.6, 0.5, 0.6 }, { side * 0.5, hy + 0.65, hz - 0.1 }, nil, green)
+		-- Black shades with a glowing rim.
+		k.box({ 0.62, 0.32, 0.08 }, { side * 0.5, hy + 0.7, hz - 0.45 }, nil, INK, { detail = true })
+		k.glow({ 0.64, 0.05, 0.09 }, { side * 0.5, hy + 0.88, hz - 0.45 }, nil, glow)
+	end
+	k.ink({ 0.4, 0.06, 0.06 }, { 0, hy + 0.78, hz - 0.45 })
+	-- A gold chain round the neck.
+	for i = 0, 7 do
+		local a = i / 8 * math.pi * 2
+		k.box(
+			{ 0.26, 0.18, 0.26 },
+			{ math.cos(a) * 0.95, hy - 0.45 + math.sin(a) * 0.05, hz + 0.55 + math.sin(a) * 0.7 },
+			{
+				0,
+				math.deg(a),
+				0,
+			},
+			GOLD,
+			{ material = "Metal", detail = true }
+		)
+	end
+	-- Tail: tapering segments that swish.
+	for i, seg in { { 2.5, 0.85 }, { 3.3, 0.7 }, { 4.0, 0.55 }, { 4.6, 0.4 } } do
+		k.box({ seg[2], seg[2] * 0.75, 0.9 }, { 0, 0.85 - i * 0.08, seg[1] }, nil, if i % 2 == 0 then deep else green, {
+			swing = { hinge = { 0, 0.9, 2.1 }, axis = "Y", amount = 0.9 },
+		})
+	end
+	return k.done()
+end
+
+function CraftedFreeks.Stompy()
+	-- A chunky armoured rhino: layered plates on shoulders and hips, a big snout, fierce
+	-- purple glowing eyes, a tall ivory horn with a glowing tip, toenails and a tufted tail.
+	local k = kit()
+	local hide, plate, ivory = rgb(124, 118, 134), rgb(86, 82, 98), rgb(236, 226, 200)
+	local glow = rgb(190, 90, 255)
+	k.box({ 2.7, 2.0, 3.4 }, { 0, 2.15, 0.4 }, nil, hide, { name = "Body" })
+	for _, z in { -0.7, 1.4 } do
+		k.box({ 3.0, 0.9, 1.1 }, { 0, 2.75, z }, { 0, 0, 0 }, plate)
+		k.box({ 2.6, 0.3, 0.9 }, { 0, 3.3, z }, nil, plate)
+		k.glow({ 0.12, 0.1, 0.9 }, { 0, 3.47, z }, nil, glow)
+	end
+	k.legs({ { -0.85, -0.7 }, { 0.85, -0.7 }, { -0.85, 1.5 }, { 0.85, 1.5 } }, 1.35, 0.85, { hide, plate })
+	for _, spot in { { -0.85, -0.7 }, { 0.85, -0.7 }, { -0.85, 1.5 }, { 0.85, 1.5 } } do
+		for _, t in { -0.25, 0.25 } do
+			k.box({ 0.22, 0.18, 0.12 }, { spot[1] + t, 0.18, spot[2] - 0.75 }, nil, ivory, { detail = true })
+		end
+	end
+	local hy, hz = 2.55, -1.9
+	k.box({ 1.95, 1.65, 1.8 }, { 0, hy, hz }, nil, hide, { name = "Head" })
+	k.box({ 1.5, 1.0, 1.0 }, { 0, hy - 0.4, hz - 1.2 }, nil, hide)
+	k.box({ 1.7, 0.3, 1.5 }, { 0, hy + 0.95, hz + 0.1 }, nil, plate)
+	for _, side in { -1, 1 } do
+		k.ink({ 0.16, 0.22, 0.06 }, { side * 0.3, hy - 0.55, hz - 1.72 })
+		k.wedge({ 0.25, 0.6, 0.5 }, { side * 0.85, hy + 1.1, hz + 0.4 }, { 0, 90, side * -20 }, plate, {
+			rig = "ear",
+			side = side,
+			pivot = { side * 0.85, hy + 0.9, hz + 0.4 },
+		})
+	end
+	k.eyes(hy + 0.25, hz - 0.92, 0.6, 0.48, 0.34, glow, "fierce")
+	-- The horn: stacked ivory blocks narrowing to a glowing tip; a little one behind.
+	for i, s in { 0.6, 0.48, 0.36, 0.25 } do
+		k.box(
+			{ s, 0.36, s },
+			{ 0, hy + 0.25 + i * 0.32, hz - 1.55 - i * 0.08 },
+			{ -12, 45, 0 },
+			ivory,
+			{ detail = true }
+		)
+	end
+	k.glow({ 0.16, 0.36, 0.16 }, { 0, hy + 1.85, hz - 1.95 }, { -12, 45, 0 }, glow)
+	k.box({ 0.3, 0.4, 0.3 }, { 0, hy + 0.35, hz - 0.95 }, { 0, 45, 0 }, ivory, { detail = true })
+	-- Tufted tail.
+	k.box({ 0.26, 0.26, 0.8 }, { 0, 2.4, 2.45 }, { 30, 0, 0 }, hide, {
+		swing = { hinge = { 0, 2.6, 2.1 }, axis = "Y", amount = 0.6 },
+	})
+	k.box(
+		{ 0.36, 0.5, 0.36 },
+		{ 0, 2.0, 2.75 },
+		nil,
+		plate,
+		{ swing = { hinge = { 0, 2.6, 2.1 }, axis = "Y", amount = 0.6 } }
+	)
+	return k.done()
+end
+
+function CraftedFreeks.Blinky()
+	-- A one-eyed monster: a chunky purple body with glowing spikes down its back, one huge
+	-- eye with a glowing green iris, a wide toothy grin, stubby arms and legs, and its
+	-- signature horns.
+	local k = kit()
+	local purple, deep = rgb(122, 76, 196), rgb(84, 46, 150)
+	local glow = rgb(80, 230, 160)
+	k.box({ 2.6, 2.5, 2.3 }, { 0, 1.95, 0.1 }, nil, purple, { name = "Body" })
+	k.box({ 2.3, 0.4, 2.0 }, { 0, 3.35, 0.1 }, nil, deep)
+	for _, y in { 2.2, 2.9, 3.5 } do
+		k.wedge({ 0.4, 0.5, 0.5 }, { 0, y, 1.35 }, { 0, 180, 0 }, deep)
+		k.glow({ 0.14, 0.3, 0.3 }, { 0, y + 0.02, 1.5 }, { 0, 180, 0 }, glow)
+	end
+	k.legs({ { -0.65, -0.1 }, { 0.65, -0.1 } }, 0.7, 0.7, { deep, purple, glow })
+	for _, side in { -1, 1 } do
+		k.box({ 0.55, 1.0, 0.6 }, { side * 1.55, 1.9, -0.1 }, { 0, 0, side * 18 }, purple, {
+			swing = { hinge = { side * 1.35, 2.35, -0.1 }, phase = if side < 0 then 0.5 else 0, amount = 0.8 },
+			rig = "arm",
+			side = side,
+		})
+	end
+	-- One huge eye.
+	k.box({ 1.55, 1.25, 0.12 }, { 0, 2.55, -1.1 }, nil, WHITE, { detail = true })
+	k.glow({ 0.85, 0.85, 0.1 }, { 0, 2.5, -1.18 }, nil, glow)
+	k.ink({ 0.4, 0.5, 0.06 }, { 0, 2.5, -1.25 })
+	k.box({ 0.16, 0.16, 0.05 }, { 0.2, 2.72, -1.29 }, nil, WHITE, { material = "Neon", detail = true })
+	k.box({ 1.7, 0.18, 0.16 }, { 0, 3.25, -1.12 }, nil, deep, { detail = true })
+	-- A wide toothy grin.
+	k.ink({ 1.6, 0.4, 0.08 }, { 0, 1.5, -1.12 })
+	for i = 0, 4 do
+		k.wedge({ 0.18, 0.2, 0.1 }, { -0.6 + i * 0.3, 1.6, -1.18 }, { 180, 0, 0 }, WHITE, { detail = true })
+	end
+	-- Its signature horns.
+	for _, side in { -1, 1 } do
+		for i, s in { 0.5, 0.38, 0.26 } do
+			k.box(
+				{ s, 0.32, s },
+				{ side * (0.85 + i * 0.12), 3.4 + i * 0.3, 0 },
+				{ 0, 0, side * -18 },
+				rgb(240, 225, 190),
+				{
+					detail = true,
+				}
+			)
+		end
+	end
+	return k.done()
+end
+
+function CraftedFreeks.Stormy()
+	-- A grumpy storm cloud: a puffy cloud of grey-blue blocks, glowing yellow eyes under cross
+	-- brows, puffy arms, a crackling glowing lightning bolt underneath and glowing raindrops.
+	local k = kit()
+	local cloud, deep, light = rgb(132, 146, 170), rgb(96, 108, 132), rgb(176, 188, 208)
+	local glow = rgb(255, 230, 70)
+	k.box({ 2.6, 1.6, 2.0 }, { 0, 2.9, 0 }, nil, cloud, { name = "Body" })
+	for _, puff in
+		{
+			{ -1.2, 2.7, 0, 1.3, cloud },
+			{ 1.2, 2.75, 0.1, 1.35, cloud },
+			{ -0.55, 3.75, 0.05, 1.3, light },
+			{ 0.55, 3.85, -0.05, 1.45, light },
+			{ 0, 2.25, 0.1, 1.2, deep },
+			{ 0.1, 3.0, 0.75, 1.4, deep },
+		}
+	do
+		k.box(
+			{ puff[4], puff[4] * 0.85, puff[4] * 0.9 },
+			{ puff[1], puff[2], puff[3] },
+			{ 0, puff[1] * 12, 0 },
+			puff[5]
+		)
+	end
+	k.eyes(3.1, -1.0, 0.5, 0.5, 0.42, glow, "fierce")
+	k.ink({ 0.6, 0.1, 0.06 }, { 0, 2.55, -1.04 }, { 0, 0, 6 })
+	for _, side in { -1, 1 } do
+		k.box({ 0.7, 0.6, 0.7 }, { side * 2.0, 2.6, -0.1 }, nil, cloud, {
+			swing = { hinge = { side * 1.7, 2.8, -0.1 }, axis = "Z", amount = 1 },
+		})
+	end
+	-- The lightning bolt underneath.
+	for _, bit in { { 0.15, 1.65, -25 }, { -0.05, 1.05, 30 }, { 0.15, 0.45, -25 } } do
+		k.glow({ 0.3, 0.75, 0.2 }, { bit[1], bit[2], 0 }, { 0, 0, bit[3] }, glow)
+	end
+	for _, drop in { { -0.9, 1.4, 0.3 }, { 0.9, 1.1, -0.2 }, { -0.5, 0.7, -0.4 }, { 0.7, 0.4, 0.4 } } do
+		k.glow({ 0.12, 0.3, 0.12 }, drop, nil, rgb(90, 190, 255))
+	end
+	return k.done({ { type = "Sparkles", part = 1, color = glow } })
+end
+
+--------------------------------------------------------------------------------
+-- People and monsters
+--------------------------------------------------------------------------------
+
+function CraftedFreeks.Chuckles()
+	-- A clown: yellow shirt with glowing pom-pom buttons, blue pants, huge red shoes, a frilly
+	-- collar, a rainbow afro, a huge grin and its signature glowing red nose.
+	local glow = rgb(255, 60, 60)
+	local k, h = person({
+		skin = rgb(250, 222, 196),
+		shirt = rgb(240, 200, 60),
+		pants = rgb(60, 104, 210),
+		shoes = rgb(220, 44, 44),
+		accent = rgb(80, 220, 255),
+	})
+	for _, y in { 2.0, 2.45, 2.9 } do
+		k.glow({ 0.22, 0.22, 0.1 }, { 0, y, -0.56 }, nil, rgb(80, 220, 255))
+	end
+	for i = 0, 7 do
+		local a = i / 8 * math.pi * 2
+		k.wedge(
+			{ 0.5, 0.3, 0.4 },
+			{ math.cos(a) * 0.95, 3.28, math.sin(a) * 0.65 },
+			{ 0, -math.deg(a) + 90, 0 },
+			if i % 2 == 0 then rgb(255, 120, 180) else WHITE
+		)
+	end
+	local hy, fz = h.y, h.z
+	k.eyes(hy + 0.2, fz, 0.48, 0.42, 0.42, rgb(80, 220, 255), "cute")
+	k.glow({ 0.5, 0.45, 0.4 }, { 0, hy - 0.15, fz - 0.25 }, nil, glow)
+	k.ink({ 1.2, 0.3, 0.08 }, { 0, hy - 0.6, fz - 0.04 })
+	k.box({ 1.0, 0.1, 0.06 }, { 0, hy - 0.5, fz - 0.1 }, nil, WHITE, { detail = true })
+	-- Rainbow afro: a big puff of coloured blocks over the top and sides of the head.
+	local colors = {
+		rgb(255, 60, 60),
+		rgb(255, 160, 40),
+		rgb(255, 220, 50),
+		rgb(80, 210, 90),
+		rgb(70, 140, 255),
+		rgb(170, 90, 240),
+	}
+	local n = 0
+	for _, x in { -1.0, 0, 1.0 } do
+		for _, z in { -0.55, 0.2, 0.95 } do
+			n += 1
+			k.box(
+				{ 1.0, 0.9, 0.95 },
+				{ x, h.top + 0.3 + (n % 2) * 0.12, z },
+				{ 0, n * 7, (n % 3 - 1) * 8 },
+				colors[n % #colors + 1],
+				{
+					detail = true,
+				}
+			)
+		end
+	end
+	for _, side in { -1, 1 } do
+		for i, y in { 0.35, -0.25 } do
+			k.box(
+				{ 0.7, 0.8, 0.9 },
+				{ side * 1.2, hy + y, 0.2 + i * 0.3 },
+				{ 0, 0, side * 10 },
+				colors[(i + (side + 1)) % #colors + 1],
+				{
+					detail = true,
+				}
+			)
+		end
+	end
+	return k.done()
+end
+
+function CraftedFreeks.Nerdle()
+	-- A nerd: green sweater vest over a white shirt, neat brown hair with a side part, thick
+	-- black glasses with glowing blue lenses, a pocket protector with glowing pens and a bow tie.
+	local glow = rgb(70, 170, 255)
+	local k, h = person({
+		skin = rgb(244, 210, 180),
+		shirt = rgb(86, 140, 86),
+		sleeves = WHITE,
+		pants = rgb(134, 106, 78),
+		shoes = rgb(70, 50, 40),
+		accent = glow,
+	})
+	k.box({ 0.5, 0.5, 0.08 }, { 0.5, 2.65, -0.56 }, nil, WHITE, { detail = true })
+	for i, c in { rgb(255, 80, 80), glow } do
+		k.glow({ 0.06, 0.4, 0.06 }, { 0.38 + i * 0.12, 2.9, -0.6 }, nil, c)
+	end
+	for _, side in { -1, 1 } do
+		k.wedge(
+			{ 0.15, 0.3, 0.3 },
+			{ side * 0.18, 3.2, -0.6 },
+			{ 0, side * 90, 0 },
+			rgb(200, 40, 50),
+			{ detail = true }
+		)
+	end
+	local hy, fz = h.y, h.z
+	k.eyes(hy + 0.15, fz, 0.46, 0.36, 0.36, glow, "cute")
+	-- Thick glasses.
+	for _, side in { -1, 1 } do
+		local x = side * 0.46
+		k.ink({ 0.66, 0.1, 0.08 }, { x, hy + 0.42, fz - 0.14 })
+		k.ink({ 0.66, 0.1, 0.08 }, { x, hy - 0.12, fz - 0.14 })
+		k.ink({ 0.1, 0.62, 0.08 }, { x - 0.3, hy + 0.15, fz - 0.14 })
+		k.ink({ 0.1, 0.62, 0.08 }, { x + 0.3, hy + 0.15, fz - 0.14 })
+	end
+	k.ink({ 0.3, 0.08, 0.08 }, { 0, hy + 0.2, fz - 0.14 })
+	k.ink({ 0.4, 0.08, 0.06 }, { 0, hy - 0.5, fz - 0.04 })
+	-- Neat hair with a side part.
+	local hair = rgb(96, 62, 38)
+	k.box({ 2.1, 0.45, 1.85 }, { 0, h.top + 0.1, 0.05 }, nil, hair, { detail = true })
+	k.box({ 2.1, 1.0, 0.4 }, { 0, hy + 0.35, 0.75 }, nil, hair, { detail = true })
+	k.wedge({ 1.3, 0.35, 0.6 }, { -0.35, h.top + 0.2, -0.65 }, { 0, 180, -6 }, hair, { detail = true })
+	return k.done()
+end
+
+function CraftedFreeks.Flexo()
+	-- A gym buddy: a wide torso in a red tank top, bulging shoulders and arms, a flat-top,
+	-- a thick moustache, fierce glowing orange eyes and its signature sweatband.
+	local glow = rgb(255, 140, 40)
+	local skin = rgb(220, 160, 112)
+	local k, h = person({
+		skin = skin,
+		shirt = rgb(210, 44, 44),
+		pants = rgb(44, 44, 58),
+		shoes = rgb(30, 30, 34),
+		accent = glow,
+		torsoWidth = 2.3,
+	})
+	for _, side in { -1, 1 } do
+		k.box({ 0.85, 0.7, 0.9 }, { side * 1.2, 3.05, 0 }, { 0, 0, side * -10 }, skin)
+		k.box({ 0.7, 0.55, 0.7 }, { side * 1.5, 2.35, -0.05 }, nil, skin, { rig = "arm", side = side })
+	end
+	k.glow({ 1.8, 0.1, 0.08 }, { 0, 1.82, -0.54 }, nil, glow)
+	local hy, fz = h.y, h.z
+	k.eyes(hy + 0.15, fz, 0.48, 0.48, 0.32, glow, "fierce")
+	k.box({ 1.1, 0.26, 0.16 }, { 0, hy - 0.3, fz - 0.08 }, nil, rgb(40, 30, 25), { detail = true })
+	k.ink({ 0.6, 0.08, 0.06 }, { 0, hy - 0.58, fz - 0.04 })
+	-- Flat-top hair and the sweatband.
+	k.box({ 2.05, 0.6, 1.8 }, { 0, h.top + 0.25, 0.02 }, nil, rgb(40, 30, 25), { detail = true })
+	k.box({ 2.12, 0.32, 1.87 }, { 0, h.top - 0.25, 0 }, nil, rgb(230, 50, 50), { detail = true })
+	k.glow({ 2.14, 0.08, 1.89 }, { 0, h.top - 0.25, 0 }, nil, WHITE)
+	return k.done()
+end
+
+function CraftedFreeks.Glamora()
+	-- A glamorous star: a pink dress with a flared skirt of wedges, long golden hair with
+	-- bangs, cute glowing magenta eyes with lashes, pink lips and its signature tiara with
+	-- glowing gems.
+	local glow = rgb(255, 80, 200)
+	local k, h = person({
+		skin = rgb(252, 218, 200),
+		shirt = rgb(240, 110, 180),
+		pants = rgb(250, 206, 190),
+		shoes = rgb(240, 60, 150),
+		accent = glow,
+	})
+	for i = 0, 9 do
+		local a = i / 10 * math.pi * 2
+		k.wedge(
+			{ 0.65, 0.9, 0.5 },
+			{ math.cos(a) * 1.0, 1.45, math.sin(a) * 0.65 },
+			{ 0, -math.deg(a) - 90, 0 },
+			if i % 2 == 0 then rgb(240, 110, 180) else rgb(250, 150, 205)
+		)
+	end
+	local hy, fz = h.y, h.z
+	k.eyes(hy + 0.15, fz, 0.48, 0.42, 0.44, glow, "cute")
+	for _, side in { -1, 1 } do
+		k.ink({ 0.5, 0.08, 0.06 }, { side * 0.5, hy + 0.45, fz - 0.08 }, { 0, 0, side * -12 })
+	end
+	k.box({ 0.42, 0.14, 0.06 }, { 0, hy - 0.5, fz - 0.04 }, nil, rgb(230, 40, 110), { detail = true })
+	-- Long golden hair: a big back, side locks and bangs.
+	local gold = rgb(240, 196, 70)
+	k.box({ 2.2, 0.45, 1.95 }, { 0, h.top + 0.1, 0.05 }, nil, gold, { detail = true })
+	k.box({ 2.2, 2.4, 0.5 }, { 0, hy - 0.4, 0.85 }, nil, gold, { detail = true })
+	for _, side in { -1, 1 } do
+		k.box({ 0.4, 1.8, 0.6 }, { side * 1.1, hy - 0.4, -0.2 }, nil, gold, { detail = true })
+		k.wedge(
+			{ 0.9, 0.5, 0.3 },
+			{ side * 0.5, h.top - 0.15, fz - 0.1 },
+			{ 0, 180, side * 10 },
+			gold,
+			{ detail = true }
+		)
+	end
+	-- Its signature tiara.
+	k.box({ 1.4, 0.14, 0.12 }, { 0, h.top + 0.38, fz + 0.25 }, nil, GOLD, { material = "Metal", detail = true })
+	for i, x in { -0.45, 0, 0.45 } do
+		k.box({ 0.18, if i == 2 then 0.42 else 0.28, 0.1 }, { x, h.top + 0.6, fz + 0.25 }, { 0, 0, 45 }, glow, {
+			material = "Neon",
+			detail = true,
+		})
+	end
+	return k.done({ { type = "Sparkles", part = 1, color = rgb(255, 170, 230) } })
+end
+
+function CraftedFreeks.BooBoo()
+	-- A friendly ghost: a floating stack of pale blocks with a ragged hem, stubby arms, big
+	-- glowing cyan eyes, an open mouth, and its signature witch hat with a glowing band.
+	local k = kit()
+	local ghost, shade = rgb(222, 230, 248), rgb(186, 198, 226)
+	local glow = rgb(90, 230, 255)
+	k.box({ 2.3, 1.9, 2.0 }, { 0, 2.9, 0 }, nil, ghost, { name = "Body" })
+	k.box({ 2.5, 1.1, 2.2 }, { 0, 1.75, 0 }, nil, ghost)
+	k.box({ 1.9, 0.5, 1.7 }, { 0, 4.05, 0 }, nil, shade)
+	for i = 0, 7 do
+		local a = i / 8 * math.pi * 2
+		k.box(
+			{ 0.6, 0.6, 0.5 },
+			{ math.cos(a) * 1.0, 0.95 - (i % 2) * 0.2, math.sin(a) * 0.85 },
+			{ 0, -math.deg(a), 0 },
+			if i % 2 == 0 then ghost else shade
+		)
+	end
+	for _, side in { -1, 1 } do
+		k.box({ 0.55, 0.8, 0.6 }, { side * 1.4, 2.4, -0.2 }, { 0, 0, side * 30 }, ghost, {
+			swing = { hinge = { side * 1.2, 2.7, -0.2 }, axis = "Z", amount = 0.7 },
+		})
+	end
+	k.eyes(3.15, -1.0, 0.5, 0.52, 0.6, glow, "cute")
+	k.ink({ 0.45, 0.45, 0.06 }, { 0, 2.35, -1.02 })
+	k.box({ 0.6, 0.16, 0.06 }, { 0.7, 2.75, -1.04 }, nil, rgb(255, 170, 200), { detail = true })
+	k.box({ 0.6, 0.16, 0.06 }, { -0.7, 2.75, -1.04 }, nil, rgb(255, 170, 200), { detail = true })
+	-- Its signature witch hat.
+	local hat = rgb(70, 40, 110)
+	k.box({ 2.6, 0.16, 2.3 }, { 0, 4.35, 0 }, { 0, 0, -4 }, hat, { detail = true })
+	for i, s in { 1.4, 1.05, 0.7, 0.38 } do
+		k.box({ s, 0.48, s }, { 0.1 * i, 4.55 + i * 0.42, 0.05 * i }, { 0, 20 * i, -6 * i }, hat, { detail = true })
+	end
+	k.glow({ 1.44, 0.14, 1.44 }, { 0.1, 4.75, 0.05 }, { 0, 20, -6 }, rgb(255, 150, 40))
+	return k.done({ { type = "Glow", part = 1, color = rgb(190, 220, 255), size = 8 } })
+end
+
+function CraftedFreeks.Zomboy()
+	-- A zombie kid: green skin, a torn blue shirt, arms out in front, messy hair with a peek
+	-- of brain, stitches, one glowing green eye and one droopy one, and its signature neck
+	-- bolts with glowing tips.
+	local glow = rgb(140, 255, 90)
+	local skin = rgb(132, 186, 106)
+	local k, h = person({
+		skin = skin,
+		shirt = rgb(76, 112, 176),
+		pants = rgb(104, 78, 60),
+		shoes = rgb(60, 50, 45),
+		accent = glow,
+		armsForward = true,
+	})
+	for i = 0, 3 do
+		k.wedge({ 0.4, 0.4, 0.2 }, { -0.7 + i * 0.45, 1.75, -0.55 }, { 180, 0, 0 }, rgb(76, 112, 176))
+	end
+	local hy, fz = h.y, h.z
+	-- One wide glowing eye, one droopy.
+	k.glow({ 0.5, 0.5, 0.1 }, { -0.48, hy + 0.15, fz - 0.04 }, nil, glow)
+	k.ink({ 0.16, 0.3, 0.06 }, { -0.48, hy + 0.15, fz - 0.1 })
+	k.eyes(hy + 0.08, fz, 0.48, 0.38, 0.32, glow, "sleepy", skin)
+	k.ink({ 0.8, 0.12, 0.06 }, { 0, hy - 0.52, fz - 0.04 }, { 0, 0, -8 })
+	for i = 0, 2 do
+		k.ink({ 0.06, 0.24, 0.06 }, { -0.25 + i * 0.25, hy - 0.52, fz - 0.06 })
+	end
+	k.ink({ 0.6, 0.06, 0.06 }, { 0.55, hy - 0.2, fz - 0.04 }, { 0, 0, 30 })
+	-- Messy hair and a peek of brain.
+	local hair = rgb(60, 45, 35)
+	for _, tuft in { { -0.6, 0.2, -20 }, { -0.1, 0.3, 10 }, { 0.5, 0.15, 25 }, { 0, 0.1, 0 } } do
+		k.wedge({ 0.6, 0.55, 1.6 }, { tuft[1], h.top + tuft[2], 0.1 }, { 0, 0, tuft[3] }, hair, { detail = true })
+	end
+	k.box({ 0.7, 0.4, 0.6 }, { 0.5, h.top + 0.1, -0.4 }, nil, rgb(255, 150, 170), { detail = true })
+	-- Its signature neck bolts.
+	for _, side in { -1, 1 } do
+		k.box(
+			{ 0.5, 0.22, 0.22 },
+			{ side * 0.5, 3.3, 0 },
+			nil,
+			rgb(150, 150, 160),
+			{ material = "Metal", detail = true }
+		)
+		k.glow({ 0.12, 0.26, 0.26 }, { side * 0.78, 3.3, 0 }, nil, glow)
+	end
+	return k.done()
+end
+
+function CraftedFreeks.Mumbles()
+	-- A mummy: wrapped head to toe in bandage strips set every which way, arms out in front,
+	-- one glowing cyan eye peeking out, and a loose end dangling down the back.
+	local glow = rgb(90, 230, 255)
+	local wrap, strip = rgb(232, 222, 192), rgb(198, 186, 152)
+	local k, h = person({
+		skin = wrap,
+		shirt = wrap,
+		pants = rgb(222, 212, 180),
+		shoes = rgb(206, 194, 162),
+		accent = glow,
+		armsForward = true,
+	})
+	-- Strips wound round the body and head at angles.
+	for i, spot in
+		{
+			{ 2.0, 8 },
+			{ 2.5, -10 },
+			{ 2.95, 6 },
+			{ 1.5, -5 },
+		}
+	do
+		k.box({ 1.95, 0.16, 1.12 }, { 0, spot[1], 0 }, { 0, 0, spot[2] }, if i % 2 == 0 then strip else wrap)
+	end
+	local hy, fz = h.y, h.z
+	for i, spot in { { 0.55, -8 }, { 0.1, 12 }, { -0.35, -6 }, { -0.75, 9 } } do
+		k.box({ 2.08, 0.22, 1.85 }, { 0, hy + spot[1], 0 }, { 0, 0, spot[2] }, if i % 2 == 0 then strip else wrap)
+	end
+	k.glow({ 0.4, 0.3, 0.1 }, { 0.45, hy + 0.12, fz - 0.06 }, nil, glow)
+	k.ink({ 0.14, 0.24, 0.06 }, { 0.45, hy + 0.12, fz - 0.12 })
+	k.ink({ 0.5, 0.14, 0.06 }, { -0.45, hy + 0.12, fz - 0.06 })
+	-- A loose end dangling down the back.
+	k.box({ 0.3, 1.4, 0.08 }, { 0.4, 2.6, 0.6 }, { 0, 0, 10 }, strip, {
+		swing = { hinge = { 0.4, 3.3, 0.6 }, axis = "Z", amount = 0.4 },
+	})
+	return k.done()
+end
+
+function CraftedFreeks.CountFangula()
+	-- A vampire: pale lavender skin, a black suit with a glowing red brooch, slicked hair with
+	-- a widow's peak, fierce glowing red eyes, fangs, and its signature high-collared cape.
+	local glow = rgb(255, 40, 60)
+	local suit = rgb(34, 28, 44)
+	local k, h = person({
+		skin = rgb(222, 212, 238),
+		shirt = suit,
+		sleeves = suit,
+		pants = suit,
+		shoes = rgb(15, 15, 20),
+		accent = glow,
+	})
+	k.box({ 0.6, 0.9, 0.08 }, { 0, 2.6, -0.56 }, nil, WHITE, { detail = true })
+	k.glow({ 0.3, 0.3, 0.1 }, { 0, 3.0, -0.62 }, { 0, 0, 45 }, glow)
+	local hy, fz = h.y, h.z
+	k.eyes(hy + 0.12, fz, 0.46, 0.46, 0.32, glow, "fierce")
+	k.ink({ 0.6, 0.08, 0.06 }, { 0, hy - 0.5, fz - 0.04 })
+	for _, side in { -1, 1 } do
+		k.wedge({ 0.12, 0.22, 0.08 }, { side * 0.18, hy - 0.62, fz - 0.06 }, { 180, 0, 0 }, WHITE, { detail = true })
+	end
+	-- Slicked hair with a widow's peak.
+	local hair = rgb(20, 15, 25)
+	k.box({ 2.1, 0.4, 1.9 }, { 0, h.top + 0.05, 0.05 }, nil, hair, { detail = true })
+	k.box({ 2.1, 1.3, 0.4 }, { 0, hy + 0.25, 0.75 }, nil, hair, { detail = true })
+	k.wedge({ 0.6, 0.5, 0.2 }, { 0, h.top - 0.25, fz - 0.05 }, { 180, 0, 0 }, hair, { detail = true })
+	-- Its signature cape: a high collar and a long back, red inside.
+	for _, side in { -1, 1 } do
+		k.wedge({ 0.2, 1.2, 0.9 }, { side * 1.05, 3.6, 0.25 }, { 0, side * 90, side * -15 }, rgb(150, 20, 40), {
+			detail = true,
+			onHead = false,
+		})
+	end
+	k.box({ 2.5, 3.0, 0.2 }, { 0, 2.0, 0.7 }, { -6, 0, 0 }, suit, { onHead = false })
+	k.box({ 2.3, 2.8, 0.06 }, { 0, 2.05, 0.58 }, { -6, 0, 0 }, rgb(150, 20, 40), { detail = true, onHead = false })
+	return k.done()
+end
+
+function CraftedFreeks.Howlz()
+	-- A werewolf: brown fur, a torn purple shirt, a wolf head with a snout and pointy ears,
+	-- fierce glowing yellow eyes, a fluffy tail and its signature spiked collar.
+	local glow = rgb(255, 210, 50)
+	local fur, light = rgb(120, 86, 62), rgb(196, 168, 138)
+	local k, h = person({
+		skin = fur,
+		shirt = rgb(108, 60, 138),
+		sleeves = fur,
+		pants = rgb(60, 60, 80),
+		shoes = fur,
+		accent = glow,
+	})
+	for i = 0, 3 do
+		k.wedge({ 0.42, 0.4, 0.2 }, { -0.7 + i * 0.45, 1.75, -0.55 }, { 180, 0, 0 }, rgb(108, 60, 138))
+	end
+	local hy, fz = h.y, h.z
+	k.box({ 1.0, 0.7, 0.8 }, { 0, hy - 0.35, fz - 0.35 }, nil, light)
+	k.ink({ 0.4, 0.26, 0.2 }, { 0, hy - 0.08, fz - 0.78 })
+	k.ink({ 0.6, 0.08, 0.06 }, { 0, hy - 0.6, fz - 0.76 })
+	k.eyes(hy + 0.25, fz, 0.5, 0.46, 0.3, glow, "fierce")
+	for _, side in { -1, 1 } do
+		k.wedge({ 0.3, 0.9, 0.7 }, { side * 0.7, h.top + 0.4, 0 }, { 0, 90, side * -12 }, fur, {
+			rig = "ear",
+			side = side,
+			pivot = { side * 0.7, h.top, 0 },
+		})
+		k.box({ 0.35, 0.8, 0.9 }, { side * 1.05, hy - 0.35, -0.1 }, { 0, 0, side * 14 }, light)
+	end
+	-- Its signature spiked collar.
+	k.box({ 1.0, 0.28, 0.95 }, { 0, 3.28, 0 }, nil, INK, { detail = true })
+	for i = 0, 5 do
+		local a = i / 6 * math.pi * 2
+		k.wedge(
+			{ 0.16, 0.26, 0.16 },
+			{ math.cos(a) * 0.55, 3.28, math.sin(a) * 0.52 },
+			{ 0, 0, -math.deg(a) - 90 },
+			rgb(200, 200, 210),
+			{
+				material = "Metal",
+				detail = true,
+			}
+		)
+	end
+	-- A fluffy tail.
+	for i, seg in { { 1.5, 0.75, 0.7 }, { 1.2, 1.25, 0.6 }, { 1.1, 1.7, 0.45 } } do
+		k.box(
+			{ seg[3], seg[3], 0.7 },
+			{ 0, seg[1], 0.6 + i * 0.35 },
+			{ -30 - i * 10, 0, 0 },
+			if i == 3 then light else fur,
+			{
+				swing = { hinge = { 0, 1.6, 0.55 }, axis = "Y", amount = 0.7 },
+			}
+		)
+	end
+	return k.done()
+end
+
+return CraftedFreeks
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="9">
         <Properties>
           <string name="Name">EggModel</string>
           <string name="Source"><![CDATA[-- The eggs you steal from the zones, in the "crafted" look (detailed low-poly, no LEGO
@@ -1255,7 +2295,7 @@ return EggModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="9">
+      <Item class="ModuleScript" referent="10">
         <Properties>
           <string name="Name">Events</string>
           <string name="Source"><![CDATA[-- Scheduled events, like the "admin abuse" events of the big Roblox games.
@@ -1454,7 +2494,7 @@ return Events
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="10">
+      <Item class="ModuleScript" referent="11">
         <Properties>
           <string name="Name">Format</string>
           <string name="Source"><![CDATA[local Format = {}
@@ -1513,7 +2553,7 @@ return Format
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="11">
+      <Item class="ModuleScript" referent="12">
         <Properties>
           <string name="Name">FreekAnimator</string>
           <string name="Source"><![CDATA[-- Brings Freek models to life: idle animations for Freeks standing in barns and on the
@@ -2002,7 +3042,7 @@ return FreekAnimator
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">FreekModel</string>
           <string name="Source"><![CDATA[-- Builds the 3D model for a Freek out of plain parts.
@@ -2936,7 +3976,7 @@ return FreekModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">Freeks</string>
           <string name="Source"><![CDATA[-- Every Freek species in the game.
@@ -2950,360 +3990,15 @@ return FreekModel
 --          bounce, strut, catwalk, shamble or float (see the client)
 -- exclusive only from Monster Crates (never from cannons, the wheel or anywhere else)
 -- event       only from the cannons while that event runs (see Events.luau)
--- look     how the model is built: either a placeholder (shape "Ball" or "Block", size in
---          studs, eyes 1-3, antennae 0-3) or a part list (see FreekModel), e.g. from human()
+-- look     how the model is built: a part list (see FreekModel), in the crafted look from
+--          CraftedFreeks.luau
 --
 -- Fusing two different Freeks makes a hybrid (see Hybrids.luau); the only hand-made results
 -- are the Ultra pairs that make Secrets, in ServerScriptService (Recipes).
 
-local Accessories = require(script.Parent.Accessories)
+local CraftedFreeks = require(script.Parent.CraftedFreeks)
 
 local Freeks = {}
-
--- The Human line: Freeks shaped like little cartoon people. human() builds the shared body
--- (legs, hips, torso, arms, neck, a big head with googly eyes and a mouth) and adds each
--- one's own parts on top. The torso is the first part, so hybrids mix them like any other
--- Freek: one parent's legs and body, the other's head.
-local function rgb(r, g, b)
-	return Color3.fromRGB(r, g, b)
-end
-
--- Helpers for the Animal line: each animal is a list of parts like Oinkle's, built with
--- these so eyes, legs and pointy ears line up without hand-maths.
-local function newParts()
-	local list = {}
-	local function add(spec)
-		table.insert(list, spec)
-		return #list
-	end
-	return list, add
-end
-
--- A point on the front (-Z) of a ball centred at c with radius r, offset (x, y) from c.
-local function onBall(c, r: number, x: number, y: number, out: number?)
-	return { c[1] + x, c[2] + y, c[3] - math.sqrt(math.max(r * r - x * x - y * y, 0.01)) - (out or 0) }
-end
-
--- Straight legs standing on the ground, centred at each (x, z). Given front-left,
--- front-right, back-left, back-right, they walk in diagonal pairs.
-local DIAGONAL = { 0, 0.5, 0.5, 0 }
-local function legs(add, spots, height: number, width: number, color: Color3, paw: Color3?)
-	for i, spot in spots do
-		local swing = { hinge = { spot[1], height, spot[2] }, phase = DIAGONAL[i] or 0 }
-		add({
-			shape = "Cylinder",
-			size = { height, width, width },
-			pos = { spot[1], height / 2, spot[2] },
-			rot = { 0, 0, 90 },
-			color = color,
-			swing = swing,
-		})
-		if paw then
-			add({
-				shape = "Ball",
-				size = width + 0.15,
-				pos = { spot[1], (width + 0.15) / 2, spot[2] - 0.08 },
-				color = paw,
-				swing = swing,
-			})
-		end
-	end
-end
-
--- A pointy ear (a triangle seen from the front), made of two wedges back to back.
-local function pointyEar(add, x: number, y: number, z: number, width: number, height: number, color: Color3)
-	for _, side in { -1, 1 } do
-		add({
-			shape = "Wedge",
-			size = { 0.25, height, width / 2 },
-			pos = { x + side * width / 4, y, z },
-			rot = { 0, side * -90, 0 },
-			color = color,
-			rig = "ear",
-			side = if x < 0 then -1 else 1,
-			pivot = { x, y - height / 2, z },
-		})
-	end
-end
-
--- The face kit: big glossy eyes, blush and a curved smile, in the style of today's popular
--- Roblox pets. Every helper takes a point on a ball face: the ball's centre c, radius r, and
--- an offset (x, y) across the face. FreekModel adds sparkle highlights to the pupils.
-
--- One big cute eye on a ball: a tall white, a coloured iris and a black pupil (FreekModel
--- gives the pupil its sparkles).
-local function oneEye(add, c, r: number, x: number, y: number, size: number, iris: Color3?)
-	local p = onBall(c, r, x, y, -size * 0.18)
-	add({
-		shape = "Ellipsoid",
-		size = { size * 0.9, size * 1.08, size * 0.55 },
-		pos = p,
-		color = rgb(255, 255, 255),
-		detail = true,
-	})
-	add({
-		shape = "Ellipsoid",
-		size = { size * 0.66, size * 0.8, size * 0.3 },
-		pos = { p[1], p[2] - size * 0.06, p[3] - size * 0.2 },
-		color = iris or rgb(95, 60, 35),
-		detail = true,
-	})
-	add({
-		shape = "Ball",
-		size = size * 0.38,
-		pos = { p[1], p[2] - size * 0.06, p[3] - size * 0.3 },
-		color = rgb(15, 12, 20),
-		detail = true,
-	})
-end
-
--- A pair of big cute eyes.
-local function cuteEyes(add, c, r: number, spread: number, height: number, size: number, iris: Color3?)
-	for _, side in { -1, 1 } do
-		oneEye(add, c, r, side * spread, height, size, iris)
-	end
-end
-
--- Little hooves at the bottom of legs made by legs() (same spots and height).
-local function hooves(add, spots, height: number, width: number, color: Color3)
-	for i, spot in spots do
-		add({
-			shape = "Cylinder",
-			size = { 0.24, width, width },
-			pos = { spot[1], 0.12, spot[2] },
-			rot = { 0, 0, 90 },
-			color = color,
-			detail = true,
-			swing = { hinge = { spot[1], height, spot[2] }, phase = DIAGONAL[i] or 0 },
-		})
-	end
-end
-
--- Soft pink cheeks.
-local function blush(add, c, r: number, spread: number, height: number, size: number, color: Color3?)
-	for _, side in { -1, 1 } do
-		add({
-			shape = "Ellipsoid",
-			size = { size, size * 0.55, size * 0.25 },
-			pos = onBall(c, r, side * spread, height, -size * 0.05),
-			color = color or rgb(255, 135, 165),
-			transparency = 0.25,
-			detail = true,
-		})
-	end
-end
-
--- A curved smile: little beads along a U shape.
-local function smile(add, c, r: number, height: number, width: number, color: Color3?, thickness: number?)
-	local t = thickness or 0.12
-	local beads = math.max(13, math.ceil(width / t * 2.2))
-	for k = 0, beads - 1 do
-		local f = k / (beads - 1) * 2 - 1
-		local x = f * width / 2
-		local y = height - (1 - f * f) * width * 0.22
-		add({
-			shape = "Ball",
-			size = t,
-			pos = onBall(c, r, x, y, -t * 0.2),
-			color = color or rgb(90, 35, 45),
-			detail = true,
-			shine = false,
-		})
-	end
-end
-
--- An open happy mouth: a dark rounded opening with a pink tongue.
-local function openMouth(add, c, r: number, height: number, width: number)
-	local p = onBall(c, r, 0, height, -0.02)
-	add({
-		shape = "Ellipsoid",
-		size = { width, width * 0.6, 0.18 },
-		pos = p,
-		color = rgb(90, 25, 40),
-		detail = true,
-	})
-	add({
-		shape = "Ellipsoid",
-		size = { width * 0.6, width * 0.28, 0.12 },
-		pos = { p[1], p[2] - width * 0.14, p[3] - 0.06 },
-		color = rgb(255, 120, 150),
-		detail = true,
-	})
-end
-
-local function human(o)
-	local parts = {}
-	local function add(spec)
-		table.insert(parts, spec)
-		return #parts
-	end
-	local torsoW, torsoD = o.torsoWidth or 1.9, o.torsoDepth or 1.1
-	local armD = o.armSize or 0.5
-	local head = o.head or 2.1
-	local torsoY = 1.6 + 0.85
-	local torsoTop = 1.6 + 1.7
-	local headY = torsoTop + 0.15 + head * 0.45
-	local r = head / 2
-	-- How far forward the face is at (x, y) relative to the head's centre.
-	local function face(x: number, y: number, out: number?): number
-		return -math.sqrt(math.max(r * r - x * x - y * y, 0.01)) - (out or 0)
-	end
-
-	-- A rounded bean of a torso with soft shoulders, and rounded hips.
-	add({
-		name = "Body",
-		shape = "Ellipsoid",
-		size = { torsoW, 2.0, torsoD * 1.15 },
-		pos = { 0, torsoY + 0.05, 0 },
-		color = o.shirt,
-	})
-	add({ shape = "Ellipsoid", size = { torsoW * 0.96, 0.95, torsoD * 1.05 }, pos = { 0, 1.5, 0 }, color = o.pants })
-	-- Legs swing in turn, and each arm swings with the opposite leg.
-	for i, x in { -0.45, 0.45 } do
-		local swing = { hinge = { x, 1.35, 0 }, phase = (i - 1) * 0.5 }
-		add({
-			shape = "Cylinder",
-			size = { 1.2, 0.6, 0.6 },
-			pos = { x, 0.75, 0 },
-			rot = { 0, 0, 90 },
-			color = o.pants,
-			swing = swing,
-		})
-		-- Chunky rounded sneakers with a pale sole.
-		local shoe = o.shoeSize or { 0.7, 0.35, 1.05 }
-		add({
-			shape = "Ellipsoid",
-			size = { shoe[1] + 0.12, shoe[2] + 0.2, shoe[3] + 0.1 },
-			pos = { x, 0.24, -0.15 },
-			color = o.shoes,
-			detail = true,
-			swing = swing,
-		})
-		add({
-			shape = "Ellipsoid",
-			size = { shoe[1] + 0.16, 0.16, shoe[3] + 0.16 },
-			pos = { x, 0.08, -0.15 },
-			color = o.sole or rgb(245, 245, 240),
-			detail = true,
-			swing = swing,
-		})
-	end
-	local shoulderX = torsoW / 2 + armD / 2 - 0.02
-	for _, side in { -1, 1 } do
-		if o.armsForward then
-			-- Arms stuck straight out in front (zombies, mummies), barely swinging.
-			local swing = { hinge = { side * shoulderX, 2.95, 0 }, phase = if side < 0 then 0.5 else 0, amount = 0.25 }
-			add({
-				shape = "Cylinder",
-				size = { 1.5, armD, armD },
-				pos = { side * shoulderX, 2.95, -0.7 },
-				rot = { 0, 90, 0 },
-				color = o.sleeves or o.skin,
-				swing = swing,
-			})
-			add({
-				shape = "Ball",
-				size = armD + 0.12,
-				pos = { side * shoulderX, 2.95, -1.5 },
-				color = o.skin,
-				swing = swing,
-			})
-		else
-			local swing = { hinge = { side * shoulderX, 3.2, 0 }, phase = if side < 0 then 0.5 else 0, amount = 0.8 }
-			add({
-				shape = "Cylinder",
-				size = { 1.45, armD, armD },
-				pos = { side * shoulderX, 2.5, 0 },
-				rot = { 0, 0, 90 + side * 6 },
-				color = o.sleeves or o.skin,
-				swing = swing,
-				rig = "arm",
-				side = side,
-			})
-			add({
-				shape = "Ball",
-				size = armD + 0.12,
-				pos = { side * (shoulderX + 0.08), 1.72, 0 },
-				color = o.skin,
-				swing = swing,
-				rig = "arm",
-				side = side,
-			})
-		end
-	end
-	add({
-		shape = "Cylinder",
-		size = { 0.35, 0.55, 0.55 },
-		pos = { 0, torsoTop + 0.1, 0 },
-		rot = { 0, 0, 90 },
-		color = o.skin,
-	})
-	add({ name = "Head", shape = "Ball", size = head, pos = { 0, headY, 0 }, color = o.skin })
-	local headC = { 0, headY, 0 }
-	local eyeX, eyeY = head * 0.19, head * 0.04
-	-- Little ears on the sides of the head.
-	for _, side in { -1, 1 } do
-		add({
-			shape = "Ellipsoid",
-			size = { 0.28, 0.5, 0.36 },
-			pos = { side * r * 0.98, headY - 0.05, 0.05 },
-			color = o.skin,
-		})
-	end
-	cuteEyes(add, headC, r, eyeX, eyeY, head * 0.3, o.eyeColor)
-	if not o.noBrows then
-		for _, side in { -1, 1 } do
-			add({
-				shape = "Ellipsoid",
-				size = { head * 0.2, 0.09, 0.08 },
-				pos = onBall(headC, r, side * eyeX, eyeY + head * 0.22, -0.02),
-				rot = { 0, 0, side * (o.browTilt or -8) },
-				color = o.brows or rgb(70, 45, 30),
-				detail = true,
-			})
-		end
-	end
-	if not o.noBlush then
-		blush(add, headC, r, eyeX + head * 0.1, -head * 0.1, head * 0.17)
-	end
-	if not o.noMouth then
-		smile(add, headC, r, -head * 0.16, head * 0.24)
-	end
-
-	local effects = {}
-	local before = #parts
-	if o.extra then
-		o.extra({
-			add = add,
-			face = face,
-			skin = o.skin,
-			headY = headY,
-			head = head,
-			torsoTop = torsoTop,
-			torsoY = torsoY,
-			torsoW = torsoW,
-			torsoD = torsoD,
-			shoulderX = shoulderX,
-			eyeX = eyeX,
-			eyeY = eyeY,
-			effects = effects,
-		})
-	end
-	-- Anything the extras put on an arm (biceps, claws, a dumbbell, a book) moves with it.
-	if not o.armsForward then
-		for i = before + 1, #parts do
-			local spec = parts[i]
-			local x, y = spec.pos[1], spec.pos[2]
-			if not spec.swing and not spec.rig and y < torsoTop and math.abs(x) >= shoulderX - armD * 0.5 then
-				local side = if x < 0 then -1 else 1
-				spec.swing = { hinge = { side * shoulderX, 3.2, 0 }, phase = if side < 0 then 0.5 else 0, amount = 0.8 }
-				spec.rig = "arm"
-				spec.side = side
-			end
-		end
-	end
-	return { parts = parts, effects = effects }
-end
 
 Freeks.list = {
 	-- Starter Freeks (shop)
@@ -3315,74 +4010,7 @@ Freeks.list = {
 		rarity = "Common",
 		income = 1,
 		price = 50,
-		look = (function()
-			-- A chubby piglet: round body with a pale belly, a big head with a shiny snout,
-			-- floppy ears, little hooves and a curly tail.
-			local list, add = newParts()
-			local pink, deep, pale = rgb(255, 172, 192), rgb(240, 140, 165), rgb(255, 212, 222)
-			add({ name = "Body", shape = "Ellipsoid", size = { 3.3, 2.9, 3.6 }, pos = { 0, 2.0, 0.25 }, color = pink })
-			add({ shape = "Ellipsoid", size = { 2.3, 1.9, 0.9 }, pos = { 0, 1.75, -1.3 }, color = pale })
-			legs(add, { { -0.8, -0.7 }, { 0.8, -0.7 }, { -0.8, 1.15 }, { 0.8, 1.15 } }, 1.05, 0.72, pink)
-			hooves(
-				add,
-				{ { -0.8, -0.7 }, { 0.8, -0.7 }, { -0.8, 1.15 }, { 0.8, 1.15 } },
-				1.05,
-				0.78,
-				rgb(200, 110, 135)
-			)
-			local c, r = { 0, 2.95, -1.35 }, 1.25
-			add({ name = "Head", shape = "Ball", size = r * 2, pos = c, color = pink })
-			-- Snout with nostrils.
-			local snout = onBall(c, r, 0, -0.3, -0.18)
-			add({ shape = "Ellipsoid", size = { 1.15, 0.85, 0.55 }, pos = snout, color = deep })
-			for _, side in { -1, 1 } do
-				add({
-					shape = "Ellipsoid",
-					size = { 0.2, 0.3, 0.1 },
-					pos = { snout[1] + side * 0.22, snout[2], snout[3] - 0.28 },
-					color = rgb(150, 60, 85),
-					detail = true,
-				})
-			end
-			cuteEyes(add, c, r, 0.46, 0.3, 0.62, rgb(70, 40, 35))
-			blush(add, c, r, 0.85, -0.18, 0.42)
-			smile(add, c, r, -0.72, 0.42)
-			-- Its signature pink bow, between the ears.
-			Accessories.put(add, "bow", { c[1] - 0.66, c[2], c[3] }, r)
-			-- Floppy ears, pink inside.
-			for _, side in { -1, 1 } do
-				add({
-					shape = "Wedge",
-					size = { 0.22, 1.0, 0.95 },
-					pos = { side * 0.8, 4.1, -1.1 },
-					rot = { -25, side * 90, side * 25 },
-					color = deep,
-					rig = "ear",
-					pivot = { side * 0.55, 4.45, -1.1 },
-				})
-				add({
-					shape = "Wedge",
-					size = { 0.1, 0.65, 0.6 },
-					pos = { side * 0.8, 4.02, -1.24 },
-					rot = { -25, side * 90, side * 25 },
-					color = rgb(255, 120, 150),
-					detail = true,
-					rig = "ear",
-					pivot = { side * 0.55, 4.45, -1.1 },
-				})
-			end
-			-- Curly tail.
-			for k, p in { { 0, 2.3, 1.95 }, { 0.18, 2.48, 2.08 }, { 0.05, 2.68, 2.16 }, { -0.14, 2.55, 2.22 } } do
-				add({
-					shape = "Ball",
-					size = 0.32 - k * 0.02,
-					pos = p,
-					color = deep,
-					swing = { hinge = { 0, 2.3, 1.85 }, axis = "Y", amount = 0.7 },
-				})
-			end
-			return { parts = list }
-		end)(),
+		look = CraftedFreeks.Oinkle(),
 	},
 
 	-- The Animal line (Oinkle is the pig)
@@ -3393,79 +4021,7 @@ Freeks.list = {
 		name = "Woofles",
 		rarity = "Common",
 		income = 3,
-		look = (function()
-			-- A golden puppy: fluffy chest, big head with a cream muzzle and shiny nose,
-			-- tongue out, long floppy ears, a red collar with a gold tag and a wagging tail.
-			local list, add = newParts()
-			local tan, dark, cream = rgb(235, 185, 120), rgb(170, 110, 60), rgb(252, 236, 210)
-			add({ name = "Body", shape = "Ellipsoid", size = { 2.6, 2.4, 3.4 }, pos = { 0, 1.95, 0.45 }, color = tan })
-			add({ shape = "Ellipsoid", size = { 1.7, 1.7, 0.9 }, pos = { 0, 2.0, -0.95 }, color = cream })
-			legs(add, { { -0.7, -0.55 }, { 0.7, -0.55 }, { -0.7, 1.35 }, { 0.7, 1.35 } }, 1.1, 0.62, tan, cream)
-			add({ shape = "Ellipsoid", size = { 1.3, 0.35, 1.2 }, pos = { 0.55, 3.1, 0.8 }, color = dark })
-			local c, r = { 0, 3.65, -1.0 }, 1.25
-			add({ name = "Head", shape = "Ball", size = r * 2, pos = c, color = tan })
-			local muzzle = onBall(c, r, 0, -0.4, -0.38)
-			add({ shape = "Ellipsoid", size = { 1.45, 1.0, 0.95 }, pos = muzzle, color = cream })
-			add({
-				shape = "Ball",
-				size = 0.45,
-				pos = { 0, muzzle[2] + 0.22, muzzle[3] - 0.44 },
-				color = rgb(30, 22, 22),
-				detail = true,
-			})
-			openMouth(add, c, r + 0.32, -0.66, 0.5)
-			cuteEyes(add, c, r, 0.48, 0.28, 0.6, rgb(90, 55, 30))
-			blush(add, c, r, 0.85, -0.15, 0.38)
-			for _, side in { -1, 1 } do
-				-- Eyebrow dots, and long floppy ears.
-				add({
-					shape = "Ellipsoid",
-					size = { 0.3, 0.16, 0.1 },
-					pos = onBall(c, r, side * 0.42, 0.72, -0.02),
-					color = dark,
-					detail = true,
-				})
-				add({
-					shape = "Ellipsoid",
-					size = { 0.4, 1.6, 0.95 },
-					pos = { side * 1.22, 3.45, -0.85 },
-					rot = { 0, 0, side * 14 },
-					color = dark,
-					rig = "ear",
-					pivot = { side * 1.05, 4.2, -0.85 },
-				})
-			end
-			-- Collar and tag.
-			add({
-				shape = "Cylinder",
-				size = { 0.3, 2.05, 2.05 },
-				pos = { 0, 2.75, -0.7 },
-				rot = { 0, 0, 90 },
-				color = rgb(225, 40, 55),
-				onHead = false,
-			})
-			add({
-				shape = "Cylinder",
-				size = { 0.1, 0.42, 0.42 },
-				pos = { 0, 2.4, -1.72 },
-				rot = { 0, 90, 0 },
-				color = rgb(255, 205, 60),
-				material = "Foil",
-				onHead = false,
-			})
-			-- Wagging tail with a cream tip.
-			local wag = { hinge = { 0, 2.5, 1.9 }, axis = "Y", amount = 1.5 }
-			add({
-				shape = "Cylinder",
-				size = { 1.1, 0.34, 0.34 },
-				pos = { 0, 2.85, 2.2 },
-				rot = { 0, -90, 55 },
-				color = tan,
-				swing = wag,
-			})
-			add({ shape = "Ball", size = 0.42, pos = { 0, 3.3, 2.55 }, color = cream, swing = wag })
-			return { parts = list }
-		end)(),
+		look = CraftedFreeks.Woofles(),
 	},
 	{
 		id = "Whiskerz",
@@ -3474,122 +4030,7 @@ Freeks.list = {
 		name = "Whiskerz",
 		rarity = "Uncommon",
 		income = 14,
-		look = (function()
-			-- The crafted look (like the owner's reference): a low-poly prowling cat built from
-			-- angled blocks and wedges, a muted dusty-orange body with darker stripes, glowing
-			-- amber eyes under cross brows, neon whiskers, toes and spine strips, a layered
-			-- cheek ruff, a collar and bell, and a jointed tail curling up.
-			local list, add = newParts()
-			local fur, dark, light = rgb(196, 118, 66), rgb(140, 78, 44), rgb(232, 196, 150)
-			local glow, ink = rgb(255, 176, 40), rgb(30, 24, 22)
-			local function box(size, pos, rot, color, extra)
-				local spec = { shape = "Block", size = size, pos = pos, rot = rot, color = color }
-				for k, v in extra or {} do
-					spec[k] = v
-				end
-				add(spec)
-			end
-			local function neon(size, pos, rot)
-				box(size, pos, rot, glow, { material = "Neon", detail = true })
-			end
-			-- Body: a low torso, a deep chest in front, a raised back with stripes.
-			box({ 2.1, 1.5, 2.8 }, { 0, 1.75, 0.55 }, { -6, 0, 0 }, fur, { name = "Body" })
-			box({ 1.9, 1.7, 1.0 }, { 0, 2.0, -0.85 }, { 8, 0, 0 }, light)
-			box({ 1.7, 0.4, 2.3 }, { 0, 2.62, 0.55 }, { -6, 0, 0 }, dark)
-			for _, z in { -0.15, 0.55, 1.25 } do
-				box({ 2.18, 0.28, 0.32 }, { 0, 2.2, z }, { -6, 0, 0 }, dark)
-			end
-			neon({ 0.16, 0.08, 1.9 }, { -0.42, 2.84, 0.6 }, { -6, 0, 0 })
-			neon({ 0.16, 0.08, 1.9 }, { 0.42, 2.84, 0.6 }, { -6, 0, 0 })
-			-- Legs: blocky, with wide paws and glowing toes.
-			for i, leg in { { -0.68, -0.55 }, { 0.68, -0.55 }, { -0.72, 1.45 }, { 0.72, 1.45 } } do
-				local swing = { hinge = { leg[1], 1.4, leg[2] }, phase = DIAGONAL[i] }
-				box({ 0.62, 1.3, 0.7 }, { leg[1], 0.85, leg[2] }, nil, if i <= 2 then fur else dark, { swing = swing })
-				box({ 0.78, 0.32, 0.95 }, { leg[1], 0.16, leg[2] - 0.12 }, nil, light, { swing = swing })
-				for _, t in { -0.22, 0, 0.22 } do
-					neon({ 0.14, 0.12, 0.16 }, { leg[1] + t, 0.2, leg[2] - 0.62 }, nil)
-				end
-			end
-			-- Head: a wide block with a muzzle, cheek ruffs, wedge ears.
-			local hy, hz = 3.55, -1.25
-			box({ 2.3, 1.75, 1.8 }, { 0, hy, hz }, nil, fur, { name = "Head" })
-			box({ 2.0, 0.35, 1.6 }, { 0, hy + 0.98, hz + 0.05 }, nil, dark)
-			box({ 1.25, 0.62, 0.55 }, { 0, hy - 0.5, hz - 1.05 }, nil, light)
-			box({ 0.42, 0.26, 0.16 }, { 0, hy - 0.22, hz - 1.36 }, nil, rgb(240, 120, 140), { detail = true })
-			box({ 0.5, 0.08, 0.06 }, { 0, hy - 0.62, hz - 1.34 }, nil, ink, { detail = true })
-			for _, side in { -1, 1 } do
-				-- Layered cheek ruff.
-				box({ 0.3, 0.7, 0.9 }, { side * 1.2, hy - 0.4, hz - 0.15 }, { 0, 0, side * 14 }, fur)
-				box({ 0.24, 0.45, 0.7 }, { side * 1.3, hy - 0.62, hz - 0.1 }, { 0, 0, side * 32 }, light)
-				-- Ears: a wedge with a glowing inner wedge.
-				box({ 0.32, 0.95, 0.75 }, { side * 0.72, hy + 1.45, hz + 0.1 }, { 0, 90, side * -14 }, dark, {
-					shape = "Wedge",
-					rig = "ear",
-					side = side,
-					pivot = { side * 0.72, hy + 1.0, hz + 0.1 },
-				})
-				box(
-					{ 0.12, 0.6, 0.45 },
-					{ side * 0.72, hy + 1.38, hz - 0.08 },
-					{ 0, 90, side * -14 },
-					glow,
-					{ shape = "Wedge", material = "Neon", detail = true }
-				)
-				-- Eyes: glowing amber, a slit pupil, and a cross brow.
-				box(
-					{ 0.62, 0.44, 0.1 },
-					{ side * 0.5, hy + 0.2, hz - 0.92 },
-					nil,
-					glow,
-					{ material = "Neon", detail = true }
-				)
-				box({ 0.12, 0.38, 0.06 }, { side * 0.46, hy + 0.2, hz - 0.98 }, nil, ink, { detail = true })
-				box(
-					{ 0.75, 0.16, 0.18 },
-					{ side * 0.5, hy + 0.55, hz - 0.95 },
-					{ 0, 0, side * 18 },
-					ink,
-					{ detail = true }
-				)
-				-- Whiskers: thin glowing slabs fanning out from the muzzle.
-				for k, tilt in { -14, 0, 14 } do
-					neon(
-						{ 1.1, 0.06, 0.08 },
-						{ side * 1.05, hy - 0.42 + (k - 2) * 0.13, hz - 1.05 },
-						{ 0, side * 12, side * tilt }
-					)
-				end
-			end
-			-- Collar and its gold bell.
-			box({ 1.95, 0.24, 1.75 }, { 0, hy - 0.95, hz + 0.1 }, nil, rgb(200, 40, 50), { detail = true })
-			add({
-				shape = "Ball",
-				size = 0.45,
-				pos = { 0, hy - 1.18, hz - 0.9 },
-				color = rgb(255, 205, 60),
-				material = "Metal",
-				detail = true,
-			})
-			-- Tail: jointed blocks curling up behind, tipped with a glowing band.
-			for k, seg in
-				{
-					{ 0, 1.95, 2.15, -30 },
-					{ 0, 2.45, 2.55, -55 },
-					{ 0, 3.1, 2.7, -80 },
-					{ 0, 3.7, 2.55, -110 },
-				}
-			do
-				box(
-					{ 0.42, 0.42, 0.8 },
-					{ seg[1], seg[2], seg[3] },
-					{ seg[4], 0, 0 },
-					if k % 2 == 0 then dark else fur,
-					{ swing = { hinge = { 0, 1.9, 1.9 }, axis = "Y", amount = 0.6 } }
-				)
-			end
-			neon({ 0.46, 0.46, 0.18 }, { 0, 4.0, 2.35 }, { -110, 0, 0 })
-			return { parts = list, crafted = true }
-		end)(),
+		look = CraftedFreeks.Whiskerz(),
 	},
 	{
 		id = "Lizzle",
@@ -3598,71 +4039,7 @@ Freeks.list = {
 		name = "Lizzle",
 		rarity = "Uncommon",
 		income = 18,
-		look = (function()
-			-- A happy lizard: wide flat head with a big smile, bulgy eyes on top, pale belly,
-			-- spots down the back, splayed legs with little toes and a curly tail.
-			local list, add = newParts()
-			local lime, spot, belly = rgb(130, 225, 80), rgb(70, 170, 60), rgb(240, 240, 160)
-			add({ name = "Body", shape = "Ellipsoid", size = { 2.4, 1.6, 2.6 }, pos = { 0, 1.2, 0.35 }, color = lime })
-			add({ shape = "Ellipsoid", size = { 1.8, 1.1, 0.6 }, pos = { 0, 1.0, -0.8 }, color = belly })
-			for i, leg in { { -1, -0.3 }, { 1, -0.3 }, { -1, 0.95 }, { 1, 0.95 } } do
-				local swing = { hinge = { leg[1] * 0.6, 0.95, leg[2] }, phase = DIAGONAL[i] }
-				add({
-					shape = "Cylinder",
-					size = { 1, 0.42, 0.42 },
-					pos = { leg[1] * 0.95, 0.65, leg[2] },
-					rot = { 0, 0, leg[1] * -35 },
-					color = lime,
-					swing = swing,
-				})
-				add({
-					shape = "Ellipsoid",
-					size = { 0.6, 0.3, 0.55 },
-					pos = { leg[1] * 1.35, 0.2, leg[2] - 0.1 },
-					color = lime,
-					swing = swing,
-				})
-				for _, toe in { -0.2, 0, 0.2 } do
-					add({
-						shape = "Ball",
-						size = 0.2,
-						pos = { leg[1] * 1.35 + toe, 0.12, leg[2] - 0.4 },
-						color = spot,
-						swing = swing,
-					})
-				end
-			end
-			local head = { 0, 1.75, -1.15 }
-			add({ name = "Head", shape = "Ellipsoid", size = { 2.3, 1.5, 1.9 }, pos = head, color = lime })
-			for _, side in { -1, 1 } do
-				local bump = { side * 0.62, 2.45, -1.3 }
-				add({ shape = "Ball", size = 0.95, pos = bump, color = lime })
-				oneEye(add, bump, 0.48, 0, 0.02, 0.66, rgb(230, 170, 30))
-			end
-			smile(add, head, 0.95, -0.15, 1.05, rgb(60, 110, 40), 0.1)
-			blush(add, head, 0.95, 0.75, 0.05, 0.36)
-			-- Its signature flower, on top between the eyes.
-			Accessories.put(add, "flower", { 0.52, 1.68, -0.685 }, 1.15)
-			for _, p in { { -0.5, 1.95, 0.4 }, { 0.55, 1.9, 0.05 }, { 0.1, 2.0, 0.85 }, { -0.2, 1.95, -0.2 } } do
-				add({ shape = "Ellipsoid", size = { 0.45, 0.2, 0.45 }, pos = p, color = spot })
-			end
-			for i = 0, 11 do
-				local a = i * 0.55
-				local radius = 0.9 - i * 0.06
-				add({
-					shape = "Ball",
-					size = 0.55 - i * 0.03,
-					pos = {
-						0,
-						1.3 + math.sin(a) * radius + i * 0.05,
-						1.75 + math.cos(a) * radius * 0.4 + (if i < 3 then i * 0.35 else 0.9),
-					},
-					color = if i % 3 == 0 then spot else lime,
-					swing = { hinge = { 0, 1.3, 1.5 }, axis = "Y", amount = 0.5 },
-				})
-			end
-			return { parts = list }
-		end)(),
+		look = CraftedFreeks.Lizzle(),
 	},
 	{
 		id = "Hootsworth",
@@ -3671,120 +4048,7 @@ Freeks.list = {
 		name = "Hootsworth",
 		rarity = "Rare",
 		income = 70,
-		look = (function()
-			local list, add = newParts()
-			local brown, dark, cream = rgb(135, 90, 55), rgb(95, 60, 35), rgb(240, 220, 185)
-			local body = { 0, 2.1, 0 }
-			add({ name = "Body", shape = "Ball", size = 3.2, pos = body, color = brown })
-			add({ shape = "Ball", size = 2.3, pos = { 0, 1.75, -0.6 }, color = cream })
-			-- Big round eyes in pale face discs.
-			for _, side in { -1, 1 } do
-				local p = onBall(body, 1.6, side * 0.55, 0.75, 0)
-				add({ shape = "Cylinder", size = { 0.15, 1.45, 1.45 }, pos = p, rot = { 0, 90, 0 }, color = cream })
-				add({
-					shape = "Ball",
-					size = 0.95,
-					pos = { p[1], p[2], p[3] - 0.12 },
-					color = rgb(255, 255, 255),
-					detail = true,
-				})
-				add({
-					shape = "Ball",
-					size = 0.65,
-					pos = { p[1], p[2], p[3] - 0.3 },
-					color = rgb(255, 165, 30),
-					detail = true,
-				})
-				add({
-					shape = "Ball",
-					size = 0.35,
-					pos = { p[1], p[2], p[3] - 0.5 },
-					color = rgb(20, 20, 25),
-					detail = true,
-				})
-				pointyEar(add, side * 0.9, 3.75, -0.2, 0.6, 0.7, dark)
-				add({
-					shape = "Block",
-					size = { 0.35, 1.8, 1.5 },
-					pos = { side * 1.6, 2.05, 0.15 },
-					rot = { 0, 0, side * 10 },
-					color = dark,
-					swing = { hinge = { side * 1.45, 2.85, 0.15 }, axis = "Z", amount = side * 1.4 },
-				})
-				for _, toe in { -0.22, 0, 0.22 } do
-					add({
-						shape = "Ball",
-						size = 0.3,
-						pos = { side * 0.55 + toe, 0.15, -0.75 },
-						color = rgb(255, 165, 30),
-					})
-				end
-			end
-			add({
-				shape = "Block",
-				size = { 0.32, 0.32, 0.32 },
-				pos = onBall(body, 1.6, 0, 0.3, 0.12),
-				rot = { 0, 0, 45 },
-				color = rgb(255, 165, 30),
-				detail = true,
-			})
-			-- Little feather marks on the cream belly.
-			for row, y in { 1.3, 1.75, 2.2 } do
-				for k = -1, 1 do
-					local x = k * 0.5 + (if row % 2 == 0 then 0.25 else 0)
-					if math.abs(x) < 0.8 then
-						add({
-							shape = "Ellipsoid",
-							size = { 0.32, 0.14, 0.08 },
-							pos = onBall({ 0, 1.75, -0.6 }, 1.15, x, y - 1.75, -0.02),
-							color = rgb(200, 165, 120),
-							detail = true,
-						})
-					end
-				end
-			end
-			-- A monocle and a top hat: very posh.
-			local eye = onBall(body, 1.6, 0.55, 0.75, 0.55)
-			add({
-				shape = "Cylinder",
-				size = { 0.08, 1.05, 1.05 },
-				pos = eye,
-				rot = { 0, 90, 0 },
-				color = rgb(255, 205, 60),
-				material = "Foil",
-				detail = true,
-			})
-			add({
-				shape = "Block",
-				size = { 0.05, 1.1, 0.05 },
-				pos = { eye[1] + 0.35, eye[2] - 0.75, eye[3] + 0.1 },
-				rot = { 0, 0, 20 },
-				color = rgb(255, 205, 60),
-				detail = true,
-			})
-			add({
-				shape = "Cylinder",
-				size = { 0.12, 2.2, 2.2 },
-				pos = { 0, 3.6, 0 },
-				rot = { 0, 0, 90 },
-				color = rgb(25, 25, 30),
-			})
-			add({
-				shape = "Cylinder",
-				size = { 1.3, 1.4, 1.4 },
-				pos = { 0, 4.3, 0 },
-				rot = { 0, 0, 90 },
-				color = rgb(25, 25, 30),
-			})
-			add({
-				shape = "Cylinder",
-				size = { 0.25, 1.45, 1.45 },
-				pos = { 0, 3.85, 0 },
-				rot = { 0, 0, 90 },
-				color = rgb(200, 30, 40),
-			})
-			return { parts = list }
-		end)(),
+		look = CraftedFreeks.Hootsworth(),
 	},
 	{
 		id = "Chompers",
@@ -3793,161 +4057,7 @@ Freeks.list = {
 		name = "Chompers",
 		rarity = "Legendary",
 		income = 260,
-		look = (function()
-			-- A cool croc: smooth body with ridges down the back, a long snout with the jaws
-			-- open and full of teeth, eyes up on bumps behind black shades, a gold chain and a
-			-- long tapering tail that swishes.
-			local list, add = newParts()
-			local green, belly, dark = rgb(85, 165, 70), rgb(215, 225, 150), rgb(55, 120, 50)
-			local ivory = rgb(255, 252, 235)
-			add({ name = "Body", shape = "Ellipsoid", size = { 2.8, 1.6, 4.8 }, pos = { 0, 1.3, 0.5 }, color = green })
-			add({ shape = "Ellipsoid", size = { 2.4, 0.8, 4.4 }, pos = { 0, 0.95, 0.5 }, color = belly })
-			for z = -1.4, 2.6, 0.7 do
-				for _, side in { -1, 1 } do
-					add({
-						shape = "Ellipsoid",
-						size = { 0.45, 0.4, 0.55 },
-						pos = { side * 0.45, 2.02, z },
-						color = dark,
-					})
-				end
-			end
-			for i, leg in { { -1, -1.1 }, { 1, -1.1 }, { -1, 2.0 }, { 1, 2.0 } } do
-				local swing = { hinge = { leg[1] * 1.3, 0.9, leg[2] }, phase = DIAGONAL[i] }
-				add({
-					shape = "Cylinder",
-					size = { 0.8, 0.7, 0.7 },
-					pos = { leg[1] * 1.3, 0.45, leg[2] },
-					rot = { 0, 0, 90 },
-					color = green,
-					swing = swing,
-				})
-				add({
-					shape = "Ellipsoid",
-					size = { 0.85, 0.35, 1.0 },
-					pos = { leg[1] * 1.38, 0.17, leg[2] - 0.2 },
-					color = green,
-					swing = swing,
-				})
-				for _, toe in { -0.25, 0, 0.25 } do
-					add({
-						shape = "Ball",
-						size = 0.18,
-						pos = { leg[1] * 1.38 + toe, 0.12, leg[2] - 0.7 },
-						color = ivory,
-						detail = true,
-						swing = swing,
-					})
-				end
-			end
-			-- Head and the open jaws.
-			add({ name = "Head", shape = "Ellipsoid", size = { 2.2, 1.3, 2.0 }, pos = { 0, 1.7, -2.2 }, color = green })
-			add({ shape = "Ellipsoid", size = { 1.75, 0.7, 2.7 }, pos = { 0, 1.82, -3.65 }, color = green })
-			add({
-				shape = "Ellipsoid",
-				size = { 1.6, 0.5, 2.4 },
-				pos = { 0, 1.02, -3.4 },
-				rot = { -8, 0, 0 },
-				color = green,
-			})
-			add({
-				shape = "Ellipsoid",
-				size = { 1.35, 0.4, 2.2 },
-				pos = { 0, 1.36, -3.45 },
-				color = rgb(235, 95, 120),
-				detail = true,
-			})
-			for k = 0, 5 do
-				local z = -2.75 - k * 0.38
-				for _, side in { -1, 1 } do
-					add({
-						shape = "Wedge",
-						size = { 0.14, 0.26, 0.2 },
-						pos = { side * 0.62, 1.52, z },
-						rot = { 180, 0, 0 },
-						color = ivory,
-						detail = true,
-					})
-					add({
-						shape = "Wedge",
-						size = { 0.14, 0.22, 0.2 },
-						pos = { side * 0.56, 1.25, z - 0.18 },
-						color = ivory,
-						detail = true,
-					})
-				end
-			end
-			for _, side in { -1, 1 } do
-				add({
-					shape = "Ball",
-					size = 0.2,
-					pos = { side * 0.25, 2.12, -4.75 },
-					color = dark,
-					detail = true,
-					shine = false,
-				})
-				add({ shape = "Ellipsoid", size = { 0.8, 0.75, 0.8 }, pos = { side * 0.55, 2.3, -2.4 }, color = green })
-			end
-			-- Black shades with a shine, sitting on the eye bumps.
-			for _, side in { -1, 1 } do
-				add({
-					shape = "Ellipsoid",
-					size = { 0.85, 0.6, 0.18 },
-					pos = { side * 0.5, 2.35, -2.85 },
-					color = rgb(18, 18, 26),
-					detail = true,
-				})
-				add({
-					shape = "Ellipsoid",
-					size = { 0.18, 0.5, 0.05 },
-					pos = { side * 0.5 - 0.15, 2.38, -2.95 },
-					rot = { 0, 0, -30 },
-					color = rgb(255, 255, 255),
-					transparency = 0.35,
-					detail = true,
-				})
-			end
-			add({
-				shape = "Block",
-				size = { 0.3, 0.1, 0.1 },
-				pos = { 0, 2.45, -2.85 },
-				color = rgb(18, 18, 26),
-				detail = true,
-			})
-			-- Gold chain.
-			for k = 0, 13 do
-				local a = k / 14 * math.pi * 2
-				add({
-					shape = "Ball",
-					size = 0.26,
-					pos = { math.cos(a) * 1.15, 1.3 + math.sin(a) * 0.12, -1.45 + math.sin(a) * 0.55 },
-					color = rgb(255, 200, 50),
-					material = "Foil",
-					detail = true,
-				})
-			end
-			-- Long tapering tail.
-			local swish = { hinge = { 0, 1.1, 2.8 }, axis = "Y", amount = 0.5 }
-			for k, seg in
-				{ { 1.9, 1.1, 1.9, 3.5 }, { 1.4, 0.85, 1.9, 4.9 }, { 0.95, 0.6, 1.8, 6.2 }, { 0.55, 0.4, 1.5, 7.3 } }
-			do
-				add({
-					shape = "Ellipsoid",
-					size = { seg[1], seg[2], seg[3] },
-					pos = { 0, 1.15 - k * 0.1, seg[4] },
-					color = green,
-					swing = swish,
-				})
-				add({
-					shape = "Ellipsoid",
-					size = { 0.35, 0.3, 0.45 },
-					pos = { 0, 1.15 - k * 0.1 + seg[2] / 2, seg[4] },
-					color = dark,
-					swing = swish,
-				})
-			end
-			return { parts = list }
-		end)(),
+		look = CraftedFreeks.Chompers(),
 	},
 	{
 		id = "Stompy",
@@ -3956,97 +4066,7 @@ Freeks.list = {
 		name = "Stompy",
 		rarity = "Mystic",
 		income = 1000,
-		look = (function()
-			-- A chunky armoured rhino: plated shoulders and hips, a big snout, purple eyes and a
-			-- tall ivory horn with a glowing tip, toenails and a tufted tail.
-			local list, add = newParts()
-			local grey, dark, light = rgb(152, 155, 175), rgb(120, 122, 145), rgb(185, 188, 205)
-			local ivory = rgb(245, 238, 215)
-			add({ name = "Body", shape = "Ellipsoid", size = { 3.6, 3.0, 4.6 }, pos = { 0, 2.6, 0.6 }, color = grey })
-			add({ shape = "Ellipsoid", size = { 2.8, 1.6, 3.6 }, pos = { 0, 1.85, 0.6 }, color = light })
-			for _, side in { -1, 1 } do
-				add({ shape = "Ellipsoid", size = { 1.1, 1.7, 1.5 }, pos = { side * 1.5, 2.85, -0.6 }, color = dark })
-				add({ shape = "Ellipsoid", size = { 1.0, 1.6, 1.5 }, pos = { side * 1.45, 2.75, 1.8 }, color = dark })
-			end
-			local spots = { { -1.1, -0.7 }, { 1.1, -0.7 }, { -1.1, 1.9 }, { 1.1, 1.9 } }
-			legs(add, spots, 1.45, 1.15, grey)
-			for i, leg in spots do
-				for _, toe in { -0.32, 0, 0.32 } do
-					add({
-						shape = "Ball",
-						size = 0.32,
-						pos = { leg[1] + toe, 0.16, leg[2] - 0.5 },
-						color = ivory,
-						detail = true,
-						swing = { hinge = { leg[1], 1.45, leg[2] }, phase = DIAGONAL[i] },
-					})
-				end
-			end
-			local c, r = { 0, 2.95, -2.25 }, 1.25
-			add({ name = "Head", shape = "Ellipsoid", size = { 2.5, 2.3, 2.6 }, pos = c, color = grey })
-			local snout = { 0, 2.35, -3.45 }
-			add({ shape = "Ellipsoid", size = { 2.0, 1.5, 1.6 }, pos = snout, color = light })
-			for _, side in { -1, 1 } do
-				add({
-					shape = "Ellipsoid",
-					size = { 0.22, 0.3, 0.1 },
-					pos = { side * 0.35, 2.4, -4.24 },
-					color = rgb(70, 70, 85),
-					detail = true,
-				})
-			end
-			smile(add, snout, 0.8, -0.35, 0.6)
-			cuteEyes(add, c, r, 0.72, 0.4, 0.56, rgb(150, 90, 230))
-			blush(add, c, r, 1.0, -0.05, 0.4)
-			for _, side in { -1, 1 } do
-				pointyEar(add, side * 0.85, 4.2, -1.75, 0.55, 0.75, dark)
-				pointyEar(add, side * 0.85, 4.15, -1.85, 0.3, 0.45, rgb(230, 170, 190))
-			end
-			-- The horn: a cone of rings, with a glowing tip; a little one behind.
-			for k = 0, 9 do
-				local width = 0.8 - k * 0.07
-				add({
-					shape = "Cylinder",
-					size = { 0.18, width, width },
-					pos = { 0, 3.05 + k * 0.16, -3.75 + k * 0.03 },
-					rot = { 0, 0, 90 },
-					color = ivory,
-				})
-			end
-			local tip = add({
-				shape = "Ball",
-				size = 0.3,
-				pos = { 0, 4.7, -3.45 },
-				color = rgb(190, 110, 255),
-				material = "Neon",
-				detail = true,
-			})
-			add({
-				shape = "Cylinder",
-				size = { 0.45, 0.55, 0.55 },
-				pos = { 0, 4.05, -2.95 },
-				rot = { 0, 0, 90 },
-				color = ivory,
-			})
-			add({ shape = "Ball", size = 0.35, pos = { 0, 4.35, -2.95 }, color = ivory })
-			-- Tail with a tuft.
-			add({
-				shape = "Cylinder",
-				size = { 0.9, 0.2, 0.2 },
-				pos = { 0, 2.9, 3.05 },
-				rot = { 0, -90, -30 },
-				color = dark,
-				swing = { hinge = { 0, 3.1, 2.75 }, axis = "Y", amount = 0.7 },
-			})
-			add({
-				shape = "Ellipsoid",
-				size = { 0.35, 0.5, 0.35 },
-				pos = { 0, 2.55, 3.4 },
-				color = rgb(80, 80, 100),
-				swing = { hinge = { 0, 3.1, 2.75 }, axis = "Y", amount = 0.7 },
-			})
-			return { parts = list, effects = { { type = "Glow", part = tip, color = rgb(190, 110, 255) } } }
-		end)(),
+		look = CraftedFreeks.Stompy(),
 	},
 
 	-- The Human line
@@ -4057,75 +4077,7 @@ Freeks.list = {
 		name = "Chuckles",
 		rarity = "Common",
 		income = 4,
-		look = human({
-			skin = rgb(255, 225, 200),
-			shirt = rgb(255, 215, 60),
-			pants = rgb(60, 110, 230),
-			shoes = rgb(230, 40, 40),
-			shoeSize = { 0.8, 0.45, 1.7 },
-			head = 2.2,
-			noMouth = true,
-			extra = function(h)
-				-- Big red nose and a huge grin.
-				h.add({
-					shape = "Ball",
-					size = 0.7,
-					pos = { 0, h.headY - 0.1, h.face(0, -0.1, 0.12) },
-					color = rgb(235, 30, 40),
-				})
-				openMouth(h.add, { 0, h.headY, 0 }, h.head / 2, -h.head * 0.24, 0.95)
-				-- Rainbow afro.
-				local rainbow = {
-					rgb(255, 60, 60),
-					rgb(255, 150, 40),
-					rgb(255, 230, 60),
-					rgb(70, 210, 90),
-					rgb(60, 150, 255),
-					rgb(170, 90, 255),
-				}
-				for i, color in rainbow do
-					local a = (i - 0.5) / #rainbow * math.pi * 2
-					h.add({
-						shape = "Ball",
-						size = 1.15,
-						pos = { math.cos(a) * 0.95, h.headY + 0.95, math.sin(a) * 0.8 + 0.45 },
-						color = color,
-					})
-				end
-				h.add({ shape = "Ball", size = 1.3, pos = { 0, h.headY + 1.3, 0.4 }, color = rgb(255, 90, 180) })
-				-- Polka dots, blue suspenders and a flower on the chest.
-				for _, dot in { { -0.55, 2.0 }, { 0.5, 2.75 }, { -0.2, 2.9 }, { 0.6, 1.95 } } do
-					h.add({
-						shape = "Ball",
-						size = 0.32,
-						pos = { dot[1], dot[2], -h.torsoD / 2 - 0.02 },
-						color = rgb(255, 80, 150),
-						detail = true,
-					})
-				end
-				for _, x in { -0.55, 0.55 } do
-					h.add({
-						shape = "Block",
-						size = { 0.22, 1.72, h.torsoD + 0.06 },
-						pos = { x, h.torsoY, 0 },
-						color = rgb(60, 110, 230),
-					})
-				end
-				h.add({
-					shape = "Ball",
-					size = 0.55,
-					pos = { -0.15, 2.4, -h.torsoD / 2 - 0.12 },
-					color = rgb(255, 120, 200),
-				})
-				h.add({
-					shape = "Ball",
-					size = 0.25,
-					pos = { -0.15, 2.4, -h.torsoD / 2 - 0.36 },
-					color = rgb(255, 230, 60),
-					detail = true,
-				})
-			end,
-		}),
+		look = CraftedFreeks.Chuckles(),
 	},
 	{
 		id = "Nerdle",
@@ -4134,106 +4086,7 @@ Freeks.list = {
 		name = "Nerdle",
 		rarity = "Uncommon",
 		income = 20,
-		look = human({
-			skin = rgb(250, 215, 185),
-			shirt = rgb(90, 150, 90),
-			sleeves = rgb(245, 245, 240),
-			pants = rgb(140, 110, 80),
-			shoes = rgb(70, 50, 40),
-			torsoWidth = 1.6,
-			armSize = 0.42,
-			head = 2.25,
-			extra = function(h)
-				-- Neat brown hair with a side part: a dome over the top and back of the head.
-				h.add({ shape = "Ball", size = h.head + 0.2, pos = { 0, h.headY + 0.3, 0.22 }, color = rgb(95, 60, 35) })
-				h.add({
-					shape = "Block",
-					size = { 1.3, 0.3, 0.5 },
-					pos = { 0.3, h.headY + 0.78, h.face(0.3, 0.78, -0.3) },
-					rot = { 0, 0, -8 },
-					color = rgb(95, 60, 35),
-				})
-				-- Big round glasses.
-				local glassZ = h.face(h.eyeX, h.eyeY, 0.12)
-				for _, side in { -1, 1 } do
-					h.add({
-						shape = "Cylinder",
-						size = { 0.08, 0.85, 0.85 },
-						pos = { side * h.eyeX, h.headY + h.eyeY, glassZ },
-						rot = { 0, 90, 0 },
-						color = rgb(20, 20, 25),
-						detail = true,
-					})
-					h.add({
-						shape = "Cylinder",
-						size = { 0.1, 0.7, 0.7 },
-						pos = { side * h.eyeX, h.headY + h.eyeY, glassZ - 0.02 },
-						rot = { 0, 90, 0 },
-						color = rgb(200, 235, 255),
-						transparency = 0.6,
-						detail = true,
-					})
-				end
-				h.add({
-					shape = "Block",
-					size = { 0.3, 0.08, 0.08 },
-					pos = { 0, h.headY + h.eyeY, glassZ },
-					color = rgb(20, 20, 25),
-					detail = true,
-				})
-				-- Buck teeth.
-				for _, x in { -0.08, 0.08 } do
-					h.add({
-						shape = "Block",
-						size = { 0.14, 0.24, 0.06 },
-						pos = { x, h.headY - h.head * 0.2 - 0.14, h.face(x, h.head * 0.2 + 0.14, -0.02) },
-						color = rgb(255, 255, 255),
-						detail = true,
-					})
-				end
-				-- Red bow tie, pocket protector with pens, and a book under the arm.
-				for _, side in { -1, 1 } do
-					h.add({
-						shape = "Block",
-						size = { 0.38, 0.3, 0.1 },
-						pos = { side * 0.2, h.torsoTop - 0.15, -h.torsoD / 2 - 0.06 },
-						rot = { 0, 0, side * 20 },
-						color = rgb(220, 40, 50),
-						detail = true,
-					})
-				end
-				h.add({
-					shape = "Ball",
-					size = 0.2,
-					pos = { 0, h.torsoTop - 0.15, -h.torsoD / 2 - 0.1 },
-					color = rgb(180, 25, 35),
-					detail = true,
-				})
-				h.add({
-					shape = "Block",
-					size = { 0.45, 0.5, 0.06 },
-					pos = { 0.4, 2.65, -h.torsoD / 2 - 0.02 },
-					color = rgb(245, 245, 245),
-					detail = true,
-				})
-				for i, color in { rgb(30, 80, 220), rgb(220, 40, 40), rgb(30, 30, 30) } do
-					h.add({
-						shape = "Cylinder",
-						size = { 0.5, 0.07, 0.07 },
-						pos = { 0.25 + i * 0.1, 2.85, -h.torsoD / 2 - 0.06 },
-						rot = { 0, 0, 90 },
-						color = color,
-						detail = true,
-					})
-				end
-				h.add({
-					shape = "Block",
-					size = { 0.3, 1.1, 0.85 },
-					pos = { -(h.shoulderX + 0.3), 2.1, -0.1 },
-					color = rgb(40, 70, 170),
-				})
-			end,
-		}),
+		look = CraftedFreeks.Nerdle(),
 	},
 	{
 		id = "Flexo",
@@ -4242,93 +4095,7 @@ Freeks.list = {
 		name = "Flexo",
 		rarity = "Rare",
 		income = 80,
-		look = human({
-			skin = rgb(225, 165, 115),
-			shirt = rgb(220, 40, 40),
-			pants = rgb(40, 40, 55),
-			shoes = rgb(30, 30, 30),
-			torsoWidth = 2.7,
-			torsoDepth = 1.4,
-			armSize = 0.8,
-			head = 1.85,
-			extra = function(h)
-				-- Its signature sweatband.
-				Accessories.put(h.add, "sweatband", { 0, h.headY, 0 }, h.head / 2)
-				-- Bulging shoulders and biceps.
-				for _, side in { -1, 1 } do
-					h.add({
-						shape = "Ball",
-						size = 1.25,
-						pos = { side * (h.shoulderX + 0.05), 3.05, 0 },
-						color = h.skin,
-					})
-					h.add({
-						shape = "Ball",
-						size = 1.0,
-						pos = { side * (h.shoulderX + 0.12), 2.45, -0.12 },
-						color = h.skin,
-					})
-				end
-				-- Flat-top hair, a thick mustache, angry brows.
-				h.add({
-					shape = "Block",
-					size = { 1.55, 0.55, 1.55 },
-					pos = { 0, h.headY + 0.78, 0 },
-					color = rgb(40, 30, 25),
-				})
-				h.add({
-					shape = "Block",
-					size = { 0.95, 0.2, 0.18 },
-					pos = { 0, h.headY - 0.22, h.face(0, -0.22, -0.02) },
-					color = rgb(40, 30, 25),
-					detail = true,
-				})
-				for _, side in { -1, 1 } do
-					h.add({
-						shape = "Block",
-						size = { 0.45, 0.12, 0.12 },
-						pos = { side * h.eyeX, h.headY + h.eyeY + 0.38, h.face(h.eyeX, h.eyeY + 0.38, -0.04) },
-						rot = { 0, 0, side * 15 },
-						color = rgb(40, 30, 25),
-						detail = true,
-					})
-				end
-				-- Black belt with a gold buckle.
-				h.add({
-					shape = "Block",
-					size = { h.torsoW + 0.06, 0.3, h.torsoD + 0.06 },
-					pos = { 0, 1.65, 0 },
-					color = rgb(25, 25, 25),
-				})
-				h.add({
-					shape = "Block",
-					size = { 0.55, 0.4, 0.1 },
-					pos = { 0, 1.65, -h.torsoD / 2 - 0.06 },
-					color = rgb(255, 200, 50),
-					material = "Foil",
-				})
-				-- A dumbbell in his right hand.
-				local hand = h.shoulderX + 0.08
-				h.add({
-					shape = "Cylinder",
-					size = { 1.7, 0.2, 0.2 },
-					pos = { hand, 1.72, 0 },
-					rot = { 0, 90, 0 },
-					color = rgb(120, 120, 130),
-					material = "Metal",
-				})
-				for _, z in { -0.75, 0.75 } do
-					h.add({
-						shape = "Cylinder",
-						size = { 0.35, 1.0, 1.0 },
-						pos = { hand, 1.72, z },
-						rot = { 0, 90, 0 },
-						color = rgb(35, 35, 40),
-						material = "Metal",
-					})
-				end
-			end,
-		}),
+		look = CraftedFreeks.Flexo(),
 	},
 	{
 		id = "Glamora",
@@ -4337,114 +4104,7 @@ Freeks.list = {
 		name = "Glamora",
 		rarity = "Legendary",
 		income = 300,
-		look = human({
-			skin = rgb(255, 220, 200),
-			shirt = rgb(255, 120, 190),
-			pants = rgb(255, 210, 190),
-			shoes = rgb(255, 60, 150),
-			torsoWidth = 1.7,
-			armSize = 0.42,
-			head = 2.2,
-			noMouth = true,
-			extra = function(h)
-				-- A flared pink skirt.
-				h.add({
-					shape = "Cylinder",
-					size = { 0.5, 2.3, 2.3 },
-					pos = { 0, 1.45, 0 },
-					rot = { 0, 0, 90 },
-					color = rgb(255, 120, 190),
-				})
-				h.add({
-					shape = "Cylinder",
-					size = { 0.45, 2.7, 2.7 },
-					pos = { 0, 1.05, 0 },
-					rot = { 0, 0, 90 },
-					color = rgb(255, 150, 205),
-				})
-				-- Long golden hair: a big back, bangs and locks over the shoulders.
-				local gold = rgb(255, 215, 100)
-				h.add({ shape = "Ball", size = h.head + 0.3, pos = { 0, h.headY + 0.15, 0.25 }, color = gold })
-				h.add({ shape = "Block", size = { 2.1, 2.2, 0.8 }, pos = { 0, h.headY - 1.0, 0.75 }, color = gold })
-				for _, side in { -1, 1 } do
-					h.add({
-						shape = "Block",
-						size = { 0.5, 1.9, 0.6 },
-						pos = { side * 1.0, h.headY - 0.6, -0.25 },
-						color = gold,
-					})
-				end
-				h.add({
-					shape = "Block",
-					size = { 1.6, 0.45, 0.5 },
-					pos = { 0, h.headY + 0.75, h.face(0, 0.75, -0.25) },
-					color = gold,
-				})
-				-- Eyeliner with a flick at each outer corner, rosy cheeks and pink lips.
-				for _, side in { -1, 1 } do
-					h.add({
-						shape = "Block",
-						size = { 0.5, 0.07, 0.07 },
-						pos = { side * h.eyeX, h.headY + h.eyeY + 0.26, h.face(h.eyeX, h.eyeY + 0.26, 0.1) },
-						color = rgb(30, 20, 30),
-						detail = true,
-					})
-					h.add({
-						shape = "Block",
-						size = { 0.22, 0.06, 0.06 },
-						pos = {
-							side * (h.eyeX + 0.3),
-							h.headY + h.eyeY + 0.3,
-							h.face(h.eyeX + 0.3, h.eyeY + 0.3, 0.08),
-						},
-						rot = { 0, 0, side * 35 },
-						color = rgb(30, 20, 30),
-						detail = true,
-					})
-					h.add({
-						shape = "Ball",
-						size = 0.38,
-						pos = { side * (h.eyeX + 0.25), h.headY - 0.25, h.face(h.eyeX + 0.25, -0.25, -0.08) },
-						color = rgb(255, 150, 170),
-						detail = true,
-					})
-				end
-				h.add({
-					shape = "Ball",
-					size = 0.4,
-					pos = { 0, h.headY - h.head * 0.2, h.face(0, h.head * 0.2, -0.1) },
-					color = rgb(235, 40, 110),
-					detail = true,
-				})
-				-- A pearl necklace and a sparkling tiara.
-				for i = -3, 3 do
-					local a = i / 3 * 0.9
-					h.add({
-						shape = "Ball",
-						size = 0.22,
-						pos = { math.sin(a) * 0.55, h.torsoTop + 0.05 - math.cos(a) * 0.1, -0.45 - math.cos(a) * 0.1 },
-						color = rgb(250, 248, 240),
-						detail = true,
-					})
-				end
-				h.add({
-					shape = "Block",
-					size = { 1.5, 0.22, 0.3 },
-					pos = { 0, h.headY + 1.0, -0.35 },
-					color = rgb(255, 205, 60),
-					material = "Foil",
-				})
-				local gem = h.add({
-					shape = "Ball",
-					size = 0.45,
-					pos = { 0, h.headY + 1.25, -0.42 },
-					color = rgb(255, 90, 200),
-					material = "Neon",
-					detail = true,
-				})
-				table.insert(h.effects, { type = "Sparkles", part = gem, color = rgb(255, 220, 255) })
-			end,
-		}),
+		look = CraftedFreeks.Glamora(),
 	},
 
 	-- The Monster line: only from Monster Crates (exclusive = true keeps them out of the
@@ -4457,63 +4117,7 @@ Freeks.list = {
 		exclusive = true,
 		walk = "float",
 		income = 25,
-		look = (function()
-			local list, add = newParts()
-			local white = rgb(240, 245, 255)
-			local body = { 0, 2.9, 0 }
-			add({ name = "Body", shape = "Ball", size = 3, pos = body, color = white, transparency = 0.1 })
-			-- Its signature witch hat.
-			Accessories.put(add, "witchhat", body, 1.5)
-			-- A wavy hem floating above the ground.
-			for i = 0, 7 do
-				local a = i / 8 * math.pi * 2
-				add({
-					shape = "Ball",
-					size = 1.05,
-					pos = { math.cos(a) * 1.05, 1.55, math.sin(a) * 1.05 },
-					color = white,
-					transparency = 0.1,
-				})
-			end
-			for _, side in { -1, 1 } do
-				add({
-					shape = "Ball",
-					size = 0.62,
-					pos = onBall(body, 1.5, side * 0.45, 0.25, -0.1),
-					color = rgb(25, 25, 40),
-					detail = true,
-				})
-				add({
-					shape = "Ball",
-					size = 0.2,
-					pos = onBall(body, 1.5, side * 0.38, 0.38, 0.12),
-					color = rgb(255, 255, 255),
-					detail = true,
-				})
-				add({
-					shape = "Ball",
-					size = 0.4,
-					pos = onBall(body, 1.5, side * 0.85, -0.15, -0.12),
-					color = rgb(255, 170, 200),
-					detail = true,
-				})
-				add({
-					shape = "Ball",
-					size = 0.75,
-					pos = { side * 1.6, 2.5, -0.2 },
-					color = white,
-					transparency = 0.1,
-					swing = {
-						hinge = { side * 1.3, 2.9, -0.2 },
-						phase = if side < 0 then 0 else 0.5,
-						axis = "Z",
-						amount = side * 0.8,
-					},
-				})
-			end
-			openMouth(add, body, 1.5, -0.42, 0.42)
-			return { parts = list, effects = { { type = "Glow", part = 1, color = rgb(190, 220, 255), size = 8 } } }
-		end)(),
+		look = CraftedFreeks.BooBoo(),
 	},
 	{
 		id = "Zomboy",
@@ -4523,52 +4127,7 @@ Freeks.list = {
 		exclusive = true,
 		walk = "shamble",
 		income = 30,
-		look = human({
-			skin = rgb(140, 200, 110),
-			shirt = rgb(80, 120, 190),
-			pants = rgb(110, 80, 60),
-			shoes = rgb(60, 50, 45),
-			armsForward = true,
-			head = 2.15,
-			extra = function(h)
-				-- Its signature neck bolts.
-				Accessories.put(h.add, "bolts", { 0, h.headY, 0 }, h.head / 2)
-				-- Messy hair, a peek of brain, stitches and a torn shirt.
-				h.add({
-					shape = "Ball",
-					size = h.head + 0.1,
-					pos = { 0, h.headY + 0.35, 0.25 },
-					color = rgb(60, 45, 35),
-				})
-				h.add({ shape = "Ball", size = 0.6, pos = { 0.45, h.headY + 0.95, -0.3 }, color = rgb(255, 150, 170) })
-				h.add({ shape = "Ball", size = 0.45, pos = { 0.75, h.headY + 0.8, -0.1 }, color = rgb(255, 150, 170) })
-				for i = -1, 1 do
-					h.add({
-						shape = "Block",
-						size = { 0.06, 0.3, 0.06 },
-						pos = { -0.6 + i * 0.15, h.headY + 0.45, h.face(-0.6 + i * 0.15, 0.45, -0.02) },
-						color = rgb(40, 40, 40),
-						detail = true,
-					})
-				end
-				h.add({
-					shape = "Block",
-					size = { 0.5, 0.05, 0.06 },
-					pos = { -0.6, h.headY + 0.45, h.face(-0.6, 0.45, -0.03) },
-					color = rgb(40, 40, 40),
-					detail = true,
-				})
-				for _, x in { -0.5, 0.1, 0.6 } do
-					h.add({
-						shape = "Wedge",
-						size = { 0.3, 0.35, 0.3 },
-						pos = { x, 1.75, -h.torsoD / 2 - 0.05 },
-						rot = { 180, 0, 0 },
-						color = rgb(80, 120, 190),
-					})
-				end
-			end,
-		}),
+		look = CraftedFreeks.Zomboy(),
 	},
 	{
 		id = "Mumbles",
@@ -4578,51 +4137,7 @@ Freeks.list = {
 		exclusive = true,
 		walk = "shamble",
 		income = 100,
-		look = human({
-			skin = rgb(235, 225, 195),
-			shirt = rgb(235, 225, 195),
-			pants = rgb(225, 214, 182),
-			shoes = rgb(210, 198, 165),
-			armsForward = true,
-			head = 2.15,
-			extra = function(h)
-				-- Bandage strips wrapped every which way, one eye peeking out.
-				local strip = rgb(200, 188, 155)
-				for i, y in { 1.9, 2.35, 2.8, 3.15 } do
-					h.add({
-						shape = "Block",
-						size = { h.torsoW + 0.08, 0.14, h.torsoD + 0.08 },
-						pos = { 0, y, 0 },
-						rot = { 0, 0, if i % 2 == 0 then 8 else -8 },
-						color = strip,
-					})
-				end
-				for i, dy in { -0.55, 0.05, 0.6 } do
-					h.add({
-						shape = "Cylinder",
-						size = { 0.16, h.head + 0.06, h.head + 0.06 },
-						pos = { 0, h.headY + dy, 0 },
-						rot = { 0, 0, 90 + (if i == 2 then 10 else -6) },
-						color = strip,
-					})
-				end
-				h.add({
-					shape = "Block",
-					size = { 0.75, 0.55, 0.2 },
-					pos = { h.eyeX, h.headY + h.eyeY, h.face(h.eyeX, h.eyeY, 0.2) },
-					rot = { 0, 0, 12 },
-					color = rgb(235, 225, 195),
-				})
-				-- A loose end dangling down the back.
-				h.add({
-					shape = "Block",
-					size = { 0.25, 1.2, 0.08 },
-					pos = { 0.9, h.headY - 1.0, 0.4 },
-					rot = { 0, 0, 15 },
-					color = strip,
-				})
-			end,
-		}),
+		look = CraftedFreeks.Mumbles(),
 	},
 	{
 		id = "CountFangula",
@@ -4632,78 +4147,7 @@ Freeks.list = {
 		exclusive = true,
 		walk = "strut",
 		income = 400,
-		look = human({
-			skin = rgb(225, 215, 240),
-			shirt = rgb(30, 25, 40),
-			sleeves = rgb(30, 25, 40),
-			pants = rgb(30, 25, 40),
-			shoes = rgb(15, 15, 20),
-			head = 2.2,
-			extra = function(h)
-				-- Slicked black hair with a widow's peak, red eyes, fangs, and a big cape.
-				h.add({
-					shape = "Ball",
-					size = h.head + 0.12,
-					pos = { 0, h.headY + 0.32, 0.3 },
-					color = rgb(20, 15, 25),
-				})
-				h.add({
-					shape = "Block",
-					size = { 0.5, 0.5, 0.3 },
-					pos = { 0, h.headY + 0.8, h.face(0, 0.8, -0.2) },
-					rot = { 0, 0, 45 },
-					color = rgb(20, 15, 25),
-				})
-				for _, side in { -1, 1 } do
-					local p = { side * h.eyeX, h.headY + h.eyeY, h.face(h.eyeX, h.eyeY, -0.12) }
-					h.add({
-						shape = "Ball",
-						size = 0.38,
-						pos = { p[1], p[2], p[3] - 0.12 },
-						color = rgb(220, 30, 50),
-						detail = true,
-					})
-					h.add({
-						shape = "Wedge",
-						size = { 0.1, 0.3, 0.12 },
-						pos = { side * 0.18, h.headY - h.head * 0.2 - 0.18, h.face(0.18, h.head * 0.2 + 0.18, 0.02) },
-						rot = { 180, 0, 0 },
-						color = rgb(255, 255, 255),
-						detail = true,
-					})
-				end
-				local red = rgb(190, 20, 40)
-				h.add({
-					shape = "Block",
-					size = { h.torsoW + 0.7, 3.1, 0.15 },
-					pos = { 0, 1.75, h.torsoD / 2 + 0.2 },
-					color = red,
-				})
-				h.add({
-					shape = "Block",
-					size = { h.torsoW + 0.9, 3.2, 0.12 },
-					pos = { 0, 1.75, h.torsoD / 2 + 0.32 },
-					color = rgb(20, 15, 25),
-				})
-				for _, side in { -1, 1 } do
-					h.add({
-						shape = "Block",
-						size = { 0.9, 1.2, 0.12 },
-						pos = { side * 0.75, h.torsoTop + 0.45, 0.35 },
-						rot = { -15, side * 25, 0 },
-						color = red,
-					})
-				end
-				h.add({
-					shape = "Ball",
-					size = 0.3,
-					pos = { 0, h.torsoTop - 0.3, -h.torsoD / 2 - 0.08 },
-					color = red,
-					material = "Neon",
-					detail = true,
-				})
-			end,
-		}),
+		look = CraftedFreeks.CountFangula(),
 	},
 	{
 		id = "Howlz",
@@ -4713,75 +4157,7 @@ Freeks.list = {
 		exclusive = true,
 		walk = "prowl",
 		income = 1500,
-		look = human({
-			skin = rgb(120, 85, 60),
-			shirt = rgb(110, 60, 140),
-			sleeves = rgb(120, 85, 60),
-			pants = rgb(60, 60, 80),
-			shoes = rgb(120, 85, 60),
-			torsoWidth = 2.2,
-			torsoDepth = 1.3,
-			armSize = 0.6,
-			head = 2.1,
-			noMouth = true,
-			extra = function(h)
-				local fur, light = rgb(120, 85, 60), rgb(200, 170, 140)
-				-- Its signature spiked collar.
-				Accessories.put(h.add, "spikedcollar", { 0, h.headY - h.head / 2, 0 }, h.head / 2)
-				-- Wolf snout, nose, pointy ears, yellow eyes and a fluffy tail.
-				h.add({ shape = "Ball", size = 1.1, pos = { 0, h.headY - 0.35, h.face(0, -0.35, -0.3) }, color = light })
-				h.add({
-					shape = "Ball",
-					size = 0.4,
-					pos = { 0, h.headY - 0.15, h.face(0, -0.15, 0.25) },
-					color = rgb(20, 15, 15),
-					detail = true,
-				})
-				h.add({
-					shape = "Block",
-					size = { 0.5, 0.08, 0.08 },
-					pos = { 0, h.headY - 0.7, h.face(0, -0.7, 0.1) },
-					color = rgb(60, 20, 20),
-					detail = true,
-				})
-				for _, side in { -1, 1 } do
-					pointyEar(h.add, side * 0.62, h.headY + 1.15, 0, 0.7, 0.9, fur)
-					local p = { side * h.eyeX, h.headY + h.eyeY, h.face(h.eyeX, h.eyeY, -0.12) }
-					h.add({
-						shape = "Ball",
-						size = 0.36,
-						pos = { p[1], p[2], p[3] - 0.12 },
-						color = rgb(255, 210, 40),
-						detail = true,
-					})
-					-- Claws.
-					for _, dx in { -0.12, 0, 0.12 } do
-						h.add({
-							shape = "Block",
-							size = { 0.06, 0.25, 0.06 },
-							pos = { side * (h.shoulderX + 0.08) + dx, 1.4, -0.2 },
-							color = rgb(250, 245, 230),
-							detail = true,
-						})
-					end
-				end
-				for i = 0, 3 do
-					h.add({
-						shape = "Ball",
-						size = 0.75 - i * 0.08,
-						pos = { 0, 1.9 + i * 0.3, h.torsoD / 2 + 0.4 + i * 0.25 },
-						color = if i == 3 then light else fur,
-						swing = { hinge = { 0, 1.9, h.torsoD / 2 + 0.2 }, axis = "Y", amount = 0.8 },
-					})
-				end
-				h.add({
-					shape = "Block",
-					size = { 0.8, 0.5, 0.1 },
-					pos = { 0, h.torsoTop - 0.35, -h.torsoD / 2 - 0.02 },
-					color = light,
-				})
-			end,
-		}),
+		look = CraftedFreeks.Howlz(),
 	},
 	{
 		id = "Blinky",
@@ -4791,79 +4167,7 @@ Freeks.list = {
 		exclusive = true,
 		walk = "bounce",
 		income = 6000,
-		look = (function()
-			local list, add = newParts()
-			local purple, dark = rgb(140, 80, 220), rgb(95, 45, 170)
-			local body = { 0, 2.6, 0 }
-			add({ name = "Body", shape = "Ball", size = 3.6, pos = body, color = purple })
-			legs(add, { { -0.75, -0.2 }, { 0.75, -0.2 } }, 1.0, 0.7, dark, dark)
-			-- One huge eye.
-			local eye = onBall(body, 1.8, 0, 0.35, -0.5)
-			add({ shape = "Ball", size = 1.8, pos = eye, color = rgb(255, 255, 255), detail = true })
-			add({
-				shape = "Ball",
-				size = 1.1,
-				pos = { eye[1], eye[2], eye[3] - 0.42 },
-				color = rgb(80, 220, 160),
-				detail = true,
-			})
-			add({
-				shape = "Ball",
-				size = 0.55,
-				pos = { eye[1], eye[2], eye[3] - 0.72 },
-				color = rgb(15, 15, 20),
-				detail = true,
-			})
-			add({
-				shape = "Ball",
-				size = 0.22,
-				pos = { eye[1] + 0.25, eye[2] + 0.25, eye[3] - 0.85 },
-				color = rgb(255, 255, 255),
-				detail = true,
-			})
-			-- A wide toothy grin.
-			openMouth(add, body, 1.8, -0.78, 1.25)
-			for _, x in { -0.35, 0, 0.35 } do
-				add({
-					shape = "Wedge",
-					size = { 0.1, 0.22, 0.18 },
-					pos = onBall(body, 1.8, x, -0.6, 0.06),
-					rot = { 180, 0, 0 },
-					color = rgb(255, 255, 255),
-					detail = true,
-				})
-			end
-			blush(add, body, 1.8, 1.05, -0.35, 0.5)
-			-- Two little horns (stacked rings) and stubby arms.
-			for _, side in { -1, 1 } do
-				for k = 0, 3 do
-					local width = 0.5 - k * 0.11
-					add({
-						shape = "Cylinder",
-						size = { 0.22, width, width },
-						pos = { side * (0.75 + k * 0.08), 4.25 + k * 0.2, 0 },
-						rot = { 0, 0, 90 - side * 20 },
-						color = rgb(255, 220, 120),
-					})
-				end
-				add({
-					shape = "Ball",
-					size = 0.8,
-					pos = { side * 1.9, 2.4, -0.1 },
-					color = purple,
-					swing = { hinge = { side * 1.6, 2.6, -0.1 }, phase = if side < 0 then 0.5 else 0, amount = 0.6 },
-					rig = "arm",
-					side = side,
-				})
-			end
-			return {
-				parts = list,
-				effects = {
-					{ type = "Sparkles", part = 1, color = rgb(200, 255, 230) },
-					{ type = "Glow", part = 1, color = rgb(80, 220, 160), size = 12 },
-				},
-			}
-		end)(),
+		look = CraftedFreeks.Blinky(),
 	},
 	-- Event Freeks: only from the cannons during their event (see Events.luau).
 	{
@@ -4874,91 +4178,7 @@ Freeks.list = {
 		event = "MonsterStorm",
 		walk = "float",
 		income = 2000,
-		look = (function()
-			-- A grumpy-cute storm cloud: puffy grey-blue cloud body, big yellow eyes under
-			-- cross brows, a crackling lightning bolt underneath and raindrops falling.
-			local list, add = newParts()
-			local cloud, dark, light = rgb(125, 140, 180), rgb(90, 100, 140), rgb(170, 185, 220)
-			local c, r = { 0, 3.1, 0 }, 1.3
-			add({ name = "Body", shape = "Ellipsoid", size = { 3.2, 2.4, 2.6 }, pos = c, color = cloud })
-			for _, puff in
-				{
-					{ -0.95, 4.0, 0.15, 1.6, light },
-					{ 0.25, 4.35, 0.2, 1.9, light },
-					{ 1.15, 3.95, 0.1, 1.5, light },
-					{ -1.65, 3.0, 0.1, 1.5, cloud },
-					{ 1.7, 3.05, 0.1, 1.45, cloud },
-					{ -0.85, 2.1, 0.1, 1.35, dark },
-					{ 0.8, 2.05, 0.15, 1.4, dark },
-				}
-			do
-				add({ shape = "Ball", size = puff[4], pos = { puff[1], puff[2], puff[3] }, color = puff[5] })
-			end
-			cuteEyes(add, c, r, 0.5, 0.12, 0.66, rgb(255, 215, 50))
-			for _, side in { -1, 1 } do
-				-- Cross little brows.
-				add({
-					shape = "Ellipsoid",
-					size = { 0.42, 0.12, 0.1 },
-					pos = onBall(c, r, side * 0.5, 0.62, -0.05),
-					rot = { 0, 0, side * 18 },
-					color = rgb(45, 50, 80),
-					detail = true,
-				})
-			end
-			blush(add, c, r, 0.85, -0.2, 0.38)
-			openMouth(add, c, r, -0.48, 0.42)
-			-- Puffy little arms that flutter.
-			for _, side in { -1, 1 } do
-				add({
-					shape = "Ball",
-					size = 0.8,
-					pos = { side * 2.35, 2.75, -0.1 },
-					color = light,
-					swing = {
-						hinge = { side * 2.0, 2.95, -0.1 },
-						phase = if side < 0 then 0 else 0.5,
-						axis = "Z",
-						amount = side * 0.8,
-					},
-				})
-			end
-			-- The lightning bolt crackling underneath.
-			local bolt = rgb(255, 230, 60)
-			for _, piece in
-				{
-					{ 0.25, 1.35, -0.3, 25 },
-					{ -0.05, 0.85, -0.3, -30 },
-					{ 0.2, 0.35, -0.3, 25 },
-				}
-			do
-				add({
-					shape = "Block",
-					size = { 0.28, 0.75, 0.2 },
-					pos = { piece[1], piece[2], piece[3] },
-					rot = { 0, 0, piece[4] },
-					color = bolt,
-					material = "Neon",
-					detail = true,
-				})
-			end
-			-- Raindrops.
-			for _, drop in { { -1.2, 1.2, 0.3 }, { -0.6, 0.6, -0.4 }, { 0.9, 1.0, 0.2 }, { 1.3, 0.45, -0.3 } } do
-				add({
-					shape = "Ellipsoid",
-					size = { 0.18, 0.3, 0.18 },
-					pos = drop,
-					color = rgb(120, 200, 255),
-					transparency = 0.15,
-					detail = true,
-				})
-			end
-			Accessories.put(add, "lightning", c, r)
-			return {
-				parts = list,
-				effects = { { type = "Glow", part = 1, color = rgb(255, 230, 120), size = 12 } },
-			}
-		end)(),
+		look = CraftedFreeks.Stormy(),
 	},
 }
 
@@ -5002,7 +4222,7 @@ return Freeks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">GamePasses</string>
           <string name="Source"><![CDATA[-- Game passes: one-time Robux purchases with permanent perks.
@@ -5154,7 +4374,7 @@ return GamePasses
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">GuardianAttacks</string>
           <string name="Source"><![CDATA[-- Each zone's guardian has a signature attack, on top of catching anyone it runs into.
@@ -5251,7 +4471,7 @@ return GuardianAttacks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">HouseModel</string>
           <string name="Source"><![CDATA[-- Builds houses and house parts out of simple parts, in the game's chunky cartoon style.
@@ -6899,7 +6119,7 @@ return HouseModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">Hybrids</string>
           <string name="Source"><![CDATA[-- Hybrids: what you get when two different Freeks fuse.
@@ -7084,7 +6304,7 @@ return Hybrids
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">ItemModel</string>
           <string name="Source"><![CDATA[-- One model for any item (see Items.luau), standing on its pivot: a house part as a small
@@ -7147,7 +6367,7 @@ return ItemModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">Items</string>
           <string name="Source"><![CDATA[-- Everything you can own in Steal a Life, in four kinds:
@@ -7676,7 +6896,7 @@ return Items
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">Lego</string>
           <string name="Source"><![CDATA[-- The LEGO look: everything is shiny plastic with studs on every face (inlets underneath),
@@ -7929,7 +7149,7 @@ return Lego
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">LifeUtil</string>
           <string name="Source"><![CDATA[-- Helpers for a player's save, shared by the server and the UI.
@@ -8204,7 +7424,7 @@ return LifeUtil
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="22">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">Luck</string>
           <string name="Source"><![CDATA[-- Luck: Mystery Boxes, the daily Lucky Wheel and Lucky Hour events. Shared so the client
@@ -8408,7 +7628,7 @@ return Luck
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="24">
         <Properties>
           <string name="Name">Mutations</string>
           <string name="Source"><![CDATA[-- Mutations multiply a house part's income. Parts grow with them in the zone piles (chance
@@ -8474,7 +7694,7 @@ return Mutations
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="25">
         <Properties>
           <string name="Name">Parts</string>
           <string name="Source"><![CDATA[-- House parts: one of the four kinds of item (see Items.luau), hatched from Hardware Eggs
@@ -8577,7 +7797,7 @@ return Parts
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">PlantModel</string>
           <string name="Source"><![CDATA[-- Plants, built from bricks. PlantModel.build(itemId) returns a model standing on its pivot
@@ -8843,7 +8063,7 @@ return PlantModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
@@ -8872,7 +8092,7 @@ return Rarities
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">Remotes</string>
           <string name="Source"><![CDATA[-- One place that names every remote. The server creates them; clients wait for them.
@@ -8935,7 +8155,7 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">Seasons</string>
           <string name="Source"><![CDATA[-- Limited events for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred
@@ -9072,7 +8292,7 @@ return Seasons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">YardModel</string>
           <string name="Source"><![CDATA[-- Yard items, built from bricks. YardModel.build(itemId) returns a model standing on its
@@ -9361,7 +8581,7 @@ return YardModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">ZoneLayout</string>
           <string name="Source"><![CDATA[-- Where the zones are. They run in a line west from the end of the town street: zone 1
@@ -9452,15 +8672,15 @@ return ZoneLayout
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="31">
+  <Item class="ServerScriptService" referent="32">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="32">
+    <Item class="Folder" referent="33">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -9795,7 +9015,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">AdminService</string>
           <string name="Source"><![CDATA[-- The admin panel's server side. Only admins (Config.ADMIN_NAMES / ADMIN_USER_IDS, or
@@ -9940,7 +9160,7 @@ return AdminService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -10275,7 +9495,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">Decor</string>
           <string name="Source"><![CDATA[-- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
@@ -10691,7 +9911,7 @@ return Decor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Catalog: the first player in the whole game to get each rare item (Legendary and up:
@@ -10846,7 +10066,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the parts on their house, plus offline earnings
@@ -10927,7 +10147,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">Environment</string>
           <string name="Source"><![CDATA[-- Lighting, sky, terrain and the town: the street between the two rows of homes, the
@@ -11211,7 +10431,7 @@ return Environment
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">EventService</string>
           <string name="Source"><![CDATA[-- Runs the scheduled events (see shared/Events.luau) and the ones the admin starts.
@@ -11450,7 +10670,7 @@ return EventService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">HalloweenDecor</string>
           <string name="Source"><![CDATA[-- Halloween props: ghosts, bats, cobwebs, tombstones, dead trees, a witch's cauldron,
@@ -11910,7 +11130,7 @@ return HalloweenDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">LuckService</string>
           <string name="Source"><![CDATA[-- Mystery Boxes, the daily Lucky Wheel and Lucky Hour events (rules and odds in
@@ -12416,7 +11636,7 @@ return LuckService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="43">
+      <Item class="Script" referent="44">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -12486,7 +11706,7 @@ print("[Steal a Life] Server started, build " .. require(ReplicatedStorage.Share
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="44">
+      <Item class="ModuleScript" referent="45">
         <Properties>
           <string name="Name">NestService</string>
           <string name="Source"><![CDATA[-- Eggs growing at home, and hatching them.
@@ -12697,7 +11917,7 @@ return NestService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="45">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -12770,7 +11990,7 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="46">
+      <Item class="ModuleScript" referent="47">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the town and gives every player a home: a big fenced yard with their house (see
@@ -13709,7 +12929,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="47">
+      <Item class="ModuleScript" referent="48">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -13977,7 +13197,7 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="48">
+      <Item class="ModuleScript" referent="49">
         <Properties>
           <string name="Name">SpeedService</string>
           <string name="Source"><![CDATA[-- Speed: trained on your treadmill, it decides how fast you run (Items.walkSpeed), which
@@ -14060,7 +13280,7 @@ return SpeedService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="49">
+      <Item class="ModuleScript" referent="50">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Carrying eggs home from the zones.
@@ -14336,7 +13556,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="50">
+      <Item class="ModuleScript" referent="51">
         <Properties>
           <string name="Name">ZoneDecor</string>
           <string name="Source"><![CDATA[-- The scenery of each zone: its ground, the cliffs along its sides, the entrance arch with
@@ -15170,7 +14390,7 @@ return ZoneDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="51">
+      <Item class="ModuleScript" referent="52">
         <Properties>
           <string name="Name">ZoneService</string>
           <string name="Source"><![CDATA[-- The zones: eggs to steal, each zone guarded by a giant Freek.
@@ -16016,19 +15236,19 @@ return ZoneService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="52">
+  <Item class="StarterPlayer" referent="53">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="53">
+    <Item class="StarterPlayerScripts" referent="54">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="54">
+      <Item class="Folder" referent="55">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="55">
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -16102,7 +15322,7 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="56">
+        <Item class="ModuleScript" referent="57">
           <Properties>
             <string name="Name">EventFX</string>
             <string name="Source"><![CDATA[-- What big events and weather look like (see Events.luau), on each player's own screen:
@@ -16194,7 +15414,7 @@ return EventFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="57">
+        <Item class="ModuleScript" referent="58">
           <Properties>
             <string name="Name">GuardianAttackFX</string>
             <string name="Source"><![CDATA[-- Draws the guardians' attacks (GuardianAttacks.luau) on this client, from the server's
@@ -16467,7 +15687,7 @@ return GuardianAttackFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="58">
+        <Item class="ModuleScript" referent="59">
           <Properties>
             <string name="Name">GuardianFX</string>
             <string name="Source"><![CDATA[-- The zone guardians, drawn on this client: a giant Freek per zone that walks after its
@@ -16484,6 +15704,7 @@ local Workspace = game:GetService("Workspace")
 
 local FreekAnimator = require(ReplicatedStorage.Shared.FreekAnimator)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
+local Items = require(ReplicatedStorage.Shared.Items)
 local Lego = require(ReplicatedStorage.Shared.Lego)
 
 local GuardianFX = {}
@@ -16494,12 +15715,9 @@ local OUTLINE = Color3.fromRGB(20, 22, 48)
 -- Builds a Freek scaled up round its pivot.
 local function giant(species: string): (Model, number)
 	local model, height = FreekModel.build(species)
-	local pivot = model:GetPivot()
+	Items.scaleModel(model, SCALE) -- (keeps the pivot at its feet)
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then
-			local rel = pivot:ToObjectSpace(p.CFrame)
-			p.Size *= SCALE
-			p.CFrame = pivot * (rel.Rotation + rel.Position * SCALE)
 			p.Anchored = true
 			p.CanCollide = false
 			p.CanQuery = false
@@ -16634,7 +15852,7 @@ return GuardianFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="59">
+        <Item class="ModuleScript" referent="60">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on screen pieces, in the UI.luau style: money and Speed as big outlined
@@ -17001,7 +16219,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="60">
+        <Item class="ModuleScript" referent="61">
           <Properties>
             <string name="Name">ItemPictures</string>
             <string name="Source"><![CDATA[-- 3D pictures for shop items (the treadmill, game passes), items, eggs and the side menu,
@@ -17700,7 +16918,7 @@ return ItemPictures
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="61">
+        <Item class="LocalScript" referent="62">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's client: the screen UI (HUD, side menu and windows, built from UI.luau and
@@ -18173,7 +17391,7 @@ clientReady = true
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="62">
+        <Item class="ModuleScript" referent="63">
           <Properties>
             <string name="Name">PetFX</string>
             <string name="Source"><![CDATA[-- Pets roaming their owner's front lawn, drawn on this client. The server lists each
@@ -18231,18 +17449,15 @@ end
 -- A Freek, scaled up round its feet (more for heavier pets).
 local function build(itemId: string, mutation: string?, weightScale: number): (Model, number)
 	local model = ItemModel.buildNormal(itemId, if mutation ~= "" then mutation else nil)
-	local scale = SCALE * weightScale
+	Items.scaleModel(model, SCALE * weightScale) -- (keeps the pivot at its feet)
 	local pivot = model:GetPivot()
 	local top = 0
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then
-			local rel = pivot:ToObjectSpace(p.CFrame)
-			p.Size *= scale
-			p.CFrame = pivot * (rel.Rotation + rel.Position * scale)
 			p.Anchored = true
 			p.CanCollide = false
 			p.CanQuery = false
-			top = math.max(top, rel.Position.Y * scale + p.Size.Y / 2)
+			top = math.max(top, pivot:PointToObjectSpace(p.Position).Y + p.Size.Y / 2)
 		end
 	end
 	Lego.apply(model)
@@ -18370,7 +17585,7 @@ return PetFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="63">
+        <Item class="ModuleScript" referent="64">
           <Properties>
             <string name="Name">TreadmillRun</string>
             <string name="Source"><![CDATA[-- Running on your treadmill by yourself: while you stand on your own treadmill's belt and
@@ -18436,7 +17651,7 @@ return TreadmillRun
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="64">
+        <Item class="ModuleScript" referent="65">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- The building blocks of the screen UI, in one style (the owner's reference: a clean
