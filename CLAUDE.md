@@ -41,6 +41,12 @@ render each screen for the owner before calling it done.**
   Green = buy/go, gray = can't, red = close/sell, orange = open.
 - Reveals: hatching and Mystery Boxes play the card-pack reveal (`PackReveal.luau`); the
   Lucky Wheel spins (`LuckyWheel.luau`) and shows its prize in a small window.
+- Upgrades: a House or Plot upgrade plays the build animation for everyone
+  (`BuildAnim.luau`, played by `BuildFX.luau` when PlotService bumps the plot's
+  "BuildAnim" attribute): the new house (or the fence, pads and yard items) drops in piece
+  by piece, going up and round, each piece landing with a bounce and a dust puff, then a
+  flash, a shockwave ring and sparkles. It's worked out from the time alone, so offline
+  videos match the game.
 - Motion is subtle: things you can press grow a little on hover and dip when pressed
   (`UI.hover`); windows pop open. No sparkles, glimmers or bouncing text.
 - No uploaded images: pictures are our own 3D models (ItemPictures) or emoji.

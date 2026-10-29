@@ -869,11 +869,269 @@ return Bricks
       </Item>
       <Item class="ModuleScript" referent="7">
         <Properties>
+          <string name="Name">BuildAnim</string>
+          <string name="Source"><![CDATA[-- The build animation when someone upgrades their house or yard: the new pieces drop out of
+-- the sky one cluster at a time, working their way up and around, each landing with a little
+-- bounce and a puff of dust; then a white flash, a glowing shockwave ring across the yard and
+-- a burst of sparkles.
+--
+-- Everything is worked out from the time alone, so the client (BuildFX) and the offline video
+-- renderer draw exactly the same frames:
+--   local plan = BuildAnim.plan(parts, center, kind)   -- once ("House" or "Yard")
+--   plan.entries = { { part, target, size, split, cluster } }: one per piece. Long blocks
+--     (fence rails, beams) are split into short segments (split = true) that drop in one
+--     after another; the client draws those as temporary copies of the part (at `size`)
+--     and keeps the real part hidden until the end.
+--   BuildAnim.pose(plan, entry, t)  -> the piece's CFrame and whether it's shown yet
+--   BuildAnim.effects(plan, t)      -> the effect pieces to draw at time t
+--   plan.duration                    -- when it's all over
+
+local BuildAnim = {}
+
+local DROP_TIME = 0.5 -- seconds from the sky to the ground (and the bounce)
+local DROP_HEIGHT = 16 -- studs above its spot a piece starts
+
+-- Which house pieces go first (the rest come after, in any order).
+local SLOT_ORDER = { Walls = 1, Door = 2, Windows = 2, Porch = 3, Roof = 4, Chimney = 5, Tower = 5 }
+
+-- The slot a part belongs to: the name of its top model under the house (or nil).
+local function slotOf(part: BasePart, root: Instance?): string?
+	local node = part
+	while node and node.Parent and node.Parent ~= root do
+		node = node.Parent
+	end
+	return node and node.Name
+end
+
+local function hash(n: number): number
+	return (math.sin(n * 12.9898) * 43758.5453) % 1
+end
+
+local SEGMENT = 6 -- long blocks are split into segments about this long
+
+-- The pieces to drop: every part, with long plain blocks cut into segments.
+local function pieces(parts: { BasePart })
+	local list = {}
+	for _, part in parts do
+		local size = part.Size
+		local long = math.max(size.X, size.Y, size.Z)
+		local plain = part.ClassName == "Part" and part.Shape == Enum.PartType.Block
+		if plain and long > SEGMENT * 1.6 then
+			local n = math.ceil(long / SEGMENT)
+			local axis = if long == size.X then Vector3.xAxis elseif long == size.Z then Vector3.zAxis else Vector3.yAxis
+			local piece = size - axis * long + axis * (long / n)
+			for k = 0, n - 1 do
+				local along = (k + 0.5) / n * long - long / 2
+				table.insert(
+					list,
+					{ part = part, cframe = part.CFrame * CFrame.new(axis * along), size = piece, split = true }
+				)
+			end
+		else
+			table.insert(list, { part = part, cframe = part.CFrame, size = size, split = false })
+		end
+	end
+	return list
+end
+
+-- parts = the BaseParts to build (their CFrames now are where they belong); center = the
+-- middle of the house or yard on the ground; root = the model the slots hang off (the house).
+function BuildAnim.plan(parts: { BasePart }, center: Vector3, kind: string, root: Instance?)
+	-- Group parts into clusters ("pieces"): same slot, same layer, same slice round the
+	-- centre. Clusters drop one after another.
+	local clusters = {}
+	local byKey = {}
+	local sectors = if kind == "Yard" then 48 else 14
+	for _, piece in pieces(parts) do
+		local part = piece.part
+		local position = piece.cframe.Position
+		local offset = position - center
+		local angle = math.atan2(offset.X, -offset.Z) -- 0 straight ahead, going clockwise
+		local sector = math.floor(((angle / (2 * math.pi)) % 1) * sectors)
+		local layer = if kind == "Yard" then 0 else math.floor(position.Y / 1.6)
+		local slot = if kind == "Yard" then "Yard" else (slotOf(part, root) or "Walls")
+		local key = slot .. ":" .. layer .. ":" .. sector
+		local cluster = byKey[key]
+		if not cluster then
+			cluster = {
+				slot = slot,
+				order = SLOT_ORDER[slot] or 6,
+				layer = layer,
+				sector = sector,
+				pieces = {},
+				low = math.huge,
+				sum = Vector3.zero,
+			}
+			byKey[key] = cluster
+			table.insert(clusters, cluster)
+		end
+		table.insert(cluster.pieces, piece)
+		cluster.low = math.min(cluster.low, position.Y - piece.size.Y / 2)
+		cluster.sum += position
+		cluster.long = math.max(cluster.long or 0, piece.size.X, piece.size.Y, piece.size.Z)
+	end
+	table.sort(clusters, function(a, b)
+		if a.order ~= b.order then
+			return a.order < b.order
+		elseif a.layer ~= b.layer then
+			return a.layer < b.layer
+		end
+		return a.sector < b.sector
+	end)
+	-- Spread them over a few seconds: quick enough to stay exciting, slow enough to see
+	-- every piece land.
+	local span = math.clamp(#clusters * 0.06, 1.6, if kind == "Yard" then 4.2 else 4.6)
+	local plan = { entries = {}, clusters = clusters, center = center, kind = kind }
+	for i, cluster in clusters do
+		cluster.start = (i - 1) / math.max(#clusters - 1, 1) * span
+		cluster.land = cluster.start + DROP_TIME * 0.7
+		cluster.middle = cluster.sum / #cluster.pieces
+		-- A little tumble on the way down; long pieces (fence rails, roof planks) barely
+		-- tilt, so they come down level instead of swinging round.
+		local seed = i * 7.31
+		local amount = math.clamp(5 / cluster.long, 0.12, 1)
+		cluster.tilt = CFrame.Angles(
+			(hash(seed) - 0.5) * 0.9 * amount,
+			(hash(seed + 1) - 0.5) * 1.2 * amount,
+			(hash(seed + 2) - 0.5) * 0.9 * amount
+		)
+		for _, piece in cluster.pieces do
+			table.insert(plan.entries, {
+				part = piece.part,
+				target = piece.cframe,
+				size = piece.size,
+				split = piece.split,
+				cluster = cluster,
+			})
+		end
+	end
+	plan.finale = span + DROP_TIME + 0.1
+	plan.duration = plan.finale + 1.6
+	return plan
+end
+
+-- Where a part is at time t, and whether it's visible yet.
+function BuildAnim.pose(_plan, entry, t: number): (CFrame, boolean)
+	local cluster = entry.cluster
+	local p = (t - cluster.start) / DROP_TIME
+	if p <= 0 then
+		return entry.target * CFrame.new(0, DROP_HEIGHT, 0), false
+	elseif p >= 1 then
+		return entry.target, true
+	end
+	-- Falling (speeding up) for the first 70%, then a little bounce that settles.
+	local lift, spin
+	if p < 0.7 then
+		local f = p / 0.7
+		lift = DROP_HEIGHT * (1 - f * f)
+		spin = 1 - f
+	else
+		local f = (p - 0.7) / 0.3
+		lift = math.sin(f * math.pi) * 0.9 * (1 - f * 0.5)
+		spin = 0
+	end
+	-- Turn round the cluster's middle, so a piece tumbles in as one.
+	local pivot = CFrame.new(cluster.middle)
+	local tilt = CFrame.new():Lerp(cluster.tilt, spin)
+	local placed = pivot * tilt * pivot:Inverse() * entry.target
+	return CFrame.new(0, lift, 0) * placed, true
+end
+
+-- The effect pieces at time t: { { shape, size, cframe, color, transparency } }.
+local WHITE = Color3.fromRGB(255, 255, 255)
+local GLOW = Color3.fromRGB(150, 235, 255)
+local GOLD = Color3.fromRGB(255, 215, 90)
+function BuildAnim.effects(plan, t: number)
+	local out = {}
+	-- A puff of dust where each piece lands: little white cubes rushing out and fading.
+	for i, cluster in plan.clusters do
+		local age = t - cluster.land
+		if age >= 0 and age < 0.4 then
+			local f = age / 0.4
+			for k = 0, 5 do
+				local a = k / 6 * math.pi * 2 + i
+				local r = 0.6 + f * 2.6
+				local s = 0.7 * (1 - f) + 0.15
+				table.insert(out, {
+					shape = "Block",
+					size = Vector3.one * s,
+					cframe = CFrame.new(
+						cluster.middle.X + math.cos(a) * r,
+						cluster.low + 0.3 + f * 0.8,
+						cluster.middle.Z + math.sin(a) * r
+					) * CFrame.Angles(a, a, 0),
+					color = WHITE,
+					transparency = 0.2 + f * 0.8,
+				})
+			end
+		end
+	end
+	-- The finale: a white flash, a glowing shockwave ring and sparkles flying up.
+	local age = t - plan.finale
+	if age >= 0 then
+		local center = plan.center
+		if age < 0.5 then
+			local f = age / 0.5
+			table.insert(out, {
+				shape = "Ball",
+				size = Vector3.one * (8 + f * (if plan.kind == "Yard" then 70 else 50)),
+				cframe = CFrame.new(center + Vector3.new(0, 4, 0)),
+				color = WHITE,
+				transparency = 0.35 + f * 0.65,
+			})
+		end
+		if age < 1.0 then
+			local f = age / 1.0
+			local ease = 1 - (1 - f) ^ 3
+			local r = 4 + ease * (if plan.kind == "Yard" then 62 else 48)
+			local n = 36
+			for k = 0, n - 1 do
+				local a = k / n * math.pi * 2
+				table.insert(out, {
+					shape = "Block",
+					size = Vector3.new(2 * math.pi * r / n + 0.3, 2.2 * (1 - f) + 0.4, 2.4 * (1 - f) + 0.8),
+					cframe = CFrame.new(center + Vector3.new(math.cos(a) * r, 0.9, math.sin(a) * r))
+						* CFrame.Angles(0, -a + math.pi / 2, 0),
+					color = GLOW,
+					transparency = f * f,
+				})
+			end
+		end
+		if age < 1.5 then
+			local f = age / 1.5
+			for k = 0, 23 do
+				local a = k * 2.399
+				local speed = 12 + hash(k) * 10
+				local up = 22 + hash(k + 50) * 14
+				local x = math.cos(a) * speed * age
+				local z = math.sin(a) * speed * age
+				local y = 6 + up * age - 30 * age * age
+				local s = 0.9 * (1 - f) + 0.2
+				table.insert(out, {
+					shape = "Block",
+					size = Vector3.one * s,
+					cframe = CFrame.new(center + Vector3.new(x, math.max(y, 0.5), z))
+						* CFrame.Angles(age * 6, age * 4 + k, 0),
+					color = if k % 3 == 0 then GOLD else if k % 3 == 1 then WHITE else GLOW,
+					transparency = f,
+				})
+			end
+		end
+	end
+	return out
+end
+
+return BuildAnim
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="8">
+        <Properties>
           <string name="Name">Config</string>
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-34", -- printed in Output: which build is running
+	BUILD = "life-35", -- printed in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join. Set to nil
 	-- before the game launches!
@@ -963,7 +1221,7 @@ return Config
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="8">
+      <Item class="ModuleScript" referent="9">
         <Properties>
           <string name="Name">CraftedFreeks</string>
           <string name="Source"><![CDATA[-- The crafted looks of the creatures (pets and guardians), like the owner's reference cat:
@@ -1796,7 +2054,7 @@ return CraftedFreeks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="9">
+      <Item class="ModuleScript" referent="10">
         <Properties>
           <string name="Name">DayNight</string>
           <string name="Source"><![CDATA[-- The day and night cycle, the same in every server and on every client: DAY seconds of
@@ -1842,7 +2100,7 @@ return DayNight
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="10">
+      <Item class="ModuleScript" referent="11">
         <Properties>
           <string name="Name">EggModel</string>
           <string name="Source"><![CDATA[-- The eggs you steal from the zones, in the "crafted" look (detailed low-poly, no LEGO
@@ -2199,7 +2457,7 @@ return EggModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="11">
+      <Item class="ModuleScript" referent="12">
         <Properties>
           <string name="Name">Events</string>
           <string name="Source"><![CDATA[-- Scheduled events, like the "admin abuse" events of the big Roblox games.
@@ -2398,7 +2656,7 @@ return Events
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">FloatText</string>
           <string name="Source"><![CDATA[-- Floating text over things in the world (eggs, nests, pets, guardians), all in one clean
@@ -2461,7 +2719,7 @@ return FloatText
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">Format</string>
           <string name="Source"><![CDATA[local Format = {}
@@ -2520,7 +2778,7 @@ return Format
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">FreekAnimator</string>
           <string name="Source"><![CDATA[-- Brings Freek models to life: idle animations for Freeks standing in barns and on the
@@ -3009,7 +3267,7 @@ return FreekAnimator
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">FreekModel</string>
           <string name="Source"><![CDATA[-- Builds the 3D model for a Freek out of plain parts.
@@ -3943,7 +4201,7 @@ return FreekModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">Freeks</string>
           <string name="Source"><![CDATA[-- Every creature in the game: the pets you hatch (the Pet items in Items.luau, which use
@@ -3992,7 +4250,7 @@ return Freeks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">GamePasses</string>
           <string name="Source"><![CDATA[-- Game passes: one-time Robux purchases with permanent perks.
@@ -4144,7 +4402,7 @@ return GamePasses
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">GuardianAttacks</string>
           <string name="Source"><![CDATA[-- Each zone's guardian has a signature attack, on top of catching anyone it runs into.
@@ -4241,7 +4499,7 @@ return GuardianAttacks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">HouseModel</string>
           <string name="Source"><![CDATA[-- Builds houses and house parts out of simple parts, in the game's chunky cartoon style.
@@ -6024,7 +6282,7 @@ return HouseModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">ItemModel</string>
           <string name="Source"><![CDATA[-- One model for any item (see Items.luau), standing on its pivot: a pet (FreekModel), a
@@ -6080,7 +6338,7 @@ return ItemModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">Items</string>
           <string name="Source"><![CDATA[-- Everything you can own in Steal a Life: 80 items in ten zones (the owner's reference
@@ -6621,7 +6879,7 @@ return Items
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="22">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">Lego</string>
           <string name="Source"><![CDATA[-- The LEGO look: everything is shiny plastic with studs on every face (inlets underneath),
@@ -6874,7 +7132,7 @@ return Lego
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="24">
         <Properties>
           <string name="Name">LifeUtil</string>
           <string name="Source"><![CDATA[-- Helpers for a player's save, shared by the server and the UI.
@@ -7109,7 +7367,7 @@ return LifeUtil
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="25">
         <Properties>
           <string name="Name">Luck</string>
           <string name="Source"><![CDATA[-- Luck: Mystery Boxes, the daily Lucky Wheel and Lucky Hour events. Shared so the client
@@ -7313,7 +7571,7 @@ return Luck
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">Mutations</string>
           <string name="Source"><![CDATA[-- Mutations multiply an item's income. Zone eggs sometimes have one (chance per egg, see
@@ -7379,7 +7637,7 @@ return Mutations
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">Parts</string>
           <string name="Source"><![CDATA[-- House parts: one of the four kinds of item (see Items.luau), hatched from Hardware Eggs
@@ -7482,7 +7740,7 @@ return Parts
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">PlantModel</string>
           <string name="Source"><![CDATA[-- Plants in the crafted look (low-poly, smooth, no studs; see Lego): built from blocks and
@@ -7926,7 +8184,7 @@ return PlantModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
@@ -7955,7 +8213,7 @@ return Rarities
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">Remotes</string>
           <string name="Source"><![CDATA[-- One place that names every remote. The server creates them; clients wait for them.
@@ -8018,7 +8276,7 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">Seasons</string>
           <string name="Source"><![CDATA[-- Limited events for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred
@@ -8155,7 +8413,7 @@ return Seasons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="31">
+      <Item class="ModuleScript" referent="32">
         <Properties>
           <string name="Name">YardModel</string>
           <string name="Source"><![CDATA[-- Yard items in the crafted look (low-poly, smooth, no studs; see Lego): built from blocks
@@ -9820,7 +10078,7 @@ return YardModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="32">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">ZoneLayout</string>
           <string name="Source"><![CDATA[-- Where the zones are. They run in a line west from the end of the town street: zone 1
@@ -9911,15 +10169,15 @@ return ZoneLayout
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="33">
+  <Item class="ServerScriptService" referent="34">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="34">
+    <Item class="Folder" referent="35">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -10246,7 +10504,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">AdminService</string>
           <string name="Source"><![CDATA[-- The admin panel's server side. Only admins (Config.ADMIN_NAMES / ADMIN_USER_IDS, or
@@ -10391,7 +10649,7 @@ return AdminService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -10736,7 +10994,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">DayNightService</string>
           <string name="Source"><![CDATA[-- Runs the day and night cycle (DayNight.luau) on the server. At nightfall every zone's
@@ -10817,7 +11075,7 @@ return DayNightService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">Decor</string>
           <string name="Source"><![CDATA[-- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
@@ -11233,7 +11491,7 @@ return Decor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Catalog: the first player in the whole game to get each rare item (Legendary and up:
@@ -11388,7 +11646,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the parts on their house, plus offline earnings
@@ -11469,7 +11727,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">Environment</string>
           <string name="Source"><![CDATA[-- Lighting, sky, terrain and the town: the street between the two rows of homes, the
@@ -11712,7 +11970,7 @@ return Environment
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">EventService</string>
           <string name="Source"><![CDATA[-- Runs the scheduled events (see shared/Events.luau) and the ones the admin starts.
@@ -11951,7 +12209,7 @@ return EventService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="44">
+      <Item class="ModuleScript" referent="45">
         <Properties>
           <string name="Name">HalloweenDecor</string>
           <string name="Source"><![CDATA[-- Halloween props: ghosts, bats, cobwebs, tombstones, dead trees, a witch's cauldron,
@@ -12411,7 +12669,7 @@ return HalloweenDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="45">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">LuckService</string>
           <string name="Source"><![CDATA[-- Mystery Boxes, the daily Lucky Wheel and Lucky Hour events (rules and odds in
@@ -12861,7 +13119,7 @@ return LuckService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="46">
+      <Item class="Script" referent="47">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -12932,7 +13190,7 @@ print("[Steal a Life] Server started, build " .. require(ReplicatedStorage.Share
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="47">
+      <Item class="ModuleScript" referent="48">
         <Properties>
           <string name="Name">NestService</string>
           <string name="Source"><![CDATA[-- Eggs growing at home, and hatching them.
@@ -13142,7 +13400,7 @@ return NestService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="48">
+      <Item class="ModuleScript" referent="49">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -13215,7 +13473,7 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="49">
+      <Item class="ModuleScript" referent="50">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the town and gives every player a home: a big fenced yard with their house (see
@@ -13911,10 +14169,22 @@ function PlotService.render(player: Player)
 	end
 	local gain = Config.treadmillGain(data.treadmill) * GamePasses.speedMultiplier(player)
 	plot.treadmillLabel.Text = "LV " .. data.treadmill .. "  +" .. Format.number(gain) .. " ⚡/s"
+	-- An upgrade since the last render: every client plays the build animation (BuildFX).
+	local houseLevel, plotLevel = data.houseLevel or 1, data.plotLevel or 1
+	local kind = if plot.shownHouse and houseLevel > plot.shownHouse
+		then "House"
+		elseif plot.shownPlot and plotLevel > plot.shownPlot then "Yard"
+		else nil
+	plot.shownHouse, plot.shownPlot = houseLevel, plotLevel
+	if kind then
+		plot.folder:SetAttribute("BuildKind", kind)
+		plot.folder:SetAttribute("BuildAnim", (plot.folder:GetAttribute("BuildAnim") or 0) + 1)
+	end
 end
 
 local function clearPlot(plot)
 	plot.owner = nil
+	plot.shownHouse, plot.shownPlot = nil, nil
 	-- Empty homes show a plain level 1 house and plot.
 	local basic = {}
 	for _, slot in Parts.SLOTS do
@@ -14130,7 +14400,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="50">
+      <Item class="ModuleScript" referent="51">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -14398,7 +14668,7 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="51">
+      <Item class="ModuleScript" referent="52">
         <Properties>
           <string name="Name">SpeedService</string>
           <string name="Source"><![CDATA[-- Speed: trained on your treadmill, it decides how fast you run (Items.walkSpeed), which
@@ -14481,7 +14751,7 @@ return SpeedService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="52">
+      <Item class="ModuleScript" referent="53">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Carrying eggs home from the zones.
@@ -14757,7 +15027,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="53">
+      <Item class="ModuleScript" referent="54">
         <Properties>
           <string name="Name">ZoneDecor</string>
           <string name="Source"><![CDATA[-- The scenery of each zone, after the owner's reference sheet: its ground (each zone has its
@@ -15584,7 +15854,7 @@ return ZoneDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="54">
+      <Item class="ModuleScript" referent="55">
         <Properties>
           <string name="Name">ZoneService</string>
           <string name="Source"><![CDATA[-- The zones: eggs to steal, each zone guarded by a giant version of one of its creatures.
@@ -16432,19 +16702,19 @@ return ZoneService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="55">
+  <Item class="StarterPlayer" referent="56">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="56">
+    <Item class="StarterPlayerScripts" referent="57">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="57">
+      <Item class="Folder" referent="58">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="58">
+        <Item class="ModuleScript" referent="59">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -16518,7 +16788,181 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="59">
+        <Item class="ModuleScript" referent="60">
+          <Properties>
+            <string name="Name">BuildFX</string>
+            <string name="Source"><![CDATA[-- Plays the build animation (BuildAnim.luau) on this client whenever someone's house or yard
+-- is upgraded: the server rebuilds the home and bumps the plot's "BuildAnim" attribute (with
+-- "BuildKind" = "House" or "Yard"); every client then hides the new pieces and drops them in
+-- piece by piece, with dust puffs, a flash, a shockwave ring and sparkles. Only this client's
+-- view moves: the server's parts stay where they belong.
+
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local BuildAnim = require(ReplicatedStorage.Shared.BuildAnim)
+
+local BuildFX = {}
+
+local YARD_PARTS = { Pad = true, PadRim = true, Soil = true, BedRim = true }
+
+local running = {} -- [plot folder] = stop()
+
+-- The parts to build and the middle of the build on the ground.
+local function gather(folder: Instance, kind: string): ({ BasePart }, Vector3, Instance?)
+	local parts = {}
+	local house = folder:FindFirstChild("House")
+	local function add(root: Instance?)
+		for _, d in (if root then root:GetDescendants() else {}) do
+			if d:IsA("BasePart") then
+				table.insert(parts, d)
+			end
+		end
+	end
+	if kind == "House" then
+		for _, child in (if house then house:GetChildren() else {}) do
+			if child.Name ~= "Fence" then
+				add(child)
+			end
+		end
+	else
+		add(house and house:FindFirstChild("Fence"))
+		add(folder:FindFirstChild("Items"))
+		for _, d in folder:GetDescendants() do
+			if d:IsA("BasePart") and YARD_PARTS[d.Name] then
+				table.insert(parts, d)
+			end
+		end
+	end
+	local min, max = Vector3.one * math.huge, -Vector3.one * math.huge
+	for _, p in parts do
+		min = min:Min(p.CFrame.Position)
+		max = max:Max(p.CFrame.Position)
+	end
+	local center = if #parts > 0 then Vector3.new((min.X + max.X) / 2, 0.5, (min.Z + max.Z) / 2) else Vector3.zero
+	return parts, center, house
+end
+
+local function play(folder: Instance)
+	local kind = folder:GetAttribute("BuildKind") or "House"
+	if running[folder] then
+		running[folder]()
+	end
+	local parts, center, house = gather(folder, kind)
+	if #parts == 0 then
+		return
+	end
+	local plan = BuildAnim.plan(parts, center, kind, house)
+	local effectsFolder = Instance.new("Folder")
+	effectsFolder.Name = "BuildFX"
+	effectsFolder.Parent = Workspace
+	local pool = {}
+	local function effectPart(i: number, shape: string): Part
+		local p = pool[i]
+		if not p or p:GetAttribute("Shape") ~= shape then
+			if p then
+				p:Destroy()
+			end
+			p = Instance.new("Part")
+			p.Anchored = true
+			p.CanCollide = false
+			p.CanQuery = false
+			p.CanTouch = false
+			p.CastShadow = false
+			p.Material = Enum.Material.Neon
+			p.Shape = if shape == "Ball" then Enum.PartType.Ball else Enum.PartType.Block
+			p:SetAttribute("Shape", shape)
+			p.Parent = effectsFolder
+			pool[i] = p
+		end
+		return p
+	end
+	-- Split pieces of long parts are drawn by temporary copies; the real part stays hidden
+	-- until the end.
+	local hidden = {}
+	for _, entry in plan.entries do
+		if entry.split then
+			local copy = entry.part:Clone()
+			copy:ClearAllChildren()
+			copy.Size = entry.size
+			copy.Anchored = true
+			copy.CanCollide = false
+			copy.CanQuery = false
+			copy.Parent = effectsFolder
+			entry.instance = copy
+			hidden[entry.part] = true
+		else
+			entry.instance = entry.part
+		end
+	end
+	for part in hidden do
+		part.LocalTransparencyModifier = 1
+	end
+	local started = os.clock()
+	local connection
+	local function finish()
+		connection:Disconnect()
+		running[folder] = nil
+		for _, entry in plan.entries do
+			if not entry.split and entry.part.Parent then
+				entry.part.CFrame = entry.target
+			end
+			if entry.part.Parent then
+				entry.part.LocalTransparencyModifier = 0
+			end
+		end
+		effectsFolder:Destroy()
+	end
+	running[folder] = finish
+	local function step()
+		local t = os.clock() - started
+		if t >= plan.duration then
+			finish()
+			return
+		end
+		for _, entry in plan.entries do
+			if entry.part.Parent then
+				local cf, shown = BuildAnim.pose(plan, entry, t)
+				entry.instance.CFrame = cf
+				entry.instance.LocalTransparencyModifier = if shown then 0 else 1
+			end
+		end
+		local effects = BuildAnim.effects(plan, t)
+		for i, e in effects do
+			local p = effectPart(i, e.shape)
+			p.Size = e.size
+			p.CFrame = e.cframe
+			p.Color = e.color
+			p.Transparency = e.transparency
+		end
+		for i = #effects + 1, #pool do
+			pool[i].Transparency = 1
+		end
+	end
+	connection = RunService.RenderStepped:Connect(step)
+	step()
+end
+
+local function watch(folder: Instance)
+	folder:GetAttributeChangedSignal("BuildAnim"):Connect(function()
+		play(folder)
+	end)
+end
+
+function BuildFX.start()
+	local plots = Workspace:WaitForChild("Plots")
+	for _, folder in plots:GetChildren() do
+		watch(folder)
+	end
+	plots.ChildAdded:Connect(watch)
+end
+
+return BuildFX
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="61">
           <Properties>
             <string name="Name">DayNightFX</string>
             <string name="Source"><![CDATA[-- Night falls on this client's screen (DayNight.luau): the sun sets, the sky turns to
@@ -16561,7 +17005,7 @@ return DayNightFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="60">
+        <Item class="ModuleScript" referent="62">
           <Properties>
             <string name="Name">EventFX</string>
             <string name="Source"><![CDATA[-- What big events and weather look like (see Events.luau), on each player's own screen:
@@ -16653,7 +17097,7 @@ return EventFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="61">
+        <Item class="ModuleScript" referent="63">
           <Properties>
             <string name="Name">GuardianAttackFX</string>
             <string name="Source"><![CDATA[-- Draws the guardians' attacks (GuardianAttacks.luau) on this client, from the server's
@@ -16926,7 +17370,7 @@ return GuardianAttackFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="62">
+        <Item class="ModuleScript" referent="64">
           <Properties>
             <string name="Name">GuardianFX</string>
             <string name="Source"><![CDATA[-- The zone guardians, drawn on this client: a giant Freek per zone that walks after its
@@ -17078,7 +17522,7 @@ return GuardianFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="63">
+        <Item class="ModuleScript" referent="65">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on screen pieces, laid out like the owner's reference (a top simulator's
@@ -17647,7 +18091,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="64">
+        <Item class="ModuleScript" referent="66">
           <Properties>
             <string name="Name">ItemPictures</string>
             <string name="Source"><![CDATA[-- 3D pictures for shop items (the treadmill, game passes), items, eggs and the side menu,
@@ -18349,7 +18793,7 @@ return ItemPictures
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="65">
+        <Item class="ModuleScript" referent="67">
           <Properties>
             <string name="Name">LuckyWheel</string>
             <string name="Source"><![CDATA[-- The Lucky Wheel, drawn like the prize wheels in the big simulators: bright pie slices
@@ -18645,7 +19089,7 @@ return LuckyWheel
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="66">
+        <Item class="LocalScript" referent="68">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's client: the screen UI (HUD, side menu and windows, built from UI.luau and
@@ -18711,6 +19155,7 @@ local Parts = require(Shared.Parts)
 local Rarities = require(Shared.Rarities)
 local Remotes = require(Shared.Remotes)
 local Ambient = require(script.Parent.Ambient)
+local BuildFX = require(script.Parent.BuildFX)
 local DayNightFX = require(script.Parent.DayNightFX)
 local EventFX = require(script.Parent.EventFX)
 local GuardianAttackFX = require(script.Parent.GuardianAttackFX)
@@ -20228,6 +20673,7 @@ PetFX.start()
 TreadmillRun.start()
 Ambient.start()
 DayNightFX.start()
+task.spawn(BuildFX.start)
 
 -- The Mystery Boxes on the stand turn slowly and bob up and down.
 RunService.RenderStepped:Connect(function()
@@ -20272,7 +20718,7 @@ clientReady = true
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="67">
+        <Item class="ModuleScript" referent="69">
           <Properties>
             <string name="Name">PackReveal</string>
             <string name="Source"><![CDATA[-- Hatching an egg (or opening a Mystery Box), done like a card-pack reveal in the big
@@ -21643,7 +22089,7 @@ return PackReveal
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="68">
+        <Item class="ModuleScript" referent="70">
           <Properties>
             <string name="Name">PetFX</string>
             <string name="Source"><![CDATA[-- Pets roaming their owner's front lawn, drawn on this client. The server lists each
@@ -21824,7 +22270,7 @@ return PetFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="69">
+        <Item class="ModuleScript" referent="71">
           <Properties>
             <string name="Name">TreadmillRun</string>
             <string name="Source"><![CDATA[-- Running on your treadmill by yourself: while you stand on your own treadmill's belt and
@@ -21890,7 +22336,7 @@ return TreadmillRun
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="70">
+        <Item class="ModuleScript" referent="72">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- The building blocks of the screen UI, in one style (the owner's references: a top

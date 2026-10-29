@@ -691,10 +691,22 @@ function PlotService.render(player: Player)
 	end
 	local gain = Config.treadmillGain(data.treadmill) * GamePasses.speedMultiplier(player)
 	plot.treadmillLabel.Text = "LV " .. data.treadmill .. "  +" .. Format.number(gain) .. " ⚡/s"
+	-- An upgrade since the last render: every client plays the build animation (BuildFX).
+	local houseLevel, plotLevel = data.houseLevel or 1, data.plotLevel or 1
+	local kind = if plot.shownHouse and houseLevel > plot.shownHouse
+		then "House"
+		elseif plot.shownPlot and plotLevel > plot.shownPlot then "Yard"
+		else nil
+	plot.shownHouse, plot.shownPlot = houseLevel, plotLevel
+	if kind then
+		plot.folder:SetAttribute("BuildKind", kind)
+		plot.folder:SetAttribute("BuildAnim", (plot.folder:GetAttribute("BuildAnim") or 0) + 1)
+	end
 end
 
 local function clearPlot(plot)
 	plot.owner = nil
+	plot.shownHouse, plot.shownPlot = nil, nil
 	-- Empty homes show a plain level 1 house and plot.
 	local basic = {}
 	for _, slot in Parts.SLOTS do
