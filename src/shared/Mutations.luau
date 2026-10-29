@@ -1,9 +1,9 @@
--- Mutations multiply a house part's income. Parts grow with them in the zone piles (chance
--- per part, see ZoneService), weather events add them to parts on houses, and the Lucky
--- Wheel gives Golden and Rainbow parts.
+-- Mutations multiply an item's income. Zone eggs sometimes have one (chance per egg, see
+-- ZoneService; weather events make them likelier), the item hatched from it keeps it, and
+-- the Lucky Wheel gives Golden and Rainbow items.
 -- Rarest first.
 --
--- A part can carry several mutations. They're saved as a list ({ "Rainbow", "Golden" }),
+-- An item can carry several mutations. They're saved as a list ({ "Rainbow", "Golden" }),
 -- or nil for none, and their multipliers stack (Golden + Shadow = x6).
 
 local Mutations = {}

@@ -3,9 +3,9 @@
 -- An egg brought home goes into the first free nest (Items.NESTS, two more with the Extra
 -- Nests pass) and grows for Items.HATCH_SECONDS of its rarity (half with Fast Hatching).
 -- It keeps growing while the player is offline (the end time is saved as os.time()). Once
--- it's ready the owner holds Hatch on its nest: out comes a random item of the egg's kind
--- and rarity (Items.pool), keeping the egg's mutations, which goes straight out on the
--- house, into the pen, onto a yard spot or into a garden bed if it's an upgrade
+-- it's ready the owner holds Hatch on its nest: out comes the item the egg was designed
+-- around (one of its zone's items), keeping the egg's mutations, which goes straight out
+-- into the pen, onto a yard spot or into a garden bed if it's an upgrade
 -- (LifeUtil.placeIfBetter), or into the backpack.
 --
 -- Also hands out items from the Lucky Wheel and Mystery Boxes (NestService.reward).
@@ -76,15 +76,15 @@ function NestService.addEgg(player: Player, record): string?
 	return nest
 end
 
--- A random item of a kind and rarity (falling back to the next rarity down if there are
--- none of that rarity).
-function NestService.rollItem(kind: string, rarity: string): string
-	return Items.rollItem(kind, rarity, rng)
+-- A random item of a rarity from a zone (from any zone if zoneIndex is nil), falling back
+-- to the next rarity down if there are none of that rarity.
+function NestService.rollItem(zoneIndex: number?, rarity: string): string
+	return Items.rollItem(zoneIndex, rarity, rng)
 end
 
 -- Adds an item to a player's save and puts it out if it beats what's there. Whatever it
 -- replaces goes in the backpack; if the backpack is then over full, the worst extra item is
--- sold. Returns where it went ("house", "pen", "yard", "garden" or "backpack") and the money
+-- sold. Returns where it went ("pen", "yard", "garden" or "backpack") and the money
 -- made selling, if any.
 function NestService.give(player: Player, data, record): (string, number)
 	local uid = DataService.newUid(data)
@@ -166,9 +166,8 @@ function NestService.hatch(player: Player, n: number): string?
 		return "It isn't ready yet! " .. Format.time(egg.endsAt - os.time()) .. " to go."
 	end
 	data.nests[key] = nil
-	local zone = Items.ZONES[egg.zone] or Items.ZONES[1]
 	-- Eggs from the zones know what's inside (their design shows it); older ones roll now.
-	local itemId = if egg.item and Items.byId[egg.item] then egg.item else NestService.rollItem(zone.kind, egg.rarity)
+	local itemId = if egg.item and Items.byId[egg.item] then egg.item else NestService.rollItem(egg.zone, egg.rarity)
 	-- It hatches at its full grown weight.
 	local weight = (egg.weight or Items.eggBaseWeight(egg.zone)) * (egg.growth or 1)
 	local base = egg.baseWeight or Items.eggBaseWeight(egg.zone)

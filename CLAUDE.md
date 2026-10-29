@@ -1,8 +1,8 @@
 # Steal a Life: notes for working on this project
 
 A Roblox game (Rojo project): train Speed on a treadmill, steal eggs from guarded zones,
-carry them home, grow them in nests and hatch house parts, pets, yard items and plants for
-your home. No player-vs-player stealing. See README.md for how it all works. The owner
+carry them home, grow them in nests and hatch pets, yard items and plants for your home
+(80 items in ten zones, from the owner's reference sheet). No player-vs-player stealing. See README.md for how it all works. The owner
 tests in Roblox Studio and approves designs from rendered pictures, so render a picture of
 anything visual before calling it done.
 
@@ -58,11 +58,12 @@ render each screen for the owner before calling it done.**
   wedges, smooth (no studs), a muted main colour with a bright Neon accent (glowing eyes,
   seams, strips, toes, windows), small gold details, sparks and lights. Mark a model with
   the attribute "Crafted" and Lego leaves it alone (no studs, no palette snapping). Done:
-  eggs (`EggModel`), all 18 Freeks (`CraftedFreeks.luau` and its kit), yard items
-  (`YardModel`), plants (`PlantModel`; both use the crafted helpers in `Bricks`: `glow`,
-  `octo`, `ring`, `crafted`) and house parts (`HouseModel`: each style's `glow` colour, and
-  `craftify` gives every slot smooth materials, angled blocks for round pieces, lit
-  windows, roof shingles and glow strips). The town, zones and plots keep the LEGO look.
+  eggs (`EggModel`), all 15 creatures (`CraftedFreeks.luau` and its kit), all 53 yard items
+  (`YardModel`), all 13 plants (`PlantModel`; both use the crafted helpers in `Bricks`:
+  `glow`, `octo`, `ring`, `crafted`) and the house styles (`HouseModel`: each style's `glow`
+  colour, and `craftify` gives every piece smooth materials, angled blocks for round
+  pieces, lit windows, roof shingles and glow strips). The town, zones and plots keep the
+  LEGO look.
 - The world around the models is LEGO (`Lego.part` does it automatically): big round pieces (balls, sphere
   meshes) become square bricks, so creatures, plants and props are brick-built; small round
   details (eyes, noses) stay round. Eggs stay egg-shaped (attribute "Round") and are covered
@@ -70,11 +71,15 @@ render each screen for the owner before calling it done.**
   checkerboard floors (attribute "AnyColor"), Neon and the UI keep their own colours.
 - Keep floating text to a minimum: labels on eggs, nests and pets only show up close
   (short `MaxDistance`); put information in the UI or on physical signs instead.
-- Zones are simple, like Steal an Egg (`ZoneDecor.build`): a big open checkerboard floor
-  in the zone's own ground colour (`THEMES[...].ground`; neighbouring zones must differ,
-  since the colour change is what separates them) with the eggs on it, and the zone's
-  theme only along its walls (wall colours and a row of themed props against each wall).
-  No arches or signs between zones. Keep the middle open.
+- Zones follow the owner's reference sheet (`ZoneDecor.build`, one `THEMES[i]` per zone):
+  a big open checkerboard floor in the zone's own ground colour (neighbouring zones must
+  differ, since the colour change is what separates them) with the eggs on it, low walls
+  (an invisible barrier goes all the way up), a row of props along each wall (mostly the
+  zone's own item models, `item()`) and a big backdrop beyond the walls that sets the scene
+  (houses, giant flowers, the sea, forest and mountains, a skyline, mansions, giant
+  crystals, UFOs and a ringed planet, floating islands and rainbows; giant item models are
+  the cheapest way to build it). The Dream Home is a tall hall with windows instead. No
+  arches or signs between zones. Keep the middle open.
 - Floating text: always `FloatText.new` (`src/shared/FloatText.luau`): one or two short
   lines at a fixed size on screen (it doesn't grow as you walk up), Luckiest Guy for the
   top line and Fredoka One under it, white or a bright colour with a thin black outline,
@@ -84,19 +89,18 @@ render each screen for the owner before calling it done.**
   E opens the Luck window with the odds).
 - Models are built from simple parts (balls, blocks, cylinders, wedges) with bold, flat,
   saturated colours and chunky proportions. Neon for glowing bits.
-- Items are built by `src/shared/ItemModel.luau` (house parts by `HouseModel.luau`, pets by
-  `FreekModel.luau`, yard items by `YardModel.luau`, plants by `PlantModel.luau`, eggs by
-  `EggModel.luau`; small builders share `Bricks.luau`). A new yard item or plant needs a
-  builder there and an entry in `Items.luau`. Every item must look right on the home and
-  in pictures and reveals.
-- House parts are built by `src/shared/HouseModel.luau`: every style has a look (`LOOKS`:
-  colours, materials, roof shape and signature details like candy stripes, icicles or lava
-  cracks). A new style needs a look there and an entry in `Parts.STYLES`. Every part must
-  work both full-size on a house and as a small item (pedestals, carrying, pictures).
-- Guardians are giant Freeks (`Freeks.luau` / `CraftedFreeks.luau` / `FreekModel.luau` /
-  `FreekAnimator.luau`): crafted low-poly creatures with glowing eyes, each with its
-  signature item (bow, collar, bell, flower, top hat, shades, horn, horns, lightning, clown
-  nose, glasses, sweatband, tiara, witch hat, bolts, bandages, cape, spiked collar).
+- Items are built by `src/shared/ItemModel.luau` (pets by `FreekModel.luau`, yard items by
+  `YardModel.luau`, plants by `PlantModel.luau`, eggs by `EggModel.luau`; small builders
+  share `Bricks.luau`). A new item needs an entry in its zone in `Items.ZONES` and a
+  builder named after its id (a creature in `CraftedFreeks.luau` and `Freeks.luau` for a
+  pet). Every item must look right on the home and in pictures and reveals.
+- There are no house parts any more: the house comes from the House level
+  (`Config.HOUSE_STYLES`, `Config.houseBonus`), built by `src/shared/HouseModel.luau` from a
+  style's look (`LOOKS`: colours, materials, roof shape and signature details like candy
+  stripes, icicles or lava cracks; styles in `Parts.STYLES`).
+- Guardians are giant versions of each zone's creature (`Items.ZONES[i].guardian`, a species
+  in `Freeks.luau`; the Garden's is a gnome that only guards), drawn by `FreekModel.luau` and
+  animated by `FreekAnimator.luau`; each has its attack in `GuardianAttacks.bySpecies`.
 - Day and night (`DayNight.luau`, the same clock in every server): 5 minutes of day, 15
   seconds of night. At nightfall every zone's eggs re-roll (`ZoneService.restock`) and
   while it's night nest eggs grow x30 (`DayNightService`); clients darken the sky and tint
@@ -108,9 +112,10 @@ render each screen for the owner before calling it done.**
 - Roblox rules: no casino-style gambling (betting currency to win currency). Paid random
   items (Mystery Boxes) must show their odds before buying and respect
   `PolicyService.ArePaidRandomItemsRestricted`.
-- Items, eggs and zones are defined in `src/shared/Items.luau` (house styles and slots in
-  `src/shared/Parts.luau`). Never rename an item, style or slot id once players own it:
-  saves store item ids ("Candy_Roof", "Pet_Oinkle", "Yard_Pool", "Plant_Daisy").
+- Items, eggs and zones are defined in `src/shared/Items.luau` (house styles in
+  `src/shared/Parts.luau`). Never rename an item id once players own it: saves store item
+  ids ("Pet_GoldenRetriever", "Yard_RedMailbox", "Plant_AppleTree"). Replacing the whole
+  catalogue again means bumping `ITEMS_VERSION` in DataService (it wipes old items).
 
 ## Checks before pushing
 - `stylua src`, selene lint, `rojo build -o StealALife.rbxlx`, and the Lune emulator run.

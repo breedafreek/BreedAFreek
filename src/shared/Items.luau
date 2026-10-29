@@ -1,17 +1,17 @@
--- Everything you can own in Steal a Life, in four kinds:
+-- Everything you can own in Steal a Life: 80 items in ten zones (the owner's reference
+-- sheet), each of one of three kinds that decides where it goes at home:
 --
---   House  house parts (Parts.luau): snap onto your house's slots
---   Pet    Freeks that roam your yard
---   Yard   yard items (pool, trampoline, hot tub...) on the spots in your yard
---   Plant  plants in your garden beds
+--   Pet    creatures (Freeks.luau) that roam your yard
+--   Yard   things that stand on the spots in your yard (furniture, vehicles, props...)
+--   Plant  plants and trees in your garden beds
 --
--- Every item comes out of an egg stolen from a zone (see EGGS / ZONES): each zone grows
--- eggs of one kind, and deeper zones have better odds. An egg's rarity is rolled when it
--- goes into a nest at home, it grows for a while (rarer = longer) and hatches into a random
--- item of its kind and rarity.
+-- Every item comes out of an egg stolen from a zone (see ZONES): each zone's eggs hatch
+-- one of that zone's eight items, and deeper zones have better odds. An egg's rarity and
+-- what's inside are rolled when it appears; it grows in a nest at home (rarer = longer)
+-- and hatches into that item.
 --
--- Item ids: house parts "<Style>_<Slot>" ("Candy_Roof"), others "<Kind>_<Name>"
--- ("Pet_Oinkle", "Yard_HotTub", "Plant_Sunflower"). Never rename an id once players own it.
+-- Item ids: "<Kind>_<Id>" ("Pet_GoldenRetriever", "Yard_RedMailbox", "Plant_AppleTree").
+-- Never rename an id once players own it.
 
 local Parts = require(script.Parent.Parts)
 local Rarities = require(script.Parent.Rarities)
@@ -19,15 +19,13 @@ local Rarities = require(script.Parent.Rarities)
 local Items = {}
 
 Items.KINDS = {
-	House = { name = "House", icon = "🏠", color = Color3.fromRGB(70, 140, 255), egg = "Hardware" },
-	Pet = { name = "Pets", icon = "🐾", color = Color3.fromRGB(255, 120, 180), egg = "Wilds" },
-	Yard = { name = "Yard", icon = "🛝", color = Color3.fromRGB(255, 160, 50), egg = "Yard Sale" },
-	Plant = { name = "Garden", icon = "🌷", color = Color3.fromRGB(80, 200, 90), egg = "Garden" },
+	Pet = { name = "Pets", icon = "🐾", color = Color3.fromRGB(255, 120, 180) },
+	Yard = { name = "Yard", icon = "🛝", color = Color3.fromRGB(255, 160, 50) },
+	Plant = { name = "Garden", icon = "🌷", color = Color3.fromRGB(80, 200, 90) },
 }
-Items.KIND_ORDER = { "House", "Pet", "Yard", "Plant" }
+Items.KIND_ORDER = { "Pet", "Yard", "Plant" }
 
--- What an item of each rarity earns a second (pets, yard items and plants; house parts use
--- their style's income times the slot's weight). Kept in line with house parts.
+-- What an item of each rarity earns a second (a little more in deeper zones).
 Items.INCOME = {
 	Common = 4,
 	Uncommon = 30,
@@ -38,59 +36,221 @@ Items.INCOME = {
 	Secret = 45000,
 }
 
--- Pets: Freeks (species in Freeks.luau). Their rarity here is what decides how often they
--- hatch and what they earn.
-Items.PETS = {
-	{ species = "Oinkle", rarity = "Common" },
-	{ species = "Woofles", rarity = "Common" },
-	{ species = "Chuckles", rarity = "Common" },
-	{ species = "Whiskerz", rarity = "Uncommon" },
-	{ species = "Lizzle", rarity = "Uncommon" },
-	{ species = "Nerdle", rarity = "Uncommon" },
-	{ species = "BooBoo", rarity = "Rare" },
-	{ species = "Zomboy", rarity = "Rare" },
-	{ species = "Hootsworth", rarity = "Rare" },
-	{ species = "Flexo", rarity = "Legendary" },
-	{ species = "Mumbles", rarity = "Legendary" },
-	{ species = "Glamora", rarity = "Legendary" },
-	{ species = "Chompers", rarity = "Mystic" },
-	{ species = "CountFangula", rarity = "Mystic" },
-	{ species = "Stompy", rarity = "Ultra" },
-	{ species = "Howlz", rarity = "Ultra" },
-	{ species = "Blinky", rarity = "Secret" },
-	{ species = "Stormy", rarity = "Secret" },
-}
-
--- Yard items (models in YardModel.luau).
-Items.YARD = {
-	{ id = "Gnome", name = "Garden Gnome", rarity = "Common" },
-	{ id = "Lemonade", name = "Lemonade Stand", rarity = "Common" },
-	{ id = "Grill", name = "BBQ Grill", rarity = "Uncommon" },
-	{ id = "Swing", name = "Swing Set", rarity = "Uncommon" },
-	{ id = "Trampoline", name = "Trampoline", rarity = "Rare" },
-	{ id = "KiddiePool", name = "Kiddie Pool", rarity = "Rare" },
-	{ id = "HotTub", name = "Hot Tub", rarity = "Legendary" },
-	{ id = "Fountain", name = "Fountain", rarity = "Legendary" },
-	{ id = "Treehouse", name = "Treehouse", rarity = "Mystic" },
-	{ id = "SportsCar", name = "Sports Car", rarity = "Mystic" },
-	{ id = "Pool", name = "Swimming Pool", rarity = "Ultra" },
-	{ id = "Rocket", name = "Rocket Ship", rarity = "Secret" },
-}
-
--- Plants (models in PlantModel.luau).
-Items.PLANTS = {
-	{ id = "Daisy", name = "Daisy", rarity = "Common" },
-	{ id = "Tulip", name = "Tulip", rarity = "Common" },
-	{ id = "Sunflower", name = "Sunflower", rarity = "Uncommon" },
-	{ id = "RoseBush", name = "Rose Bush", rarity = "Uncommon" },
-	{ id = "Cactus", name = "Cactus", rarity = "Rare" },
-	{ id = "AppleTree", name = "Apple Tree", rarity = "Rare" },
-	{ id = "Pumpkin", name = "Giant Pumpkin", rarity = "Legendary" },
-	{ id = "Blossom", name = "Cherry Blossom", rarity = "Legendary" },
-	{ id = "CrystalFlower", name = "Crystal Flower", rarity = "Mystic" },
-	{ id = "GlowShroom", name = "Glow Mushroom", rarity = "Mystic" },
-	{ id = "MoneyTree", name = "Money Tree", rarity = "Ultra" },
-	{ id = "RainbowTree", name = "Rainbow Tree", rarity = "Secret" },
+-- The zones, in order out from town. speed = the Speed you need to outrun its guardian (a
+-- giant version of one of its creatures, a species in Freeks.luau). odds = chance of each
+-- rarity for its eggs (weights). items = its eight items, { kind, id, name, rarity },
+-- from the most common up.
+Items.ZONES = {
+	{
+		name = "The Neighborhood",
+		tagline = "Everyday Life",
+		icon = "🏡",
+		speed = 0,
+		guardian = "GoldenRetriever",
+		title = "Big Buddy",
+		eggColor = Color3.fromRGB(110, 200, 90),
+		spotColor = Color3.fromRGB(255, 255, 255),
+		odds = { Common = 70, Uncommon = 25, Rare = 5 },
+		items = {
+			{ "Plant", "FlowerPot", "Flower Pot", "Common" },
+			{ "Yard", "RedMailbox", "Red Mailbox", "Common" },
+			{ "Yard", "GardenBench", "Garden Bench", "Common" },
+			{ "Yard", "Doghouse", "Doghouse", "Uncommon" },
+			{ "Pet", "PetBunny", "Pet Bunny", "Uncommon" },
+			{ "Plant", "AppleTree", "Apple Tree", "Uncommon" },
+			{ "Pet", "TabbyCat", "Orange Tabby Cat", "Rare" },
+			{ "Pet", "GoldenRetriever", "Golden Retriever", "Rare" },
+		},
+	},
+	{
+		name = "The Garden",
+		tagline = "Plants & Gardening",
+		icon = "🌻",
+		speed = 300,
+		guardian = "Gnome",
+		title = "Giant Gnome",
+		eggColor = Color3.fromRGB(80, 190, 70),
+		spotColor = Color3.fromRGB(255, 210, 60),
+		odds = { Common = 60, Uncommon = 30, Rare = 9, Legendary = 1 },
+		items = {
+			{ "Plant", "Cactus", "Cactus", "Common" },
+			{ "Plant", "RoseBush", "Rose Bush", "Common" },
+			{ "Plant", "StrawberryBush", "Strawberry Bush", "Uncommon" },
+			{ "Yard", "GardenGnome", "Garden Gnome", "Uncommon" },
+			{ "Plant", "GiantSunflower", "Giant Sunflower", "Rare" },
+			{ "Plant", "GiantMushroom", "Giant Mushroom", "Rare" },
+			{ "Plant", "GiantPumpkin", "Giant Pumpkin", "Legendary" },
+			{ "Yard", "GardenFountain", "Garden Fountain", "Legendary" },
+		},
+	},
+	{
+		name = "The Beach",
+		tagline = "Summer & Outdoor Fun",
+		icon = "🏖️",
+		speed = 2_000,
+		guardian = "BeachCrab",
+		title = "King Crab",
+		eggColor = Color3.fromRGB(250, 215, 140),
+		spotColor = Color3.fromRGB(60, 200, 230),
+		odds = { Common = 50, Uncommon = 35, Rare = 13, Legendary = 2 },
+		items = {
+			{ "Yard", "Lifebuoy", "Lifebuoy", "Common" },
+			{ "Yard", "Surfboard", "Surfboard", "Common" },
+			{ "Yard", "BeachUmbrella", "Beach Umbrella", "Uncommon" },
+			{ "Yard", "Sandcastle", "Sandcastle", "Uncommon" },
+			{ "Yard", "FlamingoFloat", "Flamingo Float", "Rare" },
+			{ "Pet", "BeachCrab", "Beach Crab", "Rare" },
+			{ "Plant", "PalmTree", "Coconut Palm Tree", "Legendary" },
+			{ "Yard", "DolphinSprinkler", "Dolphin Sprinkler", "Legendary" },
+		},
+	},
+	{
+		name = "The Wilderness",
+		tagline = "Forest & Camping",
+		icon = "🏕️",
+		speed = 10_000,
+		guardian = "BrownBear",
+		title = "Grizzly Boss",
+		eggColor = Color3.fromRGB(70, 140, 70),
+		spotColor = Color3.fromRGB(160, 105, 60),
+		odds = { Common = 40, Uncommon = 38, Rare = 18, Legendary = 4 },
+		items = {
+			{ "Plant", "PineTree", "Pine Tree", "Common" },
+			{ "Yard", "Campfire", "Campfire", "Common" },
+			{ "Yard", "CampingTent", "Camping Tent", "Uncommon" },
+			{ "Yard", "Canoe", "Canoe", "Uncommon" },
+			{ "Pet", "RedFox", "Red Fox", "Rare" },
+			{ "Pet", "BabyDeer", "Baby Deer", "Rare" },
+			{ "Yard", "LogCabin", "Log Cabin", "Legendary" },
+			{ "Pet", "BrownBear", "Brown Bear", "Legendary" },
+		},
+	},
+	{
+		name = "The Dream Home",
+		tagline = "Furniture & Home Upgrades",
+		icon = "🛋️",
+		speed = 40_000,
+		guardian = "TabbyCat",
+		title = "Queen of the House",
+		eggColor = Color3.fromRGB(190, 150, 240),
+		spotColor = Color3.fromRGB(255, 255, 255),
+		odds = { Uncommon = 40, Rare = 35, Legendary = 20, Mystic = 5 },
+		items = {
+			{ "Yard", "SmartFridge", "Smart Fridge", "Uncommon" },
+			{ "Yard", "LuxurySofa", "Luxury Sofa", "Uncommon" },
+			{ "Yard", "GiantTV", "Giant TV", "Rare" },
+			{ "Yard", "KingBed", "King Bed", "Rare" },
+			{ "Yard", "VanityMirror", "Golden Vanity Mirror", "Legendary" },
+			{ "Yard", "GamingSetup", "RGB Gaming Setup", "Legendary" },
+			{ "Yard", "HotTub", "Hot Tub", "Mystic" },
+			{ "Yard", "GrandPiano", "Grand Piano", "Mystic" },
+		},
+	},
+	{
+		name = "The City",
+		tagline = "Urban Life & Vehicles",
+		icon = "🏙️",
+		speed = 150_000,
+		guardian = "RobotButler",
+		title = "Mega Butler",
+		eggColor = Color3.fromRGB(80, 110, 230),
+		spotColor = Color3.fromRGB(255, 220, 40),
+		odds = { Uncommon = 30, Rare = 38, Legendary = 25, Mystic = 7 },
+		items = {
+			{ "Yard", "ElectricScooter", "Electric Scooter", "Uncommon" },
+			{ "Yard", "VendingMachine", "Vending Machine", "Uncommon" },
+			{ "Yard", "ATM", "ATM", "Rare" },
+			{ "Yard", "YellowTaxi", "Yellow Taxi", "Rare" },
+			{ "Pet", "RobotButler", "Robot Butler", "Legendary" },
+			{ "Yard", "RedSupercar", "Red Supercar", "Legendary" },
+			{ "Yard", "Helicopter", "Helicopter", "Mystic" },
+			{ "Yard", "Skyscraper", "Skyscraper", "Mystic" },
+		},
+	},
+	{
+		name = "The Millionaire",
+		tagline = "Wealth & Luxury",
+		icon = "💰",
+		speed = 600_000,
+		guardian = "WhiteTiger",
+		title = "Golden Tiger",
+		eggColor = Color3.fromRGB(240, 200, 80),
+		spotColor = Color3.fromRGB(255, 255, 255),
+		odds = { Rare = 40, Legendary = 38, Mystic = 18, Ultra = 4 },
+		items = {
+			{ "Yard", "DiamondWatch", "Diamond Watch", "Rare" },
+			{ "Yard", "Diamond", "Diamond", "Rare" },
+			{ "Yard", "GoldenThrone", "Golden Throne", "Legendary" },
+			{ "Yard", "GoldSupercar", "Gold Supercar", "Legendary" },
+			{ "Yard", "MansionModel", "Mansion Model", "Mystic" },
+			{ "Yard", "LuxuryYacht", "Luxury Yacht", "Mystic" },
+			{ "Yard", "GoldHelicopter", "Gold Helicopter", "Ultra" },
+			{ "Pet", "WhiteTiger", "White Tiger", "Ultra" },
+		},
+	},
+	{
+		name = "The Enchanted Life",
+		tagline = "Magic & Fantasy",
+		icon = "🔮",
+		speed = 2_500_000,
+		guardian = "BabyDragon",
+		title = "Elder Dragon",
+		eggColor = Color3.fromRGB(200, 110, 230),
+		spotColor = Color3.fromRGB(120, 240, 255),
+		odds = { Rare = 30, Legendary = 40, Mystic = 23, Ultra = 7 },
+		items = {
+			{ "Yard", "MagicWand", "Magic Wand", "Rare" },
+			{ "Yard", "PotionCauldron", "Potion Cauldron", "Rare" },
+			{ "Yard", "CrystalCluster", "Crystal Cluster", "Legendary" },
+			{ "Yard", "MushroomHouse", "Mushroom House", "Legendary" },
+			{ "Plant", "CrystalTree", "Crystal Tree", "Mystic" },
+			{ "Pet", "Unicorn", "Unicorn", "Mystic" },
+			{ "Yard", "DragonFountain", "Dragon Fountain", "Ultra" },
+			{ "Pet", "BabyDragon", "Baby Dragon", "Ultra" },
+		},
+	},
+	{
+		name = "The Alien Life",
+		tagline = "Extraterrestrial & Sci-Fi",
+		icon = "👽",
+		speed = 10_000_000,
+		guardian = "Alien",
+		title = "Alien Overlord",
+		eggColor = Color3.fromRGB(90, 70, 170),
+		spotColor = Color3.fromRGB(120, 255, 120),
+		odds = { Legendary = 40, Mystic = 38, Ultra = 20, Secret = 2 },
+		items = {
+			{ "Plant", "AlienPlant", "Alien Plant", "Legendary" },
+			{ "Yard", "Saturn", "Saturn", "Legendary" },
+			{ "Yard", "CrystalReactor", "Crystal Reactor", "Mystic" },
+			{ "Pet", "Alien", "Alien", "Mystic" },
+			{ "Pet", "AlienRobot", "Alien Robot", "Ultra" },
+			{ "Yard", "UFO", "UFO", "Ultra" },
+			{ "Yard", "TeleportPortal", "Teleport Portal", "Secret" },
+			{ "Yard", "RocketShip", "Rocket Ship", "Secret" },
+		},
+	},
+	{
+		name = "The Ultimate Life",
+		tagline = "Cosmic & Impossible",
+		icon = "🌌",
+		speed = 50_000_000,
+		guardian = "RainbowPhoenix",
+		title = "Cosmic Phoenix",
+		eggColor = Color3.fromRGB(240, 245, 255),
+		spotColor = Color3.fromRGB(255, 200, 80),
+		odds = { Legendary = 30, Mystic = 40, Ultra = 26, Secret = 4 },
+		items = {
+			{ "Yard", "CelestialCrown", "Celestial Crown", "Legendary" },
+			{ "Plant", "CosmicTree", "Cosmic Tree", "Legendary" },
+			{ "Yard", "GoldenPalace", "Golden Palace", "Mystic" },
+			{ "Yard", "RainbowWaterfall", "Rainbow Waterfall", "Mystic" },
+			{ "Yard", "LivingPlanet", "Living Planet", "Ultra" },
+			{ "Yard", "MiniGalaxy", "Miniature Galaxy", "Ultra" },
+			{ "Pet", "RainbowPhoenix", "Rainbow Phoenix", "Secret" },
+			{ "Yard", "PocketUniverse", "Pocket Universe", "Secret" },
+		},
+	},
 }
 
 -- How many of each kind can be out at once (more items wait in the backpack).
@@ -98,67 +258,27 @@ Items.PET_SLOTS = 8
 Items.YARD_SPOTS = 6
 Items.GARDEN_BEDS = 6
 
--- Every item, by id.
+-- Every item, by id (and in zone order in Items.list).
 Items.byId = {}
 Items.list = {}
-local function add(item)
-	item.order = #Items.list + 1
-	Items.byId[item.id] = item
-	table.insert(Items.list, item)
-end
-for _, part in Parts.list do
-	add({
-		id = part.id,
-		kind = "House",
-		name = part.name,
-		rarity = part.rarity,
-		income = part.income,
-		slot = part.slot,
-		style = part.style,
-		basic = part.style == "Basic",
-	})
-end
-for i, pet in Items.PETS do
-	-- A little more for each species further down its rarity, so they're not all equal.
-	add({
-		id = "Pet_" .. pet.species,
-		kind = "Pet",
-		name = pet.species,
-		species = pet.species,
-		rarity = pet.rarity,
-		income = math.floor(Items.INCOME[pet.rarity] * (1 + (i % 3) * 0.1)),
-	})
-end
-for i, yard in Items.YARD do
-	add({
-		id = "Yard_" .. yard.id,
-		kind = "Yard",
-		name = yard.name,
-		model = yard.id,
-		rarity = yard.rarity,
-		income = math.floor(Items.INCOME[yard.rarity] * (1 + (i % 2) * 0.15)),
-	})
-end
-for i, plant in Items.PLANTS do
-	add({
-		id = "Plant_" .. plant.id,
-		kind = "Plant",
-		name = plant.name,
-		model = plant.id,
-		rarity = plant.rarity,
-		income = math.floor(Items.INCOME[plant.rarity] * (1 + (i % 2) * 0.12)),
-	})
-end
--- Pets now have names as their display name: use the species' friendly name.
-do
-	local ok, Freeks = pcall(require, script.Parent.Freeks)
-	if ok then
-		for _, pet in Items.PETS do
-			local species = Freeks.byId[pet.species]
-			if species then
-				Items.byId["Pet_" .. pet.species].name = species.name
-			end
-		end
+for zoneIndex, zone in Items.ZONES do
+	for i, entry in zone.items do
+		local kind, id, name, rarity = entry[1], entry[2], entry[3], entry[4]
+		local item = {
+			id = kind .. "_" .. id,
+			kind = kind,
+			model = id,
+			species = if kind == "Pet" then id else nil,
+			name = name,
+			rarity = rarity,
+			zone = zoneIndex,
+			-- A little more for deeper zones and for the second of each pair.
+			income = math.floor(Items.INCOME[rarity] * (1 + (zoneIndex - 1) * 0.04 + (i % 2) * 0.1)),
+			order = #Items.list + 1,
+		}
+		Items.byId[item.id] = item
+		table.insert(Items.list, item)
+		zone.items[i] = item.id
 	end
 end
 
@@ -167,126 +287,16 @@ function Items.color(id: string): Color3
 	return Rarities.info[item and item.rarity or "Common"].color
 end
 
--- Every item of a kind and rarity that can hatch (Basic house parts never do).
-function Items.pool(kind: string, rarity: string): { string }
+-- Every item of a rarity (in one zone, or in any zone).
+function Items.pool(rarity: string, zoneIndex: number?): { string }
 	local list = {}
 	for _, item in Items.list do
-		if item.kind == kind and item.rarity == rarity and not item.basic then
+		if item.rarity == rarity and (not zoneIndex or item.zone == zoneIndex) then
 			table.insert(list, item.id)
 		end
 	end
 	return list
 end
-
---------------------------------------------------------------------------------
--- Zones and their eggs
---------------------------------------------------------------------------------
-
--- The zones, in order out from town, each growing eggs of one kind. speed = the Speed you
--- need to outrun its guardian (a giant Freek). odds = chance of each rarity when one of its
--- eggs goes in a nest (weights).
-Items.ZONES = {
-	{
-		name = "Backyard Garden",
-		kind = "Plant",
-		speed = 0,
-		guardian = "Oinkle",
-		title = "Gardener Oinkle",
-		eggColor = Color3.fromRGB(120, 210, 90),
-		spotColor = Color3.fromRGB(255, 220, 90),
-		odds = { Common = 70, Uncommon = 25, Rare = 5 },
-	},
-	{
-		name = "Junkyard",
-		kind = "House",
-		speed = 300,
-		guardian = "Woofles",
-		title = "Junk Dog",
-		eggColor = Color3.fromRGB(190, 140, 90),
-		spotColor = Color3.fromRGB(120, 125, 135),
-		odds = { Common = 60, Uncommon = 30, Rare = 9, Legendary = 1 },
-	},
-	{
-		name = "Pine Woods",
-		kind = "Pet",
-		speed = 2_000,
-		guardian = "Hootsworth",
-		title = "Old Owl Hootsworth",
-		eggColor = Color3.fromRGB(90, 170, 110),
-		spotColor = Color3.fromRGB(150, 100, 60),
-		odds = { Common = 50, Uncommon = 35, Rare = 13, Legendary = 2 },
-	},
-	{
-		name = "Toy Town",
-		kind = "Yard",
-		speed = 10_000,
-		guardian = "Chuckles",
-		title = "Toy Clown Chuckles",
-		eggColor = Color3.fromRGB(255, 200, 60),
-		spotColor = Color3.fromRGB(80, 150, 255),
-		odds = { Common = 40, Uncommon = 38, Rare = 18, Legendary = 4 },
-	},
-	{
-		name = "Sunny Desert",
-		kind = "Plant",
-		speed = 40_000,
-		guardian = "Mumbles",
-		title = "Mummy Mumbles",
-		eggColor = Color3.fromRGB(240, 200, 120),
-		spotColor = Color3.fromRGB(60, 190, 200),
-		odds = { Uncommon = 40, Rare = 35, Legendary = 20, Mystic = 5 },
-	},
-	{
-		name = "Candy Land",
-		kind = "House",
-		speed = 150_000,
-		guardian = "Glamora",
-		title = "Candy Queen Glamora",
-		eggColor = Color3.fromRGB(255, 150, 200),
-		spotColor = Color3.fromRGB(255, 255, 255),
-		odds = { Uncommon = 30, Rare = 38, Legendary = 25, Mystic = 7 },
-	},
-	{
-		name = "Frosty Peaks",
-		kind = "Pet",
-		speed = 600_000,
-		guardian = "BooBoo",
-		title = "Frosty BooBoo",
-		eggColor = Color3.fromRGB(170, 220, 255),
-		spotColor = Color3.fromRGB(255, 255, 255),
-		odds = { Rare = 40, Legendary = 38, Mystic = 18, Ultra = 4 },
-	},
-	{
-		name = "Royal Kingdom",
-		kind = "Yard",
-		speed = 2_500_000,
-		guardian = "CountFangula",
-		title = "Count Fangula",
-		eggColor = Color3.fromRGB(150, 60, 220),
-		spotColor = Color3.fromRGB(255, 200, 60),
-		odds = { Rare = 30, Legendary = 40, Mystic = 23, Ultra = 7 },
-	},
-	{
-		name = "Crystal Caves",
-		kind = "House",
-		speed = 10_000_000,
-		guardian = "Blinky",
-		title = "Crystal Blinky",
-		eggColor = Color3.fromRGB(170, 120, 255),
-		spotColor = Color3.fromRGB(120, 250, 240),
-		odds = { Legendary = 40, Mystic = 38, Ultra = 20, Secret = 2 },
-	},
-	{
-		name = "Sky Islands",
-		kind = "Pet",
-		speed = 50_000_000,
-		guardian = "Stormy",
-		title = "Storm Lord Stormy",
-		eggColor = Color3.fromRGB(240, 248, 255),
-		spotColor = Color3.fromRGB(255, 210, 80),
-		odds = { Legendary = 30, Mystic = 40, Ultra = 26, Secret = 4 },
-	},
-}
 
 -- Weights, like Steal an Egg: every egg has a random weight in kg, and grows a random amount
 -- (in random spurts) while it sits in a nest. What hatches keeps the egg's final weight.
@@ -422,20 +432,22 @@ function Items.oddsList(zoneIndex: number)
 	return list
 end
 
--- A random item of a kind and rarity (falling back to the next rarity down if there are
--- none of that rarity).
-function Items.rollItem(kind: string, rarity: string, rng: Random): string
+-- A random item of a rarity from zone `zoneIndex` (from any zone if nil), falling back to
+-- the next rarity down if there are none of that rarity.
+function Items.rollItem(zoneIndex: number?, rarity: string, rng: Random): string
 	for rank = Rarities.rank[rarity] or 1, 1, -1 do
-		local pool = Items.pool(kind, Rarities.order[rank])
+		local pool = Items.pool(Rarities.order[rank], zoneIndex)
 		if #pool > 0 then
 			return pool[rng:NextInteger(1, #pool)]
 		end
 	end
-	return Items.pool(kind, "Common")[1]
+	-- Rarer than anything there (or nothing of it): the zone's best item.
+	local zone = zoneIndex and Items.ZONES[zoneIndex]
+	return if zone then zone.items[#zone.items] else Items.list[1].id
 end
 
--- An egg's name from what's inside it: "Woofles Egg", "Swimming Pool Egg" (or the zone's
--- egg name, "Garden Egg", if it doesn't say).
+-- An egg's name from what's inside it: "Golden Retriever Egg" (or the zone's egg name,
+-- "Neighborhood Egg", if it doesn't say).
 function Items.itemEggName(zoneIndex: number, itemId: string?): string
 	local item = itemId and Items.byId[itemId]
 	return if item then item.name .. " Egg" else Items.eggName(zoneIndex)
@@ -486,10 +498,10 @@ function Items.scaleModel(model: Model, factor: number, around: CFrame?)
 	end
 end
 
--- An egg's display name, e.g. "Garden Egg".
+-- An egg's display name, e.g. "Neighborhood Egg".
 function Items.eggName(zoneIndex: number): string
-	local zone = Items.ZONES[zoneIndex]
-	return Items.KINDS[zone.kind].egg .. " Egg"
+	local zone = Items.ZONES[zoneIndex] or Items.ZONES[1]
+	return (string.gsub(zone.name, "^The ", "")) .. " Egg"
 end
 
 -- The time eggs count in (os.time() on the server), on the server or a client: clients

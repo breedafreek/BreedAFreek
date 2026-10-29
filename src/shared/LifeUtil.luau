@@ -1,14 +1,14 @@
 -- Helpers for a player's save, shared by the server and the UI.
 --
--- data.parts = { [uid] = { id = itemId, mutations? } }: every item the player owns (house
--- parts, pets, yard items, plants; see Items.luau). Items are "out" in one place each:
---   data.house  = { [slotId] = uid }     house parts on the house (a slot with none shows Basic)
+-- data.parts = { [uid] = { id = itemId, mutations? } }: every item the player owns (pets,
+-- yard items, plants; see Items.luau). Items are "out" in one place each:
 --   data.pen    = { [uid] = true }       pets roaming the yard
 --   data.yard   = { ["1".."6"] = uid }   yard items on the yard spots
 --   data.garden = { ["1".."6"] = uid }   plants in the garden beds
 -- Everything else is in the backpack. How many pets, yard spots and beds there are comes
--- from data.plotLevel (Config.plotSpaces); which house slots are open from data.houseLevel
--- (Config.houseSlotOpen).
+-- from data.plotLevel (Config.plotSpaces). The house itself comes from data.houseLevel: its
+-- style (Config.houseStyle), which pieces it has (Config.houseSlotOpen) and the bonus it
+-- gives everything at home (Config.houseBonus).
 -- data.nests = { ["1".."5"] = { zone, rarity, endsAt, mutations? } }: eggs growing at home.
 
 local Config = require(script.Parent.Config)
@@ -18,20 +18,6 @@ local Mutations = require(script.Parent.Mutations)
 local Parts = require(script.Parent.Parts)
 
 local LifeUtil = {}
-
--- The part id on a house slot (Basic if nothing is).
-function LifeUtil.installed(data, slotId: string): string
-	local uid = data.house and data.house[slotId]
-	local owned = uid and data.parts[uid]
-	return if owned then owned.id else Parts.basic(slotId)
-end
-
--- The part on a house slot (nil for Basic) and its uid.
-function LifeUtil.installedRecord(data, slotId: string)
-	local uid = data.house and data.house[slotId]
-	local owned = uid and data.parts[uid]
-	return owned, if owned then uid else nil
-end
 
 -- How many pets, yard spots and garden beds this player has (their plot level).
 function LifeUtil.spaces(data): { yard: number, garden: number, pets: number }
@@ -43,12 +29,13 @@ function LifeUtil.slotOpen(data, slotId: string): boolean
 	return Config.houseSlotOpen(data.houseLevel or 1, slotId)
 end
 
--- { [slotId] = partId } for the open house slots.
+-- { [slotId] = partId } for the house: every open slot in the house level's style.
 function LifeUtil.layout(data): { [string]: string }
+	local style = Config.houseStyle(data.houseLevel or 1)
 	local layout = {}
 	for _, slot in Parts.SLOTS do
 		if LifeUtil.slotOpen(data, slot.id) then
-			layout[slot.id] = LifeUtil.installed(data, slot.id)
+			layout[slot.id] = style .. "_" .. slot.id
 		end
 	end
 	return layout
@@ -64,12 +51,9 @@ function LifeUtil.itemIncome(record): number
 end
 LifeUtil.partIncome = LifeUtil.itemIncome
 
--- uid -> where it is ("house:Roof", "pen", "yard:3", "garden:2") for everything that's out.
+-- uid -> where it is ("pen", "yard:3", "garden:2") for everything that's out.
 function LifeUtil.placed(data): { [string]: string }
 	local where = {}
-	for slotId, uid in data.house or {} do
-		where[uid] = "house:" .. slotId
-	end
 	for uid in data.pen or {} do
 		where[uid] = "pen"
 	end
@@ -82,22 +66,13 @@ function LifeUtil.placed(data): { [string]: string }
 	return where
 end
 
--- Everything out earning (passes are added by the server).
+-- Everything out earning, with the house's bonus (passes are added by the server).
 function LifeUtil.totalIncome(data): number
 	local total = 0
-	for _, slot in Parts.SLOTS do
-		if not LifeUtil.slotOpen(data, slot.id) then
-			continue
-		end
-		local record = LifeUtil.installedRecord(data, slot.id)
-		total += LifeUtil.itemIncome(record or { id = Parts.basic(slot.id) })
+	for uid in LifeUtil.placed(data) do
+		total += LifeUtil.itemIncome(data.parts[uid])
 	end
-	for uid, where in LifeUtil.placed(data) do
-		if string.sub(where, 1, 6) ~= "house:" then
-			total += LifeUtil.itemIncome(data.parts[uid])
-		end
-	end
-	return total
+	return total * Config.houseBonus(data.houseLevel or 1)
 end
 LifeUtil.houseIncome = LifeUtil.totalIncome
 
@@ -128,7 +103,7 @@ function LifeUtil.sellPrice(record): number
 	return math.floor(LifeUtil.itemIncome(record) * Config.SELL_MULTIPLIER)
 end
 
--- "Golden Candy Roof" (weights are shown separately: LifeUtil.weightText)
+-- "Golden Unicorn" (weights are shown separately: LifeUtil.weightText)
 function LifeUtil.displayName(record): string
 	local item = Items.byId[record.id]
 	local name = if item then item.name else record.id
@@ -174,10 +149,10 @@ local function bestSpot(data, where, count: number)
 	return worstSpot, worstIncome
 end
 
--- Puts an item the player owns (uid) out where it fits if it's an upgrade: onto its house
--- slot, into the yard as a pet, onto a yard spot or into a garden bed. Whatever it replaces
--- goes back to the backpack. Returns where it went ("house", "pen", "yard", "garden") or
--- "backpack" if it wasn't better than anything out.
+-- Puts an item the player owns (uid) out where it fits if it's an upgrade: into the yard as
+-- a pet, onto a yard spot or into a garden bed. Whatever it replaces goes back to the
+-- backpack. Returns where it went ("pen", "yard", "garden") or "backpack" if it wasn't
+-- better than anything out.
 function LifeUtil.placeIfBetter(data, uid: string): string
 	local record = data.parts[uid]
 	local item = record and Items.byId[record.id]
@@ -189,16 +164,7 @@ function LifeUtil.placeIfBetter(data, uid: string): string
 	data.yard = data.yard or {}
 	data.garden = data.garden or {}
 	local spaces = LifeUtil.spaces(data)
-	if item.kind == "House" then
-		local current = LifeUtil.installedRecord(data, item.slot)
-		if
-			LifeUtil.slotOpen(data, item.slot)
-			and income > LifeUtil.itemIncome(current or { id = Parts.basic(item.slot) })
-		then
-			data.house[item.slot] = uid
-			return "house"
-		end
-	elseif item.kind == "Pet" then
+	if item.kind == "Pet" then
 		local pets = LifeUtil.pets(data)
 		if #pets < spaces.pets then
 			data.pen[uid] = true
@@ -232,7 +198,6 @@ end
 function LifeUtil.isUpgrade(data, uid: string): boolean
 	local copy = {
 		parts = data.parts,
-		house = table.clone(data.house or {}),
 		pen = table.clone(data.pen or {}),
 		yard = table.clone(data.yard or {}),
 		garden = table.clone(data.garden or {}),
@@ -244,11 +209,6 @@ end
 
 -- Takes an item off wherever it's out (it goes to the backpack).
 function LifeUtil.takeOff(data, uid: string)
-	for slotId, other in data.house or {} do
-		if other == uid then
-			data.house[slotId] = nil
-		end
-	end
 	if data.pen then
 		data.pen[uid] = nil
 	end

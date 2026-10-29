@@ -1,8 +1,8 @@
--- The zones: eggs to steal, each zone guarded by a giant Freek.
+-- The zones: eggs to steal, each zone guarded by a giant version of one of its creatures.
 --
 -- Eggs lie scattered on the ground all over each zone (ZoneLayout.eggCount at a time; when
 -- one is taken a new one turns up somewhere else a few seconds later). Each is one of the
--- zone's eggs (Items.ZONES: what kind of thing hatches from it and the odds of each rarity):
+-- zone's eggs (Items.ZONES: which of its items hatches from it and the odds of each rarity):
 -- what's inside is decided when it appears, and the egg is designed around it (EggModel).
 -- Rarer eggs lie deeper in, nearer the guardian. Each shows its rarity, what's inside, its
 -- weight and hatch time, sometimes with a mutation the hatched item keeps. Hold Grab on one
@@ -166,7 +166,7 @@ local function rollEgg(index: number)
 	return {
 		egg = index,
 		rarity = rarity,
-		item = Items.rollItem(Items.ZONES[index].kind, rarity, rng),
+		item = Items.rollItem(index, rarity, rng),
 		mutations = Mutations.pack(mutations),
 		weight = Items.eggBaseWeight(index) * Items.rollWeightFactor(rng, Events.boost("rareBoost")),
 		baseWeight = Items.eggBaseWeight(index),
@@ -189,7 +189,6 @@ local function showEgg(index: number, pedestal, record, keepSpot: boolean?, quie
 	pedestal.record = record
 	pedestal.taken = false
 	local zone = Items.ZONES[index]
-	local kind = Items.KINDS[zone.kind]
 	local color = Rarities.info[record.rarity].color
 	-- A new place on the ground for it (or the same place, for an egg put back).
 	if not keepSpot then
@@ -217,7 +216,7 @@ local function showEgg(index: number, pedestal, record, keepSpot: boolean?, quie
 	pedestal.ring.Color = color
 	pedestal.labels.rarity.Text = string.upper(record.rarity)
 	pedestal.labels.rarity.TextColor3 = color
-	pedestal.labels.name.Text = kind.icon .. " " .. ZoneService.eggName(record)
+	pedestal.labels.name.Text = Items.KINDS[Items.byId[record.item].kind].icon .. " " .. ZoneService.eggName(record)
 	pedestal.labels.name.TextColor3 = Items.weightColor(factor)
 	pedestal.labels.gui.Enabled = true
 

@@ -71,16 +71,16 @@ GuardianAttacks.list = {
 
 -- Which attack each guardian (by species) uses.
 GuardianAttacks.bySpecies = {
-	Oinkle = "charge",
-	Woofles = "pounce",
-	Hootsworth = "swoop",
-	Chuckles = "pie",
-	Mumbles = "bandage",
-	Glamora = "magic",
-	BooBoo = "blink",
-	CountFangula = "bats",
-	Blinky = "laser",
-	Stormy = "lightning",
+	GoldenRetriever = "pounce",
+	Gnome = "pie",
+	BeachCrab = "charge",
+	BrownBear = "charge",
+	TabbyCat = "pounce",
+	RobotButler = "laser",
+	WhiteTiger = "pounce",
+	BabyDragon = "swoop",
+	Alien = "blink",
+	RainbowPhoenix = "lightning",
 }
 
 function GuardianAttacks.forSpecies(species: string)

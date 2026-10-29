@@ -11,7 +11,7 @@ local Items = require(ReplicatedStorage.Shared.Items)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
-local STORE_NAME = "StealALife_Discoveries_v1"
+local STORE_NAME = "StealALife_Discoveries_v2" -- v2: the 80-item catalogue (v1 held the old items)
 local TOPIC = "PartDiscovered"
 
 -- Only parts this rare or rarer can be claimed.

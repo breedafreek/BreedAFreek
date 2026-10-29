@@ -1,9 +1,7 @@
--- One model for any item (see Items.luau), standing on its pivot: a house part as a small
--- item (HouseModel.item), a pet (FreekModel), a yard item (YardModel) or a plant
--- (PlantModel). Mutated items sparkle in their mutation's colour.
+-- One model for any item (see Items.luau), standing on its pivot: a pet (FreekModel), a
+-- yard item (YardModel) or a plant (PlantModel). Mutated items sparkle in their mutation's colour.
 
 local FreekModel = require(script.Parent.FreekModel)
-local HouseModel = require(script.Parent.HouseModel)
 local Items = require(script.Parent.Items)
 local Mutations = require(script.Parent.Mutations)
 local PlantModel = require(script.Parent.PlantModel)
@@ -23,13 +21,10 @@ function ItemModel.addMutationEffect(model: Model, mutations)
 end
 
 -- record = { id, mutations, weight?, baseWeight? }. Heavier items are drawn bigger
--- (Items.weightScale); house parts stay their normal size (they have to fit their slot).
+-- (Items.weightScale).
 function ItemModel.build(record): Model
 	local model = ItemModel.buildNormal(record.id, record.mutations)
-	local item = Items.byId[record.id]
-	if item and item.kind ~= "House" then
-		Items.scaleModel(model, Items.weightScale(Items.weightFactor(record)))
-	end
+	Items.scaleModel(model, Items.weightScale(Items.weightFactor(record)))
 	return model
 end
 
@@ -38,8 +33,6 @@ function ItemModel.buildNormal(itemId: string, mutations): Model
 	local model
 	if not item then
 		model = Instance.new("Model")
-	elseif item.kind == "House" then
-		model = HouseModel.item(itemId)
 	elseif item.kind == "Pet" then
 		-- Pets show their mutations with FreekModel's own effects.
 		model = FreekModel.build(item.species, mutations)

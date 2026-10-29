@@ -63,10 +63,9 @@ local function rollWeighted(weights: { [string]: number }): string
 	return keys[#keys]
 end
 
--- A random item of this rarity, of any kind.
+-- A random item of this rarity, from any zone.
 local function pickItem(rarity: string): string
-	local kind = Items.KIND_ORDER[rng:NextInteger(1, #Items.KIND_ORDER)]
-	return NestService.rollItem(kind, rarity)
+	return NestService.rollItem(nil, rarity)
 end
 
 local function rollMutations(boost: number): { string }?
@@ -281,7 +280,7 @@ local function spin(player: Player, data)
 	if slice.golden or slice.rainbow then
 		-- An egg from the best zone the player's Speed reaches, hatched on the spot.
 		local zone = Items.zoneFor(data.speed)
-		local itemId = NestService.rollItem(Items.ZONES[zone].kind, Items.rollRarity(zone, rng))
+		local itemId = NestService.rollItem(zone, Items.rollRarity(zone, rng))
 		reveal.egg = zone
 		return NestService.reward(
 			player,

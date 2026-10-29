@@ -1,7 +1,7 @@
 -- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-33", -- printed in Output: which build is running
+	BUILD = "life-34", -- printed in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join. Set to nil
 	-- before the game launches!
@@ -10,8 +10,8 @@ local Config = {
 	-- checked as well as user ids; anyone can use it in Studio for testing.
 	ADMIN_NAMES = { "FuseAFreek" }, -- the owner's Roblox username
 	ADMIN_USER_IDS = { 11813437895 } :: { number }, -- the owner's account
-	MAX_PARTS = 40, -- house parts you can keep in your backpack (not counting the house)
-	SELL_MULTIPLIER = 30, -- a part sells for (its money per second * this)
+	MAX_PARTS = 40, -- items you can keep in your backpack (not counting what is out)
+	SELL_MULTIPLIER = 30, -- an item sells for (its money per second * this)
 
 	-- The treadmill in your yard trains Speed while you run on it. Level 1 gives
 	-- TREADMILL_BASE_GAIN speed a second; each level multiplies that by TREADMILL_GAIN_GROWTH.
@@ -46,10 +46,22 @@ function Config.plotCost(level: number): number
 	return math.floor(2000 * 6 ^ (level - 1))
 end
 
--- House upgrades (coins): the house grows bigger each level, and some slots only open up
--- at a higher level (the rest are there from level 1).
+-- House upgrades (coins): each level the house grows bigger, turns into a fancier style
+-- (HOUSE_STYLES, house styles from Parts.luau), adds pieces (some slots only open up at a
+-- higher level) and makes everything at home earn more (houseBonus).
 Config.HOUSE_MAX = 8
 Config.HOUSE_SLOT_LEVEL = { Porch = 2, Chimney = 3, Garden = 4, Tower = 5 }
+
+Config.HOUSE_STYLES = { "Basic", "Log", "Stone", "Ice", "Candy", "Royal", "Crystal", "Rainbow" }
+
+function Config.houseStyle(level: number): string
+	return Config.HOUSE_STYLES[math.clamp(level or 1, 1, #Config.HOUSE_STYLES)]
+end
+
+-- What everything at home earns, times this (1x at level 1, +15% a level).
+function Config.houseBonus(level: number): number
+	return 1 + 0.15 * (math.clamp(level or 1, 1, Config.HOUSE_MAX) - 1)
+end
 
 function Config.houseSlotOpen(level: number, slotId: string): boolean
 	return (level or 1) >= (Config.HOUSE_SLOT_LEVEL[slotId] or 1)

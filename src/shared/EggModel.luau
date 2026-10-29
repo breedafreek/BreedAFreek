@@ -4,7 +4,7 @@
 -- rune marks on some plates, gold rivets, a gold spike on top, a soft light and a few
 -- drifting sparks. The plates are tinted by what's inside (the item's main colour, darkened;
 -- its second colour picks out a pattern for its kind: patches for pets, a band of grass
--- for plants, stripes for yard items, alternate rows for house parts) and the glow is the
+-- for plants, stripes for yard items) and the glow is the
 -- rarity's colour. Legendary and up get a gold band, Mystic and up a glowing one. Secret
 -- eggs flash in every colour (an aura and a light, tagged SECRET_TAG; each client animates
 -- them, see Main). Without an item (the zone's egg in general) it's the zone's colours.
@@ -101,10 +101,6 @@ local function patternFor(kind: string?, rng: Random)
 	if kind == "Yard" then
 		return function(ring)
 			return ring == 3 or ring == 7
-		end
-	elseif kind == "House" then
-		return function(ring)
-			return ring % 2 == 0
 		end
 	elseif kind == "Plant" then
 		return function(_ring, a, y)

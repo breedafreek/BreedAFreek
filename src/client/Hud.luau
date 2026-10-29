@@ -501,7 +501,7 @@ function Hud.topPill(screen: ScreenGui)
 					local info = Items.ZONES[zone]
 					local fast = (player:GetAttribute("Speed") or 0) >= info.speed
 					show(
-						Items.KINDS[info.kind].icon
+						info.icon
 							.. " "
 							.. string.upper(info.name)
 							.. (if fast then " · GRAB AN EGG!" else " · NEEDS ⚡" .. Format.number(info.speed)),

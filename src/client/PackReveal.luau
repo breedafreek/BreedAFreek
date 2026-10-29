@@ -20,7 +20,6 @@ local Items = require(ReplicatedStorage.Shared.Items)
 local LifeUtil = require(ReplicatedStorage.Shared.LifeUtil)
 local Lego = require(ReplicatedStorage.Shared.Lego)
 local Luck = require(ReplicatedStorage.Shared.Luck)
-local Parts = require(ReplicatedStorage.Shared.Parts)
 local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local UI = require(script.Parent.UI)
 
@@ -419,7 +418,7 @@ local function hideHud(playerGui: Instance, keep: Instance): () -> ()
 end
 
 -- result = { kind = "egg"|"crate"|"wheel", egg? (zone index), crate?, rarity, isNew,
---            where = "house"|"pen"|"yard"|"garden"|"backpack", part = { id, mutations } }
+--            where = "pen"|"yard"|"garden"|"backpack", part = { id, mutations } }
 function PackReveal.play(result, done: () -> ())
 	local player = Players.LocalPlayer
 	local playerGui = player:WaitForChild("PlayerGui")
@@ -427,15 +426,9 @@ function PackReveal.play(result, done: () -> ())
 	local rarity = result.rarity
 	local tier = Rarities.rank[rarity] or 1
 	local rarityColor = Rarities.info[rarity] and Rarities.info[rarity].color or Color3.new(1, 1, 1)
-	-- The first clue is what kind of thing it is (for a house part, which slot it's for).
-	local series
-	if partInfo.kind == "House" then
-		local slot = Parts.slotById[partInfo.slot]
-		series = { clue = "SLOT", icon = slot.icon, name = slot.name, color = UI.cardColor(slot.name) }
-	else
-		local kind = Items.KINDS[partInfo.kind]
-		series = { clue = "KIND", icon = kind.icon, name = kind.name, color = kind.color }
-	end
+	-- The first clue is what kind of thing it is.
+	local kind = Items.KINDS[partInfo.kind]
+	local series = { clue = "KIND", icon = kind.icon, name = kind.name, color = kind.color }
 	local random = Random.new()
 
 	----------------------------------------------------------------------------

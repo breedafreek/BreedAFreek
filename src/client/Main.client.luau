@@ -423,7 +423,9 @@ function renderers.Shop()
 		houseLevel,
 		Config.HOUSE_MAX,
 		"MenuHouse",
-		"Size " .. houseLevel,
+		Parts.styleById[Config.houseStyle(math.min(houseLevel + 1, Config.HOUSE_MAX))].name
+			.. " · x"
+			.. string.format("%.2f", Config.houseBonus(math.min(houseLevel + 1, Config.HOUSE_MAX))),
 		Config.houseCost(houseLevel),
 		"UpgradeHouse"
 	)
@@ -465,13 +467,12 @@ function renderers.Shop()
 end
 
 --------------------------------------------------------------------------------
--- My Home: the nests, the house, the pets, the yard and the garden
+-- My Home: the nests, the pets, the yard and the garden
 --------------------------------------------------------------------------------
 
 local lifeTab = "Nests"
 local LIFE_TABS = {
 	{ "Nests", "🥚 NESTS", Color3.fromRGB(255, 170, 40), 120 },
-	{ "House", "🏠 HOUSE", Items.KINDS.House.color, 120 },
 	{ "Pets", "🐾 PETS", Items.KINDS.Pet.color, 110 },
 	{ "Yard", "🛝 YARD", Items.KINDS.Yard.color, 110 },
 	{ "Garden", "🌷 GARDEN", Items.KINDS.Plant.color, 130 },
@@ -588,26 +589,6 @@ function renderers.Life()
 	local cells = grid(4, UDim2.new(1 / 4, -8, 0, 250))
 	if lifeTab == "Nests" then
 		nestSlots(cells)
-	elseif lifeTab == "House" then
-		for i, houseSlot in Parts.SLOTS do
-			local record, uid = LifeUtil.installedRecord(state, houseSlot.id)
-			local title = houseSlot.icon .. " " .. houseSlot.name
-			if not LifeUtil.slotOpen(state, houseSlot.id) then
-				lockedSlot(cells, i, title, "House Lv " .. Config.HOUSE_SLOT_LEVEL[houseSlot.id])
-			elseif record then
-				placedSlot(cells, i, uid, title)
-			else
-				local basic = { id = Parts.basic(houseSlot.id) }
-				slot(cells, i, {
-					label = title,
-					picture = ItemPictures.part(basic.id),
-					lines = {
-						{ "Basic", colors.muted, 18 },
-						{ Format.money(LifeUtil.itemIncome(basic)) .. "/s", colors.money, 20 },
-					},
-				})
-			end
-		end
 	elseif lifeTab == "Pets" then
 		local pets = LifeUtil.pets(state)
 		local room = LifeUtil.spaces(state).pets
@@ -694,17 +675,10 @@ function renderers.Bag()
 end
 
 --------------------------------------------------------------------------------
--- Index: every item, kind by kind (house parts style by style)
+-- Index: every item, zone by zone (like the owner's reference sheet)
 --------------------------------------------------------------------------------
 
-local indexKind = "House"
-local indexStyle = "Scrap"
-local INDEX_TABS = {
-	{ "House", "🏠 HOUSE", Items.KINDS.House.color, 120 },
-	{ "Pet", "🐾 PETS", Items.KINDS.Pet.color, 110 },
-	{ "Yard", "🛝 YARD", Items.KINDS.Yard.color, 110 },
-	{ "Plant", "🌷 PLANTS", Items.KINDS.Plant.color, 130 },
-}
+local indexZone = 1
 
 local function indexSlot(parent, order: number, id: string, title: string)
 	local info = Items.byId[id]
@@ -726,60 +700,45 @@ local function indexSlot(parent, order: number, id: string, title: string)
 end
 
 function renderers.Index()
-	local found, total = 0, 0
+	local found = 0
 	for _, item in Items.list do
-		if not item.basic then
-			total += 1
-			if state.discovered[item.id] then
-				found += 1
-			end
+		if state.discovered[item.id] then
+			found += 1
 		end
 	end
-	section("Found " .. found .. " / " .. total, 1, colors.gold)
-	tabRow(2, INDEX_TABS, indexKind, function(name)
-		indexKind = name
-		render()
-	end)
-	if indexKind == "House" then
-		local styles = UI.new("Frame", {
-			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			LayoutOrder = 3,
-			ZIndex = 6,
-			Parent = body,
-		}, {
-			UI.new("UIGridLayout", {
-				CellSize = UDim2.fromOffset(124, 36),
-				CellPadding = UDim2.fromOffset(6, 6),
-				SortOrder = Enum.SortOrder.LayoutOrder,
-			}),
-		})
-		for i, style in Parts.STYLES do
-			if style.id ~= "Basic" then
-				local color = Rarities.info[style.rarity].color
-				local button = UI.button(style.name, if style.id == indexStyle then color else colors.gray, function()
-					indexStyle = style.id
-					render()
-				end, { LayoutOrder = i, ZIndex = 7, Parent = styles })
-				button.Label.ZIndex = 8
-			end
-		end
-		local style = Parts.styleById[indexStyle]
-		section(style.name .. " · " .. style.rarity, 4, Rarities.info[style.rarity].color)
-		local cells = grid(5, UDim2.new(1 / 5, -8, 0, 200))
-		for i, houseSlot in Parts.SLOTS do
-			indexSlot(cells, i, style.id .. "_" .. houseSlot.id, houseSlot.name)
-		end
-		return
+	section("Found " .. found .. " / " .. #Items.list, 1, colors.gold)
+	-- A button for each zone, in the zone's colour when picked.
+	local zoneTabs = UI.new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 2,
+		ZIndex = 6,
+		Parent = body,
+	}, {
+		UI.new("UIGridLayout", {
+			CellSize = UDim2.new(0.2, -6, 0, 36),
+			CellPadding = UDim2.fromOffset(6, 6),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	for i, zone in Items.ZONES do
+		local button = UI.button(
+			zone.icon .. " " .. string.upper((string.gsub(zone.name, "^The ", ""))),
+			if i == indexZone then zone.eggColor else colors.gray,
+			function()
+				indexZone = i
+				render()
+			end,
+			{ LayoutOrder = i, ZIndex = 7, Parent = zoneTabs }
+		)
+		button.Label.ZIndex = 8
 	end
-	local cells = grid(5, UDim2.new(1 / 5, -8, 0, 200))
-	local order = 0
-	for _, item in Items.list do
-		if item.kind == indexKind then
-			order += 1
-			indexSlot(cells, order, item.id, item.name)
-		end
+	local zone = Items.ZONES[indexZone]
+	section(zone.name .. " · " .. zone.tagline, 3, zone.eggColor:Lerp(Color3.new(1, 1, 1), 0.3))
+	local cells = grid(4, UDim2.new(1 / 4, -8, 0, 200))
+	for i, id in zone.items do
+		indexSlot(cells, i, id, Items.byId[id].name)
 	end
 end
 
@@ -996,7 +955,7 @@ function renderers.Luck()
 		ZIndex = 7,
 		Parent = wheelCell,
 	})
-	UI.text("Coins · Golden parts · Boxes · JACKPOT", 18, {
+	UI.text("Coins · Golden items · Boxes · JACKPOT", 18, {
 		Position = UDim2.fromOffset(310, 118),
 		Size = UDim2.new(1, -330, 0, 24),
 		TextColor3 = colors.muted,

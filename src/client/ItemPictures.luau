@@ -482,7 +482,10 @@ end
 BUILDERS.MenuLife = function(model)
 	BUILDERS.MenuHouse(model)
 	for _, entry in
-		{ { "Plant_Sunflower", CFrame.new(3.6, 0, -0.4), 0.45 }, { "Pet_Oinkle", CFrame.new(-3.4, 0, -1.2), 0.9 } }
+		{
+			{ "Plant_GiantSunflower", CFrame.new(3.6, 0, -0.4), 0.45 },
+			{ "Pet_GoldenRetriever", CFrame.new(-3.4, 0, -1.2), 0.9 },
+		}
 	do
 		local item = ItemModel.buildNormal(entry[1])
 		local pivot = item:GetPivot()

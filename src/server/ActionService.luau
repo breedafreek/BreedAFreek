@@ -36,7 +36,6 @@ local function snapshot(data)
 		plotLevel = data.plotLevel,
 		houseLevel = data.houseLevel,
 		parts = data.parts,
-		house = data.house,
 		pen = data.pen,
 		yard = data.yard,
 		garden = data.garden,
@@ -57,8 +56,7 @@ end
 
 local handlers = {}
 
--- Puts an item from the backpack out: a house part onto its slot, a pet into the yard, a
--- yard item or plant onto `spot` ("1".."6"; the first free one if not given). Whatever was
+-- Puts an item from the backpack out: a pet into the yard, a yard item or plant onto `spot` ("1".."6"; the first free one if not given). Whatever was
 -- there goes to the backpack.
 function handlers.Place(player: Player, data, uid: any, spot: any)
 	local record = ownedItem(data, uid)
@@ -67,16 +65,7 @@ function handlers.Place(player: Player, data, uid: any, spot: any)
 		return
 	end
 	local spaces = LifeUtil.spaces(data)
-	if item.kind == "House" then
-		if not LifeUtil.slotOpen(data, item.slot) then
-			return notify(
-				player,
-				"Upgrade your house to level " .. Config.HOUSE_SLOT_LEVEL[item.slot] .. " to add a " .. item.slot .. "!",
-				"error"
-			)
-		end
-		data.house[item.slot] = uid
-	elseif item.kind == "Pet" then
+	if item.kind == "Pet" then
 		local pets = LifeUtil.pets(data)
 		if #pets >= spaces.pets then
 			-- Swap out the worst pet.
@@ -119,17 +108,6 @@ function handlers.TakeOff(player: Player, data, uid: any)
 		return notify(player, "Your backpack is full!", "error")
 	end
 	LifeUtil.takeOff(data, uid)
-end
-
--- Takes a part off the house by slot (the slot goes back to Basic).
-function handlers.Uninstall(player: Player, data, slotId: any)
-	if typeof(slotId) ~= "string" or not Parts.slotById[slotId] then
-		return
-	end
-	local _, uid = LifeUtil.installedRecord(data, slotId)
-	if uid then
-		handlers.TakeOff(player, data, uid)
-	end
 end
 
 local function sell(data, uid: string): number
@@ -237,7 +215,8 @@ function handlers.UpgradePlot(player: Player, data)
 	putOutBest(data)
 end
 
--- Upgrades the house one level: bigger, and some levels open up a new slot.
+-- Upgrades the house one level: bigger, a fancier style, sometimes a new piece, and a
+-- bigger bonus on everything at home (Config.houseBonus).
 function handlers.UpgradeHouse(player: Player, data)
 	local level = data.houseLevel or 1
 	if level >= Config.HOUSE_MAX then
@@ -249,23 +228,15 @@ function handlers.UpgradeHouse(player: Player, data)
 	end
 	data.money -= cost
 	data.houseLevel = level + 1
-	local opened = nil
-	for slotId, at in Config.HOUSE_SLOT_LEVEL do
-		if at == data.houseLevel then
-			opened = slotId
-		end
-	end
+	local style = Parts.styleById[Config.houseStyle(data.houseLevel)]
 	notify(
 		player,
-		"🏠 House upgraded to level "
-			.. data.houseLevel
-			.. "!"
-			.. (if opened then " New: " .. opened .. "!" else " It's bigger!"),
+		"🏠 Your house is now a "
+			.. (if style then style.name else "new")
+			.. " house! Everything at home earns x"
+			.. string.format("%.2f", Config.houseBonus(data.houseLevel)),
 		"success"
 	)
-	if opened then
-		putOutBest(data)
-	end
 end
 
 -- Teleports the player home (not while carrying an egg: that would skip the run).

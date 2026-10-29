@@ -12,7 +12,6 @@ local RunService = game:GetService("RunService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
 local Items = require(ReplicatedStorage.Shared.Items)
-local Parts = require(ReplicatedStorage.Shared.Parts)
 
 local STORE_NAME = "StealALife_Players_v1"
 
@@ -28,16 +27,21 @@ pcall(function()
 	store = DataStoreService:GetDataStore(STORE_NAME)
 end)
 
+-- Which item catalogue the save's items are from. Version 2 is the 80 items in ten zones
+-- (the owner's reference sheet); everything from before (house parts, Freeks, the old yard
+-- items and plants) was wiped when it came in.
+local ITEMS_VERSION = 2
+
 local function defaultData()
 	return {
 		version = 1,
+		itemsVersion = ITEMS_VERSION,
 		money = Config.START_MONEY,
 		speed = 0, -- trained on the treadmill; decides how fast you run
 		treadmill = 1, -- treadmill level
 		plotLevel = 1, -- how many yard spots, garden beds and pets (Config.plotSpaces)
-		houseLevel = 1, -- how big the house is and which slots are open (Config.HOUSE_*)
+		houseLevel = 1, -- the house's size, style and bonus (Config.HOUSE_*)
 		parts = {}, -- [uid] = { id = itemId, mutations? }: everything owned (see LifeUtil)
-		house = {}, -- [slotId] = uid of the part installed there (none = Basic)
 		pen = {}, -- [uid] = true for pets out in the yard
 		yard = {}, -- ["1".."6"] = uid of the yard item on that spot
 		garden = {}, -- ["1".."6"] = uid of the plant in that bed
@@ -80,8 +84,25 @@ local function fitLevels(data)
 	end
 end
 
+-- Saves from an older item catalogue lose every item (and the eggs in their nests, which
+-- would hatch old items); money, Speed, levels and boxes stay.
+local function wipeOldItems(data)
+	if (data.itemsVersion or 1) >= ITEMS_VERSION then
+		return
+	end
+	data.parts = {}
+	data.pen = {}
+	data.yard = {}
+	data.garden = {}
+	data.nests = {}
+	data.discovered = {}
+	data.house = nil -- house parts are gone: the house comes from the house level
+	data.itemsVersion = ITEMS_VERSION
+end
+
 local function reconcile(data)
 	fitLevels(data)
+	wipeOldItems(data)
 	for key, value in defaultData() do
 		if data[key] == nil then
 			data[key] = value
@@ -93,7 +114,7 @@ local function reconcile(data)
 	end
 	-- Items that no longer exist are dropped, and places pointing at missing items emptied.
 	for uid, record in data.parts do
-		if not Items.byId[record.id] or Parts.isBasic(record.id) then
+		if not Items.byId[record.id] then
 			data.parts[uid] = nil
 		else
 			record.mutations = Mutations.pack(record.mutations)
@@ -104,12 +125,6 @@ local function reconcile(data)
 			if not valid(record.weight) or not valid(record.baseWeight) then
 				record.weight, record.baseWeight = nil, nil
 			end
-		end
-	end
-	for slotId, uid in data.house do
-		local record = data.parts[uid]
-		if not Parts.slotById[slotId] or not record or Items.byId[record.id].slot ~= slotId then
-			data.house[slotId] = nil
 		end
 	end
 	for uid in data.pen do
@@ -128,11 +143,6 @@ local function reconcile(data)
 			if not record or Items.byId[record.id].kind ~= kind or (tonumber(spot) or 0) > count then
 				where[spot] = nil
 			end
-		end
-	end
-	for slotId in data.house do
-		if not Config.houseSlotOpen(data.houseLevel, slotId) then
-			data.house[slotId] = nil
 		end
 	end
 	return data

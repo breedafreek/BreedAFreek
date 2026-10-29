@@ -3,7 +3,7 @@
 -- server does all the rolling (server/LuckService).
 --
 -- Mystery Boxes are Developer Products bought with Robux: each one opens into a random item
--- (a rarity rolled from the box's odds, then any house part, pet, yard item or plant of that
+-- (a rarity rolled from the box's odds, then any pet, yard item or plant of that
 -- rarity, each equally likely). Roblox's rules for paid
 -- random items: the odds are shown before buying, and players in countries where paid
 -- random items aren't allowed can't buy them (LuckService checks PolicyService).
