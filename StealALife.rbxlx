@@ -873,7 +873,7 @@ return Bricks
           <string name="Source"><![CDATA[-- Tuning knobs for the whole game. Change numbers here, not in the services.
 
 local Config = {
-	BUILD = "life-32", -- printed in Output: which build is running
+	BUILD = "life-33", -- printed in Output: which build is running
 	START_MONEY = 50,
 	-- TESTING ONLY: every player is topped up to this many coins when they join. Set to nil
 	-- before the game launches!
@@ -2599,6 +2599,69 @@ return Events
       </Item>
       <Item class="ModuleScript" referent="12">
         <Properties>
+          <string name="Name">FloatText</string>
+          <string name="Source"><![CDATA[-- Floating text over things in the world (eggs, nests, pets, guardians), all in one clean
+-- style like the big simulators: a short stack of lines in a fixed size on screen (it
+-- doesn't balloon when you walk up to it), chunky white or coloured text with a thin black
+-- outline, no backgrounds. Only shows up close (maxDistance).
+--
+-- FloatText.new(parent, lines, opts) where lines = { { size = px, heavy = bool } } and
+-- opts = { offset = Vector3 (world space, above the parent), maxDistance, width }. Returns
+-- the BillboardGui and its TextLabels (in order) to fill in.
+
+local FloatText = {}
+
+FloatText.OUTLINE = Color3.fromRGB(22, 20, 26)
+FloatText.HEAVY = Enum.Font.LuckiestGuy
+FloatText.BOLD = Enum.Font.FredokaOne
+
+function FloatText.new(parent: Instance, lines, opts): (BillboardGui, { TextLabel })
+	opts = opts or {}
+	local total = 0
+	for _, line in lines do
+		total += line.size
+	end
+	local gui = Instance.new("BillboardGui")
+	gui.Name = opts.name or "FloatText"
+	gui.Size = UDim2.fromOffset(opts.width or 220, total)
+	gui.StudsOffsetWorldSpace = opts.offset or Vector3.new(0, 3, 0)
+	gui.MaxDistance = opts.maxDistance or 30
+	gui.LightInfluence = 0
+	gui.AlwaysOnTop = false
+	gui.ClipsDescendants = false
+	local labels = {}
+	local y = 0
+	for i, line in lines do
+		local label = Instance.new("TextLabel")
+		label.Name = "Line" .. i
+		label.BackgroundTransparency = 1
+		label.Position = UDim2.fromScale(0, y / total)
+		label.Size = UDim2.fromScale(1, line.size / total)
+		label.Font = if line.heavy then FloatText.HEAVY else FloatText.BOLD
+		label.TextSize = line.size
+		label.TextScaled = false
+		label.TextWrapped = false
+		label.TextColor3 = line.color or Color3.new(1, 1, 1)
+		label.Text = line.text or ""
+		label.Parent = gui
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = FloatText.OUTLINE
+		stroke.Thickness = if line.size >= 20 then 2.5 else 2
+		stroke.LineJoinMode = Enum.LineJoinMode.Round
+		stroke.Parent = label
+		labels[i] = label
+		y += line.size
+	end
+	gui.Parent = parent
+	return gui, labels
+end
+
+return FloatText
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="13">
+        <Properties>
           <string name="Name">Format</string>
           <string name="Source"><![CDATA[local Format = {}
 
@@ -2656,7 +2719,7 @@ return Format
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">FreekAnimator</string>
           <string name="Source"><![CDATA[-- Brings Freek models to life: idle animations for Freeks standing in barns and on the
@@ -3145,7 +3208,7 @@ return FreekAnimator
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">FreekModel</string>
           <string name="Source"><![CDATA[-- Builds the 3D model for a Freek out of plain parts.
@@ -4079,7 +4142,7 @@ return FreekModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">Freeks</string>
           <string name="Source"><![CDATA[-- Every Freek species in the game.
@@ -4325,7 +4388,7 @@ return Freeks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">GamePasses</string>
           <string name="Source"><![CDATA[-- Game passes: one-time Robux purchases with permanent perks.
@@ -4477,7 +4540,7 @@ return GamePasses
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">GuardianAttacks</string>
           <string name="Source"><![CDATA[-- Each zone's guardian has a signature attack, on top of catching anyone it runs into.
@@ -4574,7 +4637,7 @@ return GuardianAttacks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">HouseModel</string>
           <string name="Source"><![CDATA[-- Builds houses and house parts out of simple parts, in the game's chunky cartoon style.
@@ -6357,7 +6420,7 @@ return HouseModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">Hybrids</string>
           <string name="Source"><![CDATA[-- Hybrids: what you get when two different Freeks fuse.
@@ -6542,7 +6605,7 @@ return Hybrids
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">ItemModel</string>
           <string name="Source"><![CDATA[-- One model for any item (see Items.luau), standing on its pivot: a house part as a small
@@ -6605,7 +6668,7 @@ return ItemModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">Items</string>
           <string name="Source"><![CDATA[-- Everything you can own in Steal a Life, in four kinds:
@@ -7134,7 +7197,7 @@ return Items
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="22">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">Lego</string>
           <string name="Source"><![CDATA[-- The LEGO look: everything is shiny plastic with studs on every face (inlets underneath),
@@ -7387,7 +7450,7 @@ return Lego
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="24">
         <Properties>
           <string name="Name">LifeUtil</string>
           <string name="Source"><![CDATA[-- Helpers for a player's save, shared by the server and the UI.
@@ -7662,7 +7725,7 @@ return LifeUtil
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="25">
         <Properties>
           <string name="Name">Luck</string>
           <string name="Source"><![CDATA[-- Luck: Mystery Boxes, the daily Lucky Wheel and Lucky Hour events. Shared so the client
@@ -7866,7 +7929,7 @@ return Luck
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">Mutations</string>
           <string name="Source"><![CDATA[-- Mutations multiply a house part's income. Parts grow with them in the zone piles (chance
@@ -7932,7 +7995,7 @@ return Mutations
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">Parts</string>
           <string name="Source"><![CDATA[-- House parts: one of the four kinds of item (see Items.luau), hatched from Hardware Eggs
@@ -8035,7 +8098,7 @@ return Parts
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">PlantModel</string>
           <string name="Source"><![CDATA[-- Plants in the crafted look (low-poly, smooth, no studs; see Lego): built from blocks and
@@ -8408,7 +8471,7 @@ return PlantModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">Rarities</string>
           <string name="Source"><![CDATA[-- Rarity tiers, lowest to highest. breedTime is in seconds. carrySpeed is how fast a thief
@@ -8437,7 +8500,7 @@ return Rarities
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">Remotes</string>
           <string name="Source"><![CDATA[-- One place that names every remote. The server creates them; clients wait for them.
@@ -8500,7 +8563,7 @@ return Remotes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">Seasons</string>
           <string name="Source"><![CDATA[-- Limited events for Seasonal Freeks. A Freek with `season = "Halloween"` can only be bred
@@ -8637,7 +8700,7 @@ return Seasons
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="31">
+      <Item class="ModuleScript" referent="32">
         <Properties>
           <string name="Name">YardModel</string>
           <string name="Source"><![CDATA[-- Yard items in the crafted look (low-poly, smooth, no studs; see Lego): built from blocks
@@ -9016,7 +9079,7 @@ return YardModel
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="32">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">ZoneLayout</string>
           <string name="Source"><![CDATA[-- Where the zones are. They run in a line west from the end of the town street: zone 1
@@ -9107,15 +9170,15 @@ return ZoneLayout
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="33">
+  <Item class="ServerScriptService" referent="34">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="34">
+    <Item class="Folder" referent="35">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">ActionService</string>
           <string name="Source"><![CDATA[-- Everything a player can ask the server to do. Every argument from the client is
@@ -9471,7 +9534,7 @@ return ActionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">AdminService</string>
           <string name="Source"><![CDATA[-- The admin panel's server side. Only admins (Config.ADMIN_NAMES / ADMIN_USER_IDS, or
@@ -9616,7 +9679,7 @@ return AdminService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- Loads and saves each player's data with a session lock, so the same player in two
@@ -9951,7 +10014,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">DayNightService</string>
           <string name="Source"><![CDATA[-- Runs the day and night cycle (DayNight.luau) on the server. At nightfall every zone's
@@ -10032,7 +10095,7 @@ return DayNightService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">Decor</string>
           <string name="Source"><![CDATA[-- Reusable scenery pieces built from parts: trees, bushes, flowers, lamp posts, picket
@@ -10448,7 +10511,7 @@ return Decor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">DiscoveryService</string>
           <string name="Source"><![CDATA[-- The Catalog: the first player in the whole game to get each rare item (Legendary and up:
@@ -10603,7 +10666,7 @@ return DiscoveryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[-- Pays every player once a second for the parts on their house, plus offline earnings
@@ -10684,7 +10747,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">Environment</string>
           <string name="Source"><![CDATA[-- Lighting, sky, terrain and the town: the street between the two rows of homes, the
@@ -10694,6 +10757,7 @@ local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
+local FloatText = require(ReplicatedStorage.Shared.FloatText)
 local Lego = require(ReplicatedStorage.Shared.Lego)
 local ZoneLayout = require(ReplicatedStorage.Shared.ZoneLayout)
 
@@ -10783,33 +10847,9 @@ local function setupTerrain()
 	end)
 end
 
-local OUTLINE = Color3.fromRGB(20, 22, 48)
-
 local STREET_EAST = 232
 local STREET_WEST = ZoneLayout.START_X
 local TOWN_HALF = 134 -- how far north and south the town goes (past the back of the homes)
-
-local function outlinedBillboard(parent: Instance, text: string, color: Color3, size: UDim2, maxDistance: number)
-	local gui = Instance.new("BillboardGui")
-	gui.Size = size
-	gui.MaxDistance = maxDistance
-	gui.LightInfluence = 0
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Size = UDim2.fromScale(1, 1)
-	label.TextScaled = true
-	label.Font = Enum.Font.LuckiestGuy
-	label.Text = text
-	label.TextColor3 = color
-	label.Parent = gui
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = OUTLINE
-	stroke.Thickness = 5
-	stroke.LineJoinMode = Enum.LineJoinMode.Round
-	stroke.Parent = label
-	gui.Parent = parent
-	return label
-end
 
 local function buildScenery()
 	local folder = Instance.new("Folder")
@@ -10901,7 +10941,9 @@ local function buildScenery()
 		CanCollide = false,
 		Parent = folder,
 	})
-	outlinedBillboard(title, "STEAL A LIFE", Color3.fromRGB(255, 225, 80), UDim2.fromScale(44, 9), 500)
+	local _, lines = FloatText.new(title, { { size = 64, heavy = true } }, { maxDistance = 500, width = 700 })
+	lines[1].Text = "STEAL A LIFE"
+	lines[1].TextColor3 = Color3.fromRGB(255, 225, 80)
 
 	-- Edges of the map: hedges along the back of the homes, invisible walls all round the
 	-- town (the zones have their own cliffs).
@@ -10948,7 +10990,7 @@ return Environment
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">EventService</string>
           <string name="Source"><![CDATA[-- Runs the scheduled events (see shared/Events.luau) and the ones the admin starts.
@@ -11187,7 +11229,7 @@ return EventService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="44">
+      <Item class="ModuleScript" referent="45">
         <Properties>
           <string name="Name">HalloweenDecor</string>
           <string name="Source"><![CDATA[-- Halloween props: ghosts, bats, cobwebs, tombstones, dead trees, a witch's cauldron,
@@ -11647,7 +11689,7 @@ return HalloweenDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="45">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">LuckService</string>
           <string name="Source"><![CDATA[-- Mystery Boxes, the daily Lucky Wheel and Lucky Hour events (rules and odds in
@@ -11661,19 +11703,18 @@ return HalloweenDecor
 local CollectionService = game:GetService("CollectionService")
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
-local ProximityPromptService = game:GetService("ProximityPromptService")
 local PolicyService = game:GetService("PolicyService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local BoxModel = require(ReplicatedStorage.Shared.BoxModel)
+local FloatText = require(ReplicatedStorage.Shared.FloatText)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Items = require(ReplicatedStorage.Shared.Items)
 local LifeUtil = require(ReplicatedStorage.Shared.LifeUtil)
 local Luck = require(ReplicatedStorage.Shared.Luck)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
-local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local ActionService = require(script.Parent.ActionService)
@@ -11988,28 +12029,9 @@ local function checkPolicy(player: Player)
 end
 
 -- The Mystery Box stand by the spawn: the three boxes on glowing pedestals, each with its
--- odds floating above it (like the egg stands in pet games). Hold E to open one.
+-- name and price floating above it. Hold E on one to see its odds and buy it in the Luck
+-- window (the client opens it), so the odds are always shown before buying.
 local STAND_X = 190
-local OUTLINE = Color3.fromRGB(20, 22, 48)
-
-local function outlinedLabel(parent: Instance, text: string, color: Color3, top: number, height: number, font)
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Position = UDim2.fromScale(0, top)
-	label.Size = UDim2.fromScale(1, height)
-	label.TextScaled = true
-	label.Font = font
-	label.Text = text
-	label.TextColor3 = color
-	label.Parent = parent
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = OUTLINE
-	stroke.Thickness = 2.5
-	stroke.LineJoinMode = Enum.LineJoinMode.Round
-	stroke.Parent = label
-	return label
-end
-
 local function buildBoxStand()
 	local folder = Instance.new("Folder")
 	folder.Name = "BoxStand"
@@ -12041,41 +12063,19 @@ local function buildBoxStand()
 		CollectionService:AddTag(egg, "DisplayEgg")
 		egg.Parent = folder
 
-		-- The odds float above the egg.
-		local odds = Luck.oddsList(crate)
-		local gui = Instance.new("BillboardGui")
-		gui.Size = UDim2.fromOffset(230, 46 + #odds * 20)
-		gui.StudsOffsetWorldSpace = Vector3.new(0, height + 3.2, 0)
-		gui.MaxDistance = 36
-		gui.LightInfluence = 0
-		local total = 46 + #odds * 20
-		outlinedLabel(gui, string.upper(crate.name), crate.color, 0, 26 / total, Enum.Font.LuckiestGuy)
-		outlinedLabel(
-			gui,
-			"R$ " .. crate.robux,
-			Color3.fromRGB(110, 240, 120),
-			26 / total,
-			20 / total,
-			Enum.Font.LuckiestGuy
-		)
-		for k, entry in odds do
-			local percent = if entry.percent < 1
-				then string.format("%.1f", entry.percent)
-				else string.format("%.0f", entry.percent)
-			outlinedLabel(
-				gui,
-				entry.rarity .. " item  " .. percent .. "%",
-				Rarities.info[entry.rarity].color,
-				(46 + (k - 1) * 20) / total,
-				19 / total,
-				Enum.Font.FredokaOne
-			)
-		end
-		gui.Parent = egg.PrimaryPart
+		-- Its name and price float above it.
+		local _, lines = FloatText.new(egg.PrimaryPart, { { size = 22, heavy = true }, { size = 18, heavy = true } }, {
+			offset = Vector3.new(0, height + 2.5, 0),
+			maxDistance = 40,
+		})
+		lines[1].Text = string.upper(crate.name)
+		lines[1].TextColor3 = crate.color
+		lines[2].Text = "R$ " .. crate.robux
+		lines[2].TextColor3 = Color3.fromRGB(110, 240, 70)
 
 		local prompt = Instance.new("ProximityPrompt")
 		prompt.Name = "EggPrompt"
-		prompt.ActionText = "Open (R$ " .. crate.robux .. ")"
+		prompt.ActionText = "See odds"
 		prompt.ObjectText = crate.name
 		prompt.HoldDuration = 0.3
 		prompt.MaxActivationDistance = 10
@@ -12093,26 +12093,13 @@ local function buildBoxStand()
 	signPart.Size = Vector3.one
 	signPart.CFrame = CFrame.new(STAND_X, 17, 0)
 	signPart.Parent = folder
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromScale(26, 5)
-	gui.MaxDistance = 300
-	gui.LightInfluence = 0
-	local label =
-		outlinedLabel(gui, "📦 MYSTERY BOXES 📦", Color3.fromRGB(255, 160, 40), 0, 1, Enum.Font.LuckiestGuy)
-	label:FindFirstChildOfClass("UIStroke").Thickness = 4
-	gui.Parent = signPart
+	local _, lines = FloatText.new(signPart, { { size = 40, heavy = true } }, { maxDistance = 160, width = 520 })
+	lines[1].Text = "MYSTERY BOXES"
+	lines[1].TextColor3 = Color3.fromRGB(255, 170, 40)
 end
 
 function LuckService.init()
 	buildBoxStand()
-	ProximityPromptService.PromptTriggered:Connect(function(prompt, player)
-		local eggId = prompt.Name == "EggPrompt" and prompt:GetAttribute("EggId")
-		local data = DataService.get(player)
-		if eggId and data then
-			buyCrate(player, data, eggId)
-			DataService.changed(player)
-		end
-	end)
 	ActionService.register("BuyCrate", buyCrate)
 	ActionService.register("OpenCrate", openOwnedCrate)
 	ActionService.register("SpinWheel", spin)
@@ -12153,7 +12140,7 @@ return LuckService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="46">
+      <Item class="Script" referent="47">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -12224,7 +12211,7 @@ print("[Steal a Life] Server started, build " .. require(ReplicatedStorage.Share
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="47">
+      <Item class="ModuleScript" referent="48">
         <Properties>
           <string name="Name">NestService</string>
           <string name="Source"><![CDATA[-- Eggs growing at home, and hatching them.
@@ -12435,7 +12422,7 @@ return NestService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="48">
+      <Item class="ModuleScript" referent="49">
         <Properties>
           <string name="Name">PassService</string>
           <string name="Source"><![CDATA[-- Checks which game passes each player owns and marks them with "Pass_<key>" attributes.
@@ -12508,7 +12495,7 @@ return PassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="49">
+      <Item class="ModuleScript" referent="50">
         <Properties>
           <string name="Name">PlotService</string>
           <string name="Source"><![CDATA[-- Builds the town and gives every player a home: a big fenced yard with their house (see
@@ -12528,6 +12515,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local EggModel = require(ReplicatedStorage.Shared.EggModel)
+local FloatText = require(ReplicatedStorage.Shared.FloatText)
 local HouseModel = require(ReplicatedStorage.Shared.HouseModel)
 local ItemModel = require(ReplicatedStorage.Shared.ItemModel)
 local Items = require(ReplicatedStorage.Shared.Items)
@@ -12587,28 +12575,6 @@ local function part(props): Part
 		p[key] = value
 	end
 	return p
-end
-
-local function billboard(parent: Instance, size: UDim2, offset: Vector3, maxDistance: number): (BillboardGui, TextLabel)
-	local gui = Instance.new("BillboardGui")
-	gui.Size = size
-	gui.StudsOffset = offset
-	gui.MaxDistance = maxDistance
-	gui.LightInfluence = 0
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundTransparency = 1
-	label.TextScaled = true
-	label.Font = Enum.Font.FredokaOne
-	label.TextColor3 = Color3.new(1, 1, 1)
-	label.Parent = gui
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = OUTLINE
-	stroke.Thickness = 3
-	stroke.LineJoinMode = Enum.LineJoinMode.Round
-	stroke.Parent = label
-	gui.Parent = parent
-	return gui, label
 end
 
 -- Each home gets its own accent colour for its gate and sign.
@@ -12884,13 +12850,12 @@ local function buildNests(plot, folder: Instance)
 			Parent = model,
 		})
 		-- Narrower than the gap between nests, so neighbouring labels never overlap.
-		local gui, title = billboard(base, UDim2.fromScale(5, 2), Vector3.new(0, 5.8, 0), 32)
-		title.Size = UDim2.fromScale(1, 0.5)
-		title.Font = Enum.Font.LuckiestGuy
-		local timer = title:Clone()
-		timer.Position = UDim2.fromScale(0, 0.5)
-		timer.Font = Enum.Font.FredokaOne
-		timer.Parent = gui
+		local _, lines = FloatText.new(base, { { size = 20, heavy = true }, { size = 18 } }, {
+			offset = Vector3.new(0, 5.5, 0),
+			maxDistance = 32,
+			width = 160,
+		})
+		local title, timer = lines[1], lines[2]
 		local prompt = Instance.new("ProximityPrompt")
 		prompt.Name = "HatchPrompt"
 		prompt.ActionText = "Hatch"
@@ -13053,11 +13018,13 @@ local function setSpotLocked(spot, locked: boolean, unlockAt: number)
 	spot.base.Color = if locked then Color3.fromRGB(150, 150, 160) else spot.normalColor
 	local sign = spot.base:FindFirstChild("LockSign")
 	if locked and not sign then
-		local gui, label = billboard(spot.base, UDim2.fromScale(6, 1.6), Vector3.new(0, 2.5, 0), 30)
-		gui.Name = "LockSign"
-		label.Font = Enum.Font.LuckiestGuy
-		label.Text = "🔒 PLOT LV " .. unlockAt
-		label.TextColor3 = Color3.fromRGB(220, 220, 235)
+		local _, lines = FloatText.new(
+			spot.base,
+			{ { size = 16 } },
+			{ name = "LockSign", offset = Vector3.new(0, 2.5, 0), maxDistance = 30, width = 140 }
+		)
+		lines[1].Text = "🔒 Plot Lv " .. unlockAt
+		lines[1].TextColor3 = Color3.fromRGB(210, 210, 220)
 	elseif not locked and sign then
 		sign:Destroy()
 	end
@@ -13112,19 +13079,14 @@ local function updateNestLabels(plot)
 			state, egg = nestState(data, player, n)
 		end
 		nest.prompt.Enabled = false
-		if state == "unowned" then
+		if state == "unowned" or state == "empty" then
+			-- Nothing over an empty nest.
 			nest.title.Text = ""
 			nest.timer.Text = ""
 		elseif state == "locked" then
-			nest.title.Text = "🔒 LOCKED"
+			nest.title.Text = "🔒"
 			nest.title.TextColor3 = Color3.fromRGB(190, 190, 205)
-			nest.timer.Text = "Extra Nests"
-			nest.timer.TextColor3 = Color3.fromRGB(190, 190, 205)
-		elseif state == "empty" then
-			nest.title.Text = "EMPTY"
-			nest.title.TextColor3 = Color3.new(1, 1, 1)
-			nest.timer.Text = "Steal an egg!"
-			nest.timer.TextColor3 = Color3.fromRGB(255, 215, 60)
+			nest.timer.Text = ""
 		else
 			nest.title.Text = string.upper(egg.rarity)
 			nest.title.TextColor3 = Rarities.info[egg.rarity].color
@@ -13138,12 +13100,12 @@ local function updateNestLabels(plot)
 			end
 			local left = egg.endsAt - now
 			if left > 0 then
-				nest.timer.Text = "⚖ " .. Format.weight(weight) .. " · " .. Format.time(left)
+				nest.timer.Text = Format.time(left)
 				nest.timer.TextColor3 = Color3.new(1, 1, 1)
 			else
-				nest.timer.Text = "🐣 " .. Format.weight(weight) .. " READY!"
+				nest.timer.Text = "READY!"
 				nest.timer.TextColor3 = Color3.fromRGB(110, 235, 140)
-				nest.prompt.ObjectText = Items.itemEggName(egg.zone, egg.item)
+				nest.prompt.ObjectText = Items.itemEggName(egg.zone, egg.item) .. "  ·  " .. Format.weight(weight)
 				nest.prompt.Enabled = true
 			end
 		end
@@ -13448,7 +13410,7 @@ return PlotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="50">
+      <Item class="ModuleScript" referent="51">
         <Properties>
           <string name="Name">SeasonalService</string>
           <string name="Source"><![CDATA[-- Seasonal themes: while an event is running, the map dresses up for it (recoloured
@@ -13716,7 +13678,7 @@ return SeasonalService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="51">
+      <Item class="ModuleScript" referent="52">
         <Properties>
           <string name="Name">SpeedService</string>
           <string name="Source"><![CDATA[-- Speed: trained on your treadmill, it decides how fast you run (Items.walkSpeed), which
@@ -13799,7 +13761,7 @@ return SpeedService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="52">
+      <Item class="ModuleScript" referent="53">
         <Properties>
           <string name="Name">StealService</string>
           <string name="Source"><![CDATA[-- Carrying eggs home from the zones.
@@ -14075,7 +14037,7 @@ return StealService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="53">
+      <Item class="ModuleScript" referent="54">
         <Properties>
           <string name="Name">ZoneDecor</string>
           <string name="Source"><![CDATA[-- The scenery of each zone: its ground (each zone has its own colour, which is how you
@@ -14842,7 +14804,7 @@ return ZoneDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="54">
+      <Item class="ModuleScript" referent="55">
         <Properties>
           <string name="Name">ZoneService</string>
           <string name="Source"><![CDATA[-- The zones: eggs to steal, each zone guarded by a giant Freek.
@@ -14872,6 +14834,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Events = require(ReplicatedStorage.Shared.Events)
 local Format = require(ReplicatedStorage.Shared.Format)
 local EggModel = require(ReplicatedStorage.Shared.EggModel)
+local FloatText = require(ReplicatedStorage.Shared.FloatText)
 local GuardianAttacks = require(ReplicatedStorage.Shared.GuardianAttacks)
 local Items = require(ReplicatedStorage.Shared.Items)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
@@ -14911,8 +14874,6 @@ local MUTATION_FACTOR = 0.6
 -- Pedestals
 --------------------------------------------------------------------------------
 
-local OUTLINE = Color3.fromRGB(20, 22, 48)
-
 local function part(props): Part
 	local p = Instance.new("Part")
 	p.Anchored = true
@@ -14922,23 +14883,6 @@ local function part(props): Part
 		p[key] = value
 	end
 	return p
-end
-
-local function textLine(parent: Instance, font: Enum.Font, y: number, h: number)
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Position = UDim2.fromScale(0, y)
-	label.Size = UDim2.fromScale(1, h)
-	label.TextScaled = true
-	label.Font = font
-	label.TextColor3 = Color3.new(1, 1, 1)
-	label.Parent = parent
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = OUTLINE
-	stroke.Thickness = 3
-	stroke.LineJoinMode = Enum.LineJoinMode.Round
-	stroke.Parent = label
-	return label
 end
 
 -- An egg spot: where one egg lies on the ground (it moves to a new random place each time a
@@ -14966,23 +14910,14 @@ local function buildPedestal(parent: Instance, index: number, n: number)
 		CanQuery = false,
 		Parent = parent,
 	})
-	-- Floating text: rarity, what's inside, weight and hatch time.
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromScale(8, 3.2)
-	gui.StudsOffset = Vector3.new(0, 6, 0)
-	gui.MaxDistance = 26 -- only up close: the eggs speak for themselves from afar
-	gui.LightInfluence = 0
-	gui.AlwaysOnTop = false
-	gui.Parent = base
-	local rarity = textLine(gui, Enum.Font.LuckiestGuy, 0, 0.32)
-	local name = textLine(gui, Enum.Font.FredokaOne, 0.32, 0.36)
-	local income = textLine(gui, Enum.Font.FredokaOne, 0.68, 0.32)
-	income.TextColor3 = Color3.fromRGB(255, 215, 60)
+	-- Floating text, only up close: its rarity and what's inside (the weight and hatch time
+	-- are on the Grab prompt).
+	local gui, lines = FloatText.new(base, { { size = 20, heavy = true }, { size = 16 } }, { maxDistance = 26 })
 	return {
 		spot = base.CFrame,
 		base = base,
 		ring = ring,
-		labels = { rarity = rarity, name = name, income = income, gui = gui },
+		labels = { rarity = lines[1], name = lines[2], gui = gui },
 		record = nil,
 		model = nil,
 		respawnAt = 0,
@@ -15079,7 +15014,7 @@ local function showEgg(index: number, pedestal, record, keepSpot: boolean?, quie
 	model:PivotTo(pedestal.spot * CFrame.Angles(0, math.rad(180 + (rng:NextNumber() - 0.5) * 40), 0))
 	-- The ring fits round the egg and the floating text clears its top, however big it is.
 	pedestal.ring.Size = Vector3.new(0.12, 4.4 * scale + 1.6, 4.4 * scale + 1.6)
-	pedestal.labels.gui.StudsOffset = Vector3.new(0, 2.5 + height * scale, 0)
+	pedestal.labels.gui.StudsOffsetWorldSpace = Vector3.new(0, 1.5 + height * scale, 0)
 	local top = Mutations.top(record.mutations)
 	if top and model.PrimaryPart then
 		local sparkles = Instance.new("Sparkles")
@@ -15093,16 +15028,15 @@ local function showEgg(index: number, pedestal, record, keepSpot: boolean?, quie
 	pedestal.labels.rarity.TextColor3 = color
 	pedestal.labels.name.Text = kind.icon .. " " .. ZoneService.eggName(record)
 	pedestal.labels.name.TextColor3 = Items.weightColor(factor)
-	pedestal.labels.income.Text = "⚖ "
-		.. Format.weight(record.weight)
-		.. " · ⏱ "
-		.. Format.time(Items.HATCH_SECONDS[record.rarity])
 	pedestal.labels.gui.Enabled = true
 
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "GrabPrompt"
 	prompt.ActionText = "Grab"
-	prompt.ObjectText = record.rarity .. " " .. ZoneService.eggName(record)
+	prompt.ObjectText = "⚖ "
+		.. Format.weight(record.weight)
+		.. "  ·  ⏱ "
+		.. Format.time(Items.HATCH_SECONDS[record.rarity])
 	prompt.HoldDuration = Config.GRAB_HOLD_SECONDS
 	prompt.MaxActivationDistance = 10
 	prompt.RequiresLineOfSight = false
@@ -15180,21 +15114,16 @@ function ZoneService.dropLoose(record, position: Vector3, index: number, n: numb
 	Items.scaleModel(model, scale)
 	model:PivotTo(ground * CFrame.Angles(0, rng:NextNumber() * math.pi * 2, 0))
 	model.Parent = base
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromScale(8, 2)
-	gui.StudsOffset = Vector3.new(0, 2 + height * scale, 0)
-	gui.MaxDistance = 26
-	gui.LightInfluence = 0
-	gui.Parent = base
-	local name = textLine(gui, Enum.Font.FredokaOne, 0, 0.55)
-	name.Text = "🥚 " .. ZoneService.eggName(record)
-	local weight = textLine(gui, Enum.Font.FredokaOne, 0.55, 0.45)
-	weight.Text = "⚖ " .. Format.weight(record.weight or 1) .. " · DROPPED"
-	weight.TextColor3 = Color3.fromRGB(255, 215, 60)
+	local _, lines = FloatText.new(base, { { size = 16 } }, {
+		offset = Vector3.new(0, 1.5 + height * scale, 0),
+		maxDistance = 26,
+	})
+	lines[1].Text = ZoneService.eggName(record)
+	lines[1].TextColor3 = Rarities.info[record.rarity].color
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "GrabPrompt"
 	prompt.ActionText = "Grab"
-	prompt.ObjectText = record.rarity .. " " .. ZoneService.eggName(record)
+	prompt.ObjectText = "⚖ " .. Format.weight(record.weight or 1) .. "  ·  dropped"
 	prompt.HoldDuration = Config.GRAB_HOLD_SECONDS
 	prompt.MaxActivationDistance = 10
 	prompt.RequiresLineOfSight = false
@@ -15724,19 +15653,19 @@ return ZoneService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="55">
+  <Item class="StarterPlayer" referent="56">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="56">
+    <Item class="StarterPlayerScripts" referent="57">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="57">
+      <Item class="Folder" referent="58">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="58">
+        <Item class="ModuleScript" referent="59">
           <Properties>
             <string name="Name">Ambient</string>
             <string name="Source"><![CDATA[-- Flies event creatures (ghosts and bats placed by the server's seasonal themes) along their
@@ -15810,7 +15739,7 @@ return Ambient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="59">
+        <Item class="ModuleScript" referent="60">
           <Properties>
             <string name="Name">DayNightFX</string>
             <string name="Source"><![CDATA[-- Night falls on this client's screen (DayNight.luau): the sun sets, the sky turns to
@@ -15853,7 +15782,7 @@ return DayNightFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="60">
+        <Item class="ModuleScript" referent="61">
           <Properties>
             <string name="Name">EventFX</string>
             <string name="Source"><![CDATA[-- What big events and weather look like (see Events.luau), on each player's own screen:
@@ -15945,7 +15874,7 @@ return EventFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="61">
+        <Item class="ModuleScript" referent="62">
           <Properties>
             <string name="Name">GuardianAttackFX</string>
             <string name="Source"><![CDATA[-- Draws the guardians' attacks (GuardianAttacks.luau) on this client, from the server's
@@ -16218,7 +16147,7 @@ return GuardianAttackFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="62">
+        <Item class="ModuleScript" referent="63">
           <Properties>
             <string name="Name">GuardianFX</string>
             <string name="Source"><![CDATA[-- The zone guardians, drawn on this client: a giant Freek per zone that walks after its
@@ -16233,6 +16162,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local FloatText = require(ReplicatedStorage.Shared.FloatText)
 local FreekAnimator = require(ReplicatedStorage.Shared.FreekAnimator)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local Items = require(ReplicatedStorage.Shared.Items)
@@ -16241,7 +16171,6 @@ local Lego = require(ReplicatedStorage.Shared.Lego)
 local GuardianFX = {}
 
 local SCALE = 3.4
-local OUTLINE = Color3.fromRGB(20, 22, 48)
 
 -- Builds a Freek scaled up round its pivot.
 local function giant(species: string): (Model, number)
@@ -16259,26 +16188,13 @@ local function giant(species: string): (Model, number)
 end
 
 local function nameTag(parent: BasePart, title: string, height: number)
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromScale(12, 2.4)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, height - (parent.Position.Y - 0) + 2, 0)
-	gui.MaxDistance = 90
-	gui.LightInfluence = 0
-	gui.Parent = parent
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Size = UDim2.fromScale(1, 1)
-	label.TextScaled = true
-	label.Font = Enum.Font.LuckiestGuy
-	label.Text = string.upper(title)
-	label.TextColor3 = Color3.new(1, 1, 1)
-	label.Parent = gui
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = OUTLINE
-	stroke.Thickness = 3
-	stroke.LineJoinMode = Enum.LineJoinMode.Round
-	stroke.Parent = label
-	return label
+	local _, lines = FloatText.new(parent, { { size = 24, heavy = true } }, {
+		offset = Vector3.new(0, height - parent.Position.Y + 2, 0),
+		maxDistance = 70,
+		width = 260,
+	})
+	lines[1].Text = string.upper(title)
+	return lines[1]
 end
 
 local guardians = {} -- [Configuration] = { model, rig, position, yaw, label }
@@ -16383,7 +16299,7 @@ return GuardianFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="63">
+        <Item class="ModuleScript" referent="64">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[-- The always-on screen pieces, laid out like the owner's reference (a top simulator's
@@ -16952,7 +16868,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="64">
+        <Item class="ModuleScript" referent="65">
           <Properties>
             <string name="Name">ItemPictures</string>
             <string name="Source"><![CDATA[-- 3D pictures for shop items (the treadmill, game passes), items, eggs and the side menu,
@@ -17651,7 +17567,7 @@ return ItemPictures
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="65">
+        <Item class="ModuleScript" referent="66">
           <Properties>
             <string name="Name">LuckyWheel</string>
             <string name="Source"><![CDATA[-- The Lucky Wheel, drawn like the prize wheels in the big simulators: bright pie slices
@@ -17947,7 +17863,7 @@ return LuckyWheel
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="66">
+        <Item class="LocalScript" referent="67">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- The player's client: the screen UI (HUD, side menu and windows, built from UI.luau and
@@ -19540,6 +19456,14 @@ player:GetAttributeChangedSignal("Plot"):Connect(function()
 	end
 end)
 
+-- The Mystery Boxes on the stand: holding E on one opens the Luck window, where its odds
+-- are shown before buying.
+game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt)
+	if prompt.Name == "EggPrompt" and currentWindow ~= "Luck" then
+		openWindow("Luck")
+	end
+end)
+
 -- Getting hit: pushed away and knocked over for a moment.
 Remotes.get("Knockback").OnClientEvent:Connect(function(direction: Vector3, strength: number, seconds: number)
 	local character = player.Character
@@ -19607,7 +19531,7 @@ clientReady = true
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="67">
+        <Item class="ModuleScript" referent="68">
           <Properties>
             <string name="Name">PackReveal</string>
             <string name="Source"><![CDATA[-- Hatching an egg (or opening a Mystery Box), done like a card-pack reveal in the big
@@ -20985,7 +20909,7 @@ return PackReveal
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="68">
+        <Item class="ModuleScript" referent="69">
           <Properties>
             <string name="Name">PetFX</string>
             <string name="Source"><![CDATA[-- Pets roaming their owner's front lawn, drawn on this client. The server lists each
@@ -20999,6 +20923,7 @@ local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Format = require(ReplicatedStorage.Shared.Format)
+local FloatText = require(ReplicatedStorage.Shared.FloatText)
 local FreekAnimator = require(ReplicatedStorage.Shared.FreekAnimator)
 local ItemModel = require(ReplicatedStorage.Shared.ItemModel)
 local Items = require(ReplicatedStorage.Shared.Items)
@@ -21009,35 +20934,21 @@ local PetFX = {}
 local SCALE = 1.5
 local WALK_SPEED = 6
 local GROUND_Y = 0.4 -- the lawn's top
-local OUTLINE = Color3.fromRGB(20, 22, 48)
 
 local rng = Random.new()
 local homes = {} -- [plot Model] = { key, pets = { { model, rig, position, goal, yaw, restUntil } } }
 
 local function nameTag(model: Model, text: string, color: Color3, height: number)
 	local anchor = model.PrimaryPart
-	if not anchor then
-		return
+	if anchor then
+		local _, lines = FloatText.new(anchor, { { size = 16 } }, {
+			offset = Vector3.new(0, height + 1, 0),
+			maxDistance = 24,
+			width = 160,
+		})
+		lines[1].Text = text
+		lines[1].TextColor3 = color
 	end
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromScale(5, 1.1)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, height + 1.2, 0)
-	gui.MaxDistance = 24
-	gui.LightInfluence = 0
-	gui.Parent = anchor
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Size = UDim2.fromScale(1, 1)
-	label.TextScaled = true
-	label.Font = Enum.Font.FredokaOne
-	label.Text = text
-	label.TextColor3 = color
-	label.Parent = gui
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = OUTLINE
-	stroke.Thickness = 2.5
-	stroke.LineJoinMode = Enum.LineJoinMode.Round
-	stroke.Parent = label
 end
 
 -- A Freek, scaled up round its feet (more for heavier pets).
@@ -21179,7 +21090,7 @@ return PetFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="69">
+        <Item class="ModuleScript" referent="70">
           <Properties>
             <string name="Name">TreadmillRun</string>
             <string name="Source"><![CDATA[-- Running on your treadmill by yourself: while you stand on your own treadmill's belt and
@@ -21245,7 +21156,7 @@ return TreadmillRun
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="70">
+        <Item class="ModuleScript" referent="71">
           <Properties>
             <string name="Name">UI</string>
             <string name="Source"><![CDATA[-- The building blocks of the screen UI, in one style (the owner's references: a top

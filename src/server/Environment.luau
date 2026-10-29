@@ -5,6 +5,7 @@ local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
+local FloatText = require(ReplicatedStorage.Shared.FloatText)
 local Lego = require(ReplicatedStorage.Shared.Lego)
 local ZoneLayout = require(ReplicatedStorage.Shared.ZoneLayout)
 
@@ -94,33 +95,9 @@ local function setupTerrain()
 	end)
 end
 
-local OUTLINE = Color3.fromRGB(20, 22, 48)
-
 local STREET_EAST = 232
 local STREET_WEST = ZoneLayout.START_X
 local TOWN_HALF = 134 -- how far north and south the town goes (past the back of the homes)
-
-local function outlinedBillboard(parent: Instance, text: string, color: Color3, size: UDim2, maxDistance: number)
-	local gui = Instance.new("BillboardGui")
-	gui.Size = size
-	gui.MaxDistance = maxDistance
-	gui.LightInfluence = 0
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Size = UDim2.fromScale(1, 1)
-	label.TextScaled = true
-	label.Font = Enum.Font.LuckiestGuy
-	label.Text = text
-	label.TextColor3 = color
-	label.Parent = gui
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = OUTLINE
-	stroke.Thickness = 5
-	stroke.LineJoinMode = Enum.LineJoinMode.Round
-	stroke.Parent = label
-	gui.Parent = parent
-	return label
-end
 
 local function buildScenery()
 	local folder = Instance.new("Folder")
@@ -212,7 +189,9 @@ local function buildScenery()
 		CanCollide = false,
 		Parent = folder,
 	})
-	outlinedBillboard(title, "STEAL A LIFE", Color3.fromRGB(255, 225, 80), UDim2.fromScale(44, 9), 500)
+	local _, lines = FloatText.new(title, { { size = 64, heavy = true } }, { maxDistance = 500, width = 700 })
+	lines[1].Text = "STEAL A LIFE"
+	lines[1].TextColor3 = Color3.fromRGB(255, 225, 80)
 
 	-- Edges of the map: hedges along the back of the homes, invisible walls all round the
 	-- town (the zones have their own cliffs).

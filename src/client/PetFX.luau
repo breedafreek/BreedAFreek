@@ -9,6 +9,7 @@ local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Format = require(ReplicatedStorage.Shared.Format)
+local FloatText = require(ReplicatedStorage.Shared.FloatText)
 local FreekAnimator = require(ReplicatedStorage.Shared.FreekAnimator)
 local ItemModel = require(ReplicatedStorage.Shared.ItemModel)
 local Items = require(ReplicatedStorage.Shared.Items)
@@ -19,35 +20,21 @@ local PetFX = {}
 local SCALE = 1.5
 local WALK_SPEED = 6
 local GROUND_Y = 0.4 -- the lawn's top
-local OUTLINE = Color3.fromRGB(20, 22, 48)
 
 local rng = Random.new()
 local homes = {} -- [plot Model] = { key, pets = { { model, rig, position, goal, yaw, restUntil } } }
 
 local function nameTag(model: Model, text: string, color: Color3, height: number)
 	local anchor = model.PrimaryPart
-	if not anchor then
-		return
+	if anchor then
+		local _, lines = FloatText.new(anchor, { { size = 16 } }, {
+			offset = Vector3.new(0, height + 1, 0),
+			maxDistance = 24,
+			width = 160,
+		})
+		lines[1].Text = text
+		lines[1].TextColor3 = color
 	end
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromScale(5, 1.1)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, height + 1.2, 0)
-	gui.MaxDistance = 24
-	gui.LightInfluence = 0
-	gui.Parent = anchor
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Size = UDim2.fromScale(1, 1)
-	label.TextScaled = true
-	label.Font = Enum.Font.FredokaOne
-	label.Text = text
-	label.TextColor3 = color
-	label.Parent = gui
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = OUTLINE
-	stroke.Thickness = 2.5
-	stroke.LineJoinMode = Enum.LineJoinMode.Round
-	stroke.Parent = label
 end
 
 -- A Freek, scaled up round its feet (more for heavier pets).

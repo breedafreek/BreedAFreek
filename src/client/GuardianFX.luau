@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local FloatText = require(ReplicatedStorage.Shared.FloatText)
 local FreekAnimator = require(ReplicatedStorage.Shared.FreekAnimator)
 local FreekModel = require(ReplicatedStorage.Shared.FreekModel)
 local Items = require(ReplicatedStorage.Shared.Items)
@@ -18,7 +19,6 @@ local Lego = require(ReplicatedStorage.Shared.Lego)
 local GuardianFX = {}
 
 local SCALE = 3.4
-local OUTLINE = Color3.fromRGB(20, 22, 48)
 
 -- Builds a Freek scaled up round its pivot.
 local function giant(species: string): (Model, number)
@@ -36,26 +36,13 @@ local function giant(species: string): (Model, number)
 end
 
 local function nameTag(parent: BasePart, title: string, height: number)
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromScale(12, 2.4)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, height - (parent.Position.Y - 0) + 2, 0)
-	gui.MaxDistance = 90
-	gui.LightInfluence = 0
-	gui.Parent = parent
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Size = UDim2.fromScale(1, 1)
-	label.TextScaled = true
-	label.Font = Enum.Font.LuckiestGuy
-	label.Text = string.upper(title)
-	label.TextColor3 = Color3.new(1, 1, 1)
-	label.Parent = gui
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = OUTLINE
-	stroke.Thickness = 3
-	stroke.LineJoinMode = Enum.LineJoinMode.Round
-	stroke.Parent = label
-	return label
+	local _, lines = FloatText.new(parent, { { size = 24, heavy = true } }, {
+		offset = Vector3.new(0, height - parent.Position.Y + 2, 0),
+		maxDistance = 70,
+		width = 260,
+	})
+	lines[1].Text = string.upper(title)
+	return lines[1]
 end
 
 local guardians = {} -- [Configuration] = { model, rig, position, yaw, label }

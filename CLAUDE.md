@@ -75,8 +75,13 @@ render each screen for the owner before calling it done.**
   since the colour change is what separates them) with the eggs on it, and the zone's
   theme only along its walls (wall colours and a row of themed props against each wall).
   No arches or signs between zones. Keep the middle open.
-- Floating text (eggs, plots, signs): Fredoka One (or Luckiest Guy for big signs)
-  with a thick dark `UIStroke`. Eggs on pedestals show rarity, name, kind and hatch time.
+- Floating text: always `FloatText.new` (`src/shared/FloatText.luau`): one or two short
+  lines at a fixed size on screen (it doesn't grow as you walk up), Luckiest Guy for the
+  top line and Fredoka One under it, white or a bright colour with a thin black outline,
+  no backgrounds, and a short `maxDistance`. Zone eggs show rarity and name (weight and
+  hatch time are on the Grab prompt); nests show rarity and time left (nothing when
+  empty); pets and guardians one name line; the box stand shows name and price (holding
+  E opens the Luck window with the odds).
 - Models are built from simple parts (balls, blocks, cylinders, wedges) with bold, flat,
   saturated colours and chunky proportions. Neon for glowing bits.
 - Items are built by `src/shared/ItemModel.luau` (house parts by `HouseModel.luau`, pets by

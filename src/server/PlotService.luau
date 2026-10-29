@@ -15,6 +15,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Format = require(ReplicatedStorage.Shared.Format)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local EggModel = require(ReplicatedStorage.Shared.EggModel)
+local FloatText = require(ReplicatedStorage.Shared.FloatText)
 local HouseModel = require(ReplicatedStorage.Shared.HouseModel)
 local ItemModel = require(ReplicatedStorage.Shared.ItemModel)
 local Items = require(ReplicatedStorage.Shared.Items)
@@ -74,28 +75,6 @@ local function part(props): Part
 		p[key] = value
 	end
 	return p
-end
-
-local function billboard(parent: Instance, size: UDim2, offset: Vector3, maxDistance: number): (BillboardGui, TextLabel)
-	local gui = Instance.new("BillboardGui")
-	gui.Size = size
-	gui.StudsOffset = offset
-	gui.MaxDistance = maxDistance
-	gui.LightInfluence = 0
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundTransparency = 1
-	label.TextScaled = true
-	label.Font = Enum.Font.FredokaOne
-	label.TextColor3 = Color3.new(1, 1, 1)
-	label.Parent = gui
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = OUTLINE
-	stroke.Thickness = 3
-	stroke.LineJoinMode = Enum.LineJoinMode.Round
-	stroke.Parent = label
-	gui.Parent = parent
-	return gui, label
 end
 
 -- Each home gets its own accent colour for its gate and sign.
@@ -371,13 +350,12 @@ local function buildNests(plot, folder: Instance)
 			Parent = model,
 		})
 		-- Narrower than the gap between nests, so neighbouring labels never overlap.
-		local gui, title = billboard(base, UDim2.fromScale(5, 2), Vector3.new(0, 5.8, 0), 32)
-		title.Size = UDim2.fromScale(1, 0.5)
-		title.Font = Enum.Font.LuckiestGuy
-		local timer = title:Clone()
-		timer.Position = UDim2.fromScale(0, 0.5)
-		timer.Font = Enum.Font.FredokaOne
-		timer.Parent = gui
+		local _, lines = FloatText.new(base, { { size = 20, heavy = true }, { size = 18 } }, {
+			offset = Vector3.new(0, 5.5, 0),
+			maxDistance = 32,
+			width = 160,
+		})
+		local title, timer = lines[1], lines[2]
 		local prompt = Instance.new("ProximityPrompt")
 		prompt.Name = "HatchPrompt"
 		prompt.ActionText = "Hatch"
@@ -540,11 +518,13 @@ local function setSpotLocked(spot, locked: boolean, unlockAt: number)
 	spot.base.Color = if locked then Color3.fromRGB(150, 150, 160) else spot.normalColor
 	local sign = spot.base:FindFirstChild("LockSign")
 	if locked and not sign then
-		local gui, label = billboard(spot.base, UDim2.fromScale(6, 1.6), Vector3.new(0, 2.5, 0), 30)
-		gui.Name = "LockSign"
-		label.Font = Enum.Font.LuckiestGuy
-		label.Text = "🔒 PLOT LV " .. unlockAt
-		label.TextColor3 = Color3.fromRGB(220, 220, 235)
+		local _, lines = FloatText.new(
+			spot.base,
+			{ { size = 16 } },
+			{ name = "LockSign", offset = Vector3.new(0, 2.5, 0), maxDistance = 30, width = 140 }
+		)
+		lines[1].Text = "🔒 Plot Lv " .. unlockAt
+		lines[1].TextColor3 = Color3.fromRGB(210, 210, 220)
 	elseif not locked and sign then
 		sign:Destroy()
 	end
@@ -599,19 +579,14 @@ local function updateNestLabels(plot)
 			state, egg = nestState(data, player, n)
 		end
 		nest.prompt.Enabled = false
-		if state == "unowned" then
+		if state == "unowned" or state == "empty" then
+			-- Nothing over an empty nest.
 			nest.title.Text = ""
 			nest.timer.Text = ""
 		elseif state == "locked" then
-			nest.title.Text = "🔒 LOCKED"
+			nest.title.Text = "🔒"
 			nest.title.TextColor3 = Color3.fromRGB(190, 190, 205)
-			nest.timer.Text = "Extra Nests"
-			nest.timer.TextColor3 = Color3.fromRGB(190, 190, 205)
-		elseif state == "empty" then
-			nest.title.Text = "EMPTY"
-			nest.title.TextColor3 = Color3.new(1, 1, 1)
-			nest.timer.Text = "Steal an egg!"
-			nest.timer.TextColor3 = Color3.fromRGB(255, 215, 60)
+			nest.timer.Text = ""
 		else
 			nest.title.Text = string.upper(egg.rarity)
 			nest.title.TextColor3 = Rarities.info[egg.rarity].color
@@ -625,12 +600,12 @@ local function updateNestLabels(plot)
 			end
 			local left = egg.endsAt - now
 			if left > 0 then
-				nest.timer.Text = "⚖ " .. Format.weight(weight) .. " · " .. Format.time(left)
+				nest.timer.Text = Format.time(left)
 				nest.timer.TextColor3 = Color3.new(1, 1, 1)
 			else
-				nest.timer.Text = "🐣 " .. Format.weight(weight) .. " READY!"
+				nest.timer.Text = "READY!"
 				nest.timer.TextColor3 = Color3.fromRGB(110, 235, 140)
-				nest.prompt.ObjectText = Items.itemEggName(egg.zone, egg.item)
+				nest.prompt.ObjectText = Items.itemEggName(egg.zone, egg.item) .. "  ·  " .. Format.weight(weight)
 				nest.prompt.Enabled = true
 			end
 		end

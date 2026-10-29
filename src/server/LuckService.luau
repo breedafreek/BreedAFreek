@@ -9,19 +9,18 @@
 local CollectionService = game:GetService("CollectionService")
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
-local ProximityPromptService = game:GetService("ProximityPromptService")
 local PolicyService = game:GetService("PolicyService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local BoxModel = require(ReplicatedStorage.Shared.BoxModel)
+local FloatText = require(ReplicatedStorage.Shared.FloatText)
 local GamePasses = require(ReplicatedStorage.Shared.GamePasses)
 local Items = require(ReplicatedStorage.Shared.Items)
 local LifeUtil = require(ReplicatedStorage.Shared.LifeUtil)
 local Luck = require(ReplicatedStorage.Shared.Luck)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
-local Rarities = require(ReplicatedStorage.Shared.Rarities)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local ActionService = require(script.Parent.ActionService)
@@ -336,28 +335,9 @@ local function checkPolicy(player: Player)
 end
 
 -- The Mystery Box stand by the spawn: the three boxes on glowing pedestals, each with its
--- odds floating above it (like the egg stands in pet games). Hold E to open one.
+-- name and price floating above it. Hold E on one to see its odds and buy it in the Luck
+-- window (the client opens it), so the odds are always shown before buying.
 local STAND_X = 190
-local OUTLINE = Color3.fromRGB(20, 22, 48)
-
-local function outlinedLabel(parent: Instance, text: string, color: Color3, top: number, height: number, font)
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Position = UDim2.fromScale(0, top)
-	label.Size = UDim2.fromScale(1, height)
-	label.TextScaled = true
-	label.Font = font
-	label.Text = text
-	label.TextColor3 = color
-	label.Parent = parent
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = OUTLINE
-	stroke.Thickness = 2.5
-	stroke.LineJoinMode = Enum.LineJoinMode.Round
-	stroke.Parent = label
-	return label
-end
-
 local function buildBoxStand()
 	local folder = Instance.new("Folder")
 	folder.Name = "BoxStand"
@@ -389,41 +369,19 @@ local function buildBoxStand()
 		CollectionService:AddTag(egg, "DisplayEgg")
 		egg.Parent = folder
 
-		-- The odds float above the egg.
-		local odds = Luck.oddsList(crate)
-		local gui = Instance.new("BillboardGui")
-		gui.Size = UDim2.fromOffset(230, 46 + #odds * 20)
-		gui.StudsOffsetWorldSpace = Vector3.new(0, height + 3.2, 0)
-		gui.MaxDistance = 36
-		gui.LightInfluence = 0
-		local total = 46 + #odds * 20
-		outlinedLabel(gui, string.upper(crate.name), crate.color, 0, 26 / total, Enum.Font.LuckiestGuy)
-		outlinedLabel(
-			gui,
-			"R$ " .. crate.robux,
-			Color3.fromRGB(110, 240, 120),
-			26 / total,
-			20 / total,
-			Enum.Font.LuckiestGuy
-		)
-		for k, entry in odds do
-			local percent = if entry.percent < 1
-				then string.format("%.1f", entry.percent)
-				else string.format("%.0f", entry.percent)
-			outlinedLabel(
-				gui,
-				entry.rarity .. " item  " .. percent .. "%",
-				Rarities.info[entry.rarity].color,
-				(46 + (k - 1) * 20) / total,
-				19 / total,
-				Enum.Font.FredokaOne
-			)
-		end
-		gui.Parent = egg.PrimaryPart
+		-- Its name and price float above it.
+		local _, lines = FloatText.new(egg.PrimaryPart, { { size = 22, heavy = true }, { size = 18, heavy = true } }, {
+			offset = Vector3.new(0, height + 2.5, 0),
+			maxDistance = 40,
+		})
+		lines[1].Text = string.upper(crate.name)
+		lines[1].TextColor3 = crate.color
+		lines[2].Text = "R$ " .. crate.robux
+		lines[2].TextColor3 = Color3.fromRGB(110, 240, 70)
 
 		local prompt = Instance.new("ProximityPrompt")
 		prompt.Name = "EggPrompt"
-		prompt.ActionText = "Open (R$ " .. crate.robux .. ")"
+		prompt.ActionText = "See odds"
 		prompt.ObjectText = crate.name
 		prompt.HoldDuration = 0.3
 		prompt.MaxActivationDistance = 10
@@ -441,26 +399,13 @@ local function buildBoxStand()
 	signPart.Size = Vector3.one
 	signPart.CFrame = CFrame.new(STAND_X, 17, 0)
 	signPart.Parent = folder
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromScale(26, 5)
-	gui.MaxDistance = 300
-	gui.LightInfluence = 0
-	local label =
-		outlinedLabel(gui, "📦 MYSTERY BOXES 📦", Color3.fromRGB(255, 160, 40), 0, 1, Enum.Font.LuckiestGuy)
-	label:FindFirstChildOfClass("UIStroke").Thickness = 4
-	gui.Parent = signPart
+	local _, lines = FloatText.new(signPart, { { size = 40, heavy = true } }, { maxDistance = 160, width = 520 })
+	lines[1].Text = "MYSTERY BOXES"
+	lines[1].TextColor3 = Color3.fromRGB(255, 170, 40)
 end
 
 function LuckService.init()
 	buildBoxStand()
-	ProximityPromptService.PromptTriggered:Connect(function(prompt, player)
-		local eggId = prompt.Name == "EggPrompt" and prompt:GetAttribute("EggId")
-		local data = DataService.get(player)
-		if eggId and data then
-			buyCrate(player, data, eggId)
-			DataService.changed(player)
-		end
-	end)
 	ActionService.register("BuyCrate", buyCrate)
 	ActionService.register("OpenCrate", openOwnedCrate)
 	ActionService.register("SpinWheel", spin)

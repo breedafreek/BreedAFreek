@@ -1588,6 +1588,14 @@ player:GetAttributeChangedSignal("Plot"):Connect(function()
 	end
 end)
 
+-- The Mystery Boxes on the stand: holding E on one opens the Luck window, where its odds
+-- are shown before buying.
+game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt)
+	if prompt.Name == "EggPrompt" and currentWindow ~= "Luck" then
+		openWindow("Luck")
+	end
+end)
+
 -- Getting hit: pushed away and knocked over for a moment.
 Remotes.get("Knockback").OnClientEvent:Connect(function(direction: Vector3, strength: number, seconds: number)
 	local character = player.Character

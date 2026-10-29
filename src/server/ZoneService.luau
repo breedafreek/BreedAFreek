@@ -25,6 +25,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Events = require(ReplicatedStorage.Shared.Events)
 local Format = require(ReplicatedStorage.Shared.Format)
 local EggModel = require(ReplicatedStorage.Shared.EggModel)
+local FloatText = require(ReplicatedStorage.Shared.FloatText)
 local GuardianAttacks = require(ReplicatedStorage.Shared.GuardianAttacks)
 local Items = require(ReplicatedStorage.Shared.Items)
 local Mutations = require(ReplicatedStorage.Shared.Mutations)
@@ -64,8 +65,6 @@ local MUTATION_FACTOR = 0.6
 -- Pedestals
 --------------------------------------------------------------------------------
 
-local OUTLINE = Color3.fromRGB(20, 22, 48)
-
 local function part(props): Part
 	local p = Instance.new("Part")
 	p.Anchored = true
@@ -75,23 +74,6 @@ local function part(props): Part
 		p[key] = value
 	end
 	return p
-end
-
-local function textLine(parent: Instance, font: Enum.Font, y: number, h: number)
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Position = UDim2.fromScale(0, y)
-	label.Size = UDim2.fromScale(1, h)
-	label.TextScaled = true
-	label.Font = font
-	label.TextColor3 = Color3.new(1, 1, 1)
-	label.Parent = parent
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = OUTLINE
-	stroke.Thickness = 3
-	stroke.LineJoinMode = Enum.LineJoinMode.Round
-	stroke.Parent = label
-	return label
 end
 
 -- An egg spot: where one egg lies on the ground (it moves to a new random place each time a
@@ -119,23 +101,14 @@ local function buildPedestal(parent: Instance, index: number, n: number)
 		CanQuery = false,
 		Parent = parent,
 	})
-	-- Floating text: rarity, what's inside, weight and hatch time.
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromScale(8, 3.2)
-	gui.StudsOffset = Vector3.new(0, 6, 0)
-	gui.MaxDistance = 26 -- only up close: the eggs speak for themselves from afar
-	gui.LightInfluence = 0
-	gui.AlwaysOnTop = false
-	gui.Parent = base
-	local rarity = textLine(gui, Enum.Font.LuckiestGuy, 0, 0.32)
-	local name = textLine(gui, Enum.Font.FredokaOne, 0.32, 0.36)
-	local income = textLine(gui, Enum.Font.FredokaOne, 0.68, 0.32)
-	income.TextColor3 = Color3.fromRGB(255, 215, 60)
+	-- Floating text, only up close: its rarity and what's inside (the weight and hatch time
+	-- are on the Grab prompt).
+	local gui, lines = FloatText.new(base, { { size = 20, heavy = true }, { size = 16 } }, { maxDistance = 26 })
 	return {
 		spot = base.CFrame,
 		base = base,
 		ring = ring,
-		labels = { rarity = rarity, name = name, income = income, gui = gui },
+		labels = { rarity = lines[1], name = lines[2], gui = gui },
 		record = nil,
 		model = nil,
 		respawnAt = 0,
@@ -232,7 +205,7 @@ local function showEgg(index: number, pedestal, record, keepSpot: boolean?, quie
 	model:PivotTo(pedestal.spot * CFrame.Angles(0, math.rad(180 + (rng:NextNumber() - 0.5) * 40), 0))
 	-- The ring fits round the egg and the floating text clears its top, however big it is.
 	pedestal.ring.Size = Vector3.new(0.12, 4.4 * scale + 1.6, 4.4 * scale + 1.6)
-	pedestal.labels.gui.StudsOffset = Vector3.new(0, 2.5 + height * scale, 0)
+	pedestal.labels.gui.StudsOffsetWorldSpace = Vector3.new(0, 1.5 + height * scale, 0)
 	local top = Mutations.top(record.mutations)
 	if top and model.PrimaryPart then
 		local sparkles = Instance.new("Sparkles")
@@ -246,16 +219,15 @@ local function showEgg(index: number, pedestal, record, keepSpot: boolean?, quie
 	pedestal.labels.rarity.TextColor3 = color
 	pedestal.labels.name.Text = kind.icon .. " " .. ZoneService.eggName(record)
 	pedestal.labels.name.TextColor3 = Items.weightColor(factor)
-	pedestal.labels.income.Text = "⚖ "
-		.. Format.weight(record.weight)
-		.. " · ⏱ "
-		.. Format.time(Items.HATCH_SECONDS[record.rarity])
 	pedestal.labels.gui.Enabled = true
 
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "GrabPrompt"
 	prompt.ActionText = "Grab"
-	prompt.ObjectText = record.rarity .. " " .. ZoneService.eggName(record)
+	prompt.ObjectText = "⚖ "
+		.. Format.weight(record.weight)
+		.. "  ·  ⏱ "
+		.. Format.time(Items.HATCH_SECONDS[record.rarity])
 	prompt.HoldDuration = Config.GRAB_HOLD_SECONDS
 	prompt.MaxActivationDistance = 10
 	prompt.RequiresLineOfSight = false
@@ -333,21 +305,16 @@ function ZoneService.dropLoose(record, position: Vector3, index: number, n: numb
 	Items.scaleModel(model, scale)
 	model:PivotTo(ground * CFrame.Angles(0, rng:NextNumber() * math.pi * 2, 0))
 	model.Parent = base
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromScale(8, 2)
-	gui.StudsOffset = Vector3.new(0, 2 + height * scale, 0)
-	gui.MaxDistance = 26
-	gui.LightInfluence = 0
-	gui.Parent = base
-	local name = textLine(gui, Enum.Font.FredokaOne, 0, 0.55)
-	name.Text = "🥚 " .. ZoneService.eggName(record)
-	local weight = textLine(gui, Enum.Font.FredokaOne, 0.55, 0.45)
-	weight.Text = "⚖ " .. Format.weight(record.weight or 1) .. " · DROPPED"
-	weight.TextColor3 = Color3.fromRGB(255, 215, 60)
+	local _, lines = FloatText.new(base, { { size = 16 } }, {
+		offset = Vector3.new(0, 1.5 + height * scale, 0),
+		maxDistance = 26,
+	})
+	lines[1].Text = ZoneService.eggName(record)
+	lines[1].TextColor3 = Rarities.info[record.rarity].color
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "GrabPrompt"
 	prompt.ActionText = "Grab"
-	prompt.ObjectText = record.rarity .. " " .. ZoneService.eggName(record)
+	prompt.ObjectText = "⚖ " .. Format.weight(record.weight or 1) .. "  ·  dropped"
 	prompt.HoldDuration = Config.GRAB_HOLD_SECONDS
 	prompt.MaxActivationDistance = 10
 	prompt.RequiresLineOfSight = false
