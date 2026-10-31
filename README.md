@@ -123,6 +123,8 @@ rojo build -o StealALife.rbxlx    # or build a place file
     fancier style (Basic, Log Cabin, Stone, Ice, Candy, Royal, Crystal, Rainbow; built by
     `HouseModel.luau` from `Parts.STYLES`), gains pieces (Porch, Chimney, Garden and Tower at
     levels 2 to 5) and makes everything at home earn 15% more (`Config.houseBonus`).
+    You can walk inside through the open front door: a furnished room (sofa and TV, then a
+    fridge, a bed, a piano, a gaming setup, a vanity and a hot tub as the level goes up).
   - Every House and Plot upgrade plays a build animation for everyone nearby: the new
     house, or the fence and yard, drops in piece by piece and finishes with a flash and a
     shockwave (`src/shared/BuildAnim.luau`, `src/client/BuildFX.luau`).

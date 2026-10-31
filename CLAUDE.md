@@ -104,6 +104,11 @@ render each screen for the owner before calling it done.**
   (`Config.HOUSE_STYLES`, `Config.houseBonus`), built by `src/shared/HouseModel.luau` from a
   style's look (`LOOKS`: colours, materials, roof shape and signature details like candy
   stripes, icicles or lava cracks; styles in `Parts.STYLES`).
+- Houses have an inside: the full-size walls are a hollow shell with a walk-in doorway (the
+  door hangs open) and a ceiling, and `HouseModel.interior(style, level)` furnishes it
+  (plank floor, striped wallpaper, inside windows, pictures, a ceiling light and Dream Home
+  furniture that gets fancier with the House level; PlotService builds it as the house's
+  "Interior" model).
 - Guardians are giant versions of each zone's creature (`Items.ZONES[i].guardian`, a species
   in `Freeks.luau`; the Garden's is a gnome that only guards), drawn by `FreekModel.luau` and
   animated by `FreekAnimator.luau`; each has its attack in `GuardianAttacks.bySpecies`.

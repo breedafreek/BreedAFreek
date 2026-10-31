@@ -334,7 +334,39 @@ function builders.Walls(model, cf: CFrame, look, size)
 		look.trim:Lerp(rgb(0, 0, 0), 0.25),
 		trimMat
 	)
-	local body = solid(model, Vector3.new(w, h, d), cf * CFrame.new(0, base + h / 2, d / 2), look.wall, look.wallMat)
+	local body
+	local gap = size.doorway -- a full-size house is hollow, with a walk-in doorway this wide
+	if gap then
+		-- An invisible box where the walls are (the glow strips follow it), and the real
+		-- walls: a shell you can walk into through the doorway, with a ceiling.
+		body = block(model, Vector3.new(w, h, d), cf * CFrame.new(0, base + h / 2, d / 2), look.wall, look.wallMat)
+		body.Transparency = 1
+		local T = 1 -- wall thickness
+		local doorH = size.doorH
+		local side = (w - gap) / 2
+		local pieces = {
+			{ Vector3.new(w, h, T), Vector3.new(0, h / 2, d - T / 2) }, -- back
+			{ Vector3.new(T, h, d), Vector3.new(-w / 2 + T / 2, h / 2, d / 2) }, -- left
+			{ Vector3.new(T, h, d), Vector3.new(w / 2 - T / 2, h / 2, d / 2) }, -- right
+			{ Vector3.new(side, h, T), Vector3.new(-w / 2 + side / 2, h / 2, T / 2) }, -- front left
+			{ Vector3.new(side, h, T), Vector3.new(w / 2 - side / 2, h / 2, T / 2) }, -- front right
+			{ Vector3.new(gap, h - doorH, T), Vector3.new(0, doorH + (h - doorH) / 2, T / 2) }, -- over the door
+		}
+		for _, piece in pieces do
+			solid(model, piece[1], cf * CFrame.new(piece[2] + Vector3.new(0, base, 0)), look.wall, look.wallMat).Name =
+				"Wall"
+		end
+		block(
+			model,
+			Vector3.new(w - T * 2, 0.4, d - T * 2),
+			cf * CFrame.new(0, base + h - 0.2, d / 2),
+			look.trim,
+			look.trimMat
+		).Name =
+			"Ceiling"
+	else
+		body = solid(model, Vector3.new(w, h, d), cf * CFrame.new(0, base + h / 2, d / 2), look.wall, look.wallMat)
+	end
 	body.Name = "Body"
 	-- Corner posts and a band along the top.
 	local t = math.max(0.8, w / 25)
@@ -358,16 +390,36 @@ function builders.Walls(model, cf: CFrame, look, size)
 			{ cf * CFrame.new(w / 2 + 0.03, 0, d / 2) * CFrame.Angles(0, -math.pi / 2, 0), d }, -- right side
 			{ cf * CFrame.new(-w / 2 - 0.03, 0, d / 2) * CFrame.Angles(0, math.pi / 2, 0), d }, -- left side
 		}
-		for _, face in faces do
+		for f, face in faces do
 			local faceCf, width = face[1], face[2]
+			-- The doorway in the front face: no seams across it.
+			local hole = if f == 1 and gap then gap / 2 + 0.3 else 0
+			local holeTop = if f == 1 and gap then size.doorH else 0
 			for row = 1, rows - 1 do
-				block(model, Vector3.new(width, 0.1, 0.06), faceCf * CFrame.new(0, base + row * course, 0), seam).Name =
-					"Seam"
+				local y = base + row * course
+				if hole > 0 and row * course < holeTop then
+					local half = (width / 2 - hole)
+					for _, sx in { -1, 1 } do
+						block(
+							model,
+							Vector3.new(half, 0.1, 0.06),
+							faceCf * CFrame.new(sx * (hole + half / 2), y, 0),
+							seam
+						).Name =
+							"Seam"
+					end
+				else
+					block(model, Vector3.new(width, 0.1, 0.06), faceCf * CFrame.new(0, y, 0), seam).Name = "Seam"
+				end
 			end
 			for row = 0, rows - 1 do
 				local shift = if row % 2 == 0 then 0 else brick / 2
 				local x = -width / 2 + shift + brick
 				while x < width / 2 - 0.2 do
+					if hole > 0 and math.abs(x) < hole and (row + 1) * course < holeTop + course then
+						x += brick
+						continue
+					end
 					block(
 						model,
 						Vector3.new(0.1, course, 0.06),
@@ -685,13 +737,47 @@ end
 function builders.Door(model, cf: CFrame, look, size)
 	local w, h = size.w, size.h
 	local frame = math.max(0.4, w / 9)
-	block(
+	if size.open then
+		-- A walk-in doorway: a frame round the opening (posts and a lintel), and the door
+		-- itself swung open into the house.
+		for _, s in { -1, 1 } do
+			block(
+				model,
+				Vector3.new(frame, h + frame, 1.4),
+				cf * CFrame.new(s * (w / 2 + frame / 2), (h + frame) / 2, 0.4),
+				look.trim,
+				look.trimMat
+			)
+		end
+		block(
+			model,
+			Vector3.new(w + frame * 2, frame, 1.4),
+			cf * CFrame.new(0, h + frame / 2, 0.4),
+			look.trim,
+			look.trimMat
+		)
+		local before = #model:GetChildren()
+		builders.Door(model, cf, look, { w = w, h = h, closed = true })
+		local hinge = cf * CFrame.new(-w / 2, 0, -0.35)
+		local swing = hinge * CFrame.Angles(0, math.rad(-100), 0) * hinge:Inverse()
+		for i, p in model:GetChildren() do
+			if i > before and p:IsA("BasePart") and p.Name ~= "DoorFrame" then
+				p.CFrame = swing * p.CFrame
+			end
+		end
+		return
+	end
+	local doorFrame = block(
 		model,
 		Vector3.new(w + frame * 2, h + frame, 0.6),
 		cf * CFrame.new(0, (h + frame) / 2, -0.15),
 		look.trim,
 		look.trimMat
 	)
+	doorFrame.Name = "DoorFrame"
+	if size.closed then
+		doorFrame:Destroy()
+	end
 	local doorColor = look.door
 	local slab = block(model, Vector3.new(w, h, 0.5), cf * CFrame.new(0, h / 2, -0.35), doorColor, look.doorMat)
 	slab.Name = "DoorSlab"
@@ -1500,13 +1586,18 @@ local GATE_HALF = 8
 
 local PLACEMENTS = {
 	Walls = function(model, look)
-		builders.Walls(model, CFrame.new(0, 0, HOUSE_Z), look, { w = BODY.w, d = BODY.d, h = BODY.h })
+		builders.Walls(
+			model,
+			CFrame.new(0, 0, HOUSE_Z),
+			look,
+			{ w = BODY.w, d = BODY.d, h = BODY.h, doorway = 6, doorH = 9.5 }
+		)
 	end,
 	Roof = function(model, look)
 		builders.Roof(model, CFrame.new(0, 0, HOUSE_Z), look, { w = BODY.w, d = BODY.d, y = BASE + BODY.h })
 	end,
 	Door = function(model, look)
-		builders.Door(model, CFrame.new(0, BASE, HOUSE_Z), look, { w = 5, h = 8 })
+		builders.Door(model, CFrame.new(0, BASE, HOUSE_Z), look, { w = 5, h = 8.6, open = true })
 	end,
 	Windows = function(model, look)
 		builders.Windows(model, CFrame.new(0, 0, HOUSE_Z), look, { w = BODY.w, d = BODY.d, h = BODY.h })
@@ -1705,6 +1796,149 @@ function HouseModel.slot(slotId: string, partId: string?): Model
 	model:SetAttribute("Part", id)
 	PLACEMENTS[slotId](model, look)
 	craftify(model, slotId, look)
+	return model
+end
+
+-- The inside of a full house of style `styleId` at house `level` (plot space, like the
+-- slots): a plank floor and a rug, wallpaper with a baseboard, windows on the inside of the
+-- walls, a ceiling light, and furniture (the Dream Home's item models) that gets fancier with
+-- the level: a sofa and a TV, a fridge, then a bed, a piano, a gaming setup, a vanity and a
+-- hot tub.
+function HouseModel.interior(styleId: string, level: number): Model
+	local ItemModel = require(script.Parent.ItemModel) -- (here, not at the top: it's big)
+	local look = lookFor(styleId)
+	local model = Instance.new("Model")
+	model.Name = "Interior"
+	local T = 1
+	local x0, x1 = -BODY.w / 2 + T, BODY.w / 2 - T
+	local z0, z1 = HOUSE_Z + T, HOUSE_Z + BODY.d - T
+	local w, d = x1 - x0, z1 - z0
+	local cz = (z0 + z1) / 2
+	local floorY = BASE
+	-- Floor planks in two shades of wood.
+	local planks = 10
+	for i = 0, planks - 1 do
+		block(
+			model,
+			Vector3.new(w, 0.12, d / planks - 0.04),
+			CFrame.new(0, floorY + 0.06, z0 + (i + 0.5) * d / planks),
+			if i % 2 == 0 then rgb(176, 122, 76) else rgb(158, 106, 64)
+		).Name =
+			"Floor"
+	end
+	-- Striped wallpaper (soft shades of the house's colours), a baseboard and a picture
+	-- rail.
+	local paper = look.wall:Lerp(rgb(255, 250, 240), 0.4)
+	local stripe = look.accent:Lerp(rgb(255, 250, 240), 0.55)
+	local trim = rgb(250, 248, 240)
+	local walls = {
+		{ CFrame.new(0, 0, z1 - 0.06), w },
+		{ CFrame.new(x0 + 0.06, 0, cz) * CFrame.Angles(0, math.pi / 2, 0), d },
+		{ CFrame.new(x1 - 0.06, 0, cz) * CFrame.Angles(0, -math.pi / 2, 0), d },
+	}
+	for _, wall in walls do
+		local face, width = wall[1], wall[2]
+		block(model, Vector3.new(width, BODY.h - 0.6, 0.1), face * CFrame.new(0, floorY + (BODY.h - 0.6) / 2, 0), paper)
+		local stripes = math.floor(width / 2.4)
+		for i = 0, stripes - 1, 2 do
+			block(
+				model,
+				Vector3.new(width / stripes, BODY.h * 0.68, 0.12),
+				face * CFrame.new(-width / 2 + (i + 0.5) * width / stripes, floorY + BODY.h * 0.36, 0.02),
+				stripe
+			)
+		end
+		block(model, Vector3.new(width, 0.8, 0.25), face * CFrame.new(0, floorY + 0.4, 0), trim)
+		block(model, Vector3.new(width, 0.3, 0.2), face * CFrame.new(0, floorY + BODY.h * 0.7, 0), trim)
+	end
+	-- The windows from inside: glowing panes with white frames, where they are outside.
+	local glow = look.glow or rgb(255, 210, 120)
+	local y = BASE + BODY.h * 0.58
+	local panes = {
+		CFrame.new(-BODY.w * 0.3, y, z0 + 0.1),
+		CFrame.new(BODY.w * 0.3, y, z0 + 0.1),
+		CFrame.new(x0 + 0.1, y, cz) * CFrame.Angles(0, math.pi / 2, 0),
+		CFrame.new(x1 - 0.1, y, cz) * CFrame.Angles(0, -math.pi / 2, 0),
+	}
+	for _, pane in panes do
+		block(model, Vector3.new(5.8, 5.8, 0.15), pane, trim)
+		local glass = block(
+			model,
+			Vector3.new(5, 5, 0.1),
+			pane * CFrame.new(0, 0, 0.1),
+			glow:Lerp(rgb(200, 235, 255), 0.6),
+			M.Neon
+		)
+		glass.Name = "Glass"
+		block(model, Vector3.new(0.3, 5, 0.12), pane * CFrame.new(0, 0, 0.16), trim)
+		block(model, Vector3.new(5, 0.3, 0.12), pane * CFrame.new(0, 0, 0.16), trim)
+	end
+	-- Framed pictures on the side walls (a glowing landscape in the house's colours).
+	for _, wall in { walls[2], walls[3] } do
+		for _, along in { -d * 0.3, d * 0.3 } do
+			local frame = wall[1] * CFrame.new(along, floorY + BODY.h * 0.55, 0.15)
+			block(model, Vector3.new(3.4, 2.6, 0.2), frame, look.trim:Lerp(rgb(120, 80, 40), 0.4))
+			block(model, Vector3.new(2.8, 1.0, 0.1), frame * CFrame.new(0, 0.5, 0.1), rgb(150, 210, 255), M.Neon).CastShadow =
+				false
+			block(model, Vector3.new(2.8, 1.0, 0.1), frame * CFrame.new(0, -0.5, 0.1), rgb(120, 200, 110))
+			block(model, Vector3.new(0.6, 0.6, 0.12), frame * CFrame.new(0.7, 0.55, 0.12), rgb(255, 230, 120), M.Neon)
+		end
+	end
+	-- A ceiling light.
+	local lamp =
+		block(model, Vector3.new(3, 0.4, 3), CFrame.new(0, BASE + BODY.h - 0.6, cz), rgb(255, 245, 210), M.Neon)
+	lamp.Name = "Lamp"
+	local light = Instance.new("PointLight")
+	light.Range = 26
+	light.Brightness = 1.6
+	light.Color = rgb(255, 235, 200)
+	light.Shadows = false
+	light.Parent = lamp
+	-- A big rug in the middle, in the house's accent colour.
+	block(
+		model,
+		Vector3.new(11, 0.1, 7),
+		CFrame.new(-3, floorY + 0.17, cz - 1),
+		look.accent:Lerp(rgb(255, 255, 255), 0.25)
+	)
+	block(model, Vector3.new(11.6, 0.08, 7.6), CFrame.new(-3, floorY + 0.15, cz - 1), look.trim)
+	-- Furniture, fancier with each level: { level, item, x, z, turn (degrees), scale }.
+	local furniture = {
+		{ 1, "Yard_GiantTV", -3, z1 - 2.2, 0, 0.9 },
+		{ 1, "Yard_LuxurySofa", -3, cz - 1.5, 180, 1 },
+		{ 2, "Yard_SmartFridge", x0 + 2.2, z1 - 2.4, 0, 0.85 },
+		{ 3, "Yard_KingBed", x1 - 4.4, z1 - 4.6, 0, 0.75 },
+		{ 4, "Yard_GrandPiano", x1 - 4.2, z0 + 4.2, -90, 0.6 },
+		{ 5, "Yard_GamingSetup", x0 + 4.4, z0 + 3.2, 180, 0.6 },
+		{ 6, "Yard_VanityMirror", x1 - 1.6, cz + 0.2, -90, 0.6 },
+		{ 7, "Yard_HotTub", x0 + 4.2, cz + 0.8, 0, 0.55 },
+	}
+	for _, f in furniture do
+		if level >= f[1] then
+			local piece = ItemModel.buildNormal(f[2])
+			piece:SetAttribute("Item", nil)
+			if f[6] ~= 1 then
+				local pivot = piece:GetPivot()
+				for _, p in piece:GetDescendants() do
+					if p:IsA("BasePart") then
+						local rel = pivot:ToObjectSpace(p.CFrame)
+						p.Size *= f[6]
+						p.CFrame = pivot * (rel.Rotation + rel.Position * f[6])
+					end
+				end
+			end
+			piece:PivotTo(CFrame.new(f[3], floorY + 0.12, f[4]) * CFrame.Angles(0, math.rad(f[5]), 0))
+			for _, p in piece:GetDescendants() do
+				if p:IsA("BasePart") then
+					p.Parent = model
+				elseif p:IsA("Light") or p:IsA("Sparkles") then
+					p:Destroy()
+				end
+			end
+			piece:Destroy()
+		end
+	end
+	model:SetAttribute("Crafted", true)
 	return model
 end
 

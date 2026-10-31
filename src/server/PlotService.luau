@@ -506,6 +506,21 @@ local function updateHouse(plot, layout, level: number)
 			model.Parent = plot.house
 		end
 	end
+	-- The inside: furnished to match the house's style and level.
+	local style = string.match(layout.Walls or "Basic_Walls", "^(.-)_") or "Basic"
+	local key = style .. ":" .. level
+	local inside = plot.house:FindFirstChild("Interior")
+	if not inside or inside:GetAttribute("Key") ~= key then
+		if inside then
+			inside:Destroy()
+		end
+		inside = HouseModel.interior(style, level)
+		inside:SetAttribute("Key", key)
+		inside.WorldPivot = CFrame.new()
+		Items.scaleModel(inside, scale, HOUSE_CENTER)
+		inside:PivotTo(plot.origin * inside:GetPivot())
+		inside.Parent = plot.house
+	end
 end
 
 -- Shows a yard spot or garden bed as open, or locked until plot level `unlockAt`.
